@@ -114,7 +114,7 @@ const peraviz::dmx::FixtureGoboRange *resolve_active_gobo_range(
 int run_test() {
     const std::filesystem::path repo_root = repo_root_from_source();
     const std::filesystem::path golden_xml_path =
-        repo_root / "peraviz/native/tests/data/golden_fixture_description.xml";
+        repo_root / "native/tests/data/golden_fixture_description.xml";
     const std::string golden_xml = read_file(golden_xml_path);
     if (golden_xml.empty()) {
         return fail("Failed to read golden GDTF XML fixture description");

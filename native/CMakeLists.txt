@@ -11,15 +11,7 @@ set(GODOT_CPP_DIR "" CACHE PATH "Path to a local godot-cpp checkout")
 option(PERAVIZ_FETCH_GODOT_CPP "Fetch godot-cpp automatically when GODOT_CPP_DIR is not provided" ON)
 option(PERAVIZ_ENABLE_DMX "Enable DMX input (Art-Net RX)" ON)
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/models/matrixutils.h")
-    set(PERASTAGE_ROOT_DIR "${CMAKE_SOURCE_DIR}")
-elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../models/matrixutils.h")
-    get_filename_component(PERASTAGE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-else()
-    message(FATAL_ERROR "Cannot locate Perastage root (models/matrixutils.h not found).")
-endif()
-
-set(PERAVIZ_GODOT_PROJECT_DIR "${PERASTAGE_ROOT_DIR}/peraviz" CACHE PATH "Path to the Peraviz Godot project")
+set(PERAVIZ_GODOT_PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Path to the Peraviz Godot project")
 
 if(NOT TARGET godot-cpp)
     if(GODOT_CPP_DIR)
@@ -108,7 +100,6 @@ endif()
 
 target_include_directories(peraviz_native PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${PERASTAGE_ROOT_DIR}/models"
 )
 
 target_link_libraries(peraviz_native PRIVATE
