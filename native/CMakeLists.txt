@@ -11,6 +11,7 @@ set(GODOT_CPP_DIR "" CACHE PATH "Path to a local godot-cpp checkout")
 option(PERAVIZ_FETCH_GODOT_CPP "Fetch godot-cpp automatically when GODOT_CPP_DIR is not provided" ON)
 option(PERAVIZ_ENABLE_DMX "Enable DMX input (Art-Net RX)" ON)
 
+# Uses the standalone Peraviz repository root as the Godot project location.
 set(PERAVIZ_GODOT_PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Path to the Peraviz Godot project")
 
 if(NOT TARGET godot-cpp)
