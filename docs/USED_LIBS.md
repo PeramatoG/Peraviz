@@ -1,13 +1,22 @@
-# Peraviz: reused Perastage modules
+# Peraviz native/runtime modules and external libraries
 
-## Modules used in the MVR proxy milestone
+## Local transform implementation
 
-- `models/types.h` and `models/matrixutils.h`  
-  Used to parse MVR matrices (`MatrixUtils::ParseMatrix`), compose hierarchical transforms (`MatrixUtils::Multiply`), and extract Euler angles for proxy placement.
+Peraviz now contains its own local matrix/transform utilities under `native/src/`.
+These utilities were duplicated and adapted to keep Peraviz fully standalone.
 
-- MVR schema compatibility from `mvr/`  
-  The native Peraviz loader follows the same node structure used by Perastage (`GeneralSceneDescription -> Scene -> Layers -> ChildList`) for fixtures, trusses, supports, and scene objects.
+- `native/src/types.h`
+- `native/src/matrixutils.h`
 
-## Notes
+Peraviz does not require the Perastage repository at build time.
 
-- This milestone still does not reuse the full geometry/material pipeline. It reuses the transformation and spatial parsing foundation to validate axis and unit conversion first.
+## MVR/GDTF compatibility approach
+
+Peraviz follows the same MVR/GDTF concepts used in lighting workflows, but owns its
+local implementation for parsing, transform composition, and runtime behavior.
+
+## External libraries
+
+- `godot-cpp`
+- `tinyxml2`
+- `wxWidgets` (core/base)
