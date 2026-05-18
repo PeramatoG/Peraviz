@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -35,7 +36,15 @@ inline Matrix ApplyRotationPreservingScale(const Matrix &source_with_scale,
 
 // Parses a 12-float MVR/GDTF matrix string into basis vectors and translation.
 inline void ParseMatrix(const std::string &text, Matrix &out) {
-    std::stringstream ss(text);
+    std::string normalized = text;
+    for (char &ch : normalized) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (!(std::isdigit(c) || ch == '-' || ch == '+' || ch == '.' || ch == 'e' || ch == 'E')) {
+            ch = ' ';
+        }
+    }
+
+    std::stringstream ss(normalized);
     std::array<float, 12> values{};
     for (float &value : values) {
         if (!(ss >> value)) {
