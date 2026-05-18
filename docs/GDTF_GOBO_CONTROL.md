@@ -5,8 +5,8 @@ how they are mapped into Peraviz DMX runtime controls.
 
 ## GDTF reference used
 
-Perastage includes the GDTF specification at `docs/gdtf-spec.md`.
-For this implementation, the relevant attributes are:
+Use the official GDTF specification as the reference for this implementation.
+The relevant attributes are:
 
 - `Gobo(n)` for wheel slot selection.
 - `Gobo(n)Pos` for indexed gobo angle.

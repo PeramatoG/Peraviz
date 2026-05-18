@@ -32,9 +32,9 @@ This section summarizes what is implemented today.
   - Can load **3DS mesh data** for fixtures/assets.
   - Exposes fixture patch info and can build DMX control bindings (when DMX support is enabled).
 
-- **Reuse of Perastage building blocks**
-  - Peraviz currently reuses foundational Perastage utilities for transform parsing/composition and MVR schema compatibility.
-  - The full geometry/material pipeline is not reused yet; Peraviz relies on runtime proxies and selective asset loading.
+- **Standalone transform/runtime foundation**
+  - Peraviz contains local matrix and transform utilities in `native/src/` and does not require Perastage at build time.
+  - The viewer remains proxy-first for parts of the geometry/material path while runtime loading evolves.
 
 ### 2) Runtime viewer and UI
 
@@ -100,28 +100,21 @@ Peraviz includes explicit tooling to make import correctness reproducible:
 
 ### Build the native extension (GDExtension)
 
-The native project lives under `peraviz/native/`.
+The native project lives under `native/`.
 
 Example build (from repository root):
 
 ```bash
-cmake -S peraviz/native -B peraviz/native/build -DCMAKE_BUILD_TYPE=Debug
-cmake --build peraviz/native/build --config Debug
+cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Debug
+cmake --build native/build --config Debug
 ```
 
-The resulting library is copied into `peraviz/bin/` so the Godot editor can load it.
-
-#### Root CMake integration
-
-The repository root CMake supports enabling/disabling the Peraviz native build via:
-
-- `-DPERAVIZ_ENABLE_NATIVE=ON` (default)
-- Disable with: `-DPERAVIZ_ENABLE_NATIVE=OFF`
+The resulting library is copied into `bin/` so the Godot editor can load it.
 
 ### Run the viewer
 
-1. Open the Godot project located in `peraviz/`.
-2. Ensure the native extension is built and present in `peraviz/bin/`.
+1. Open the Godot project from the repository root.
+2. Ensure the native extension is built and present in `bin/`.
 3. Run the test scene (or the main viewer scene) and load an `.mvr` file from disk.
 4. (Optional) Enable DMX, connect an Art-Net source, and verify incoming universes in the DMX monitor.
 
@@ -138,7 +131,7 @@ The repository root CMake supports enabling/disabling the Peraviz native build v
 
 ## Additional documentation
 
-More detailed notes live under `peraviz/docs/`:
+More detailed notes live under `docs/`:
 
 - `NATIVE_BUILD.md` – building the GDExtension
 - `COORDINATE_SYSTEM.md` – coordinate mapping and auditing strategy

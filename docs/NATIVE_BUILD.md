@@ -1,19 +1,20 @@
 # Native build (GDExtension) for Peraviz
 
-This document explains how to build the C++ native extension (`peraviz_native`) for the Godot project in `peraviz/`, including the initial MVR proxy loading workflow.
+This document explains how to build the C++ native extension (`peraviz_native`) for the standalone Peraviz Godot project.
 
 ## Supported versions
 
 - **Godot**: `4.2+`.
 - **godot-cpp**: `godot-4.2.2-stable`.
 
-## New dependencies for the MVR loader
+## Native dependencies
 
-In addition to `godot-cpp`, the native target now links:
+In addition to `godot-cpp`, the native target links:
 
 - `tinyxml2`: parsing `GeneralSceneDescription.xml`.
 - `wxWidgets (core/base)`: reading `.mvr` ZIP containers through `wxZipInputStream`.
-- Shared Perastage headers (`models/types.h`, `models/matrixutils.h`) for matrix handling and transform composition.
+
+Peraviz now provides matrix/transform utilities locally under `native/src/` (`types.h`, `matrixutils.h`), so no external Perastage headers are required.
 
 ## Coordinate conversion (MVR/GDTF -> Godot)
 
@@ -28,33 +29,21 @@ The conversion is performed in C++ before exposing data to GDScript:
 From the repository root:
 
 ```bash
-cmake -S peraviz/native -B peraviz/native/build -DCMAKE_BUILD_TYPE=Debug
-cmake --build peraviz/native/build --config Debug
+cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Debug
+cmake --build native/build --config Debug
 ```
 
-The resulting library is copied automatically to `peraviz/bin/`.
+The resulting library is copied automatically to `bin/`.
 
 ### Windows (Visual Studio) note
 
 When building with Visual Studio, the generated `peraviz_native.dll` may depend on additional
-runtime DLLs (`wxWidgets`, `tinyxml2`, etc.). The native CMake now copies runtime DLL
-dependencies to `peraviz/bin/` after each build, so Godot can load the extension without
+runtime DLLs (`wxWidgets`, `tinyxml2`, etc.). The native CMake copies runtime DLL
+dependencies to `bin/` after each build, so Godot can load the extension without
 manual PATH tweaks.
 
-If `PeravizLoader` is still reported as unknown in GDScript, verify that `peraviz/bin/`
+If `PeravizLoader` is still reported as unknown in GDScript, verify that `bin/`
 contains `peraviz_native.dll` and its dependent DLLs, then restart the Godot editor.
-
-## Root CMake integration
-
-The root CMake includes this subproject with:
-
-- `-DPERAVIZ_ENABLE_NATIVE=ON` (default).
-
-To disable it:
-
-```bash
-cmake -S . -B build -DPERAVIZ_ENABLE_NATIVE=OFF
-```
 
 ## Usage from Godot
 
