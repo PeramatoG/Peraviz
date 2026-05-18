@@ -4,3 +4,16 @@
 
 # Example MVR
 *.mvr
+/.vs
+/native/out/build/x64-Debug
+/.godot/global_script_class_cache.cfg
+/.godot/uid_cache.bin
+/bin/peraviz_native.dll
+/bin/peraviz_native.ilk
+/bin/peraviz_native.pdb
+*.dll
+*.pdb
+/.godot/editor/editor_layout.cfg
+/.godot/editor/filesystem_cache10
+/.godot/editor/script_editor_cache.cfg
+/.godot/editor/editor_script_doc_cache.res
