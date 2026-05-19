@@ -5,7 +5,7 @@
 
 namespace {
 
-// Describes the purpose of fail.
+// Prints an error message and returns a failing exit code.
 int fail(const std::string &message) {
     std::cerr << message << std::endl;
     return 1;
@@ -34,7 +34,7 @@ int expect_parsed(const std::string &attribute,
 
 } // namespace
 
-// Describes the purpose of main.
+// Entry point that runs the test program and returns its status.
 int main() {
     if (const int rc = expect_parsed("pan", peraviz::dmx::AttributeRole::kPan, false, 1, 0); rc != 0) {
         return rc;

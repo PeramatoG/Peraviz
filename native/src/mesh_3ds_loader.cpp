@@ -47,7 +47,7 @@ struct MaterialInfo {
     bool has_color = false;
 };
 
-// Describes the purpose of read chunk.
+// Reads a 3DS chunk header from the input stream.
 bool read_chunk(std::ifstream &file, Chunk &chunk) {
     if (!file.read(reinterpret_cast<char *>(&chunk.id), sizeof(chunk.id))) {
         return false;
@@ -58,7 +58,7 @@ bool read_chunk(std::ifstream &file, Chunk &chunk) {
     return true;
 }
 
-// Describes the purpose of ensure godot clockwise winding.
+// Reorders triangle indices to match Godot winding expectations.
 void ensure_godot_clockwise_winding(MeshData &mesh) {
     if (mesh.indices.size() < 3 || mesh.vertices.size() < 3) {
         return;
@@ -139,7 +139,7 @@ void ensure_godot_clockwise_winding(MeshData &mesh) {
     }
 }
 
-// Describes the purpose of compute normals.
+// Computes per-vertex normals from indexed triangle geometry.
 void compute_normals(MeshData &mesh) {
     const size_t vertex_count = mesh.vertices.size() / 3;
     mesh.normals.assign(vertex_count * 3, 0.0F);
@@ -209,16 +209,16 @@ void compute_normals(MeshData &mesh) {
     }
 }
 
-// Describes the purpose of to lower ascii.
+// Converts ASCII text to lowercase for normalized comparisons.
 std::string to_lower_ascii(std::string value) {
-// Describes the purpose of transform.
+// Applies lowercase conversion to each character in the string.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return value;
 }
 
-// Describes the purpose of read cstring.
+// Reads a null-terminated C string from binary input.
 std::string read_cstring(std::ifstream &file, std::streampos end_pos) {
     std::string out;
     char ch = '\0';
@@ -241,7 +241,7 @@ bool find_texture_by_filename(const std::filesystem::path &root,
                               const std::filesystem::path &target_name,
                               std::filesystem::path &out_path) {
     if (root.empty() || !std::filesystem::exists(root) ||
-// Describes the purpose of is directory.
+// Returns whether the given path exists and is a directory.
         !std::filesystem::is_directory(root)) {
         return false;
     }
@@ -486,7 +486,7 @@ void parse_mesh_chunk(std::ifstream &file, std::streampos mesh_end, MeshData &me
     }
 }
 
-// Describes the purpose of load 3ds.
+// Loads and parses a 3DS file into mesh structures.
 bool load_3ds(const std::string &path, MeshData &mesh) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {

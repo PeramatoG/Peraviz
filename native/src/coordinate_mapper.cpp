@@ -6,12 +6,12 @@
 
 namespace {
 
-// Describes the purpose of scale axis.
+// Scales a basis axis vector while preserving its direction.
 std::array<float, 3> scale_axis(const std::array<float, 3> &v, float factor) {
     return {v[0] * factor, v[1] * factor, v[2] * factor};
 }
 
-// Describes the purpose of extract scale.
+// Extracts per-axis scale values from a transform basis.
 std::array<float, 3> extract_scale(const Matrix &m) {
     auto len = [](const std::array<float, 3> &v) {
         return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
@@ -19,7 +19,7 @@ std::array<float, 3> extract_scale(const Matrix &m) {
     return {len(m.u), len(m.v), len(m.w)};
 }
 
-// Describes the purpose of normalize basis.
+// Normalizes a basis to remove embedded scaling components.
 Matrix normalize_basis(const Matrix &m, const std::array<float, 3> &scale) {
     Matrix out = m;
     auto safe_div = [](float value, float s) {
@@ -37,18 +37,18 @@ Matrix normalize_basis(const Matrix &m, const std::array<float, 3> &scale) {
 
 namespace peraviz::coordinate_mapper {
 
-// Describes the purpose of map position mm to m.
+// Converts position coordinates from millimeters to meters.
 Vec3 map_position_mm_to_m(const std::array<float, 3> &source_mm) {
     return Vec3{source_mm[0] / 1000.0F, source_mm[2] / 1000.0F,
                 -source_mm[1] / 1000.0F};
 }
 
-// Describes the purpose of map source vector to godot.
+// Converts source coordinate vectors into Godot axis conventions.
 std::array<float, 3> map_source_vector_to_godot(const std::array<float, 3> &source) {
     return {source[0], source[2], -source[1]};
 }
 
-// Describes the purpose of to godot local basis.
+// Converts a source local basis into a normalized Godot basis.
 Matrix to_godot_local_basis(const Matrix &source_local) {
     Matrix out;
 
@@ -64,7 +64,7 @@ Matrix to_godot_local_basis(const Matrix &source_local) {
     return out;
 }
 
-// Describes the purpose of to godot transform.
+// Converts a source transform into a Godot Transform3D.
 SceneTransform to_godot_transform(const Matrix &source_local) {
     SceneTransform transform;
     transform.position = map_position_mm_to_m(source_local.o);

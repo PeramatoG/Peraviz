@@ -6,7 +6,7 @@
 namespace peraviz::dmx {
 namespace {
 
-// Describes the purpose of now microseconds.
+// Returns a monotonic timestamp in microseconds.
 uint64_t now_microseconds() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
@@ -16,12 +16,12 @@ uint64_t now_microseconds() {
 
 ArtNetReceiver::ArtNetReceiver() = default;
 
-// Describes the purpose of ArtNetReceiver.
+// Constructs an Art-Net receiver with default state.
 ArtNetReceiver::~ArtNetReceiver() {
     stop();
 }
 
-// Describes the purpose of start.
+// Starts the receiver thread and begins listening for Art-Net packets.
 bool ArtNetReceiver::start(const std::string &bind_ip, uint16_t port) {
     if (running_.load(std::memory_order_acquire)) {
         return true;
@@ -49,7 +49,7 @@ bool ArtNetReceiver::start(const std::string &bind_ip, uint16_t port) {
     return true;
 }
 
-// Describes the purpose of stop.
+// Stops the receiver thread and closes the listening socket.
 void ArtNetReceiver::stop() {
     running_.store(false, std::memory_order_release);
     socket_.close();
@@ -58,17 +58,17 @@ void ArtNetReceiver::stop() {
     }
 }
 
-// Describes the purpose of is running.
+// Returns whether the receiver background loop is currently running.
 bool ArtNetReceiver::is_running() const {
     return running_.load(std::memory_order_acquire);
 }
 
-// Describes the purpose of try get frame.
+// Tries to fetch the latest DMX frame for a universe.
 bool ArtNetReceiver::try_get_frame(uint16_t universe_id, DmxFrame &out_frame) const {
     return cache_.try_get_frame(universe_id, out_frame);
 }
 
-// Describes the purpose of get stats.
+// Returns runtime counters collected by the receiver.
 ArtNetReceiverStats ArtNetReceiver::get_stats(uint64_t now_us, uint64_t active_window_us) const {
     ArtNetReceiverStats stats;
     stats.running = is_running();
@@ -79,13 +79,13 @@ ArtNetReceiverStats ArtNetReceiver::get_stats(uint64_t now_us, uint64_t active_w
     return stats;
 }
 
-// Describes the purpose of get last error.
+// Returns the last runtime error reported by the receiver.
 std::string ArtNetReceiver::get_last_error() const {
     std::lock_guard<std::mutex> lock(error_mutex_);
     return last_error_;
 }
 
-// Describes the purpose of run.
+// Background loop that receives, parses, and stores Art-Net DMX frames.
 void ArtNetReceiver::run() {
     std::array<uint8_t, 1024> receive_buffer {};
     while (running_.load(std::memory_order_acquire)) {

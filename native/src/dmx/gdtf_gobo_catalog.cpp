@@ -18,7 +18,7 @@ namespace peraviz::dmx {
 
 namespace {
 
-// Describes the purpose of parse gobo range behavior.
+// Parses textual gobo range behavior into enum values.
 FixtureGoboRangeBehavior parse_gobo_range_behavior(const std::string &channel_set_name) {
     const std::string lower_name = lower_ascii(channel_set_name);
     if (lower_name.find("shake") != std::string::npos) {
@@ -48,7 +48,7 @@ bool is_select_shake_function(const std::string &function_name,
     return lowered_function_attribute.find("selectshake") != std::string::npos;
 }
 
-// Describes the purpose of parse positive int.
+// Parses a strictly positive integer from text.
 int parse_positive_int(const char *raw) {
     if (!raw) {
         return -1;
@@ -240,7 +240,7 @@ bool parse_amplitude_from_attribute_definition(tinyxml2::XMLElement *attribute_d
 
 } // namespace
 
-// Describes the purpose of build gobo wheel catalog.
+// Builds the gobo wheel catalog from fixture channel metadata.
 GoboWheelCatalog build_gobo_wheel_catalog(const std::string &gdtf_path, tinyxml2::XMLElement *root) {
     GoboWheelCatalog out;
     if (!root) {
@@ -571,7 +571,7 @@ void consume_gobo_channel_sets(tinyxml2::XMLElement *channel_function,
     }
 }
 
-// Describes the purpose of dedupe and sort gobo wheel.
+// Removes duplicate entries and sorts gobo wheel ranges.
 void dedupe_and_sort_gobo_wheel(FixtureGoboWheelOffset &wheel) {
     std::sort(wheel.slots.begin(), wheel.slots.end(),
               [](const FixtureGoboSlot &a,

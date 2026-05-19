@@ -14,16 +14,16 @@
 
 namespace {
 
-// Describes the purpose of to lower ascii.
+// Converts ASCII text to lowercase for normalized comparisons.
 std::string to_lower_ascii(std::string value) {
-// Describes the purpose of transform.
+// Applies lowercase conversion to each character in the string.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return value;
 }
 
-// Describes the purpose of normalize archive path.
+// Normalizes archive paths for deterministic cache keys.
 std::string normalize_archive_path(const std::string &raw) {
     std::string out = raw;
     std::replace(out.begin(), out.end(), '\\', '/');
@@ -33,7 +33,7 @@ std::string normalize_archive_path(const std::string &raw) {
     return out;
 }
 
-// Describes the purpose of sanitize path component for fs.
+// Replaces unsafe filename characters in one path segment.
 std::string sanitize_path_component_for_fs(std::string component) {
     for (char &ch : component) {
         const unsigned char c = static_cast<unsigned char>(ch);
@@ -57,7 +57,7 @@ std::string sanitize_path_component_for_fs(std::string component) {
     return component;
 }
 
-// Describes the purpose of cache safe relative path.
+// Builds a filesystem-safe relative path for cached assets.
 std::filesystem::path cache_safe_relative_path(const std::string &normalized_archive_path) {
     std::filesystem::path normalized =
         std::filesystem::u8path(normalized_archive_path).lexically_normal();
@@ -76,7 +76,7 @@ std::filesystem::path cache_safe_relative_path(const std::string &normalized_arc
     return safe_path;
 }
 
-// Describes the purpose of trim ascii.
+// Trims ASCII whitespace from both ends of a string.
 std::string trim_ascii(std::string value) {
     const auto is_space = [](unsigned char c) {
         return std::isspace(c) != 0;
@@ -91,19 +91,19 @@ std::string trim_ascii(std::string value) {
     return value;
 }
 
-// Describes the purpose of path stem lower.
+// Returns the lowercase stem of a filesystem path.
 std::string path_stem_lower(const std::string &normalized_path) {
     const std::filesystem::path path = std::filesystem::u8path(normalized_path);
     return to_lower_ascii(path.stem().u8string());
 }
 
-// Describes the purpose of path extension lower.
+// Returns the lowercase extension of a filesystem path.
 std::string path_extension_lower(const std::string &normalized_path) {
     const std::filesystem::path path = std::filesystem::u8path(normalized_path);
     return to_lower_ascii(path.extension().u8string());
 }
 
-// Describes the purpose of is supported model extension.
+// Returns whether a file extension is supported as a model.
 bool is_supported_model_extension(const std::string &extension_lower) {
     return extension_lower == ".3ds" || extension_lower == ".glb" ||
            extension_lower == ".gltf" || extension_lower == ".obj" ||
@@ -111,7 +111,7 @@ bool is_supported_model_extension(const std::string &extension_lower) {
            extension_lower == ".stl";
 }
 
-// Describes the purpose of is supported texture or scene dependency extension.
+// Returns whether an extension is a supported model dependency.
 bool is_supported_texture_or_scene_dependency_extension(const std::string &extension_lower) {
     return extension_lower == ".png" || extension_lower == ".jpg" ||
            extension_lower == ".jpeg" || extension_lower == ".bmp" ||
@@ -121,7 +121,7 @@ bool is_supported_texture_or_scene_dependency_extension(const std::string &exten
            extension_lower == ".mtl" || extension_lower == ".bin";
 }
 
-// Describes the purpose of gdtf lookup key.
+// Builds a normalized lookup key for GDTF resources.
 std::string gdtf_lookup_key(const std::string &archive_path) {
     const std::string normalized = trim_ascii(normalize_archive_path(archive_path));
     if (normalized.empty()) {
@@ -141,7 +141,7 @@ std::string gdtf_lookup_key(const std::string &archive_path) {
     return to_lower_ascii(stem + extension);
 }
 
-// Describes the purpose of hash file contents.
+// Computes a stable hash from file contents.
 std::string hash_file_contents(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
@@ -163,7 +163,7 @@ std::string hash_file_contents(const std::filesystem::path &path) {
     return ss.str();
 }
 
-// Describes the purpose of parent archive dir.
+// Returns the parent directory that stores extracted archive data.
 std::string parent_archive_dir(const std::string &normalized_path) {
     const std::filesystem::path path = std::filesystem::u8path(normalized_path);
     const std::filesystem::path parent = path.parent_path();
@@ -182,7 +182,7 @@ std::string parent_archive_dir(const std::string &normalized_path) {
 namespace peraviz {
 
 ZipAssetCache::ZipAssetCache(std::string source_path)
-// Describes the purpose of source path .
+// Returns the original source path associated with this cache.
     : source_path_(std::filesystem::u8path(source_path)) {
     const std::filesystem::path base = std::filesystem::temp_directory_path() / "peraviz_cache";
     const std::string source_name = source_path_.filename().u8string();
@@ -192,12 +192,12 @@ ZipAssetCache::ZipAssetCache(std::string source_path)
     std::filesystem::create_directories(cache_dir_, ec);
 }
 
-// Describes the purpose of cache dir.
+// Returns the directory used to store extracted cache files.
 const std::filesystem::path &ZipAssetCache::cache_dir() const {
     return cache_dir_;
 }
 
-// Describes the purpose of extracted assets.
+// Returns metadata for assets extracted from the source archive.
 int ZipAssetCache::extracted_assets() const {
     return static_cast<int>(extracted_.size());
 }
@@ -240,7 +240,7 @@ static void extract_related_model_assets(ZipAssetCache &cache,
     }
 }
 
-// Describes the purpose of ensure extracted.
+// Ensures the source archive has been extracted into the cache.
 std::string ZipAssetCache::ensure_extracted(const std::string &archive_relative_path) {
     if (archive_relative_path.empty()) {
         return {};
@@ -302,7 +302,7 @@ std::string ZipAssetCache::ensure_extracted(const std::string &archive_relative_
     return {};
 }
 
-// Describes the purpose of ensure archive file extracted.
+// Ensures a specific archive entry is extracted to disk.
 std::string ZipAssetCache::ensure_archive_file_extracted(const std::string &file_name) {
     const std::string normalized_file = to_lower_ascii(trim_ascii(normalize_archive_path(file_name)));
     if (normalized_file.empty()) {
@@ -334,7 +334,7 @@ std::string ZipAssetCache::ensure_archive_file_extracted(const std::string &file
     return {};
 }
 
-// Describes the purpose of ensure gdtf spec extracted.
+// Ensures the GDTF specification XML is extracted and available.
 std::string ZipAssetCache::ensure_gdtf_spec_extracted(const std::string &gdtf_spec) {
     const std::string normalized = trim_ascii(normalize_archive_path(gdtf_spec));
     if (normalized.empty()) {
@@ -405,7 +405,7 @@ std::string ZipAssetCache::ensure_gdtf_spec_extracted(const std::string &gdtf_sp
     return {};
 }
 
-// Describes the purpose of ensure mvr model extracted.
+// Ensures a model referenced by MVR content is extracted.
 std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &model_reference) {
     const std::string normalized = normalize_archive_path(model_reference);
     if (normalized.empty()) {
@@ -479,7 +479,7 @@ std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &model_r
     return ensure_extracted(*best_entry);
 }
 
-// Describes the purpose of ensure gdtf model extracted.
+// Ensures a model referenced by GDTF content is extracted.
 std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &model_reference) {
     if (model_reference.empty()) {
         return {};

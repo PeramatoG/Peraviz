@@ -9,16 +9,16 @@
 
 namespace peraviz::dmx {
 
-// Describes the purpose of lower ascii.
+// Converts an ASCII string to lowercase for case-insensitive matching.
 std::string lower_ascii(std::string text) {
-// Describes the purpose of transform.
+// Applies lowercase conversion to each character in the string.
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return text;
 }
 
-// Describes the purpose of trim ascii.
+// Trims ASCII whitespace from both ends of a string.
 std::string trim_ascii(std::string text) {
     const auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
     text.erase(text.begin(), std::find_if(text.begin(), text.end(), [&](unsigned char c) { return !is_space(c); }));
@@ -26,7 +26,7 @@ std::string trim_ascii(std::string text) {
     return text;
 }
 
-// Describes the purpose of read gdtf description xml.
+// Reads and returns the GDTF description XML from an archive.
 std::string read_gdtf_description_xml(const std::string &gdtf_path) {
     wxFileInputStream input(wxString::FromUTF8(gdtf_path.c_str()));
     if (!input.IsOk()) {

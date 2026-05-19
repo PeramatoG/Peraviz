@@ -8,7 +8,7 @@
 #include "peraviz_dmx_receiver.h"
 #endif
 
-// Describes the purpose of initialize peraviz module.
+// Registers module classes when the Peraviz module is initialized.
 void initialize_peraviz_module(godot::ModuleInitializationLevel p_level) {
     if (p_level != godot::MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
@@ -22,7 +22,7 @@ void initialize_peraviz_module(godot::ModuleInitializationLevel p_level) {
 #endif
 }
 
-// Describes the purpose of uninitialize peraviz module.
+// Cleans up module state when the Peraviz module is unloaded.
 void uninitialize_peraviz_module(godot::ModuleInitializationLevel p_level) {
     if (p_level != godot::MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;

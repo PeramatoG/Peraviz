@@ -5,7 +5,7 @@
 
 namespace godot {
 
-// Describes the purpose of  bind methods.
+// Registers class methods so they are callable from Godot scripts.
 void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("start", "bind_ip", "port"), &PeravizDmxReceiver::start, DEFVAL(String("0.0.0.0")), DEFVAL(6454));
     ClassDB::bind_method(D_METHOD("stop"), &PeravizDmxReceiver::stop);
@@ -16,38 +16,38 @@ void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_universe_data", "universe_id"), &PeravizDmxReceiver::get_universe_data);
 }
 
+// Initializes the wrapper with a dedicated Art-Net receiver instance.
 PeravizDmxReceiver::PeravizDmxReceiver()
-// Describes the purpose of receiver .
     : receiver_(std::make_unique<peraviz::dmx::ArtNetReceiver>()) {
 }
 
-// Describes the purpose of PeravizDmxReceiver.
+// Constructs the Godot-facing DMX receiver wrapper.
 PeravizDmxReceiver::~PeravizDmxReceiver() {
     stop();
 }
 
-// Describes the purpose of start.
+// Starts the receiver thread and begins listening for Art-Net packets.
 bool PeravizDmxReceiver::start(const String &bind_ip, int port) {
     const int safe_port = std::max(1, std::min(port, 65535));
     return receiver_->start(std::string(bind_ip.utf8().get_data()), static_cast<uint16_t>(safe_port));
 }
 
-// Describes the purpose of stop.
+// Stops the receiver thread and closes the listening socket.
 void PeravizDmxReceiver::stop() {
     receiver_->stop();
 }
 
-// Describes the purpose of is running.
+// Returns whether the receiver background loop is currently running.
 bool PeravizDmxReceiver::is_running() const {
     return receiver_->is_running();
 }
 
-// Describes the purpose of get last error.
+// Returns the last runtime error reported by the receiver.
 String PeravizDmxReceiver::get_last_error() const {
     return String(receiver_->get_last_error().c_str());
 }
 
-// Describes the purpose of get active universes.
+// Returns the list of universes that currently have cached data.
 PackedInt32Array PeravizDmxReceiver::get_active_universes(int active_window_ms) const {
     const uint64_t safe_window_us = static_cast<uint64_t>(std::max(active_window_ms, 0)) * 1000ULL;
     const peraviz::dmx::ArtNetReceiverStats stats = receiver_->get_stats(now_microseconds(), safe_window_us);
@@ -60,7 +60,7 @@ PackedInt32Array PeravizDmxReceiver::get_active_universes(int active_window_ms) 
     return universe_array;
 }
 
-// Describes the purpose of get stats.
+// Returns runtime counters collected by the receiver.
 Dictionary PeravizDmxReceiver::get_stats() const {
     const uint64_t now_us = now_microseconds();
     const peraviz::dmx::ArtNetReceiverStats stats = receiver_->get_stats(now_us, 2000ULL * 1000ULL);
@@ -78,7 +78,7 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     return out;
 }
 
-// Describes the purpose of get universe data.
+// Returns the latest DMX channel data for a universe as an array.
 PackedByteArray PeravizDmxReceiver::get_universe_data(int universe_id) const {
     PackedByteArray bytes;
     if (universe_id < 0 || universe_id > 32767) {
@@ -97,7 +97,7 @@ PackedByteArray PeravizDmxReceiver::get_universe_data(int universe_id) const {
     return bytes;
 }
 
-// Describes the purpose of now microseconds.
+// Returns a monotonic timestamp in microseconds.
 uint64_t PeravizDmxReceiver::now_microseconds() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
