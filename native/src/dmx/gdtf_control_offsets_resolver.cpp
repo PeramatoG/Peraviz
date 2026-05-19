@@ -26,7 +26,7 @@ struct DimmerResolveCacheEntry {
 std::mutex g_cache_mutex;
 std::unordered_map<std::string, DimmerResolveCacheEntry> g_cache;
 
-// Describes the purpose of make cache key.
+// Builds a stable lookup key for cached control offset entries.
 std::string make_cache_key(const std::string &gdtf_path, const std::string &dmx_mode_name) {
     return gdtf_path + "\n" + dmx_mode_name;
 }
@@ -73,7 +73,7 @@ void consume_offsets(const std::vector<int> &offsets,
     }
 }
 
-// Describes the purpose of parse last number token.
+// Extracts the trailing numeric token from a control name.
 int parse_last_number_token(const std::string &text) {
     int value = 0;
     bool found = false;
@@ -440,7 +440,7 @@ struct AttributeContext {
 
 using AttributeHandler = bool (*)(const AttributeContext &context);
 
-// Describes the purpose of handle with offset descriptor.
+// Handles descriptors that include explicit byte offset metadata.
 bool handle_with_offset_descriptor(const AttributeContext &context) {
     return apply_descriptor_offsets(context.parsed_attribute,
                                     context.offsets,
@@ -448,7 +448,7 @@ bool handle_with_offset_descriptor(const AttributeContext &context) {
                                     context.out_offsets);
 }
 
-// Describes the purpose of handle gobo select descriptor.
+// Maps gobo selection descriptors to control offsets.
 bool handle_gobo_select_descriptor(const AttributeContext &context) {
     if (context.parsed_attribute.role != peraviz::dmx::AttributeRole::kGobo) {
         return false;
@@ -465,7 +465,7 @@ bool handle_gobo_select_descriptor(const AttributeContext &context) {
     return true;
 }
 
-// Describes the purpose of handle gobo index descriptor.
+// Maps gobo index descriptors to control offsets.
 bool handle_gobo_index_descriptor(const AttributeContext &context) {
     if (context.parsed_attribute.role != peraviz::dmx::AttributeRole::kGoboIndex) {
         return false;
@@ -477,7 +477,7 @@ bool handle_gobo_index_descriptor(const AttributeContext &context) {
     return true;
 }
 
-// Describes the purpose of handle gobo rotation descriptor.
+// Maps gobo rotation descriptors to control offsets.
 bool handle_gobo_rotation_descriptor(const AttributeContext &context) {
     if (context.parsed_attribute.role != peraviz::dmx::AttributeRole::kGoboRotation) {
         return false;
@@ -508,7 +508,7 @@ const std::array<ControlAttributeDescriptor, 4> &control_attribute_descriptors()
     return descriptors;
 }
 
-// Describes the purpose of consume control attribute.
+// Consumes one control attribute and updates resolver state.
 bool consume_control_attribute(const AttributeContext &context) {
     for (const ControlAttributeDescriptor &descriptor : control_attribute_descriptors()) {
         if (descriptor.handler && descriptor.handler(context)) {

@@ -15,7 +15,7 @@
 namespace peraviz::dmx {
 namespace {
 
-// Describes the purpose of is invalid socket.
+// Returns true when the socket handle is not valid.
 bool is_invalid_socket(SocketHandle socket_handle) {
 #ifdef _WIN32
     return socket_handle == static_cast<SocketHandle>(INVALID_SOCKET);
@@ -26,12 +26,12 @@ bool is_invalid_socket(SocketHandle socket_handle) {
 
 } // namespace
 
-// Describes the purpose of UdpSocket.
+// Constructs a UDP socket wrapper in the closed state.
 UdpSocket::~UdpSocket() {
     close();
 }
 
-// Describes the purpose of open and bind.
+// Opens a UDP socket and binds it to the requested endpoint.
 bool UdpSocket::open_and_bind(const std::string &bind_ip, uint16_t port, std::string &error_message) {
     close();
 
@@ -68,7 +68,7 @@ bool UdpSocket::open_and_bind(const std::string &bind_ip, uint16_t port, std::st
     return true;
 }
 
-// Describes the purpose of close.
+// Closes the UDP socket and resets wrapper state.
 void UdpSocket::close() {
     if (is_invalid_socket(socket_handle_)) {
         return;
@@ -81,12 +81,12 @@ void UdpSocket::close() {
 #endif
 }
 
-// Describes the purpose of is open.
+// Returns whether the UDP socket is currently open.
 bool UdpSocket::is_open() const {
     return !is_invalid_socket(socket_handle_);
 }
 
-// Describes the purpose of set non blocking.
+// Configures non-blocking mode for the UDP socket.
 bool UdpSocket::set_non_blocking(bool enabled, std::string &error_message) {
     if (!is_open()) {
         error_message = "Socket is not open";
@@ -95,7 +95,7 @@ bool UdpSocket::set_non_blocking(bool enabled, std::string &error_message) {
     return set_socket_non_blocking(socket_handle_, enabled, error_message);
 }
 
-// Describes the purpose of set receive buffer.
+// Sets the UDP socket receive buffer size.
 bool UdpSocket::set_receive_buffer(int bytes, std::string &error_message) {
     if (!is_open()) {
         error_message = "Socket is not open";
@@ -104,7 +104,7 @@ bool UdpSocket::set_receive_buffer(int bytes, std::string &error_message) {
     return set_socket_receive_buffer(socket_handle_, bytes, error_message);
 }
 
-// Describes the purpose of set reuse address.
+// Sets SO_REUSEADDR on the UDP socket.
 bool UdpSocket::set_reuse_address(bool enabled, std::string &error_message) {
     if (!is_open()) {
         error_message = "Socket is not open";
@@ -113,7 +113,7 @@ bool UdpSocket::set_reuse_address(bool enabled, std::string &error_message) {
     return set_socket_reuse_address(socket_handle_, enabled, error_message);
 }
 
-// Describes the purpose of wait readable.
+// Waits until the socket becomes readable or timeout expires.
 bool UdpSocket::wait_readable(int timeout_ms, std::string &error_message) const {
     if (!is_open()) {
         error_message = "Socket is not open";

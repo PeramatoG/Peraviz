@@ -60,7 +60,7 @@ void prepare_binary_mask_image(const godot::Ref<godot::Image> &image,
 
 namespace godot {
 
-// Describes the purpose of  bind methods.
+// Registers class methods so they are callable from Godot scripts.
 void PeravizGoboVectorizer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("vectorize_image", "image_path", "max_size",
                                    "luma_alpha_threshold", "apply_edge_mask_correction"),

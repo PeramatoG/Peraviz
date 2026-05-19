@@ -5,7 +5,7 @@
 
 namespace peraviz::dmx {
 
-// Describes the purpose of DmxUniverseCache.
+// Creates a cache for the latest DMX frame per universe.
 DmxUniverseCache::DmxUniverseCache() {
     slots_.resize(32768);
 }
@@ -39,7 +39,7 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     slot->front_index.store(next_front, std::memory_order_release);
 }
 
-// Describes the purpose of try get frame.
+// Tries to fetch the latest DMX frame for a universe.
 bool DmxUniverseCache::try_get_frame(uint16_t universe_id, DmxFrame &out_frame) const {
     if (universe_id >= slots_.size()) {
         return false;
@@ -63,7 +63,7 @@ bool DmxUniverseCache::try_get_frame(uint16_t universe_id, DmxFrame &out_frame) 
     return true;
 }
 
-// Describes the purpose of get active universes.
+// Returns the list of universes that currently have cached data.
 std::vector<uint16_t> DmxUniverseCache::get_active_universes(uint64_t now_us, uint64_t active_window_us) const {
     std::vector<uint16_t> active;
     for (size_t universe_id = 0; universe_id < slots_.size(); ++universe_id) {
@@ -82,7 +82,7 @@ std::vector<uint16_t> DmxUniverseCache::get_active_universes(uint64_t now_us, ui
     return active;
 }
 
-// Describes the purpose of get or create slot.
+// Returns an existing universe slot or creates a new one.
 DmxUniverseCache::UniverseSlot *DmxUniverseCache::get_or_create_slot(uint16_t universe_id) {
     std::unique_ptr<UniverseSlot> &slot = slots_[universe_id];
     if (slot) {

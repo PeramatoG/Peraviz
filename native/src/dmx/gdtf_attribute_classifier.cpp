@@ -12,7 +12,7 @@ namespace peraviz::dmx {
 
 namespace {
 
-// Describes the purpose of parse gobo wheel number.
+// Extracts the wheel number from a gobo attribute token.
 int parse_gobo_wheel_number(const std::string &leaf) {
     if (leaf.rfind("gobo", 0) != 0 || leaf.size() <= 4) {
         return 0;
@@ -32,13 +32,13 @@ int parse_gobo_wheel_number(const std::string &leaf) {
     return static_cast<int>(parsed);
 }
 
-// Describes the purpose of has explicit fine marker.
+// Detects whether an attribute explicitly marks fine precision.
 bool has_explicit_fine_marker(const std::string &lower) {
     return lower.find("fine") != std::string::npos ||
            lower.find("lsb") != std::string::npos;
 }
 
-// Describes the purpose of parse compact byte index.
+// Parses compact byte index suffixes from attribute names.
 int parse_compact_byte_index(const std::string &lower, const std::string &role_token) {
     if (lower.rfind(role_token, 0) != 0) {
         return -1;
@@ -78,7 +78,7 @@ int parse_compact_byte_index(const std::string &lower, const std::string &role_t
     return static_cast<int>(parsed);
 }
 
-// Describes the purpose of last attribute segment.
+// Returns the final segment of a dot-delimited attribute name.
 std::string last_attribute_segment(const std::string &attribute) {
     const size_t dot = attribute.find_last_of('.');
     if (dot == std::string::npos) {
@@ -119,14 +119,14 @@ bool starts_with_role_token(const std::string &attribute,
     return false;
 }
 
-// Describes the purpose of matches gobo select with embedded motion.
+// Detects gobo-select attributes that include motion qualifiers.
 bool matches_gobo_select_with_embedded_motion(const std::string &leaf) {
     return leaf.find("selectspin") != std::string::npos ||
            leaf.find("selectshake") != std::string::npos ||
            leaf.find("selecteffects") != std::string::npos;
 }
 
-// Describes the purpose of matches gobo attribute.
+// Checks whether an attribute name belongs to the gobo family.
 bool matches_gobo_attribute(const std::string &leaf) {
     if (matches_gobo_select_with_embedded_motion(leaf)) {
         return true;
@@ -146,7 +146,7 @@ bool matches_gobo_attribute(const std::string &leaf) {
     }
     if (starts_with_role_token(leaf, "gobowheel", byte_index) ||
         starts_with_role_token(leaf, "goboindex", byte_index) ||
-// Describes the purpose of starts with role token.
+// Checks whether a tokenized name starts with a given role marker.
         starts_with_role_token(leaf, "goboselect", byte_index)) {
         return true;
     }
@@ -158,7 +158,7 @@ bool matches_gobo_attribute(const std::string &leaf) {
     return references_wheel && references_selector;
 }
 
-// Describes the purpose of matches gobo index attribute.
+// Detects attributes that represent gobo wheel index selection.
 bool matches_gobo_index_attribute(const std::string &leaf) {
     if (leaf.find("gobo") == std::string::npos) {
         return false;
@@ -169,7 +169,7 @@ bool matches_gobo_index_attribute(const std::string &leaf) {
     return leaf.find("pos") != std::string::npos || leaf.find("index") != std::string::npos;
 }
 
-// Describes the purpose of matches gobo rotation attribute.
+// Detects attributes that represent gobo wheel rotation.
 bool matches_gobo_rotation_attribute(const std::string &leaf) {
     if (leaf.find("gobo") == std::string::npos) {
         return false;
@@ -239,7 +239,7 @@ const std::array<AttributeNameDescriptor, 7> &attribute_name_descriptors() {
     return descriptors;
 }
 
-// Describes the purpose of parse standard attribute.
+// Parses common non-wheel attributes into classifier output.
 bool parse_standard_attribute(const std::string &leaf, ParsedAttribute &parsed) {
     for (const AttributeNameDescriptor &descriptor : attribute_name_descriptors()) {
         int byte_index = 1;
@@ -263,7 +263,7 @@ bool token_contains_any(const std::string &leaf,
     return false;
 }
 
-// Describes the purpose of parse wheel and prism attributes.
+// Parses wheel and prism attributes into classifier output.
 void parse_wheel_and_prism_attributes(const std::string &leaf, ParsedAttribute &parsed) {
     const bool references_prism = token_contains_any(leaf, {"prism"});
     if (references_prism) {
@@ -315,7 +315,7 @@ void parse_wheel_and_prism_attributes(const std::string &leaf, ParsedAttribute &
     }
 }
 
-// Describes the purpose of parse gobo attribute.
+// Parses gobo-related attributes into classifier output.
 void parse_gobo_attribute(const std::string &leaf, ParsedAttribute &parsed) {
     if (matches_gobo_rotation_attribute(leaf)) {
         parsed.role = AttributeRole::kGoboRotation;
@@ -332,7 +332,7 @@ void parse_gobo_attribute(const std::string &leaf, ParsedAttribute &parsed) {
 
 } // namespace
 
-// Describes the purpose of parse offsets.
+// Parses coarse/fine byte offsets encoded in the attribute name.
 std::vector<int> parse_offsets(const char *raw_offset) {
     std::vector<int> offsets;
     if (!raw_offset) {
@@ -364,7 +364,7 @@ std::vector<int> parse_offsets(const char *raw_offset) {
     return offsets;
 }
 
-// Describes the purpose of parse attribute name.
+// Classifies a raw GDTF attribute name into structured metadata.
 ParsedAttribute parse_attribute_name(const std::string &raw_attribute) {
     ParsedAttribute parsed;
     const std::string lower = lower_ascii(trim_ascii(raw_attribute));

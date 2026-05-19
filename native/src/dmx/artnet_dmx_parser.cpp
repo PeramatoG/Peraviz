@@ -11,19 +11,19 @@ constexpr size_t kMinimumArtDmxPacketSize = 18;
 constexpr uint16_t kOpCodeArtDmx = 0x5000;
 constexpr uint16_t kMinimumProtocolVersion = 14;
 
-// Describes the purpose of read u16 le.
+// Reads a 16-bit little-endian value from a byte buffer.
 uint16_t read_u16_le(const uint8_t *data) {
     return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
 }
 
-// Describes the purpose of read u16 be.
+// Reads a 16-bit big-endian value from a byte buffer.
 uint16_t read_u16_be(const uint8_t *data) {
     return (static_cast<uint16_t>(data[0]) << 8) | static_cast<uint16_t>(data[1]);
 }
 
 } // namespace
 
-// Describes the purpose of parse.
+// Parses an Art-Net packet and returns decoded DMX frame data.
 bool ArtNetDmxParser::parse(const uint8_t *packet_data, size_t packet_size, ArtNetDmxFrameView &out_frame) const {
     if (packet_data == nullptr || packet_size < kMinimumArtDmxPacketSize) {
         return false;
