@@ -12,6 +12,7 @@ namespace peraviz::dmx {
 
 namespace {
 
+// Describes the purpose of parse gobo wheel number.
 int parse_gobo_wheel_number(const std::string &leaf) {
     if (leaf.rfind("gobo", 0) != 0 || leaf.size() <= 4) {
         return 0;
@@ -31,11 +32,13 @@ int parse_gobo_wheel_number(const std::string &leaf) {
     return static_cast<int>(parsed);
 }
 
+// Describes the purpose of has explicit fine marker.
 bool has_explicit_fine_marker(const std::string &lower) {
     return lower.find("fine") != std::string::npos ||
            lower.find("lsb") != std::string::npos;
 }
 
+// Describes the purpose of parse compact byte index.
 int parse_compact_byte_index(const std::string &lower, const std::string &role_token) {
     if (lower.rfind(role_token, 0) != 0) {
         return -1;
@@ -75,6 +78,7 @@ int parse_compact_byte_index(const std::string &lower, const std::string &role_t
     return static_cast<int>(parsed);
 }
 
+// Describes the purpose of last attribute segment.
 std::string last_attribute_segment(const std::string &attribute) {
     const size_t dot = attribute.find_last_of('.');
     if (dot == std::string::npos) {
@@ -115,12 +119,14 @@ bool starts_with_role_token(const std::string &attribute,
     return false;
 }
 
+// Describes the purpose of matches gobo select with embedded motion.
 bool matches_gobo_select_with_embedded_motion(const std::string &leaf) {
     return leaf.find("selectspin") != std::string::npos ||
            leaf.find("selectshake") != std::string::npos ||
            leaf.find("selecteffects") != std::string::npos;
 }
 
+// Describes the purpose of matches gobo attribute.
 bool matches_gobo_attribute(const std::string &leaf) {
     if (matches_gobo_select_with_embedded_motion(leaf)) {
         return true;
@@ -140,6 +146,7 @@ bool matches_gobo_attribute(const std::string &leaf) {
     }
     if (starts_with_role_token(leaf, "gobowheel", byte_index) ||
         starts_with_role_token(leaf, "goboindex", byte_index) ||
+// Describes the purpose of starts with role token.
         starts_with_role_token(leaf, "goboselect", byte_index)) {
         return true;
     }
@@ -151,6 +158,7 @@ bool matches_gobo_attribute(const std::string &leaf) {
     return references_wheel && references_selector;
 }
 
+// Describes the purpose of matches gobo index attribute.
 bool matches_gobo_index_attribute(const std::string &leaf) {
     if (leaf.find("gobo") == std::string::npos) {
         return false;
@@ -161,6 +169,7 @@ bool matches_gobo_index_attribute(const std::string &leaf) {
     return leaf.find("pos") != std::string::npos || leaf.find("index") != std::string::npos;
 }
 
+// Describes the purpose of matches gobo rotation attribute.
 bool matches_gobo_rotation_attribute(const std::string &leaf) {
     if (leaf.find("gobo") == std::string::npos) {
         return false;
@@ -230,6 +239,7 @@ const std::array<AttributeNameDescriptor, 7> &attribute_name_descriptors() {
     return descriptors;
 }
 
+// Describes the purpose of parse standard attribute.
 bool parse_standard_attribute(const std::string &leaf, ParsedAttribute &parsed) {
     for (const AttributeNameDescriptor &descriptor : attribute_name_descriptors()) {
         int byte_index = 1;
@@ -253,6 +263,7 @@ bool token_contains_any(const std::string &leaf,
     return false;
 }
 
+// Describes the purpose of parse wheel and prism attributes.
 void parse_wheel_and_prism_attributes(const std::string &leaf, ParsedAttribute &parsed) {
     const bool references_prism = token_contains_any(leaf, {"prism"});
     if (references_prism) {
@@ -304,6 +315,7 @@ void parse_wheel_and_prism_attributes(const std::string &leaf, ParsedAttribute &
     }
 }
 
+// Describes the purpose of parse gobo attribute.
 void parse_gobo_attribute(const std::string &leaf, ParsedAttribute &parsed) {
     if (matches_gobo_rotation_attribute(leaf)) {
         parsed.role = AttributeRole::kGoboRotation;
@@ -320,6 +332,7 @@ void parse_gobo_attribute(const std::string &leaf, ParsedAttribute &parsed) {
 
 } // namespace
 
+// Describes the purpose of parse offsets.
 std::vector<int> parse_offsets(const char *raw_offset) {
     std::vector<int> offsets;
     if (!raw_offset) {
@@ -351,6 +364,7 @@ std::vector<int> parse_offsets(const char *raw_offset) {
     return offsets;
 }
 
+// Describes the purpose of parse attribute name.
 ParsedAttribute parse_attribute_name(const std::string &raw_attribute) {
     ParsedAttribute parsed;
     const std::string lower = lower_ascii(trim_ascii(raw_attribute));

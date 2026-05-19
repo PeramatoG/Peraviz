@@ -10,6 +10,7 @@ namespace {
 bool g_baseline_debug_enabled = false;
 bool g_coordinate_debug_enabled = false;
 
+// Describes the purpose of vec to string.
 godot::String vec_to_string(const std::array<float, 3> &v) {
     godot::String out("(");
     out += godot::String::num(v[0]);
@@ -21,6 +22,7 @@ godot::String vec_to_string(const std::array<float, 3> &v) {
     return out;
 }
 
+// Describes the purpose of vec to string.
 godot::String vec_to_string(const peraviz::Vec3 &v) {
     godot::String out("(");
     out += godot::String::num(v.x);
@@ -32,6 +34,7 @@ godot::String vec_to_string(const peraviz::Vec3 &v) {
     return out;
 }
 
+// Describes the purpose of matrix to string.
 godot::String matrix_to_string(const Matrix &m) {
     godot::String out("u=");
     out += vec_to_string(m.u);
@@ -44,6 +47,7 @@ godot::String matrix_to_string(const Matrix &m) {
     return out;
 }
 
+// Describes the purpose of scene transform to string.
 godot::String scene_transform_to_string(const SceneTransform &transform) {
     godot::String out("pos=");
     out += vec_to_string(transform.position);
@@ -62,22 +66,27 @@ godot::String scene_transform_to_string(const SceneTransform &transform) {
 
 } // namespace
 
+// Describes the purpose of set baseline debug enabled.
 void set_baseline_debug_enabled(bool enabled) {
     g_baseline_debug_enabled = enabled;
 }
 
+// Describes the purpose of is baseline debug enabled.
 bool is_baseline_debug_enabled() {
     return g_baseline_debug_enabled;
 }
 
+// Describes the purpose of set coordinate debug enabled.
 void set_coordinate_debug_enabled(bool enabled) {
     g_coordinate_debug_enabled = enabled;
 }
 
+// Describes the purpose of is coordinate debug enabled.
 bool is_coordinate_debug_enabled() {
     return g_coordinate_debug_enabled;
 }
 
+// Describes the purpose of log coordinate mapping metadata.
 void log_coordinate_mapping_metadata() {
     if (!g_coordinate_debug_enabled) {
         return;

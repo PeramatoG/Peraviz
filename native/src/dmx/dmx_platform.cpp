@@ -14,6 +14,7 @@
 
 namespace peraviz::dmx {
 
+// Describes the purpose of SocketSystemInitializer.
 SocketSystemInitializer::SocketSystemInitializer() {
 #ifdef _WIN32
     WSADATA wsa_data;
@@ -26,6 +27,7 @@ SocketSystemInitializer::SocketSystemInitializer() {
     valid_ = true;
 }
 
+// Describes the purpose of SocketSystemInitializer.
 SocketSystemInitializer::~SocketSystemInitializer() {
 #ifdef _WIN32
     if (valid_) {
@@ -34,14 +36,17 @@ SocketSystemInitializer::~SocketSystemInitializer() {
 #endif
 }
 
+// Describes the purpose of is valid.
 bool SocketSystemInitializer::is_valid() const {
     return valid_;
 }
 
+// Describes the purpose of error message.
 const std::string &SocketSystemInitializer::error_message() const {
     return error_message_;
 }
 
+// Describes the purpose of set socket non blocking.
 bool set_socket_non_blocking(SocketHandle socket_handle, bool enabled, std::string &error_message) {
 #ifdef _WIN32
     u_long mode = enabled ? 1UL : 0UL;
@@ -65,6 +70,7 @@ bool set_socket_non_blocking(SocketHandle socket_handle, bool enabled, std::stri
 #endif
 }
 
+// Describes the purpose of set socket receive buffer.
 bool set_socket_receive_buffer(SocketHandle socket_handle, int bytes, std::string &error_message) {
 #ifdef _WIN32
     const char *buffer_ptr = reinterpret_cast<const char *>(&bytes);
@@ -80,6 +86,7 @@ bool set_socket_receive_buffer(SocketHandle socket_handle, int bytes, std::strin
     return true;
 }
 
+// Describes the purpose of set socket reuse address.
 bool set_socket_reuse_address(SocketHandle socket_handle, bool enabled, std::string &error_message) {
     const int flag = enabled ? 1 : 0;
 #ifdef _WIN32
@@ -96,6 +103,7 @@ bool set_socket_reuse_address(SocketHandle socket_handle, bool enabled, std::str
     return true;
 }
 
+// Describes the purpose of close socket.
 void close_socket(SocketHandle socket_handle) {
 #ifdef _WIN32
     if (socket_handle != INVALID_SOCKET) {
@@ -108,6 +116,7 @@ void close_socket(SocketHandle socket_handle) {
 #endif
 }
 
+// Describes the purpose of is would block error.
 bool is_would_block_error(int error_code) {
 #ifdef _WIN32
     return error_code == WSAEWOULDBLOCK;
@@ -116,6 +125,7 @@ bool is_would_block_error(int error_code) {
 #endif
 }
 
+// Describes the purpose of get last socket error.
 int get_last_socket_error() {
 #ifdef _WIN32
     return WSAGetLastError();
@@ -125,6 +135,7 @@ int get_last_socket_error() {
 }
 
 
+// Describes the purpose of describe socket error.
 std::string describe_socket_error(int error_code) {
 #ifdef _WIN32
     switch (error_code) {

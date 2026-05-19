@@ -19,6 +19,7 @@
 
 namespace {
 
+// Describes the purpose of serialize fixture patches.
 godot::Array serialize_fixture_patches(const peraviz::SceneModel &model) {
     godot::Array out;
     out.resize(static_cast<int64_t>(model.fixture_patches.size()));
@@ -39,6 +40,7 @@ godot::Array serialize_fixture_patches(const peraviz::SceneModel &model) {
 
 namespace godot {
 
+// Describes the purpose of  bind methods.
 void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_mvr", "path", "peraviz_debug_baseline", "peraviz_debug_coords"), &PeravizLoader::load_mvr);
     ClassDB::bind_method(D_METHOD("load_3ds_mesh_data", "path"), &PeravizLoader::load_3ds_mesh_data);
@@ -120,6 +122,7 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
     return out;
 }
 
+// Describes the purpose of load 3ds mesh data.
 Dictionary PeravizLoader::load_3ds_mesh_data(const String &path) const {
     PackedVector3Array vertices;
     PackedVector3Array normals;
@@ -150,10 +153,12 @@ Dictionary PeravizLoader::load_3ds_mesh_data(const String &path) const {
     return out;
 }
 
+// Describes the purpose of get fixtures patch.
 Array PeravizLoader::get_fixtures_patch() const {
     return serialize_fixture_patches(last_scene_model_);
 }
 
+// Describes the purpose of build fixture dmx bindings.
 Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) const {
     Dictionary out;
     out["universe_offset"] = universe_offset;
@@ -375,6 +380,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) const 
     return out;
 }
 
+// Describes the purpose of build fixture dimmer bindings.
 Dictionary PeravizLoader::build_fixture_dimmer_bindings(int universe_offset) const {
     UtilityFunctions::push_warning("[PeravizNative] build_fixture_dimmer_bindings is deprecated; use build_fixture_dmx_bindings instead.");
     return build_fixture_dmx_bindings(universe_offset);

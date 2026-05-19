@@ -47,6 +47,7 @@ struct MaterialInfo {
     bool has_color = false;
 };
 
+// Describes the purpose of read chunk.
 bool read_chunk(std::ifstream &file, Chunk &chunk) {
     if (!file.read(reinterpret_cast<char *>(&chunk.id), sizeof(chunk.id))) {
         return false;
@@ -57,6 +58,7 @@ bool read_chunk(std::ifstream &file, Chunk &chunk) {
     return true;
 }
 
+// Describes the purpose of ensure godot clockwise winding.
 void ensure_godot_clockwise_winding(MeshData &mesh) {
     if (mesh.indices.size() < 3 || mesh.vertices.size() < 3) {
         return;
@@ -137,6 +139,7 @@ void ensure_godot_clockwise_winding(MeshData &mesh) {
     }
 }
 
+// Describes the purpose of compute normals.
 void compute_normals(MeshData &mesh) {
     const size_t vertex_count = mesh.vertices.size() / 3;
     mesh.normals.assign(vertex_count * 3, 0.0F);
@@ -206,13 +209,16 @@ void compute_normals(MeshData &mesh) {
     }
 }
 
+// Describes the purpose of to lower ascii.
 std::string to_lower_ascii(std::string value) {
+// Describes the purpose of transform.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return value;
 }
 
+// Describes the purpose of read cstring.
 std::string read_cstring(std::ifstream &file, std::streampos end_pos) {
     std::string out;
     char ch = '\0';
@@ -235,6 +241,7 @@ bool find_texture_by_filename(const std::filesystem::path &root,
                               const std::filesystem::path &target_name,
                               std::filesystem::path &out_path) {
     if (root.empty() || !std::filesystem::exists(root) ||
+// Describes the purpose of is directory.
         !std::filesystem::is_directory(root)) {
         return false;
     }
@@ -479,6 +486,7 @@ void parse_mesh_chunk(std::ifstream &file, std::streampos mesh_end, MeshData &me
     }
 }
 
+// Describes the purpose of load 3ds.
 bool load_3ds(const std::string &path, MeshData &mesh) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {

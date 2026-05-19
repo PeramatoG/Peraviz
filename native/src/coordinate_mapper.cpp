@@ -6,10 +6,12 @@
 
 namespace {
 
+// Describes the purpose of scale axis.
 std::array<float, 3> scale_axis(const std::array<float, 3> &v, float factor) {
     return {v[0] * factor, v[1] * factor, v[2] * factor};
 }
 
+// Describes the purpose of extract scale.
 std::array<float, 3> extract_scale(const Matrix &m) {
     auto len = [](const std::array<float, 3> &v) {
         return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
@@ -17,6 +19,7 @@ std::array<float, 3> extract_scale(const Matrix &m) {
     return {len(m.u), len(m.v), len(m.w)};
 }
 
+// Describes the purpose of normalize basis.
 Matrix normalize_basis(const Matrix &m, const std::array<float, 3> &scale) {
     Matrix out = m;
     auto safe_div = [](float value, float s) {
@@ -34,15 +37,18 @@ Matrix normalize_basis(const Matrix &m, const std::array<float, 3> &scale) {
 
 namespace peraviz::coordinate_mapper {
 
+// Describes the purpose of map position mm to m.
 Vec3 map_position_mm_to_m(const std::array<float, 3> &source_mm) {
     return Vec3{source_mm[0] / 1000.0F, source_mm[2] / 1000.0F,
                 -source_mm[1] / 1000.0F};
 }
 
+// Describes the purpose of map source vector to godot.
 std::array<float, 3> map_source_vector_to_godot(const std::array<float, 3> &source) {
     return {source[0], source[2], -source[1]};
 }
 
+// Describes the purpose of to godot local basis.
 Matrix to_godot_local_basis(const Matrix &source_local) {
     Matrix out;
 
@@ -58,6 +64,7 @@ Matrix to_godot_local_basis(const Matrix &source_local) {
     return out;
 }
 
+// Describes the purpose of to godot transform.
 SceneTransform to_godot_transform(const Matrix &source_local) {
     SceneTransform transform;
     transform.position = map_position_mm_to_m(source_local.o);
