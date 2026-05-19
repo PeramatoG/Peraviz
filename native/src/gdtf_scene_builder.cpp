@@ -18,13 +18,16 @@
 namespace {
 
 using peraviz::SceneNode;
+// Describes the purpose of lower ascii.
 std::string lower_ascii(std::string text) {
+// Describes the purpose of transform.
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return text;
 }
 
+// Describes the purpose of looks like axis.
 bool looks_like_axis(const std::string &tag_name, const std::string &name) {
     const std::string tag = lower_ascii(tag_name);
     const std::string n = lower_ascii(name);
@@ -52,6 +55,7 @@ bool looks_like_emitter(const std::string &tag_name, const std::string &name,
            n.find("emitter") != std::string::npos || is_lens_geometry;
 }
 
+// Describes the purpose of is supported geometry tag.
 bool is_supported_geometry_tag(const std::string &tag_name) {
     const std::string lower = lower_ascii(tag_name);
     return lower == "geometry" || lower == "axis" || lower == "beam" ||
@@ -63,6 +67,7 @@ bool is_supported_geometry_tag(const std::string &tag_name) {
            lower == "mediaservermaster" || lower.rfind("filter", 0) == 0;
 }
 
+// Describes the purpose of infer asset kind from path.
 std::string infer_asset_kind_from_path(const std::string &asset_path) {
     if (asset_path.empty()) {
         return "none";
@@ -80,6 +85,7 @@ std::string infer_asset_kind_from_path(const std::string &asset_path) {
     return "none";
 }
 
+// Describes the purpose of convert translation m to mm.
 void convert_translation_m_to_mm(Matrix &matrix, const std::string &context) {
     const Matrix before = matrix;
     matrix.o[0] *= 1000.0F;
@@ -92,6 +98,7 @@ void convert_translation_m_to_mm(Matrix &matrix, const std::string &context) {
         before, matrix);
 }
 
+// Describes the purpose of parse local matrix.
 Matrix parse_local_matrix(tinyxml2::XMLElement *node) {
     Matrix out = MatrixUtils::Identity();
 
@@ -132,6 +139,7 @@ Matrix parse_local_matrix(tinyxml2::XMLElement *node) {
     return out;
 }
 
+// Describes the purpose of safe name.
 std::string safe_name(tinyxml2::XMLElement *node, const std::string &fallback) {
     if (const char *name = node->Attribute("Name")) {
         return name;

@@ -32,13 +32,16 @@ struct SymdefGeometry {
     Matrix transform = MatrixUtils::Identity();
 };
 
+// Describes the purpose of lower ascii.
 std::string lower_ascii(std::string text) {
+// Describes the purpose of transform.
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return text;
 }
 
+// Describes the purpose of is element name.
 bool is_element_name(tinyxml2::XMLElement *node, const char *expected_lower_ascii) {
     if (!node || !expected_lower_ascii) {
         return false;
@@ -68,6 +71,7 @@ const char *child_text_ci(tinyxml2::XMLElement *parent,
     return nullptr;
 }
 
+// Describes the purpose of read xml from mvr.
 std::string read_xml_from_mvr(const std::string &path) {
     wxFileInputStream input(wxString::FromUTF8(path.c_str()));
     if (!input.IsOk()) {
@@ -98,6 +102,7 @@ std::string read_xml_from_mvr(const std::string &path) {
     return {};
 }
 
+// Describes the purpose of node id.
 std::string node_id(tinyxml2::XMLElement *node, int serial) {
     if (const char *uuid = node->Attribute("uuid")) {
         return uuid;
@@ -108,6 +113,7 @@ std::string node_id(tinyxml2::XMLElement *node, int serial) {
     return std::string(node->Name()) + "#" + std::to_string(serial);
 }
 
+// Describes the purpose of parse matrix node.
 Matrix parse_matrix_node(tinyxml2::XMLElement *node) {
     Matrix m = MatrixUtils::Identity();
     if (!node) {
@@ -131,6 +137,7 @@ Matrix parse_matrix_node(tinyxml2::XMLElement *node) {
     return m;
 }
 
+// Describes the purpose of parse model filename.
 std::string parse_model_filename(tinyxml2::XMLElement *geo_node) {
     if (!geo_node) {
         return {};
@@ -169,6 +176,7 @@ std::string parse_model_filename(tinyxml2::XMLElement *geo_node) {
     return {};
 }
 
+// Describes the purpose of normalize geometry file name.
 std::string normalize_geometry_file_name(const std::string &file_name) {
     std::string normalized = file_name;
     const auto is_space = [](unsigned char c) {
@@ -187,6 +195,7 @@ std::string normalize_geometry_file_name(const std::string &file_name) {
     return path.u8string();
 }
 
+// Describes the purpose of infer asset kind from path.
 std::string infer_asset_kind_from_path(const std::string &asset_path) {
     if (asset_path.empty()) {
         return "none";
@@ -204,6 +213,7 @@ std::string infer_asset_kind_from_path(const std::string &asset_path) {
     return "none";
 }
 
+// Describes the purpose of parse name.
 std::string parse_name(tinyxml2::XMLElement *node, const std::string &fallback) {
     if (const char *name = node->Attribute("name")) {
         return name;
@@ -214,6 +224,7 @@ std::string parse_name(tinyxml2::XMLElement *node, const std::string &fallback) 
     return fallback;
 }
 
+// Describes the purpose of trim ascii.
 std::string trim_ascii(std::string value) {
     const auto is_space = [](unsigned char c) {
         return std::isspace(c) != 0;
@@ -228,6 +239,7 @@ std::string trim_ascii(std::string value) {
     return value;
 }
 
+// Describes the purpose of parse int text.
 int parse_int_text(const char *value) {
     if (!value) {
         return -1;
@@ -284,6 +296,7 @@ bool try_parse_fixture_address_text(const std::string &text,
     return true;
 }
 
+// Describes the purpose of read int attribute.
 int read_int_attribute(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
     if (!node) {
         return -1;
@@ -297,6 +310,7 @@ int read_int_attribute(tinyxml2::XMLElement *node, std::initializer_list<const c
     return -1;
 }
 
+// Describes the purpose of read int child value.
 int read_int_child_value(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
     if (!node) {
         return -1;
@@ -402,6 +416,7 @@ SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
     return patch;
 }
 
+// Describes the purpose of parse symdefs.
 std::unordered_map<std::string, std::vector<SymdefGeometry>> parse_symdefs(tinyxml2::XMLElement *root) {
     std::unordered_map<std::string, std::vector<SymdefGeometry>> symdefs;
 
@@ -467,6 +482,7 @@ std::unordered_map<std::string, std::vector<SymdefGeometry>> parse_symdefs(tinyx
     return symdefs;
 }
 
+// Describes the purpose of append scene node.
 void append_scene_node(SceneModel &scene, SceneNode node) {
     if (node.type == "fixture") {
         ++scene.fixture_count;

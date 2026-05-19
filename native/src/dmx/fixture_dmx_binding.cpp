@@ -6,6 +6,7 @@ namespace peraviz::dmx {
 
 namespace {
 
+// Describes the purpose of to channel index 0.
 int to_channel_index_0(const FixturePatch &patch, int offset_1_based) {
     if (offset_1_based <= 0) {
         return -1;
@@ -13,6 +14,7 @@ int to_channel_index_0(const FixturePatch &patch, int offset_1_based) {
     return (patch.mvr_address - 1) + (offset_1_based - 1);
 }
 
+// Describes the purpose of is valid channel index.
 bool is_valid_channel_index(int index_0) {
     return index_0 >= 0 && index_0 < 512;
 }
@@ -29,6 +31,7 @@ FixtureAttributeChannel to_channel_binding(const FixturePatch &patch,
     return out;
 }
 
+// Describes the purpose of sanitize channel binding.
 void sanitize_channel_binding(FixtureAttributeChannel &channel) {
     if (channel.fine_dmx_channel_index_0 >= 0 && !is_valid_channel_index(channel.fine_dmx_channel_index_0)) {
         channel.fine_dmx_channel_index_0 = -1;

@@ -9,13 +9,16 @@
 
 namespace peraviz::dmx {
 
+// Describes the purpose of lower ascii.
 std::string lower_ascii(std::string text) {
+// Describes the purpose of transform.
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
     return text;
 }
 
+// Describes the purpose of trim ascii.
 std::string trim_ascii(std::string text) {
     const auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
     text.erase(text.begin(), std::find_if(text.begin(), text.end(), [&](unsigned char c) { return !is_space(c); }));
@@ -23,6 +26,7 @@ std::string trim_ascii(std::string text) {
     return text;
 }
 
+// Describes the purpose of read gdtf description xml.
 std::string read_gdtf_description_xml(const std::string &gdtf_path) {
     wxFileInputStream input(wxString::FromUTF8(gdtf_path.c_str()));
     if (!input.IsOk()) {

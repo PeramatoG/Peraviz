@@ -146,6 +146,7 @@ void consume_gobo_physical_range(tinyxml2::XMLElement *channel_function,
     out_max = physical_to;
 }
 
+// Describes the purpose of parse dmx value 8bit.
 int parse_dmx_value_8bit(const char *raw_value) {
     if (!raw_value) {
         return -1;
@@ -345,6 +346,7 @@ void consume_gobo_rotation_channel_sets(tinyxml2::XMLElement *channel_function,
         }
 
         if (!row.has_physical &&
+// Describes the purpose of infer rotation physical from name.
             infer_rotation_physical_from_name(row.name, row.physical_from, row.physical_to)) {
             row.has_physical = true;
         }

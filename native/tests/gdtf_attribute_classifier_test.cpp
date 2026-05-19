@@ -5,6 +5,7 @@
 
 namespace {
 
+// Describes the purpose of fail.
 int fail(const std::string &message) {
     std::cerr << message << std::endl;
     return 1;
@@ -33,6 +34,7 @@ int expect_parsed(const std::string &attribute,
 
 } // namespace
 
+// Describes the purpose of main.
 int main() {
     if (const int rc = expect_parsed("pan", peraviz::dmx::AttributeRole::kPan, false, 1, 0); rc != 0) {
         return rc;

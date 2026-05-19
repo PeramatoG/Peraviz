@@ -18,15 +18,18 @@
 
 namespace {
 
+// Describes the purpose of fail.
 int fail(const std::string &message) {
     std::cerr << message << std::endl;
     return 1;
 }
 
+// Describes the purpose of repo root from source.
 std::filesystem::path repo_root_from_source() {
     return std::filesystem::weakly_canonical(std::filesystem::path(__FILE__)).parent_path().parent_path().parent_path();
 }
 
+// Describes the purpose of read file.
 std::string read_file(const std::filesystem::path &path) {
     std::ifstream file(path);
     if (!file.good()) {
@@ -35,6 +38,7 @@ std::string read_file(const std::filesystem::path &path) {
     return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
+// Describes the purpose of write gdtf archive.
 bool write_gdtf_archive(const std::filesystem::path &path, const std::string &description_xml) {
     wxFileOutputStream file_stream(wxString::FromUTF8(path.string().c_str()));
     if (!file_stream.IsOk()) {
@@ -74,14 +78,17 @@ size_t count_shake_ranges_with_type(
 
 
 
+// Describes the purpose of clamp unit interval.
 float clamp_unit_interval(float value) {
     return std::max(0.0F, std::min(1.0F, value));
 }
 
+// Describes the purpose of clamp shake frequency.
 float clamp_shake_frequency(float value_hz) {
     return std::max(0.0F, std::min(7.0F, value_hz));
 }
 
+// Describes the purpose of compose projected tilt rotation.
 float compose_projected_tilt_rotation(float rotation_deg, float shake_tilt_deg) {
     return rotation_deg + shake_tilt_deg;
 }
@@ -111,6 +118,7 @@ const peraviz::dmx::FixtureGoboRange *resolve_active_gobo_range(
     return active_range;
 }
 
+// Describes the purpose of run test.
 int run_test() {
     const std::filesystem::path repo_root = repo_root_from_source();
     const std::filesystem::path golden_xml_path =
@@ -617,6 +625,7 @@ int run_test() {
 
 } // namespace
 
+// Describes the purpose of main.
 int main() {
     return run_test();
 }
