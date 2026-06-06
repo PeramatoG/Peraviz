@@ -1,6 +1,23 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(PeravizNative LANGUAGES CXX)
+set(PERAVIZ_VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION")
+if(NOT EXISTS "${PERAVIZ_VERSION_FILE}")
+    message(FATAL_ERROR "Peraviz VERSION file is missing: ${PERAVIZ_VERSION_FILE}")
+endif()
+file(READ "${PERAVIZ_VERSION_FILE}" _peraviz_version_raw)
+string(STRIP "${_peraviz_version_raw}" PERAVIZ_VERSION)
+if(NOT PERAVIZ_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "Invalid Peraviz VERSION '${PERAVIZ_VERSION}'. Expected MAJOR.MINOR.PATCH without a leading v.")
+endif()
+project(PeravizNative VERSION "${PERAVIZ_VERSION}" LANGUAGES CXX)
+
+set(PERAVIZ_APPLICATION_NAME "Peraviz")
+set(PERAVIZ_DISPLAY_VERSION "${PERAVIZ_VERSION}")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/peraviz_build_version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/peraviz_build_version.h"
+    @ONLY
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -101,6 +118,7 @@ endif()
 
 target_include_directories(peraviz_native PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
 
 target_link_libraries(peraviz_native PRIVATE
@@ -121,6 +139,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(peraviz_native_dmx_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated"
     )
     target_link_libraries(peraviz_native_dmx_tests PRIVATE
         tinyxml2::tinyxml2
@@ -140,6 +159,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(peraviz_native_dmx_e2e_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated"
     )
     target_link_libraries(peraviz_native_dmx_e2e_tests PRIVATE
         tinyxml2::tinyxml2
