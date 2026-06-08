@@ -129,6 +129,11 @@ text = "Load MVR/PVZ"
 layout_mode = 2
 text = "Save Project"
 
+[node name="AutoLoadLastProjectToggle" type="CheckButton" parent="UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow"]
+layout_mode = 2
+tooltip_text = "Load the last remembered show automatically at startup"
+text = "Auto-load last show"
+
 [node name="VisualSettingsButton" type="Button" parent="UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow" unique_id=1846608382]
 layout_mode = 2
 text = "Visual settings"
@@ -172,10 +177,6 @@ layout_mode = 2
 
 [node name="Advanced" type="VBoxContainer" parent="UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox"]
 layout_mode = 2
-
-[node name="AutoLoadLastProjectToggle" type="CheckButton" parent="UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced"]
-layout_mode = 2
-text = "Auto-load last project"
 
 [node name="AutoStartDmxProjectToggle" type="CheckButton" parent="UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced"]
 layout_mode = 2
