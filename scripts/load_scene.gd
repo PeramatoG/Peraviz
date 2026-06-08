@@ -342,7 +342,7 @@ func _ready() -> void:
 		push_warning("VisualSettingsWindow is not ready for configure(); initial visual settings not pushed.")
 	_apply_visual_settings(_visual_settings)
 	_refresh_day_night_environment_controller()
-	_auto_load_last_file_from_preferences()
+	call_deferred("_auto_load_last_file_from_preferences")
 
 
 func _apply_imported_content_scale() -> void:
@@ -677,17 +677,18 @@ func _remember_loaded_file(path: String, file_type: String) -> void:
 		return
 	_user_preferences.last_file_path = path
 	_user_preferences.last_file_type = file_type
-	_user_preferences.auto_load_last_file = true
-	_sync_session_preference_toggles()
+	# Respect the user's existing toggle — do not force it to true on every load.
 	_user_preferences.save_to_disk()
 
 func _auto_load_last_file_from_preferences() -> void:
 	if _user_preferences == null or not _user_preferences.auto_load_last_file:
 		return
 	var last_path: String = _user_preferences.last_file_path
-	if last_path.is_empty() or not FileAccess.file_exists(last_path):
+	if last_path.is_empty():
+		return
+	if not FileAccess.file_exists(last_path):
 		if _status_presenter != null:
-			_status_presenter.show_toast("Last project file is no longer available: %s" % last_path)
+			_status_presenter.show_toast("Last project file no longer exists: %s" % last_path.get_file())
 		return
 	match _user_preferences.last_file_type:
 		"pvz":

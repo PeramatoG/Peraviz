@@ -8,6 +8,7 @@ const SCENE_MVR_PATH: String = "scene.mvr"
 const VISUAL_SETTINGS_PATH: String = "visual_settings.json"
 const DMX_SETTINGS_PATH: String = "dmx_settings.json"
 const APP_STATE_PATH: String = "app_state.json"
+const FIXTURE_OVERRIDES_PATH: String = "fixture_overrides.json"
 const CACHE_DIR: String = "user://pvz_cache"
 
 func save_project(project_path: String, source_mvr_path: String, peraviz_version: String, visual_settings: Dictionary, dmx_settings: Dictionary, app_state: Dictionary) -> Dictionary:
@@ -44,6 +45,8 @@ func save_project(project_path: String, source_mvr_path: String, peraviz_version
 		write_error = _write_json_file(packer, DMX_SETTINGS_PATH, _merge_dmx_defaults(dmx_settings))
 	if write_error == OK:
 		write_error = _write_json_file(packer, APP_STATE_PATH, app_state)
+	if write_error == OK:
+		write_error = _write_json_file(packer, FIXTURE_OVERRIDES_PATH, {})
 
 	var close_error: Error = packer.close()
 	if write_error != OK:
@@ -79,6 +82,7 @@ func open_project(project_path: String) -> Dictionary:
 		visual_settings = visual_settings_value as Dictionary
 	var dmx_settings: Dictionary = _merge_dmx_defaults(_read_json_file(reader, DMX_SETTINGS_PATH, {}))
 	var app_state: Dictionary = _read_json_file(reader, APP_STATE_PATH, {})
+	var fixture_overrides: Dictionary = _read_json_file(reader, FIXTURE_OVERRIDES_PATH, {})
 	var scene_bytes: PackedByteArray = reader.read_file(SCENE_MVR_PATH)
 	reader.close()
 
@@ -102,6 +106,7 @@ func open_project(project_path: String) -> Dictionary:
 		"visual_settings": visual_settings,
 		"dmx_settings": dmx_settings,
 		"app_state": app_state,
+		"fixture_overrides": fixture_overrides,
 	}
 
 func get_default_dmx_settings() -> Dictionary:
