@@ -16,6 +16,7 @@ var _dmx_monitor_window: Window
 var _dmx_quick_panel: DmxQuickPanel
 var _dmx_timer: Timer
 var _dmx_universe_offset_input: SpinBox
+var _dmx_unbound_details_toggle: CheckButton
 var _dmx_unbound_preview_label: Label
 var _dmx_controls_panel: PanelContainer
 var _dmx_fixture_runtime = null
@@ -80,15 +81,22 @@ func setup_controls() -> void:
 	controls_row.add_child(_dmx_universe_offset_input)
 	_dmx_universe_offset_input.value_changed.connect(_on_dmx_universe_offset_changed)
 
-	_dmx_unbound_preview_label = Label.new()
-	_dmx_unbound_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_dmx_unbound_preview_label.visible = false
-	controls_vbox.add_child(_dmx_unbound_preview_label)
-
 	_dmx_quick_panel = DmxQuickPanelScript.new()
 	controls_vbox.add_child(_dmx_quick_panel)
 	_dmx_quick_panel.open_technical_monitor_requested.connect(_on_dmx_monitor_pressed)
 	_dmx_quick_panel.set_monitor_available(false)
+
+	_dmx_unbound_details_toggle = CheckButton.new()
+	_dmx_unbound_details_toggle.text = "Show unlinked fixture details"
+	_dmx_unbound_details_toggle.button_pressed = false
+	_dmx_unbound_details_toggle.disabled = true
+	controls_vbox.add_child(_dmx_unbound_details_toggle)
+	_dmx_unbound_details_toggle.toggled.connect(_on_dmx_unbound_details_toggled)
+
+	_dmx_unbound_preview_label = Label.new()
+	_dmx_unbound_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_dmx_unbound_preview_label.visible = false
+	controls_vbox.add_child(_dmx_unbound_preview_label)
 
 	_dmx_timer = Timer.new()
 	_dmx_timer.wait_time = 0.03
@@ -147,9 +155,7 @@ func refresh_fixture_bindings() -> Dictionary:
 		return {}
 	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value))
 	_fixture_binding_summary = summary
-	var unbound_preview: PackedStringArray = summary.get("unbound_preview", PackedStringArray())
-	_dmx_unbound_preview_label.visible = unbound_preview.size() > 0
-	_dmx_unbound_preview_label.text = "Unbound fixtures:\n" + "\n".join(unbound_preview)
+	_refresh_dmx_unbound_details()
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
 
@@ -164,6 +170,9 @@ func exit_tree() -> void:
 
 func _on_dmx_universe_offset_changed(_value: float) -> void:
 	refresh_fixture_bindings()
+
+func _on_dmx_unbound_details_toggled(_button_pressed: bool) -> void:
+	_refresh_dmx_unbound_details()
 
 func _on_dmx_toggle_pressed() -> void:
 	_set_dmx_enabled(_dmx_toggle_button != null and _dmx_toggle_button.button_pressed)
@@ -281,6 +290,20 @@ func _refresh_dmx_quick_panel(running: bool, receiving_signal: bool, active_univ
 	var linked_fixtures: int = int(_fixture_binding_summary.get("bound", 0))
 	var unlinked_fixtures: int = int(_fixture_binding_summary.get("unbound", 0))
 	_dmx_quick_panel.refresh(running, receiving_signal, active_universes, last_packet_ms, linked_fixtures, unlinked_fixtures, _last_updated_fixtures, _last_skipped_fixtures)
+
+func _refresh_dmx_unbound_details() -> void:
+	if _dmx_unbound_preview_label == null or not is_instance_valid(_dmx_unbound_preview_label):
+		return
+	var unbound_preview: PackedStringArray = _fixture_binding_summary.get("unbound_preview", PackedStringArray())
+	var has_unlinked_fixtures: bool = unbound_preview.size() > 0
+	var show_details: bool = false
+	if _dmx_unbound_details_toggle != null and is_instance_valid(_dmx_unbound_details_toggle):
+		_dmx_unbound_details_toggle.disabled = not has_unlinked_fixtures
+		if not has_unlinked_fixtures and _dmx_unbound_details_toggle.button_pressed:
+			_dmx_unbound_details_toggle.button_pressed = false
+		show_details = has_unlinked_fixtures and _dmx_unbound_details_toggle.button_pressed
+	_dmx_unbound_preview_label.visible = show_details
+	_dmx_unbound_preview_label.text = "Unbound fixtures:\n" + "\n".join(unbound_preview) if has_unlinked_fixtures else ""
 
 func _apply_fixture_time_tick(delta_sec: float) -> void:
 	if delta_sec <= 0.0:
