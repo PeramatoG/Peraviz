@@ -16,3 +16,6 @@
 /bin/*.ilk
 /bin/*.pdb
 *.pdb
+
+# Godot local editor metadata
+/godot/editor/project_metadata.cfg
