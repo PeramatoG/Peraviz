@@ -15,6 +15,10 @@ run/main_scene="res://test.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
+[display]
+
+window/size/mode=2
+
 [peraviz]
 
 peraviz_debug_baseline=false
@@ -22,10 +26,6 @@ peraviz_debug_baseline=false
 [physics]
 
 3d/physics_engine="Jolt Physics"
-
-[display]
-
-window/size/mode=3
 
 [rendering]
 
