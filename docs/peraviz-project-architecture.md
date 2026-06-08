@@ -63,6 +63,12 @@ The `.pvz` format should store Peraviz-specific runtime and visual state, includ
 
 A `.pvz` file does not replace MVR. It wraps an MVR and adds Peraviz runtime and visual state that does not belong in MVR or GDTF source files.
 
+#### Global user preferences
+
+Project archives and global user preferences have separate persistence responsibilities. A `.pvz` file stores project content plus Peraviz visual and runtime project state. Global session preferences are stored outside project archives in `user://user_preferences.cfg`.
+
+Global preferences may remember session-level values such as `last_file_path`, `last_file_type`, `auto_load_last_file`, and `auto_start_dmx`. Remembered paths are not project data and should not be written into `.pvz` as source-of-truth content.
+
 ### 4. Runtime fixture entities
 
 Each fixture should be treated as a runtime scene entity, similar to a game-engine actor or character. The runtime fixture entity is the object Peraviz updates, selects, visualizes, and controls while the scene is running.
