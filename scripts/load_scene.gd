@@ -9,7 +9,7 @@ extends Node3D
 @onready var day_night_environment_controller: DayNightEnvironmentController = $DayNightEnvironmentController
 @onready var user_module: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/User
 @onready var advanced_module: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced
-@onready var auto_load_last_project_toggle: CheckButton = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced/AutoLoadLastProjectToggle
+@onready var auto_load_last_project_toggle: CheckButton = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow/AutoLoadLastProjectToggle
 @onready var auto_start_dmx_project_toggle: CheckButton = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced/AutoStartDmxProjectToggle
 @onready var debug_module: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Debug
 @onready var manual_fixture_toggle: CheckButton = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Debug/ManualFixtureToggle
@@ -682,7 +682,6 @@ func _remember_loaded_file(path: String, file_type: String) -> void:
 		return
 	_user_preferences.last_file_path = path
 	_user_preferences.last_file_type = normalized_file_type
-	_user_preferences.auto_load_last_file = true
 	_user_preferences.save_to_disk()
 	_sync_session_preference_toggles()
 

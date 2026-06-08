@@ -6,13 +6,13 @@ Changes since the initial Peraviz repository split.
 
 ## New features
 
-- Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings. Peraviz now remembers the last opened MVR or project file, can automatically load it at startup, and includes Advanced options to auto-load the last project and auto-start DMX on project load when project settings allow it.
+- Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings. Peraviz now remembers the last opened MVR or project file and includes a top-bar option to auto-load the last show by default for new preferences, plus an Advanced option to auto-start DMX on project load when project settings allow it.
 
 ## Improvements
 
 ## Fixes
 
-- Made last loaded file recovery more reliable by enabling startup auto-load by default for new preferences, re-enabling startup recovery whenever a supported file is loaded or saved, and reporting clear messages when remembered files are missing or unsupported.
+- Made last loaded file recovery more predictable by keeping startup auto-load user-configurable, preserving the setting when supported files are loaded or saved, and reporting clear messages when remembered files are missing or unsupported.
 
 ## Stability and reliability
 
