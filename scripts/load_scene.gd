@@ -146,6 +146,8 @@ const FixtureDebugControllerScript = preload("res://scripts/controllers/fixture_
 const StatusPresenterScript = preload("res://scripts/ui/status_presenter.gd")
 const UserPreferencesScript = preload("res://scripts/ui/user_preferences.gd")
 
+const SUPPORTED_LAST_FILE_TYPES := ["mvr", "pvz"]
+
 const SceneImportServiceScript = preload("res://scripts/scene_loading/scene_import_service.gd")
 const NodeFactoryScript = preload("res://scripts/scene_loading/node_factory.gd")
 const FixtureBindingServiceScript = preload("res://scripts/scene_loading/fixture_binding_service.gd")
@@ -675,12 +677,11 @@ func _collect_app_state(last_loaded_file_type: String) -> Dictionary:
 func _remember_loaded_file(path: String, file_type: String) -> void:
 	if _user_preferences == null:
 		return
+	var normalized_file_type: String = _resolve_supported_file_type(path, file_type)
+	if normalized_file_type.is_empty():
+		return
 	_user_preferences.last_file_path = path
-	_user_preferences.last_file_type = file_type
-	# Sync auto_load flag from the toggle state so the preference on disk
-	# always reflects what the user has chosen in the UI.
-	if auto_load_last_project_toggle != null:
-		_user_preferences.auto_load_last_file = auto_load_last_project_toggle.button_pressed
+	_user_preferences.last_file_type = normalized_file_type
 	_user_preferences.save_to_disk()
 
 func _auto_load_last_file_from_preferences() -> void:
@@ -691,16 +692,28 @@ func _auto_load_last_file_from_preferences() -> void:
 		return
 	if not FileAccess.file_exists(last_path):
 		if _status_presenter != null:
-			_status_presenter.show_toast("Last project file no longer exists: %s" % last_path.get_file())
+			_status_presenter.show_toast("Last project file no longer exists: %s" % last_path)
 		return
-	match _user_preferences.last_file_type:
+	var last_file_type: String = _resolve_supported_file_type(last_path, _user_preferences.last_file_type)
+	if last_file_type.is_empty():
+		if _status_presenter != null:
+			var stored_file_type: String = _user_preferences.last_file_type
+			if stored_file_type.is_empty():
+				stored_file_type = "<empty>"
+			_status_presenter.show_toast("Last project file type is unsupported: %s" % stored_file_type)
+		return
+	match last_file_type:
 		"pvz":
 			_open_project(last_path)
 		"mvr":
 			_load_mvr_scene(last_path, "mvr")
-		_:
-			if _status_presenter != null:
-				_status_presenter.show_toast("Last project file type is unsupported: %s" % _user_preferences.last_file_type)
+
+func _resolve_supported_file_type(path: String, fallback_file_type: String) -> String:
+	var extension_file_type: String = path.get_extension().to_lower()
+	if SUPPORTED_LAST_FILE_TYPES.has(extension_file_type):
+		return extension_file_type
+	var normalized_file_type: String = fallback_file_type.to_lower()
+	return normalized_file_type if SUPPORTED_LAST_FILE_TYPES.has(normalized_file_type) else ""
 
 func _sync_session_preference_toggles() -> void:
 	if _user_preferences == null:
