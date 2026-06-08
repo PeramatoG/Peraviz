@@ -26,7 +26,7 @@ const DEFAULT_MODULE_VISIBILITY := {
 }
 const DEFAULT_LAST_FILE_PATH: String = ""
 const DEFAULT_LAST_FILE_TYPE: String = ""
-const DEFAULT_AUTO_LOAD_LAST_FILE: bool = true
+const DEFAULT_AUTO_LOAD_LAST_FILE: bool = false
 const DEFAULT_AUTO_START_DMX: bool = false
 
 var sidebar_open: bool = DEFAULT_SIDEBAR_OPEN

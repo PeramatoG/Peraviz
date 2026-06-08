@@ -682,7 +682,6 @@ func _remember_loaded_file(path: String, file_type: String) -> void:
 		return
 	_user_preferences.last_file_path = path
 	_user_preferences.last_file_type = normalized_file_type
-	_user_preferences.auto_load_last_file = true
 	_user_preferences.save_to_disk()
 	_sync_session_preference_toggles()
 
