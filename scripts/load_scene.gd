@@ -34,6 +34,7 @@ extends Node3D
 @onready var visual_settings_window: VisualSettingsWindow = $UIRoot/VisualSettingsWindow
 @onready var app_shell: AppShell = $UIRoot/AppShell
 @onready var load_button: Button = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow/LoadButton
+@onready var save_project_button: Button = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow/SaveProjectButton
 @onready var dmx_controls_mount: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/User/DMXControlsMount
 @onready var topbar_row: HBoxContainer = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow
 
@@ -54,6 +55,8 @@ var _fixture_gobo_projector: FixtureGoboProjector = null
 var _ui_controller: UiController
 var _dmx_controller: DmxController
 var _fixture_debug_controller: FixtureDebugController
+var _loaded_mvr_path: String = ""
+var _last_loaded_file_type: String = ""
 var _visual_environment_baseline := {
 	"ambient_light_energy": 0.2,
 	"ambient_light_sky_contribution": 0.0,
@@ -136,6 +139,7 @@ const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_li
 const UiVisibilityPolicyScript = preload("res://scripts/ui/ui_visibility_policy.gd")
 const UiControllerScript = preload("res://scripts/controllers/ui_controller.gd")
 const DmxControllerScript = preload("res://scripts/controllers/dmx_controller.gd")
+const PeravizProjectArchiveScript = preload("res://scripts/project/peraviz_project_archive.gd")
 const FixtureDebugControllerScript = preload("res://scripts/controllers/fixture_debug_controller.gd")
 const StatusPresenterScript = preload("res://scripts/ui/status_presenter.gd")
 const UserPreferencesScript = preload("res://scripts/ui/user_preferences.gd")
@@ -146,6 +150,7 @@ const FixtureBindingServiceScript = preload("res://scripts/scene_loading/fixture
 const DebugOverlayServiceScript = preload("res://scripts/scene_loading/debug_overlay_service.gd")
 
 var _scene_import_service := SceneImportServiceScript.new()
+var _project_archive := PeravizProjectArchiveScript.new()
 var _node_factory := NodeFactoryScript.new()
 var _fixture_binding_service := FixtureBindingServiceScript.new()
 var _debug_overlay_service := DebugOverlayServiceScript.new()
@@ -253,9 +258,11 @@ func _ready() -> void:
 	_ui_controller = UiControllerScript.new()
 	_ui_controller.configure(
 		load_button,
+		save_project_button,
 		visual_settings_button,
 		picker,
 		Callable(self, "_on_file_selected"),
+		Callable(self, "_on_save_project_selected"),
 		Callable(self, "_open_visual_settings_window")
 	)
 	_fixture_debug_controller = FixtureDebugControllerScript.new()
@@ -300,6 +307,7 @@ func _ready() -> void:
 	_status_presenter = StatusPresenterScript.new()
 	_status_presenter.configure(self, status_label, topbar_row, load_button, show_advanced_controls_toggle)
 	picker.access = FileDialog.ACCESS_FILESYSTEM
+	picker.filters = PackedStringArray(["*.mvr, *.pvz ; MVR or Peraviz Project", "*.mvr ; MVR", "*.pvz ; Peraviz Project"])
 	_status_presenter.set_scene_state_idle()
 	_debug_coords_enabled = bool(ProjectSettings.get_setting("peraviz_debug_coords", false))
 	_debug_asset_cache_enabled = bool(ProjectSettings.get_setting("peraviz_debug_asset_cache", false))
@@ -530,6 +538,13 @@ func _on_visual_settings_changed(settings: Dictionary) -> void:
 	_apply_visual_settings(settings)
 
 func _on_file_selected(path: String) -> void:
+	var extension: String = path.get_extension().to_lower()
+	if extension == "pvz":
+		_open_project(path)
+		return
+	_load_mvr_scene(path, "mvr")
+
+func _load_mvr_scene(path: String, loaded_file_type: String = "mvr") -> Dictionary:
 	if _status_presenter != null:
 		_status_presenter.set_scene_state_loading(path)
 	_clear_scene()
@@ -555,12 +570,104 @@ func _on_file_selected(path: String) -> void:
 		_debug_asset_cache_enabled,
 		_scene_registry
 	)
-	if _status_presenter != null:
-		if bool(import_result.get("ok", false)):
+	if bool(import_result.get("ok", false)):
+		_loaded_mvr_path = path
+		_last_loaded_file_type = loaded_file_type
+		if _status_presenter != null:
 			_status_presenter.set_scene_state_loaded(int(import_result.get("node_count", 0)))
-		else:
+	else:
+		if _status_presenter != null:
 			var error_message: String = str(import_result.get("error", "unknown error"))
 			_status_presenter.set_scene_state_load_error(error_message)
+	return import_result
+
+
+func _on_save_project_selected(path: String) -> void:
+	if _loaded_mvr_path.is_empty() or not FileAccess.file_exists(_loaded_mvr_path):
+		if _status_presenter != null:
+			_status_presenter.show_toast("Load an MVR before saving a Peraviz project.")
+		return
+	var save_result: Dictionary = _project_archive.save_project(
+		path,
+		_loaded_mvr_path,
+		_read_peraviz_version(),
+		_visual_settings,
+		_collect_dmx_project_settings(),
+		_collect_app_state("pvz")
+	)
+	if _status_presenter == null:
+		return
+	if bool(save_result.get("ok", false)):
+		_status_presenter.show_toast("Saved Peraviz project: %s" % str(save_result.get("project_path", path)).get_file())
+	else:
+		_status_presenter.show_toast("Project save failed: %s" % str(save_result.get("error", "unknown error")))
+
+func _open_project(path: String) -> void:
+	if _status_presenter != null:
+		_status_presenter.set_scene_state_loading(path)
+	var project_result: Dictionary = _project_archive.open_project(path)
+	if not bool(project_result.get("ok", false)):
+		if _status_presenter != null:
+			_status_presenter.set_scene_state_load_error(str(project_result.get("error", "unknown error")))
+		return
+
+	var import_result: Dictionary = _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz")
+	if not bool(import_result.get("ok", false)):
+		return
+
+	var visual_project_settings: Variant = project_result.get("visual_settings", {})
+	var dmx_project_settings: Dictionary = {}
+	var dmx_settings_value: Variant = project_result.get("dmx_settings", {})
+	if dmx_settings_value is Dictionary:
+		dmx_project_settings = dmx_settings_value as Dictionary
+	_restore_visual_project_settings(visual_project_settings)
+	_restore_dmx_project_settings(dmx_project_settings)
+	_last_loaded_file_type = "pvz"
+	if _status_presenter != null:
+		_status_presenter.show_toast("Opened Peraviz project: %s" % path.get_file())
+
+func _collect_dmx_project_settings() -> Dictionary:
+	var settings: Dictionary = _project_archive.get_default_dmx_settings()
+	if _dmx_controller != null:
+		settings["universe_offset"] = _dmx_controller.get_universe_offset()
+		settings["dmx_enabled_when_saved"] = _dmx_controller.is_dmx_enabled()
+	settings["auto_start_dmx"] = false
+	return settings
+
+func _restore_dmx_project_settings(settings: Dictionary) -> void:
+	if _dmx_controller == null:
+		if _status_presenter != null:
+			_status_presenter.show_toast("DMX settings could not be restored because DMX controls are unavailable.")
+		return
+	if settings.has("universe_offset"):
+		_dmx_controller.set_universe_offset(int(settings.get("universe_offset", -1)))
+	var should_auto_start: bool = bool(settings.get("auto_start_dmx", false)) and bool(settings.get("dmx_enabled_when_saved", false))
+	if should_auto_start and not _dmx_controller.start_dmx():
+		if _status_presenter != null:
+			_status_presenter.show_toast("Project opened, but DMX could not be auto-started.")
+
+func _restore_visual_project_settings(settings: Variant) -> void:
+	if settings is not Dictionary:
+		return
+	var visual_settings: Dictionary = settings as Dictionary
+	if visual_settings.is_empty():
+		return
+	_apply_visual_settings(visual_settings)
+	if visual_settings_window != null and visual_settings_window.has_method("configure"):
+		visual_settings_window.call("configure", _visual_settings)
+
+func _collect_app_state(last_loaded_file_type: String) -> Dictionary:
+	return {
+		"last_loaded_file_type": last_loaded_file_type,
+	}
+
+func _read_peraviz_version() -> String:
+	var version_file := FileAccess.open("res://VERSION", FileAccess.READ)
+	if version_file == null:
+		return "unknown"
+	var version: String = version_file.get_as_text().strip_edges()
+	version_file.close()
+	return version if not version.is_empty() else "unknown"
 
 func _load_user_preferences() -> void:
 	_user_preferences = UserPreferencesScript.new()

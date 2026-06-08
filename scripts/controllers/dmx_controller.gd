@@ -117,6 +117,31 @@ func set_debug_force_full_apply(enabled: bool) -> void:
 	if _dmx_fixture_runtime != null:
 		_dmx_fixture_runtime.set_debug_force_full_apply(enabled)
 
+
+func set_universe_offset(value: int) -> void:
+	if _dmx_universe_offset_input == null:
+		return
+	_dmx_universe_offset_input.value = value
+	refresh_fixture_bindings()
+
+func get_universe_offset() -> int:
+	if _dmx_universe_offset_input == null:
+		return -1
+	return int(_dmx_universe_offset_input.value)
+
+func is_dmx_enabled() -> bool:
+	if _dmx_receiver == null:
+		return false
+	return _dmx_receiver.is_running()
+
+func start_dmx() -> bool:
+	if _dmx_toggle_button != null:
+		_dmx_toggle_button.button_pressed = true
+	return _set_dmx_enabled(true)
+
+func stop_dmx() -> void:
+	_set_dmx_enabled(false)
+
 func refresh_fixture_bindings() -> Dictionary:
 	if _dmx_fixture_runtime == null or _dmx_universe_offset_input == null:
 		return {}
@@ -141,40 +166,52 @@ func _on_dmx_universe_offset_changed(_value: float) -> void:
 	refresh_fixture_bindings()
 
 func _on_dmx_toggle_pressed() -> void:
+	_set_dmx_enabled(_dmx_toggle_button != null and _dmx_toggle_button.button_pressed)
+
+func _set_dmx_enabled(enabled: bool) -> bool:
 	if _dmx_receiver == null:
-		_dmx_toggle_button.button_pressed = false
+		if _dmx_toggle_button != null:
+			_dmx_toggle_button.button_pressed = false
 		_emit_dmx_status(false, false)
-		return
-	if _dmx_toggle_button.button_pressed:
+		return false
+	if enabled:
 		_dmx_receiver.stop()
 		var started: bool = _dmx_receiver.start("0.0.0.0", 6454)
 		if not started:
 			_dmx_receiver.stop()
 			started = _dmx_receiver.start("0.0.0.0", 6454)
 		if not started:
-			_dmx_toggle_button.button_pressed = false
-			_dmx_toggle_button.text = "DMX OFF"
-			_update_dmx_toggle_color(false, false)
+			if _dmx_toggle_button != null:
+				_dmx_toggle_button.button_pressed = false
+				_dmx_toggle_button.text = "DMX OFF"
+				_update_dmx_toggle_color(false, false)
 			var startup_error: String = ""
 			if _dmx_receiver.has_method("get_last_error"):
 				startup_error = str(_dmx_receiver.get_last_error())
-			_dmx_toggle_button.tooltip_text = "DMX failed to start" if startup_error.is_empty() else "DMX failed to start: %s" % startup_error
+			if _dmx_toggle_button != null:
+				_dmx_toggle_button.tooltip_text = "DMX failed to start" if startup_error.is_empty() else "DMX failed to start: %s" % startup_error
 			_emit_dmx_start_failed(startup_error)
 			_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 			_emit_dmx_status(false, false)
-			return
-		_dmx_toggle_button.text = "DMX ON"
-		_dmx_toggle_button.tooltip_text = ""
+			return false
+		if _dmx_toggle_button != null:
+			_dmx_toggle_button.button_pressed = true
+			_dmx_toggle_button.text = "DMX ON"
+			_dmx_toggle_button.tooltip_text = ""
 		_emit_dmx_status(true, false)
-	else:
-		_dmx_receiver.stop()
+		return true
+
+	_dmx_receiver.stop()
+	if _dmx_toggle_button != null:
+		_dmx_toggle_button.button_pressed = false
 		_dmx_toggle_button.text = "DMX OFF"
-		_update_dmx_toggle_color(false, false)
-		_refresh_dmx_monitor_window(false)
-		_last_updated_fixtures = 0
-		_last_skipped_fixtures = 0
-		_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
-		_emit_dmx_status(false, false)
+	_update_dmx_toggle_color(false, false)
+	_refresh_dmx_monitor_window(false)
+	_last_updated_fixtures = 0
+	_last_skipped_fixtures = 0
+	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
+	_emit_dmx_status(false, false)
+	return true
 
 func _on_dmx_monitor_pressed() -> void:
 	if _dmx_receiver == null:

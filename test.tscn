@@ -123,7 +123,11 @@ text = "×"
 
 [node name="LoadButton" type="Button" parent="UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow" unique_id=788175590]
 layout_mode = 2
-text = "Load MVR"
+text = "Load MVR/PVZ"
+
+[node name="SaveProjectButton" type="Button" parent="UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow"]
+layout_mode = 2
+text = "Save Project"
 
 [node name="VisualSettingsButton" type="Button" parent="UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow" unique_id=1846608382]
 layout_mode = 2
@@ -322,4 +326,4 @@ script = ExtResource("3_visual_settings")
 title = "Open a File"
 file_mode = 0
 access = 2
-filters = PackedStringArray("*.mvr ; MVR")
+filters = PackedStringArray("*.mvr, *.pvz ; MVR or Peraviz Project", "*.mvr ; MVR", "*.pvz ; Peraviz Project")

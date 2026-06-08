@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the intended Peraviz data model and runtime direction before new editing features are added. It is a planning document for ownership, persistence, and UI decisions; it does not introduce `.pvz` save/load, MVR writing, or GDTF mutation by itself.
+This document defines the intended Peraviz data model and runtime direction before new editing features are added. It is a planning document for ownership, persistence, and UI decisions. The first `.pvz` foundation has now been implemented as a zip archive containing a copied MVR and JSON metadata/settings files; MVR writing and GDTF mutation remain out of scope.
 
 Peraviz is intended to be a real-time visualizer and runtime scene application based on MVR, GDTF, Godot, and live DMX. It loads an MVR scene, interprets GDTF fixture definitions, builds Godot runtime scene entities, and reacts to live DMX as the scene runs. Peraviz should therefore be designed as an active runtime visualizer, not only as a passive file viewer.
 
@@ -43,10 +43,13 @@ Future GDTF mutation may be considered later, but only with an explicit compatib
 
 ### 3. Peraviz project data
 
-The planned `.pvz` format is a future zip-based Peraviz project archive. A `.pvz` should contain:
+The `.pvz` format starts as a zip-based Peraviz project archive. Format version 1 contains:
 
-- An MVR file.
-- Peraviz-specific JSON configuration files.
+- `project.json` with Peraviz project metadata.
+- `scene.mvr`, copied from the currently loaded MVR file.
+- `visual_settings.json` for Peraviz visual settings.
+- `dmx_settings.json` for DMX / Art-Net runtime settings.
+- `app_state.json` for lightweight application state.
 
 The `.pvz` format should store Peraviz-specific runtime and visual state, including:
 
@@ -113,6 +116,6 @@ Recommended sequence for future work:
 2. Add a fixture registry / model that exposes user-facing fixture rows.
 3. Add a read-only fixture table UI.
 4. Add Peraviz visual overrides for pan / tilt inversion.
-5. Add a `.pvz` project save/load foundation.
+5. Add a `.pvz` project save/load foundation. Implemented initially as format version 1 with copied MVR content and JSON metadata/settings files.
 6. Add MVR writing for patch, position, rotation, fixture name, and fixture ID / fixture number.
 7. Only later consider GDTF mutation with a formal mutation policy.
