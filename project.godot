@@ -23,6 +23,10 @@ peraviz_debug_baseline=false
 
 3d/physics_engine="Jolt Physics"
 
+[display]
+
+window/size/mode=3
+
 [rendering]
 
 rendering/lights_and_shadows/positional_shadow/atlas_size=4096

@@ -324,7 +324,7 @@ mouse_filter = 2
 
 [node name="VisualSettingsWindow" type="Window" parent="UIRoot" unique_id=362544277]
 oversampling_override = 1.0
-mode = 1
+mode = 0
 title = "Visual Settings"
 position = Vector2i(0, 36)
 size = Vector2i(560, 760)
