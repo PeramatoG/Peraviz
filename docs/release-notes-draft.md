@@ -12,7 +12,7 @@ Changes since the initial Peraviz repository split.
 
 ## Fixes
 
-- Made last loaded file recovery more reliable by enabling startup auto-load by default for new preferences, preserving the user's auto-load choice during normal file loading, and reporting clear messages when remembered files are missing or unsupported.
+- Made last loaded file recovery more reliable by enabling startup auto-load by default for new preferences, re-enabling startup recovery whenever a supported file is loaded or saved, and reporting clear messages when remembered files are missing or unsupported.
 
 ## Stability and reliability
 
