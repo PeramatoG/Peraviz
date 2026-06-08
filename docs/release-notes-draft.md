@@ -14,6 +14,8 @@ Changes since the initial Peraviz repository split.
 
 ## Documentation
 
+- Documented the Peraviz project architecture around MVR scene data, GDTF fixture definitions, future PVZ project data, and runtime fixture entities.
+
 ## Internal changes
 
 - Peraviz now has a dedicated version source and release-notes draft workflow.
