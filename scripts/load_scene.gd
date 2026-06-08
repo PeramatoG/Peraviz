@@ -677,7 +677,10 @@ func _remember_loaded_file(path: String, file_type: String) -> void:
 		return
 	_user_preferences.last_file_path = path
 	_user_preferences.last_file_type = file_type
-	# Respect the user's existing toggle — do not force it to true on every load.
+	# Sync auto_load flag from the toggle state so the preference on disk
+	# always reflects what the user has chosen in the UI.
+	if auto_load_last_project_toggle != null:
+		_user_preferences.auto_load_last_file = auto_load_last_project_toggle.button_pressed
 	_user_preferences.save_to_disk()
 
 func _auto_load_last_file_from_preferences() -> void:
