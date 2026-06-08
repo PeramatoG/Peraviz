@@ -18,6 +18,7 @@ var _loader = null
 var _scene_registry: SceneRegistry = null
 var _bindings: Array = []
 var _unbound: Array = []
+var _fixture_patch_lookup: Dictionary = {}
 var _fixture_nodes: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
@@ -36,6 +37,7 @@ func configure(loader, scene_registry: SceneRegistry) -> void:
 func rebuild(universe_offset: int) -> Dictionary:
 	_bindings.clear()
 	_unbound.clear()
+	_fixture_patch_lookup.clear()
 	_fixture_nodes.clear()
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
@@ -50,6 +52,8 @@ func rebuild(universe_offset: int) -> Dictionary:
 			"unbound": 0,
 			"unbound_preview": PackedStringArray(),
 		}
+
+	_fixture_patch_lookup = _build_fixture_patch_lookup()
 
 	var result: Dictionary = _loader.build_fixture_dmx_bindings(universe_offset)
 	_bindings = result.get("bindings", [])
@@ -359,8 +363,156 @@ func get_unbound_preview() -> PackedStringArray:
 	var lines := PackedStringArray()
 	for index in range(min(MAX_UNBOUND_PREVIEW, _unbound.size())):
 		var row: Dictionary = _unbound[index]
-		lines.append("%s: %s" % [str(row.get("fixture_uuid", "<unknown>")), str(row.get("reason", "unspecified"))])
+		lines.append(_format_unbound_preview_line(row))
 	return lines
+
+func _format_unbound_preview_line(row: Dictionary) -> String:
+	var parts: PackedStringArray = _resolve_fixture_display_parts(row)
+	parts.append(_format_unbound_reason(str(row.get("reason", "unspecified"))))
+	return " · ".join(parts)
+
+func _resolve_fixture_display_parts(row: Dictionary) -> PackedStringArray:
+	var fixture_uuid: String = str(row.get("fixture_uuid", ""))
+	var patch: Dictionary = _fixture_patch_lookup.get(fixture_uuid, {})
+	var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid) if _scene_registry != null and not fixture_uuid.is_empty() else null
+	var parts := PackedStringArray()
+	parts.append(_resolve_fixture_display_label(row, patch, fixture_node, fixture_uuid))
+
+	var fixture_name: String = _resolve_fixture_name(row, patch, fixture_node)
+	var fixture_id: String = _resolve_fixture_id(row, patch, fixture_node)
+	if not fixture_name.is_empty() and not fixture_id.is_empty():
+		parts.append("Fixture ID %s" % fixture_id)
+
+	return parts
+
+func _resolve_fixture_display_label(row: Dictionary, patch: Dictionary, fixture_node: Node, fixture_uuid: String) -> String:
+	var fixture_name: String = _resolve_fixture_name(row, patch, fixture_node)
+	if not fixture_name.is_empty():
+		return fixture_name
+
+	var fixture_id: String = _resolve_fixture_id(row, patch, fixture_node)
+	if not fixture_id.is_empty():
+		return "Fixture ID %s" % fixture_id
+
+	var fixture_type: String = _resolve_fixture_type(row, patch, fixture_node)
+	if not fixture_type.is_empty():
+		return fixture_type
+
+	var address_label: String = _resolve_fixture_address_label(row, patch)
+	if not address_label.is_empty():
+		return address_label
+
+	return _format_fixture_uuid_fallback(fixture_uuid)
+
+func _build_fixture_patch_lookup() -> Dictionary:
+	var lookup: Dictionary = {}
+	if _loader == null or not _loader.has_method("get_fixtures_patch"):
+		return lookup
+
+	var patches: Array = _loader.get_fixtures_patch()
+	for patch_value in patches:
+		if patch_value is not Dictionary:
+			continue
+		var patch: Dictionary = patch_value
+		var fixture_uuid: String = str(patch.get("fixture_uuid", ""))
+		if fixture_uuid.is_empty():
+			continue
+		lookup[fixture_uuid] = patch
+	return lookup
+
+func _resolve_fixture_name(row: Dictionary, patch: Dictionary, fixture_node: Node) -> String:
+	var fixture_name: String = _first_non_empty_string(row, ["fixture_name", "fixture_label", "name", "label"])
+	if fixture_name.is_empty():
+		fixture_name = _first_non_empty_string(patch, ["fixture_name", "fixture_label", "name", "label"])
+	if fixture_name.is_empty() and fixture_node != null:
+		fixture_name = _first_non_empty_node_meta(fixture_node, ["peraviz_fixture_name", "fixture_name", "name"])
+	if fixture_name.is_empty() and fixture_node != null:
+		fixture_name = _clean_fixture_node_name(fixture_node.name)
+	return fixture_name
+
+func _resolve_fixture_id(row: Dictionary, patch: Dictionary, fixture_node: Node) -> String:
+	var fixture_id: String = _first_non_empty_string(row, ["fixture_id", "fixture_number", "fixture_no", "unit_number", "mvr_fixture_id"])
+	if fixture_id.is_empty():
+		fixture_id = _first_non_empty_string(patch, ["fixture_id", "fixture_number", "fixture_no", "unit_number", "mvr_fixture_id"])
+	if fixture_id.is_empty() and fixture_node != null:
+		fixture_id = _first_non_empty_node_meta(fixture_node, ["peraviz_fixture_id", "peraviz_fixture_number", "fixture_id", "fixture_number", "unit_number"])
+	return fixture_id
+
+func _resolve_fixture_type(row: Dictionary, patch: Dictionary, fixture_node: Node) -> String:
+	var fixture_type: String = _first_non_empty_string(row, ["fixture_type", "type", "gdtf_name", "gdtf_spec"])
+	if fixture_type.is_empty():
+		fixture_type = _first_non_empty_string(patch, ["fixture_type", "type", "gdtf_name", "gdtf_spec"])
+	if fixture_type.is_empty() and fixture_node != null:
+		fixture_type = _first_non_empty_node_meta(fixture_node, ["peraviz_fixture_type", "fixture_type", "gdtf_name", "gdtf_spec"])
+	if fixture_type.is_empty():
+		fixture_type = _gdtf_path_basename(_first_non_empty_string(row, ["gdtf_path"]))
+	if fixture_type.is_empty():
+		fixture_type = _gdtf_path_basename(_first_non_empty_string(patch, ["gdtf_path"]))
+	return fixture_type
+
+func _resolve_fixture_address_label(row: Dictionary, patch: Dictionary) -> String:
+	var universe: String = _first_non_empty_string(row, ["universe", "mvr_universe", "artnet_universe_id"])
+	if universe.is_empty():
+		universe = _first_non_empty_string(patch, ["universe", "mvr_universe", "artnet_universe_id"])
+
+	var address: String = _first_non_empty_string(row, ["address", "mvr_address", "dmx_address"])
+	if address.is_empty():
+		address = _first_non_empty_string(patch, ["address", "mvr_address", "dmx_address"])
+
+	if not universe.is_empty() and not address.is_empty():
+		return "Universe %s / Address %s" % [universe, address]
+	if not universe.is_empty():
+		return "Universe %s" % universe
+	if not address.is_empty():
+		return "Address %s" % address
+	return ""
+
+func _first_non_empty_string(source: Dictionary, keys: Array) -> String:
+	for key in keys:
+		if not source.has(key):
+			continue
+		var value: String = str(source.get(key, "")).strip_edges()
+		if value.is_empty() or value == "-1":
+			continue
+		return value
+	return ""
+
+func _first_non_empty_node_meta(node: Node, keys: Array) -> String:
+	for key in keys:
+		if not node.has_meta(key):
+			continue
+		var value: String = str(node.get_meta(key, "")).strip_edges()
+		if value.is_empty() or value == "-1":
+			continue
+		return value
+	return ""
+
+func _clean_fixture_node_name(node_name: String) -> String:
+	var value: String = node_name.strip_edges()
+	if value.begins_with("fixture_") and value.length() > "fixture_".length():
+		value = value.substr("fixture_".length()).strip_edges()
+	if value == "fixture" or value == "Fixture":
+		return ""
+	return value
+
+func _gdtf_path_basename(gdtf_path: String) -> String:
+	var value: String = gdtf_path.strip_edges()
+	if value.is_empty():
+		return ""
+	return value.get_file().get_basename()
+
+func _format_fixture_uuid_fallback(fixture_uuid: String) -> String:
+	if fixture_uuid.strip_edges().is_empty():
+		return "Unknown fixture"
+	return "Fixture UUID %s" % fixture_uuid
+
+func _format_unbound_reason(reason: String) -> String:
+	var value: String = reason.strip_edges()
+	if value.is_empty():
+		return "Unspecified"
+	if value == "No Dimmer/Pan/Tilt/Zoom/CMY/Gobo attributes found in mode DMX channels":
+		return "No controllable Dimmer/Pan/Tilt/Zoom/CMY/Gobo attributes found in the selected DMX mode"
+	return value.substr(0, 1).to_upper() + value.substr(1)
 
 func _build_summary(universe_offset: int) -> Dictionary:
 	return {
