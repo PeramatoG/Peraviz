@@ -14,6 +14,8 @@ Changes since the initial Peraviz repository split.
 
 ## Stability and reliability
 
+- Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
+
 ## Documentation
 
 - Documented the initial `.pvz` project archive format and its version 1 archive structure.
