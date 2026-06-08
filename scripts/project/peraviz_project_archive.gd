@@ -19,6 +19,11 @@ func save_project(project_path: String, source_mvr_path: String, peraviz_version
 		return _error("Unable to read the loaded MVR file.")
 
 	var normalized_path: String = _ensure_extension(project_path, "pvz")
+	if normalized_path.is_empty():
+		return _error("Choose a valid PVZ filename before saving.")
+	if not _parent_directory_exists(normalized_path):
+		return _error("Unable to create PVZ archive because the target directory does not exist: %s" % normalized_path.get_base_dir())
+
 	var packer := ZIPPacker.new()
 	var open_error: Error = packer.open(normalized_path)
 	if open_error != OK:
@@ -45,6 +50,8 @@ func save_project(project_path: String, source_mvr_path: String, peraviz_version
 		return _error("Unable to write PVZ archive: %s" % error_string(write_error))
 	if close_error != OK:
 		return _error("Unable to finalize PVZ archive: %s" % error_string(close_error))
+	if not FileAccess.file_exists(normalized_path):
+		return _error("PVZ archive was finalized but no file appeared at the selected path: %s" % normalized_path)
 
 	return {
 		"ok": true,
@@ -193,6 +200,14 @@ func _ensure_extension(path: String, extension: String) -> String:
 	if path.get_extension().to_lower() == extension.to_lower():
 		return path
 	return "%s.%s" % [path, extension]
+
+func _parent_directory_exists(path: String) -> bool:
+	var base_dir: String = path.get_base_dir()
+	if base_dir.is_empty() or base_dir == path:
+		return true
+	if base_dir.begins_with("user://") or base_dir.begins_with("res://"):
+		base_dir = ProjectSettings.globalize_path(base_dir)
+	return DirAccess.dir_exists_absolute(base_dir)
 
 func _error(message: String) -> Dictionary:
 	return {

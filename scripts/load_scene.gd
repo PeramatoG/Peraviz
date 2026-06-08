@@ -9,6 +9,8 @@ extends Node3D
 @onready var day_night_environment_controller: DayNightEnvironmentController = $DayNightEnvironmentController
 @onready var user_module: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/User
 @onready var advanced_module: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced
+@onready var auto_load_last_project_toggle: CheckButton = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced/AutoLoadLastProjectToggle
+@onready var auto_start_dmx_project_toggle: CheckButton = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced/AutoStartDmxProjectToggle
 @onready var debug_module: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Debug
 @onready var manual_fixture_toggle: CheckButton = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Debug/ManualFixtureToggle
 @onready var fixture_debug_panel: PanelContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Debug/FixtureDebugPanel
@@ -251,6 +253,10 @@ func _ready() -> void:
 	_scene_registry.configure(proxies_root)
 	manual_fixture_toggle.toggled.connect(_on_manual_fixture_toggle)
 	show_advanced_controls_toggle.toggled.connect(_on_show_advanced_controls_toggled)
+	if auto_load_last_project_toggle != null:
+		auto_load_last_project_toggle.toggled.connect(_on_auto_load_last_project_toggled)
+	if auto_start_dmx_project_toggle != null:
+		auto_start_dmx_project_toggle.toggled.connect(_on_auto_start_dmx_project_toggled)
 	if visual_settings_window != null and visual_settings_window.has_signal("settings_changed"):
 		visual_settings_window.connect("settings_changed", Callable(self, "_on_visual_settings_changed"))
 	else:
@@ -308,7 +314,6 @@ func _ready() -> void:
 	_status_presenter.configure(self, status_label, topbar_row, load_button, show_advanced_controls_toggle)
 	picker.access = FileDialog.ACCESS_FILESYSTEM
 	picker.filters = PackedStringArray(["*.mvr, *.pvz ; MVR or Peraviz Project", "*.mvr ; MVR", "*.pvz ; Peraviz Project"])
-	_status_presenter.set_scene_state_idle()
 	_debug_coords_enabled = bool(ProjectSettings.get_setting("peraviz_debug_coords", false))
 	_debug_asset_cache_enabled = bool(ProjectSettings.get_setting("peraviz_debug_asset_cache", false))
 	var manual_fixture_test_enabled: bool = _read_manual_fixture_test_setting()
@@ -337,6 +342,7 @@ func _ready() -> void:
 		push_warning("VisualSettingsWindow is not ready for configure(); initial visual settings not pushed.")
 	_apply_visual_settings(_visual_settings)
 	_refresh_day_night_environment_controller()
+	_auto_load_last_file_from_preferences()
 
 
 func _apply_imported_content_scale() -> void:
@@ -544,7 +550,7 @@ func _on_file_selected(path: String) -> void:
 		return
 	_load_mvr_scene(path, "mvr")
 
-func _load_mvr_scene(path: String, loaded_file_type: String = "mvr") -> Dictionary:
+func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_loaded_file: bool = true) -> Dictionary:
 	if _status_presenter != null:
 		_status_presenter.set_scene_state_loading(path)
 	_clear_scene()
@@ -573,6 +579,8 @@ func _load_mvr_scene(path: String, loaded_file_type: String = "mvr") -> Dictiona
 	if bool(import_result.get("ok", false)):
 		_loaded_mvr_path = path
 		_last_loaded_file_type = loaded_file_type
+		if remember_loaded_file:
+			_remember_loaded_file(path, loaded_file_type)
 		if _status_presenter != null:
 			_status_presenter.set_scene_state_loaded(int(import_result.get("node_count", 0)))
 	else:
@@ -595,12 +603,14 @@ func _on_save_project_selected(path: String) -> void:
 		_collect_dmx_project_settings(),
 		_collect_app_state("pvz")
 	)
-	if _status_presenter == null:
-		return
 	if bool(save_result.get("ok", false)):
-		_status_presenter.show_toast("Saved Peraviz project: %s" % str(save_result.get("project_path", path)).get_file())
+		var saved_project_path: String = str(save_result.get("project_path", path))
+		_remember_loaded_file(saved_project_path, "pvz")
+		if _status_presenter != null:
+			_status_presenter.show_toast("Saved Peraviz project: %s" % saved_project_path)
 	else:
-		_status_presenter.show_toast("Project save failed: %s" % str(save_result.get("error", "unknown error")))
+		if _status_presenter != null:
+			_status_presenter.show_toast("Project save failed: %s" % str(save_result.get("error", "unknown error")))
 
 func _open_project(path: String) -> void:
 	if _status_presenter != null:
@@ -611,7 +621,7 @@ func _open_project(path: String) -> void:
 			_status_presenter.set_scene_state_load_error(str(project_result.get("error", "unknown error")))
 		return
 
-	var import_result: Dictionary = _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz")
+	var import_result: Dictionary = _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz", false)
 	if not bool(import_result.get("ok", false)):
 		return
 
@@ -623,6 +633,7 @@ func _open_project(path: String) -> void:
 	_restore_visual_project_settings(visual_project_settings)
 	_restore_dmx_project_settings(dmx_project_settings)
 	_last_loaded_file_type = "pvz"
+	_remember_loaded_file(path, "pvz")
 	if _status_presenter != null:
 		_status_presenter.show_toast("Opened Peraviz project: %s" % path.get_file())
 
@@ -631,7 +642,7 @@ func _collect_dmx_project_settings() -> Dictionary:
 	if _dmx_controller != null:
 		settings["universe_offset"] = _dmx_controller.get_universe_offset()
 		settings["dmx_enabled_when_saved"] = _dmx_controller.is_dmx_enabled()
-	settings["auto_start_dmx"] = false
+	settings["auto_start_dmx"] = _user_preferences != null and _user_preferences.auto_start_dmx
 	return settings
 
 func _restore_dmx_project_settings(settings: Dictionary) -> void:
@@ -661,6 +672,40 @@ func _collect_app_state(last_loaded_file_type: String) -> Dictionary:
 		"last_loaded_file_type": last_loaded_file_type,
 	}
 
+func _remember_loaded_file(path: String, file_type: String) -> void:
+	if _user_preferences == null:
+		return
+	_user_preferences.last_file_path = path
+	_user_preferences.last_file_type = file_type
+	_user_preferences.auto_load_last_file = true
+	_sync_session_preference_toggles()
+	_user_preferences.save_to_disk()
+
+func _auto_load_last_file_from_preferences() -> void:
+	if _user_preferences == null or not _user_preferences.auto_load_last_file:
+		return
+	var last_path: String = _user_preferences.last_file_path
+	if last_path.is_empty() or not FileAccess.file_exists(last_path):
+		if _status_presenter != null:
+			_status_presenter.show_toast("Last project file is no longer available: %s" % last_path)
+		return
+	match _user_preferences.last_file_type:
+		"pvz":
+			_open_project(last_path)
+		"mvr":
+			_load_mvr_scene(last_path, "mvr")
+		_:
+			if _status_presenter != null:
+				_status_presenter.show_toast("Last project file type is unsupported: %s" % _user_preferences.last_file_type)
+
+func _sync_session_preference_toggles() -> void:
+	if _user_preferences == null:
+		return
+	if auto_load_last_project_toggle != null:
+		auto_load_last_project_toggle.set_pressed_no_signal(_user_preferences.auto_load_last_file)
+	if auto_start_dmx_project_toggle != null:
+		auto_start_dmx_project_toggle.set_pressed_no_signal(_user_preferences.auto_start_dmx)
+
 func _read_peraviz_version() -> String:
 	var version_file := FileAccess.open("res://VERSION", FileAccess.READ)
 	if version_file == null:
@@ -677,6 +722,7 @@ func _load_user_preferences() -> void:
 		show_advanced_controls_toggle.button_pressed = _user_preferences.advanced_mode
 	if app_shell != null:
 		app_shell.set_side_panel_open(_user_preferences.sidebar_open)
+	_sync_session_preference_toggles()
 
 func _apply_visual_settings_preferences_to_window() -> void:
 	if _user_preferences == null or visual_settings_window == null:
@@ -708,6 +754,18 @@ func _on_show_advanced_controls_toggled(enabled: bool) -> void:
 	if visual_settings_window != null and visual_settings_window.has_method("set_advanced_mode_enabled"):
 		visual_settings_window.call("set_advanced_mode_enabled", enabled)
 	_refresh_ui_module_visibility()
+
+func _on_auto_load_last_project_toggled(enabled: bool) -> void:
+	if _user_preferences == null:
+		return
+	_user_preferences.auto_load_last_file = enabled
+	_user_preferences.save_to_disk()
+
+func _on_auto_start_dmx_project_toggled(enabled: bool) -> void:
+	if _user_preferences == null:
+		return
+	_user_preferences.auto_start_dmx = enabled
+	_user_preferences.save_to_disk()
 
 func _refresh_ui_module_visibility() -> void:
 	var user_visible: bool = UiVisibilityPolicyScript.is_module_visible(UiVisibilityPolicyScript.MODULE_USER)
