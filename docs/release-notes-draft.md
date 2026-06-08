@@ -10,6 +10,8 @@ Changes since the initial Peraviz repository split.
 
 ## Improvements
 
+- Improved DMX unlinked fixture preview messages so they use fixture names and available patch details instead of exposing UUIDs by default.
+
 - Made the DMX panel easier to scan by keeping the quick fixture summary visible while moving unlinked fixture technical details behind an optional details toggle.
 
 ## Fixes
