@@ -97,6 +97,21 @@ func get_bound_fixture_ids() -> PackedStringArray:
 		fixture_ids.append(str(fixture_uuid))
 	return fixture_ids
 
+func get_fixture_inspection_rows() -> Array:
+	var rows: Array = []
+	var seen_fixture_uuids: Dictionary = {}
+	for fixture_uuid in _collect_known_fixture_uuids():
+		var row: Dictionary = _build_fixture_inspection_row(str(fixture_uuid))
+		rows.append(row)
+		seen_fixture_uuids[str(fixture_uuid)] = true
+	if _scene_registry != null:
+		for fixture_uuid in _scene_registry.list_fixture_uuids():
+			var key: String = str(fixture_uuid)
+			if seen_fixture_uuids.has(key):
+				continue
+			rows.append(_build_fixture_inspection_row(key))
+	rows.sort_custom(Callable(self, "_sort_fixture_inspection_rows"))
+	return rows
 
 func get_time_tick_fixture_ids() -> PackedStringArray:
 	return _time_tick_fixture_ids
@@ -365,6 +380,97 @@ func get_unbound_preview() -> PackedStringArray:
 		var row: Dictionary = _unbound[index]
 		lines.append(_format_unbound_preview_line(row))
 	return lines
+
+func _collect_known_fixture_uuids() -> PackedStringArray:
+	var seen_fixture_uuids: Dictionary = {}
+	for fixture_uuid in _fixture_patch_lookup.keys():
+		_add_seen_fixture_uuid(seen_fixture_uuids, str(fixture_uuid))
+	for binding in _bindings:
+		if binding is Dictionary:
+			_add_seen_fixture_uuid(seen_fixture_uuids, str(binding.get("fixture_uuid", "")))
+	for row in _unbound:
+		if row is Dictionary:
+			_add_seen_fixture_uuid(seen_fixture_uuids, str(row.get("fixture_uuid", "")))
+	var fixture_uuids := PackedStringArray()
+	for fixture_uuid in seen_fixture_uuids.keys():
+		fixture_uuids.append(str(fixture_uuid))
+	return fixture_uuids
+
+func _add_seen_fixture_uuid(seen_fixture_uuids: Dictionary, fixture_uuid: String) -> void:
+	if fixture_uuid.strip_edges().is_empty():
+		return
+	seen_fixture_uuids[fixture_uuid] = true
+
+func _build_fixture_inspection_row(fixture_uuid: String) -> Dictionary:
+	var patch: Dictionary = _fixture_patch_lookup.get(fixture_uuid, {})
+	var binding: Dictionary = _find_binding_for_fixture(fixture_uuid)
+	var unbound: Dictionary = _find_unbound_for_fixture(fixture_uuid)
+	var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid) if _scene_registry != null and not fixture_uuid.is_empty() else null
+	return {
+		"fixture_uuid": fixture_uuid,
+		"fixture_name": _resolve_fixture_name(binding, patch, fixture_node),
+		"fixture_id": _resolve_fixture_id(binding, patch, fixture_node),
+		"fixture_type": _resolve_fixture_type(binding, patch, fixture_node),
+		"universe": _resolve_fixture_universe(binding, patch),
+		"address": _resolve_fixture_address(binding, patch),
+		"binding_status": _resolve_fixture_binding_status(binding, unbound, patch),
+		"binding_detail": _resolve_fixture_binding_detail(binding, unbound, patch),
+	}
+
+func _find_binding_for_fixture(fixture_uuid: String) -> Dictionary:
+	for binding in _bindings:
+		if binding is Dictionary and str(binding.get("fixture_uuid", "")) == fixture_uuid:
+			return binding
+	return {}
+
+func _find_unbound_for_fixture(fixture_uuid: String) -> Dictionary:
+	for row in _unbound:
+		if row is Dictionary and str(row.get("fixture_uuid", "")) == fixture_uuid:
+			return row
+	return {}
+
+func _resolve_fixture_universe(binding: Dictionary, patch: Dictionary) -> String:
+	var universe: String = _first_non_empty_string(patch, ["universe", "mvr_universe"])
+	if universe.is_empty():
+		universe = _first_non_empty_string(binding, ["universe", "mvr_universe", "artnet_universe_id"])
+	return universe
+
+func _resolve_fixture_address(binding: Dictionary, patch: Dictionary) -> String:
+	var address: String = _first_non_empty_string(patch, ["address", "mvr_address", "dmx_address"])
+	if address.is_empty():
+		address = _first_non_empty_string(binding, ["address", "mvr_address", "dmx_address"])
+	return address
+
+func _resolve_fixture_binding_status(binding: Dictionary, unbound: Dictionary, patch: Dictionary) -> String:
+	var universe: String = _resolve_fixture_universe(binding, patch)
+	var address: String = _resolve_fixture_address(binding, patch)
+	var is_patched: bool = not universe.is_empty() and not address.is_empty()
+	if not binding.is_empty():
+		return "Patched / Bound" if is_patched else "Bound"
+	if not unbound.is_empty():
+		return "Patched / Unbound" if is_patched else "Unpatched / Unbound"
+	if not is_patched:
+		return "Unpatched"
+	return "Patched / Not bound"
+
+func _resolve_fixture_binding_detail(binding: Dictionary, unbound: Dictionary, patch: Dictionary) -> String:
+	if not binding.is_empty():
+		var artnet_universe: String = _first_non_empty_string(binding, ["artnet_universe_id"])
+		return "Bound to Art-Net universe %s" % artnet_universe if not artnet_universe.is_empty() else "Bound to DMX controls"
+	if not unbound.is_empty():
+		return _format_unbound_reason(str(unbound.get("reason", "unspecified")))
+	var universe: String = _resolve_fixture_universe(binding, patch)
+	var address: String = _resolve_fixture_address(binding, patch)
+	if universe.is_empty() or address.is_empty():
+		return "Missing MVR universe or address"
+	return "No DMX binding has been built for this fixture"
+
+func _sort_fixture_inspection_rows(a: Dictionary, b: Dictionary) -> bool:
+	var a_name: String = str(a.get("fixture_name", "")).to_lower()
+	var b_name: String = str(b.get("fixture_name", "")).to_lower()
+	if a_name == b_name:
+		return str(a.get("fixture_uuid", "")) < str(b.get("fixture_uuid", ""))
+	return a_name < b_name
 
 func _format_unbound_preview_line(row: Dictionary) -> String:
 	var parts: PackedStringArray = _resolve_fixture_display_parts(row)
