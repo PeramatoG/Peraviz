@@ -36,7 +36,7 @@ func configure(owner: Node,
 	set_render_mode_badge("Volumetric")
 
 func set_scene_state_idle() -> void:
-	_set_status(PresenterState.IDLE, "Idle · Load MVR")
+	_set_status(PresenterState.IDLE, "Idle · Load MVR/PVZ")
 	_set_badge("MVR", "Idle")
 
 func set_scene_state_loading(path: String) -> void:
@@ -121,7 +121,7 @@ func _ensure_badges(load_button: Button, show_advanced_controls_toggle: CheckBut
 	_create_badge("Render Mode")
 
 	if load_button != null:
-		load_button.tooltip_text = "Load an MVR file"
+		load_button.tooltip_text = "Load an MVR or Peraviz project file"
 	if show_advanced_controls_toggle != null:
 		show_advanced_controls_toggle.tooltip_text = "Toggle advanced controls"
 
