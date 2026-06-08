@@ -10,6 +10,8 @@ Changes since the initial Peraviz repository split.
 
 ## Improvements
 
+- Made the DMX panel easier to scan by keeping the quick fixture summary visible while moving unlinked fixture technical details behind an optional details toggle.
+
 ## Fixes
 
 - Made last loaded file recovery more predictable by keeping startup auto-load user-configurable, preserving the setting when supported files are loaded or saved, and reporting clear messages when remembered files are missing or unsupported.
