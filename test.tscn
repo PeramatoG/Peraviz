@@ -175,7 +175,7 @@ layout_mode = 2
 
 [node name="AutoLoadLastProjectToggle" type="CheckButton" parent="UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced"]
 layout_mode = 2
-text = "Auto-load last project"
+text = "Auto-load remembered file"
 
 [node name="AutoStartDmxProjectToggle" type="CheckButton" parent="UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/Advanced"]
 layout_mode = 2
