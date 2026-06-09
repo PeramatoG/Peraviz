@@ -6,6 +6,8 @@ Changes since the initial Peraviz repository split.
 
 ## New features
 
+- Added a read-only Fixture Inspection panel in the User area so loaded MVR and PVZ scenes can be reviewed by fixture name, user-facing fixture ID, type, patch address, and DMX binding status without opening Debug tools.
+
 - Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings. Peraviz now remembers the last opened MVR or project file and includes a top-bar option to auto-load the last show by default for new preferences, plus an Advanced option to auto-start DMX on project load when project settings allow it.
 
 ## Improvements

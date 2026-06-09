@@ -57,6 +57,7 @@ var _fixture_gobo_projector: FixtureGoboProjector = null
 var _ui_controller: UiController
 var _dmx_controller: DmxController
 var _fixture_debug_controller: FixtureDebugController
+var _fixture_inspection_panel: FixtureInspectionPanel
 var _loaded_mvr_path: String = ""
 var _last_loaded_file_type: String = ""
 var _visual_environment_baseline := {
@@ -141,6 +142,7 @@ const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_li
 const UiVisibilityPolicyScript = preload("res://scripts/ui/ui_visibility_policy.gd")
 const UiControllerScript = preload("res://scripts/controllers/ui_controller.gd")
 const DmxControllerScript = preload("res://scripts/controllers/dmx_controller.gd")
+const FixtureInspectionPanelScript = preload("res://scripts/ui/fixture_inspection_panel.gd")
 const PeravizProjectArchiveScript = preload("res://scripts/project/peraviz_project_archive.gd")
 const FixtureDebugControllerScript = preload("res://scripts/controllers/fixture_debug_controller.gd")
 const StatusPresenterScript = preload("res://scripts/ui/status_presenter.gd")
@@ -326,6 +328,7 @@ func _ready() -> void:
 	_ensure_debug_gizmo_root()
 	_update_debug_legend()
 	_refresh_emitter_light_scalars()
+	_setup_fixture_inspection_panel()
 	_refresh_fixture_debug_panel()
 	_setup_dmx_controls()
 	_setup_dmx_fixture_runtime()
@@ -579,6 +582,7 @@ func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_lo
 		_scene_registry
 	)
 	if bool(import_result.get("ok", false)):
+		_refresh_fixture_inspection_panel()
 		_loaded_mvr_path = path
 		_last_loaded_file_type = loaded_file_type
 		if remember_loaded_file:
@@ -1428,6 +1432,7 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 	return "box"
 
 func _clear_scene() -> void:
+	_clear_fixture_inspection_panel()
 	_scene_import_service.clear_scene(
 		_scene_registry,
 		proxies_root,
@@ -2415,6 +2420,33 @@ func _focus_loaded_scene() -> void:
 		camera.call("focus_on_aabb", _loaded_bounds)
 
 
+func _setup_fixture_inspection_panel() -> void:
+	if _fixture_inspection_panel != null and is_instance_valid(_fixture_inspection_panel):
+		return
+	if user_module == null:
+		return
+	_fixture_inspection_panel = FixtureInspectionPanelScript.new()
+	_fixture_inspection_panel.name = "FixtureInspectionPanel"
+	if dmx_controls_mount != null and dmx_controls_mount.get_parent() == user_module:
+		user_module.add_child(_fixture_inspection_panel)
+		user_module.move_child(_fixture_inspection_panel, dmx_controls_mount.get_index())
+	else:
+		user_module.add_child(_fixture_inspection_panel)
+	_refresh_fixture_inspection_panel()
+
+func _refresh_fixture_inspection_panel() -> void:
+	if _fixture_inspection_panel == null or not is_instance_valid(_fixture_inspection_panel):
+		return
+	var rows: Array = []
+	if _dmx_controller != null:
+		rows = _dmx_controller.get_fixture_inspection_rows()
+	_fixture_inspection_panel.refresh(rows)
+
+func _clear_fixture_inspection_panel() -> void:
+	if _fixture_inspection_panel == null or not is_instance_valid(_fixture_inspection_panel):
+		return
+	_fixture_inspection_panel.refresh([])
+
 func _setup_dmx_controls() -> void:
 	_dmx_controller.setup_controls()
 
@@ -2448,6 +2480,7 @@ func _setup_dmx_fixture_runtime() -> void:
 
 func _refresh_dmx_fixture_bindings() -> void:
 	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings()
+	_refresh_fixture_inspection_panel()
 	var unbound_count: int = int(summary.get("unbound", 0))
 	if _status_presenter != null and unbound_count > 0:
 		_status_presenter.set_scene_state_warning_unbound(unbound_count)

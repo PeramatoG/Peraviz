@@ -159,6 +159,13 @@ func refresh_fixture_bindings() -> Dictionary:
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
 
+func get_fixture_inspection_rows() -> Array:
+	if _dmx_fixture_runtime == null:
+		return []
+	if not _dmx_fixture_runtime.has_method("get_fixture_inspection_rows"):
+		return []
+	return _dmx_fixture_runtime.get_fixture_inspection_rows()
+
 func resolve_controls_host() -> Control:
 	if not _get_controls_host_callback.is_valid():
 		return null
