@@ -145,6 +145,17 @@ if(MSVC AND VCPKG_TARGET_TRIPLET MATCHES "static")
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
+if(WIN32)
+    add_custom_target(peraviz_native_check_dependencies
+        COMMAND ${CMAKE_COMMAND}
+            "-DPERAVIZ_TARGET_FILE=$<TARGET_FILE:peraviz_native>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_windows_dependencies.cmake"
+        DEPENDS peraviz_native
+        COMMENT "Checking peraviz_native for forbidden third-party runtime DLL dependencies"
+        VERBATIM
+    )
+endif()
+
 if(BUILD_TESTING)
     add_executable(peraviz_native_dmx_tests
         tests/gdtf_attribute_classifier_test.cpp

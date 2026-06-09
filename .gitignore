@@ -16,6 +16,7 @@
 /bin/*.ilk
 /bin/*.pdb
 /bin/~*.TMP
+!/bin/.gitkeep
 *.pdb
 
 # Godot local editor metadata

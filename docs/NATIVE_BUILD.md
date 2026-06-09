@@ -35,15 +35,36 @@ cmake --build native/build --config Debug
 
 The resulting library is copied automatically to `bin/`.
 
-### Windows (Visual Studio) note
+### Windows static vcpkg build for exports
 
-When building with Visual Studio, the generated `peraviz_native.dll` may depend on additional
-runtime DLLs (`libzip`, `zlib`, `tinyxml2`, etc.). The native CMake copies runtime DLL
-dependencies to `bin/` after each build, so Godot can load the extension without
-manual PATH tweaks.
+For Windows exports, build from a Visual Studio Developer Command Prompt with vcpkg manifest mode and the static triplet:
 
-If `PeravizLoader` is still reported as unknown in GDScript, verify that `bin/`
-contains `peraviz_native.dll` and its dependent DLLs, then restart the Godot editor.
+```powershell
+cd <repo>/native
+cmake --preset windows-release-static
+cmake --build --preset windows-release-static
+```
+
+The Windows static presets use `x64-windows-static`, `BUILD_SHARED_LIBS=OFF`, and `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`. They keep `peraviz_native` as a GDExtension DLL while linking third-party dependencies such as libzip, zlib, and tinyxml2 statically.
+
+If you switch between vcpkg triplets, delete the affected build directory before reconfiguring. Reusing a CMake cache created with `x64-windows` can keep dynamic dependency choices even after changing the command line.
+
+After building, verify the runtime dependencies:
+
+```powershell
+dumpbin /DEPENDENTS bin\peraviz_native.dll
+cmake --build --preset windows-release-static --target peraviz_native_check_dependencies
+```
+
+The dependency list must not include `zip.dll`, `zlib1.dll`, `tinyxml2.dll`, wxWidgets DLLs, pcre2 DLLs, or `jvm.dll`.
+
+For the full Windows export checklist, including Godot resource filters for preserving `bin/peraviz_native.dll`, see `docs/WINDOWS_EXPORT.md`.
+
+### Windows dynamic development note
+
+The native CMake still keeps the post-build copy step for `$<TARGET_RUNTIME_DLLS:peraviz_native>`. This remains useful for dynamic local development builds, but a static vcpkg export build should not need copied third-party DLLs.
+
+If `PeravizLoader` is reported as unknown in GDScript, verify that `bin/peraviz_native.dll` exists at the path referenced by `peraviz.gdextension`, then restart the Godot editor.
 
 ## Usage from Godot
 

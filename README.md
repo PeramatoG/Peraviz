@@ -112,13 +112,12 @@ cmake --build native/build --config Debug
 For Windows exports, build with vcpkg manifest mode and the static triplet so `peraviz_native.dll` is self-contained instead of depending on copied third-party DLLs:
 
 ```bash
-cmake -B native/build -S native \
-  -DCMAKE_TOOLCHAIN_FILE=<vcpkg_root>/scripts/buildsystems/vcpkg.cmake \
-  -DVCPKG_TARGET_TRIPLET=x64-windows-static
-cmake --build native/build --config Release
+cd native
+cmake --preset windows-release-static
+cmake --build --preset windows-release-static
 ```
 
-The resulting library is copied into `bin/` so the Godot editor can load it.
+The resulting library is copied into `bin/` so the Godot editor can load it. For the full Windows export flow, including dependency verification and Godot resource include filters, see `docs/WINDOWS_EXPORT.md`.
 
 ### Run the viewer
 
