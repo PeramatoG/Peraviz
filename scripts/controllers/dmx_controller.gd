@@ -115,9 +115,9 @@ func setup_controls() -> void:
 
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 
-func setup_fixture_runtime(loader: Variant, scene_registry: SceneRegistry) -> void:
+func setup_fixture_runtime(loader: Variant, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider) -> void:
 	_dmx_fixture_runtime = DmxFixtureRuntimeScript.new()
-	_dmx_fixture_runtime.configure(loader, scene_registry)
+	_dmx_fixture_runtime.configure(loader, scene_registry, fixture_row_provider)
 	_dmx_fixture_runtime.set_debug_force_full_apply(_debug_force_full_apply)
 
 func set_debug_force_full_apply(enabled: bool) -> void:
@@ -159,12 +159,15 @@ func refresh_fixture_bindings() -> Dictionary:
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
 
-func get_fixture_inspection_rows() -> Array:
+func get_fixture_rows() -> Array:
 	if _dmx_fixture_runtime == null:
 		return []
-	if not _dmx_fixture_runtime.has_method("get_fixture_inspection_rows"):
+	if not _dmx_fixture_runtime.has_method("get_fixture_rows"):
 		return []
-	return _dmx_fixture_runtime.get_fixture_inspection_rows()
+	return _dmx_fixture_runtime.get_fixture_rows()
+
+func get_fixture_inspection_rows() -> Array:
+	return get_fixture_rows()
 
 func resolve_controls_host() -> Control:
 	if not _get_controls_host_callback.is_valid():

@@ -45,7 +45,8 @@ func import_scene(path: String,
 		set_has_loaded_bounds: Callable,
 		debug_coords_enabled: bool,
 		debug_asset_cache_enabled: bool,
-		scene_registry: SceneRegistry) -> Dictionary:
+		scene_registry: SceneRegistry,
+		fixture_row_provider: FixtureRowProvider) -> Dictionary:
 	if path.is_empty():
 		return {
 			"ok": false,
@@ -72,6 +73,8 @@ func import_scene(path: String,
 
 	node_factory.build_node_tree(nodes, proxies_root, node_index, rebuild_loaded_bounds, loader, asset_cache)
 	fixture_binding_service.register_fixture_registry(nodes, node_index, scene_registry, extract_emitter_photometrics)
+	if fixture_row_provider != null:
+		fixture_row_provider.set_loaded_nodes(nodes)
 	refresh_dmx_fixture_bindings.call()
 	populate_fixture_list.call()
 	sync_selection_state.call("scene_reload")
