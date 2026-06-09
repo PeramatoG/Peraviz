@@ -4,25 +4,32 @@ Changes since the initial Peraviz repository split.
 
 ## Highlights
 
+- Peraviz can now remember the last opened MVR or PVZ project for a smoother return to recent work, without forcing startup auto-load on.
+- Added the first read-only Fixture Inspection panel for reviewing loaded fixture information from the main User area.
+- Introduced the first `.pvz` project archive foundation for saving Peraviz sessions with embedded MVR scene data and project settings.
+
 ## New features
 
 - Added a read-only Fixture Inspection panel in the User area so loaded MVR and PVZ scenes can be reviewed by fixture name, user-facing fixture ID, type, patch address, and DMX binding status without opening Debug tools.
-
-- Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings. Peraviz now remembers the last opened MVR or project file and includes a top-bar option to auto-load the last show by default for new preferences, plus an Advanced option to auto-start DMX on project load when project settings allow it.
+- Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings.
+- Peraviz now remembers the last opened MVR or PVZ project as a user preference, while keeping startup auto-load as an explicit opt-in choice instead of enabling it whenever a file is loaded or saved.
+- Added an Advanced startup auto-load toggle so users who want Peraviz to reopen their last show automatically can enable that behavior deliberately.
+- New `.pvz` archives now include a reserved `fixture_overrides.json` file so future fixture-level project data has a stable place in the archive without changing the base layout.
 
 ## Improvements
 
-- Improved DMX unlinked fixture preview messages so they use fixture names and available patch details instead of exposing UUIDs by default.
-
+- Improved DMX unlinked fixture presentation so fixture names and available patch details are shown in user-facing summaries instead of exposing UUIDs by default.
 - Made the DMX panel easier to scan by keeping the quick fixture summary visible while moving unlinked fixture technical details behind an optional details toggle.
+- Made last loaded file recovery more predictable by preserving the user's startup auto-load choice and reporting clear messages when remembered files are missing or unsupported.
 
 ## Fixes
 
-- Made last loaded file recovery more predictable by keeping startup auto-load user-configurable, preserving the setting when supported files are loaded or saved, and reporting clear messages when remembered files are missing or unsupported.
+- Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
 
 ## Stability and reliability
 
-- Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
+- Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
+- PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 
 ## Documentation
 
