@@ -39,7 +39,7 @@ func build_ui() -> void:
 	layout.add_child(scroll)
 
 	_grid = GridContainer.new()
-	_grid.columns = 6
+	_grid.columns = 8
 	scroll.add_child(_grid)
 	_add_headers()
 
@@ -56,7 +56,7 @@ func refresh(rows: Array) -> void:
 		_add_row(row)
 
 func _add_headers() -> void:
-	for header_text in ["Name", "ID / No.", "Type", "Universe", "Address", "Patch / Binding"]:
+	for header_text in ["Name", "ID / No.", "Type", "Universe", "Address", "Patch / Binding", "Position", "Rotation"]:
 		var label := Label.new()
 		label.text = header_text
 		label.tooltip_text = header_text
@@ -69,6 +69,8 @@ func _add_row(row: Dictionary) -> void:
 	_add_cell(_display_value(row.get("universe", "")), _uuid_tooltip(row))
 	_add_cell(_display_value(row.get("address", "")), _uuid_tooltip(row))
 	_add_cell(_display_value(row.get("binding_status", "")), _binding_tooltip(row))
+	_add_cell(_display_value(row.get("position_label", "")), _uuid_tooltip(row))
+	_add_cell(_display_value(row.get("rotation_label", "")), _uuid_tooltip(row))
 
 func _add_cell(text: String, tooltip: String) -> void:
 	var label := Label.new()

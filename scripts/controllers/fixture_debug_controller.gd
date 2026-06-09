@@ -3,6 +3,7 @@ class_name FixtureDebugController
 
 var _owner: Node3D
 var _scene_registry: SceneRegistry
+var _fixture_row_provider: FixtureRowProvider
 var _camera: Camera3D
 
 var _manual_fixture_toggle: CheckButton
@@ -43,12 +44,14 @@ const MANUAL_DEFAULTS := {
 
 func configure(owner: Node3D,
 		scene_registry: SceneRegistry,
+		fixture_row_provider: FixtureRowProvider,
 		camera: Camera3D,
 		ui_refs: Dictionary,
 		resolve_fixture_uuid_from_node_callback: Callable,
 		apply_fixture_controls_callback: Callable) -> void:
 	_owner = owner
 	_scene_registry = scene_registry
+	_fixture_row_provider = fixture_row_provider
 	_camera = camera
 	_resolve_fixture_uuid_from_node_callback = resolve_fixture_uuid_from_node_callback
 	_apply_fixture_controls_callback = apply_fixture_controls_callback
@@ -120,10 +123,22 @@ func clear_selected_fixture(reason: String) -> void:
 
 func populate_fixture_list() -> void:
 	_fixture_list.clear()
-	for fixture_uuid in _scene_registry.list_fixture_uuids():
-		var index: int = _fixture_list.get_item_count()
-		_fixture_list.add_item(fixture_uuid)
-		_fixture_list.set_item_metadata(index, fixture_uuid)
+	if _fixture_row_provider == null:
+		for fixture_uuid in _scene_registry.list_fixture_uuids():
+			var index: int = _fixture_list.get_item_count()
+			_fixture_list.add_item(fixture_uuid)
+			_fixture_list.set_item_metadata(index, fixture_uuid)
+	else:
+		for row_value in _fixture_row_provider.get_fixture_rows():
+			if row_value is not Dictionary:
+				continue
+			var row: Dictionary = row_value
+			var fixture_uuid: String = str(row.get("fixture_uuid", ""))
+			if fixture_uuid.is_empty() or not _scene_registry.has_fixture(fixture_uuid):
+				continue
+			var index: int = _fixture_list.get_item_count()
+			_fixture_list.add_item(_resolve_fixture_display_label(row))
+			_fixture_list.set_item_metadata(index, fixture_uuid)
 	if not _selected_fixture_uuid.is_empty():
 		var selected_index: int = _find_fixture_list_index(_selected_fixture_uuid)
 		if selected_index >= 0:
@@ -174,7 +189,7 @@ func refresh_fixture_debug_panel() -> void:
 	var axis_text: String = "Axis anchors: 0"
 	var emitter_text: String = "Emitter anchors: 0"
 	if not _selected_fixture_uuid.is_empty() and _scene_registry.has_fixture(_selected_fixture_uuid):
-		selected_text = "Selected fixture: %s" % _selected_fixture_uuid
+		selected_text = "Selected fixture: %s" % _resolve_selected_fixture_display_label(_selected_fixture_uuid)
 		var axis_anchors: Variant = _scene_registry.get_anchor(_selected_fixture_uuid, "axis")
 		var emitter_anchors: Variant = _scene_registry.get_anchor(_selected_fixture_uuid, "emitters")
 		axis_text = "Axis anchors: %d" % _count_valid_nodes(axis_anchors)
@@ -202,6 +217,24 @@ func _select_fixture_by_uuid(fixture_uuid: String, source: String) -> void:
 	print("[PeravizFixtureTest] selected uuid=", fixture_uuid, " source=", source)
 	_apply_selected_fixture_controls("select")
 	refresh_fixture_debug_panel()
+
+func _resolve_selected_fixture_display_label(fixture_uuid: String) -> String:
+	if _fixture_row_provider == null:
+		return fixture_uuid
+	return _resolve_fixture_display_label(_fixture_row_provider.get_fixture_row(fixture_uuid))
+
+func _resolve_fixture_display_label(row: Dictionary) -> String:
+	var fixture_name: String = str(row.get("fixture_name", "")).strip_edges()
+	if not fixture_name.is_empty():
+		return fixture_name
+	var fixture_id: String = str(row.get("fixture_id", "")).strip_edges()
+	if not fixture_id.is_empty():
+		return "Fixture ID %s" % fixture_id
+	var fixture_type: String = str(row.get("fixture_type", "")).strip_edges()
+	if not fixture_type.is_empty():
+		return fixture_type
+	var fixture_uuid: String = str(row.get("fixture_uuid", "")).strip_edges()
+	return "Fixture UUID %s" % fixture_uuid if not fixture_uuid.is_empty() else "Unknown fixture"
 
 func _find_fixture_list_index(fixture_uuid: String) -> int:
 	for index in range(_fixture_list.get_item_count()):

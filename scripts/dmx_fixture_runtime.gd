@@ -25,13 +25,15 @@ var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _used_universes: Dictionary = {}
 var _fixture_time_tick_flags: Dictionary = {}
+var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
 var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
 
-func configure(loader, scene_registry: SceneRegistry) -> void:
+func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_loader = loader
 	_scene_registry = scene_registry
+	_fixture_row_provider = fixture_row_provider
 	_gobo_vectorization_cache = GoboVectorizationCacheScript.new()
 
 func rebuild(universe_offset: int) -> Dictionary:
@@ -86,6 +88,9 @@ func rebuild(universe_offset: int) -> Dictionary:
 		if universe_id >= 0:
 			_used_universes[universe_id] = true
 
+	if _fixture_row_provider != null:
+		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
+
 	return _build_summary(universe_offset)
 
 func set_debug_force_full_apply(enabled: bool) -> void:
@@ -97,7 +102,9 @@ func get_bound_fixture_ids() -> PackedStringArray:
 		fixture_ids.append(str(fixture_uuid))
 	return fixture_ids
 
-func get_fixture_inspection_rows() -> Array:
+func get_fixture_rows() -> Array:
+	if _fixture_row_provider != null:
+		return _fixture_row_provider.get_fixture_rows()
 	var rows: Array = []
 	var seen_fixture_uuids: Dictionary = {}
 	for fixture_uuid in _collect_known_fixture_uuids():
@@ -112,6 +119,9 @@ func get_fixture_inspection_rows() -> Array:
 			rows.append(_build_fixture_inspection_row(key))
 	rows.sort_custom(Callable(self, "_sort_fixture_inspection_rows"))
 	return rows
+
+func get_fixture_inspection_rows() -> Array:
+	return get_fixture_rows()
 
 func get_time_tick_fixture_ids() -> PackedStringArray:
 	return _time_tick_fixture_ids

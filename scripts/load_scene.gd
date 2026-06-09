@@ -154,12 +154,14 @@ const SceneImportServiceScript = preload("res://scripts/scene_loading/scene_impo
 const NodeFactoryScript = preload("res://scripts/scene_loading/node_factory.gd")
 const FixtureBindingServiceScript = preload("res://scripts/scene_loading/fixture_binding_service.gd")
 const DebugOverlayServiceScript = preload("res://scripts/scene_loading/debug_overlay_service.gd")
+const FixtureRowProviderScript = preload("res://scripts/scene_loading/fixture_row_provider.gd")
 
 var _scene_import_service := SceneImportServiceScript.new()
 var _project_archive := PeravizProjectArchiveScript.new()
 var _node_factory := NodeFactoryScript.new()
 var _fixture_binding_service := FixtureBindingServiceScript.new()
 var _debug_overlay_service := DebugOverlayServiceScript.new()
+var _fixture_row_provider := FixtureRowProviderScript.new()
 var _status_presenter: StatusPresenter
 var _user_preferences: UserPreferences
 var _debug_properties_applied: int = 0
@@ -255,6 +257,7 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 func _ready() -> void:
 	_apply_imported_content_scale()
 	_scene_registry.configure(proxies_root)
+	_fixture_row_provider.configure(_loader, _scene_registry)
 	manual_fixture_toggle.toggled.connect(_on_manual_fixture_toggle)
 	show_advanced_controls_toggle.toggled.connect(_on_show_advanced_controls_toggled)
 	if auto_load_last_project_toggle != null:
@@ -279,6 +282,7 @@ func _ready() -> void:
 	_fixture_debug_controller.configure(
 		self,
 		_scene_registry,
+		_fixture_row_provider,
 		camera,
 		{
 			"manual_fixture_toggle": manual_fixture_toggle,
@@ -579,7 +583,8 @@ func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_lo
 		Callable(self, "_set_has_loaded_bounds"),
 		_debug_coords_enabled,
 		_debug_asset_cache_enabled,
-		_scene_registry
+		_scene_registry,
+		_fixture_row_provider
 	)
 	if bool(import_result.get("ok", false)):
 		_refresh_fixture_inspection_panel()
@@ -1433,6 +1438,7 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 
 func _clear_scene() -> void:
 	_clear_fixture_inspection_panel()
+	_fixture_row_provider.clear()
 	_scene_import_service.clear_scene(
 		_scene_registry,
 		proxies_root,
@@ -2439,7 +2445,7 @@ func _refresh_fixture_inspection_panel() -> void:
 		return
 	var rows: Array = []
 	if _dmx_controller != null:
-		rows = _dmx_controller.get_fixture_inspection_rows()
+		rows = _dmx_controller.get_fixture_rows()
 	_fixture_inspection_panel.refresh(rows)
 
 func _clear_fixture_inspection_panel() -> void:
@@ -2476,7 +2482,7 @@ func bridge_setup_dmx_controls() -> void:
 	_setup_dmx_controls()
 
 func _setup_dmx_fixture_runtime() -> void:
-	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry)
+	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, _fixture_row_provider)
 
 func _refresh_dmx_fixture_bindings() -> void:
 	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings()
