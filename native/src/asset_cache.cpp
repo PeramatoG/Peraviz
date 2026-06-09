@@ -1,5 +1,7 @@
 #include "asset_cache.h"
 
+#include "archive/zip_archive.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -8,9 +10,6 @@
 #include <sstream>
 #include <vector>
 
-#include <wx/filename.h>
-#include <wx/wfstream.h>
-#include <wx/zipstrm.h>
 
 namespace {
 
@@ -25,12 +24,7 @@ std::string to_lower_ascii(std::string value) {
 
 // Normalizes archive paths for deterministic cache keys.
 std::string normalize_archive_path(const std::string &raw) {
-    std::string out = raw;
-    std::replace(out.begin(), out.end(), '\\', '/');
-    while (!out.empty() && (out.front() == '/' || out.front() == '.')) {
-        out.erase(out.begin());
-    }
-    return out;
+    return peraviz::archive::ZipArchive::normalize_path(raw);
 }
 
 // Replaces unsafe filename characters in one path segment.
@@ -181,8 +175,8 @@ std::string parent_archive_dir(const std::string &normalized_path) {
 
 namespace peraviz {
 
+// Creates a cache rooted in the system temporary directory for one archive.
 ZipAssetCache::ZipAssetCache(std::string source_path)
-// Returns the original source path associated with this cache.
     : source_path_(std::filesystem::u8path(source_path)) {
     const std::filesystem::path base = std::filesystem::temp_directory_path() / "peraviz_cache";
     const std::string source_name = source_path_.filename().u8string();
@@ -202,6 +196,7 @@ int ZipAssetCache::extracted_assets() const {
     return static_cast<int>(extracted_.size());
 }
 
+// Extracts texture and scene dependencies that live beside a model entry.
 static void extract_related_model_assets(ZipAssetCache &cache,
                                          const std::filesystem::path &source_path,
                                          const std::string &model_archive_path) {
@@ -210,16 +205,13 @@ static void extract_related_model_assets(ZipAssetCache &cache,
         return;
     }
 
-    const std::string model_dir = parent_archive_dir(normalized_model_path);
-    wxFileInputStream input(wxString::FromUTF8(source_path.u8string().c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(source_path)) {
         return;
     }
 
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string entry_name = normalize_archive_path(entry->GetName().ToUTF8().data());
+    const std::string model_dir = parent_archive_dir(normalized_model_path);
+    for (const std::string &entry_name : archive.list_files()) {
         if (entry_name.empty()) {
             continue;
         }
@@ -263,36 +255,19 @@ std::string ZipAssetCache::ensure_extracted(const std::string &archive_relative_
         return out_path.u8string();
     }
 
-    wxFileInputStream input(wxString::FromUTF8(source_path_.u8string().c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(source_path_)) {
         return {};
     }
 
     const std::string target_lower = to_lower_ascii(normalized);
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string entry_name = normalize_archive_path(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
         if (to_lower_ascii(entry_name) != target_lower) {
             continue;
         }
 
-        wxFileName file_name(wxString::FromUTF8(out_path.u8string().c_str()));
-        file_name.Mkdir(wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
-
-        wxFileOutputStream output(wxString::FromUTF8(out_path.u8string().c_str()));
-        if (!output.IsOk()) {
+        if (!archive.extract_file(entry_name, out_path)) {
             return {};
-        }
-
-        char buffer[8192];
-        while (!zip.Eof()) {
-            zip.Read(buffer, sizeof(buffer));
-            const size_t bytes = zip.LastRead();
-            if (bytes == 0) {
-                break;
-            }
-            output.Write(buffer, bytes);
         }
 
         extracted_.insert(normalized);
@@ -313,15 +288,12 @@ std::string ZipAssetCache::ensure_archive_file_extracted(const std::string &file
         return direct;
     }
 
-    wxFileInputStream input(wxString::FromUTF8(source_path_.u8string().c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(source_path_)) {
         return {};
     }
 
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string entry_name = normalize_archive_path(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
         const std::string entry_name_lower = to_lower_ascii(entry_name);
         if (entry_name_lower != normalized_file &&
             entry_name_lower.rfind("/" + normalized_file) == std::string::npos) {
@@ -360,18 +332,15 @@ std::string ZipAssetCache::ensure_gdtf_spec_extracted(const std::string &gdtf_sp
     const std::string expected_filename =
         to_lower_ascii(trim_ascii(spec_path.filename().u8string()));
 
-    wxFileInputStream input(wxString::FromUTF8(source_path_.u8string().c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(source_path_)) {
         return {};
     }
 
     std::optional<std::string> key_match;
     std::optional<std::string> file_name_match;
 
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string entry_name = normalize_archive_path(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
         if (entry_name.empty()) {
             continue;
         }
@@ -444,17 +413,14 @@ std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &model_r
         }
     }
 
-    wxFileInputStream input(wxString::FromUTF8(source_path_.u8string().c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(source_path_)) {
         return {};
     }
 
     const std::string stem_lower = to_lower_ascii(trim_ascii(stem));
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
     std::optional<std::string> best_entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string entry_name = normalize_archive_path(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
         if (path_stem_lower(entry_name) != stem_lower) {
             continue;
         }
@@ -523,17 +489,14 @@ std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &model_
         }
     }
 
-    wxFileInputStream input(wxString::FromUTF8(source_path_.u8string().c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(source_path_)) {
         return {};
     }
 
     const std::string stem_lower = to_lower_ascii(stem);
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
     std::optional<std::string> best_entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string entry_name = normalize_archive_path(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
         if (path_stem_lower(entry_name) != stem_lower) {
             continue;
         }

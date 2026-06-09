@@ -1,11 +1,10 @@
 #include "dmx/gdtf_xml_reader.h"
 
+#include "archive/zip_archive.h"
+
 #include <algorithm>
 #include <cctype>
-#include <memory>
-
-#include <wx/wfstream.h>
-#include <wx/zipstrm.h>
+#include <filesystem>
 
 namespace peraviz::dmx {
 
@@ -28,35 +27,23 @@ std::string trim_ascii(std::string text) {
 
 // Reads and returns the GDTF description XML from an archive.
 std::string read_gdtf_description_xml(const std::string &gdtf_path) {
-    wxFileInputStream input(wxString::FromUTF8(gdtf_path.c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(std::filesystem::u8path(gdtf_path))) {
         return {};
     }
 
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        const std::string file_name = lower_ascii(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
+        const std::string file_name = lower_ascii(peraviz::archive::ZipArchive::normalize_path(entry_name));
         if (file_name != "description.xml" && file_name.find("/description.xml") == std::string::npos) {
             continue;
         }
-
-        std::string xml;
-        char buffer[4096];
-        while (!zip.Eof()) {
-            zip.Read(buffer, sizeof(buffer));
-            const size_t n = zip.LastRead();
-            if (n == 0) {
-                break;
-            }
-            xml.append(buffer, n);
-        }
-        return xml;
+        return archive.read_text_file(entry_name);
     }
 
     return {};
 }
 
+// Collects all descendant XML elements with a case-insensitive name match.
 std::vector<tinyxml2::XMLElement *> collect_elements_by_name(tinyxml2::XMLElement *root,
                                                              const std::string &name_lower) {
     std::vector<tinyxml2::XMLElement *> result;
@@ -81,6 +68,7 @@ std::vector<tinyxml2::XMLElement *> collect_elements_by_name(tinyxml2::XMLElemen
     return result;
 }
 
+// Collects direct child XML elements with a case-insensitive name match.
 std::vector<tinyxml2::XMLElement *> collect_direct_children_by_name(tinyxml2::XMLElement *root,
                                                                     const std::string &name_lower) {
     std::vector<tinyxml2::XMLElement *> result;
@@ -96,6 +84,7 @@ std::vector<tinyxml2::XMLElement *> collect_direct_children_by_name(tinyxml2::XM
     return result;
 }
 
+// Reads one of two case variants of an XML attribute and trims it.
 std::string read_attr_ci(tinyxml2::XMLElement *node,
                          const char *name_a,
                          const char *name_b) {

@@ -43,3 +43,4 @@ Changes since the initial Peraviz repository split.
 - Added a focused project archive service for reading and writing the initial `.pvz` archive files.
 - Extended user preferences with lightweight session state for the last loaded file and project auto-load / DMX auto-start options.
 - Peraviz now has a dedicated version source and release-notes draft workflow.
+- Replaced wxWidgets-based native archive handling with a small libzip-backed archive layer, reducing Windows export dependencies for MVR and GDTF loading.

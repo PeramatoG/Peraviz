@@ -19,4 +19,4 @@ local implementation for parsing, transform composition, and runtime behavior.
 
 - `godot-cpp`
 - `tinyxml2`
-- `wxWidgets` (core/base)
+- `libzip`

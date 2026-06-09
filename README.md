@@ -96,7 +96,7 @@ Peraviz includes explicit tooling to make import correctness reproducible:
 - **godot-cpp**: compatible with the chosen Godot version (the project targets the 4.2.x line)
 - Native dependencies used by the loader:
   - `tinyxml2`
-  - `wxWidgets` (used for reading MVR ZIP containers via `wxZipInputStream`)
+  - `libzip` (used by the internal archive layer for ZIP-based MVR/GDTF files)
 
 ### Build the native extension (GDExtension)
 

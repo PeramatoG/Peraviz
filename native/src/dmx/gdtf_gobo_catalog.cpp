@@ -1,18 +1,16 @@
 #include "dmx/gdtf_gobo_catalog.h"
 
 #include "asset_cache.h"
+#include "archive/zip_archive.h"
 #include "dmx/gdtf_physical_ranges.h"
 #include "dmx/gdtf_xml_reader.h"
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <memory>
 #include <cmath>
 #include <cstdlib>
 
-#include <wx/wfstream.h>
-#include <wx/zipstrm.h>
 
 namespace peraviz::dmx {
 
@@ -38,6 +36,7 @@ FixtureGoboRangeBehavior parse_gobo_range_behavior(const std::string &channel_se
     return FixtureGoboRangeBehavior::kFixed;
 }
 
+// Returns whether a function name or attribute identifies a select-shake function.
 bool is_select_shake_function(const std::string &function_name,
                               const std::string &function_attribute) {
     const std::string lowered_function_name = lower_ascii(function_name);
@@ -74,6 +73,7 @@ int parse_positive_int(const char *raw) {
     return static_cast<int>(parsed);
 }
 
+// Finds gobo media in an archive by matching the referenced file stem.
 std::string find_archive_media_by_stem(const std::string &gdtf_path,
                                        const std::string &media_reference) {
     const std::filesystem::path ref_path = std::filesystem::u8path(trim_ascii(media_reference));
@@ -82,17 +82,13 @@ std::string find_archive_media_by_stem(const std::string &gdtf_path,
         return {};
     }
 
-    wxFileInputStream input(wxString::FromUTF8(gdtf_path.c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(std::filesystem::u8path(gdtf_path))) {
         return {};
     }
 
     std::string best_match;
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        std::string entry_name = entry->GetName().ToUTF8().data();
-        std::replace(entry_name.begin(), entry_name.end(), '\\', '/');
+    for (const std::string &entry_name : archive.list_files()) {
         const std::string entry_lower = lower_ascii(entry_name);
         const std::filesystem::path entry_path = std::filesystem::u8path(entry_name);
         const std::string entry_ext = lower_ascii(entry_path.extension().u8string());
@@ -116,6 +112,7 @@ std::string find_archive_media_by_stem(const std::string &gdtf_path,
     return best_match;
 }
 
+// Ensures a referenced gobo media asset is available in the cache.
 std::string ensure_gobo_media_extracted(const std::string &gdtf_path,
                                         peraviz::ZipAssetCache &cache,
                                         const std::string &media_reference) {

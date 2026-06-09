@@ -69,20 +69,23 @@ if(NOT TARGET tinyxml2::tinyxml2)
     )
 endif()
 
-if(NOT wxWidgets_FOUND)
-    find_package(wxWidgets REQUIRED COMPONENTS core base)
-    include(${wxWidgets_USE_FILE})
-    set(_peraviz_wx_libs ${wxWidgets_LIBRARIES})
+if(CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg.cmake" OR DEFINED VCPKG_TARGET_TRIPLET)
+    find_package(libzip CONFIG REQUIRED)
+    if(NOT TARGET libzip::zip AND TARGET zip)
+        add_library(libzip::zip ALIAS zip)
+    endif()
 else()
-    if(TARGET wx::core)
-        set(_peraviz_wx_libs wx::core wx::base)
-    else()
-        set(_peraviz_wx_libs ${wxWidgets_LIBRARIES})
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+    if(NOT TARGET libzip::zip)
+        add_library(libzip::zip INTERFACE IMPORTED)
+        target_link_libraries(libzip::zip INTERFACE PkgConfig::LIBZIP)
     endif()
 endif()
 
 add_library(peraviz_native SHARED
     src/hello_world.cpp
+    src/archive/zip_archive.cpp
     src/asset_cache.cpp
     src/coordinate_mapper.cpp
     src/mesh_3ds_loader.cpp
@@ -124,7 +127,7 @@ target_include_directories(peraviz_native PRIVATE
 target_link_libraries(peraviz_native PRIVATE
     godot-cpp
     tinyxml2::tinyxml2
-    ${_peraviz_wx_libs}
+    libzip::zip
 )
 
 set_target_properties(peraviz_native PROPERTIES
@@ -134,6 +137,7 @@ set_target_properties(peraviz_native PROPERTIES
 if(BUILD_TESTING)
     add_executable(peraviz_native_dmx_tests
         tests/gdtf_attribute_classifier_test.cpp
+        src/archive/zip_archive.cpp
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_xml_reader.cpp
     )
@@ -143,12 +147,13 @@ if(BUILD_TESTING)
     )
     target_link_libraries(peraviz_native_dmx_tests PRIVATE
         tinyxml2::tinyxml2
-        ${_peraviz_wx_libs}
+        libzip::zip
     )
     add_test(NAME peraviz_native_dmx_tests COMMAND peraviz_native_dmx_tests)
 
     add_executable(peraviz_native_dmx_e2e_tests
         tests/fixture_dmx_binding_e2e_test.cpp
+        src/archive/zip_archive.cpp
         src/asset_cache.cpp
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_control_offsets_resolver.cpp
@@ -163,7 +168,7 @@ if(BUILD_TESTING)
     )
     target_link_libraries(peraviz_native_dmx_e2e_tests PRIVATE
         tinyxml2::tinyxml2
-        ${_peraviz_wx_libs}
+        libzip::zip
     )
     add_test(NAME peraviz_native_dmx_e2e_tests COMMAND peraviz_native_dmx_e2e_tests)
 endif()

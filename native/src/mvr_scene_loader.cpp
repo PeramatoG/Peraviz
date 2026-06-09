@@ -1,6 +1,7 @@
 #include "mvr_scene_loader.h"
 
 #include "asset_cache.h"
+#include "archive/zip_archive.h"
 #include "coordinate_mapper.h"
 #include "gdtf_scene_builder.h"
 #include "matrixutils.h"
@@ -14,13 +15,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
-#include <memory>
 #include <string>
 #include <unordered_map>
 
 #include <tinyxml2.h>
-#include <wx/wfstream.h>
-#include <wx/zipstrm.h>
 
 namespace {
 
@@ -73,30 +71,17 @@ const char *child_text_ci(tinyxml2::XMLElement *parent,
 
 // Reads and parses an XML document embedded in an MVR archive.
 std::string read_xml_from_mvr(const std::string &path) {
-    wxFileInputStream input(wxString::FromUTF8(path.c_str()));
-    if (!input.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_read(std::filesystem::u8path(path))) {
         return {};
     }
 
-    wxZipInputStream zip(input);
-    std::unique_ptr<wxZipEntry> entry;
-    while ((entry.reset(zip.GetNextEntry())), entry) {
-        std::string file_name = lower_ascii(entry->GetName().ToUTF8().data());
+    for (const std::string &entry_name : archive.list_files()) {
+        const std::string file_name = lower_ascii(peraviz::archive::ZipArchive::normalize_path(entry_name));
         if (file_name.find("generalscenedescription.xml") == std::string::npos) {
             continue;
         }
-
-        std::string xml;
-        char buffer[4096];
-        while (!zip.Eof()) {
-            zip.Read(buffer, sizeof(buffer));
-            const size_t n = zip.LastRead();
-            if (n == 0) {
-                break;
-            }
-            xml.append(buffer, n);
-        }
-        return xml;
+        return archive.read_text_file(entry_name);
     }
 
     return {};
