@@ -1,0 +1,11 @@
+{
+  "name": "peraviz-native",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "libzip",
+      "features": []
+    },
+    "tinyxml2"
+  ]
+}

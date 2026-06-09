@@ -109,7 +109,15 @@ cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Debug
 cmake --build native/build --config Debug
 ```
 
-The resulting library is copied into `bin/` so the Godot editor can load it.
+For Windows exports, build with vcpkg manifest mode and the static triplet so `peraviz_native.dll` is self-contained instead of depending on copied third-party DLLs:
+
+```bash
+cd native
+cmake --preset windows-release-static
+cmake --build --preset windows-release-static
+```
+
+The resulting library is copied into `bin/` so the Godot editor can load it. For the full Windows export flow, including dependency verification and Godot resource include filters, see `docs/WINDOWS_EXPORT.md`.
 
 ### Run the viewer
 
