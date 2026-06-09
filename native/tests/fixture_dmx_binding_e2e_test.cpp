@@ -1,5 +1,6 @@
 #include "dmx/fixture_dmx_binding.h"
 #include "dmx/gdtf_control_offsets_resolver.h"
+#include "archive/zip_archive.h"
 
 #include <cmath>
 #include <filesystem>
@@ -11,10 +12,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <wx/filename.h>
-#include <wx/stdpaths.h>
-#include <wx/wfstream.h>
-#include <wx/zipstrm.h>
 
 namespace {
 
@@ -40,17 +37,14 @@ std::string read_file(const std::filesystem::path &path) {
 
 // Creates a minimal GDTF archive with the provided XML.
 bool write_gdtf_archive(const std::filesystem::path &path, const std::string &description_xml) {
-    wxFileOutputStream file_stream(wxString::FromUTF8(path.string().c_str()));
-    if (!file_stream.IsOk()) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_create_or_modify(path)) {
         return false;
     }
-
-    wxZipOutputStream zip(file_stream);
-    if (!zip.PutNextEntry("description.xml")) {
+    if (!archive.write_file("description.xml", description_xml)) {
         return false;
     }
-    zip.Write(description_xml.data(), description_xml.size());
-    return zip.Close();
+    return archive.close();
 }
 
 const peraviz::dmx::FixtureGoboWheelOffset *find_wheel(

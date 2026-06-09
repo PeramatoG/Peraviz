@@ -12,7 +12,7 @@ This document explains how to build the C++ native extension (`peraviz_native`) 
 In addition to `godot-cpp`, the native target links:
 
 - `tinyxml2`: parsing `GeneralSceneDescription.xml`.
-- `wxWidgets (core/base)`: reading `.mvr` ZIP containers through `wxZipInputStream`.
+- `libzip`: reading and extracting ZIP-based MVR/GDTF archives through the internal native archive layer.
 
 Peraviz now provides matrix/transform utilities locally under `native/src/` (`types.h`, `matrixutils.h`), so no external Perastage headers are required.
 
@@ -38,7 +38,7 @@ The resulting library is copied automatically to `bin/`.
 ### Windows (Visual Studio) note
 
 When building with Visual Studio, the generated `peraviz_native.dll` may depend on additional
-runtime DLLs (`wxWidgets`, `tinyxml2`, etc.). The native CMake copies runtime DLL
+runtime DLLs (`libzip`, `zlib`, `tinyxml2`, etc.). The native CMake copies runtime DLL
 dependencies to `bin/` after each build, so Godot can load the extension without
 manual PATH tweaks.
 
