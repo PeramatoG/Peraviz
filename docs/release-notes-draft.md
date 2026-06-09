@@ -45,3 +45,4 @@ Changes since the initial Peraviz repository split.
 - Peraviz now has a dedicated version source and release-notes draft workflow.
 - Replaced wxWidgets-based native archive handling with a small libzip-backed archive layer, reducing Windows export dependencies for MVR and GDTF loading.
 - Prevented native source and CMake build output from being scanned as Godot resources, avoiding accidental imports of compiled object files in the editor.
+- Added vcpkg manifest support for static Windows native builds and cleaned obsolete runtime DLL artifacts from the Godot `bin/` directory.

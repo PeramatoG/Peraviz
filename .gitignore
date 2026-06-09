@@ -15,6 +15,7 @@
 /bin/*.dll
 /bin/*.ilk
 /bin/*.pdb
+/bin/~*.TMP
 *.pdb
 
 # Godot local editor metadata

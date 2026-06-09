@@ -52,8 +52,14 @@ if(NOT TARGET godot-cpp)
     endif()
 endif()
 
+set(PERAVIZ_USING_VCPKG OFF)
+if(CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg.cmake" OR DEFINED VCPKG_TARGET_TRIPLET)
+    set(PERAVIZ_USING_VCPKG ON)
+endif()
 
-if(NOT tinyxml2_FOUND)
+if(PERAVIZ_USING_VCPKG)
+    find_package(tinyxml2 CONFIG REQUIRED)
+elseif(NOT tinyxml2_FOUND)
     find_package(tinyxml2 CONFIG QUIET)
 endif()
 if(NOT TARGET tinyxml2::tinyxml2)
@@ -69,7 +75,7 @@ if(NOT TARGET tinyxml2::tinyxml2)
     )
 endif()
 
-if(CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg.cmake" OR DEFINED VCPKG_TARGET_TRIPLET)
+if(PERAVIZ_USING_VCPKG)
     find_package(libzip CONFIG REQUIRED)
     if(NOT TARGET libzip::zip AND TARGET zip)
         add_library(libzip::zip ALIAS zip)
@@ -133,6 +139,11 @@ target_link_libraries(peraviz_native PRIVATE
 set_target_properties(peraviz_native PROPERTIES
     OUTPUT_NAME "peraviz_native"
 )
+
+if(MSVC AND VCPKG_TARGET_TRIPLET MATCHES "static")
+    set_property(TARGET peraviz_native PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 if(BUILD_TESTING)
     add_executable(peraviz_native_dmx_tests
