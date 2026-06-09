@@ -10,14 +10,15 @@
       "name": "windows-static-base",
       "hidden": true,
       "displayName": "Windows static vcpkg base",
-      "description": "Build peraviz_native as a GDExtension DLL while statically linking third-party vcpkg dependencies.",
+      "description": "Build peraviz_native as a GDExtension DLL while statically linking third-party vcpkg dependencies and using the dynamic MSVC runtime.",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "toolchainFile": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static",
-        "BUILD_SHARED_LIBS": "OFF"
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "BUILD_SHARED_LIBS": "OFF",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
       },
       "condition": {
         "type": "equals",
@@ -46,12 +47,14 @@
     {
       "name": "windows-debug-static",
       "configurePreset": "windows-debug-static",
-      "configuration": "Debug"
+      "configuration": "Debug",
+      "jobs": 1
     },
     {
       "name": "windows-release-static",
       "configurePreset": "windows-release-static",
-      "configuration": "Release"
+      "configuration": "Release",
+      "jobs": 1
     }
   ],
   "testPresets": [

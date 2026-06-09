@@ -140,11 +140,6 @@ set_target_properties(peraviz_native PROPERTIES
     OUTPUT_NAME "peraviz_native"
 )
 
-if(MSVC AND VCPKG_TARGET_TRIPLET MATCHES "static")
-    set_property(TARGET peraviz_native PROPERTY
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
-
 if(WIN32)
     add_custom_target(peraviz_native_check_dependencies
         COMMAND ${CMAKE_COMMAND}
@@ -211,14 +206,4 @@ if(PERAVIZ_GODOT_PROJECT_DIR)
             LIBRARY_OUTPUT_DIRECTORY_${config_upper} "${_peraviz_bin_dir}"
         )
     endforeach()
-
-    if(WIN32)
-        add_custom_command(TARGET peraviz_native POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_RUNTIME_DLLS:peraviz_native>
-                "${_peraviz_bin_dir}"
-            COMMAND_EXPAND_LISTS
-            COMMENT "Copying peraviz_native runtime DLL dependencies to ${_peraviz_bin_dir}"
-        )
-    endif()
 endif()

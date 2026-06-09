@@ -21,3 +21,4 @@
 
 # Godot local editor metadata
 /godot/editor/project_metadata.cfg
+/native/build
