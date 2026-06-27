@@ -32,6 +32,7 @@ func configure(owner: Node,
 	_ensure_toast(owner)
 	set_scene_state_idle()
 	set_dmx_badge(false, false)
+	set_mvr_xchange_badge(false, 0)
 	set_selected_fixture_badge("")
 	set_render_mode_badge("Volumetric")
 
@@ -66,6 +67,16 @@ func set_dmx_badge(is_running: bool, receiving_signal: bool) -> void:
 		_set_badge("DMX", "OFF")
 		return
 	_set_badge("DMX", "Connected" if receiving_signal else "No signal")
+
+func set_mvr_xchange_badge(is_running: bool, station_count: int) -> void:
+	if not is_running:
+		_set_badge("MVR-xchange", "OFF")
+	elif station_count <= 0:
+		_set_badge("MVR-xchange", "Discovering")
+	elif station_count == 1:
+		_set_badge("MVR-xchange", "1 station")
+	else:
+		_set_badge("MVR-xchange", "%d stations" % station_count)
 
 func set_selected_fixture_badge(fixture_uuid: String) -> void:
 	_set_badge("Selected Fixture", "None" if fixture_uuid.is_empty() else fixture_uuid)
@@ -117,6 +128,7 @@ func _ensure_badges(load_button: Button, show_advanced_controls_toggle: CheckBut
 
 	_create_badge("MVR")
 	_create_badge("DMX")
+	_create_badge("MVR-xchange")
 	_create_badge("Selected Fixture")
 	_create_badge("Render Mode")
 

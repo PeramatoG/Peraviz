@@ -10,6 +10,7 @@ Changes since the initial Peraviz repository split.
 
 ## New features
 
+- Added a first-phase MVR-xchange discovery panel for finding local stations such as Perastage without requesting or loading MVR files yet.
 - Added a read-only Fixture Inspection panel in the User area so loaded MVR and PVZ scenes can be reviewed by fixture name, user-facing fixture ID, type, patch address, and DMX binding status without opening Debug tools.
 - Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings.
 - Peraviz now remembers the last opened MVR or PVZ project as a user preference, while keeping startup auto-load as an explicit opt-in choice instead of enabling it whenever a file is loaded or saved.
@@ -33,6 +34,7 @@ Changes since the initial Peraviz repository split.
 
 ## Documentation
 
+- Added MVR-xchange documentation that clarifies the Phase 1 discovery-only scope and Peraviz viewer role.
 - Documented the initial `.pvz` project archive format and its version 1 archive structure, including reserved future fixture override data and compatibility expectations for older archives.
 - Documented the Peraviz project architecture around MVR scene data, GDTF fixture definitions, future PVZ project data, and runtime fixture entities.
 - Clarified the separation between `.pvz` project data and global user preferences, including how remembered last-file paths are treated as session preferences rather than project source content.
