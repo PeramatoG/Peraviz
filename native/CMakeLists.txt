@@ -134,6 +134,7 @@ if(PERAVIZ_ENABLE_MVR_XCHANGE)
     target_sources(peraviz_native PRIVATE
         src/mvrxchange/mvr_xchange_service_name.cpp
         src/mvrxchange/mvr_xchange_discovery.cpp
+        src/mvrxchange/mvr_xchange_transfer.cpp
         src/peraviz_mvr_xchange_client.cpp
     )
     target_compile_definitions(peraviz_native PRIVATE PERAVIZ_ENABLE_MVR_XCHANGE=1)
@@ -173,10 +174,14 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_mvr_xchange_tests
         tests/mvr_xchange_service_name_test.cpp
         src/mvrxchange/mvr_xchange_service_name.cpp
+        src/mvrxchange/mvr_xchange_transfer.cpp
     )
     target_include_directories(peraviz_native_mvr_xchange_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )
+    if(WIN32)
+        target_link_libraries(peraviz_native_mvr_xchange_tests PRIVATE ws2_32)
+    endif()
     add_test(NAME peraviz_native_mvr_xchange_tests COMMAND peraviz_native_mvr_xchange_tests)
 
     add_executable(peraviz_native_dmx_tests

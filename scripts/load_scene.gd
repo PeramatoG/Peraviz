@@ -787,6 +787,8 @@ func _setup_mvr_xchange_panel() -> void:
 	_mvr_xchange_controller.configure(self)
 	_mvr_xchange_controller.stations_changed.connect(_on_mvr_xchange_stations_changed)
 	_mvr_xchange_controller.status_changed.connect(_on_mvr_xchange_status_changed)
+	_mvr_xchange_controller.state_changed.connect(_on_mvr_xchange_state_changed)
+	_mvr_xchange_controller.mvr_file_received.connect(_on_mvr_xchange_file_received)
 	_mvr_xchange_panel = MvrXchangePanelScript.new()
 	_mvr_xchange_panel.name = "MvrXchangePanel"
 	user_module.add_child(_mvr_xchange_panel)
@@ -795,6 +797,8 @@ func _setup_mvr_xchange_panel() -> void:
 	_mvr_xchange_panel.start_requested.connect(_on_mvr_xchange_start_requested)
 	_mvr_xchange_panel.stop_requested.connect(_on_mvr_xchange_stop_requested)
 	_mvr_xchange_panel.preferences_changed.connect(_on_mvr_xchange_preferences_changed)
+	_mvr_xchange_panel.station_selected.connect(_on_mvr_xchange_station_selected)
+	_mvr_xchange_panel.update_requested.connect(_on_mvr_xchange_update_requested)
 	_on_mvr_xchange_status_changed(false, 0, "OFF")
 
 func _on_mvr_xchange_start_requested(group: String, bind_ip: String) -> void:
@@ -822,6 +826,29 @@ func _on_mvr_xchange_status_changed(is_running: bool, station_count: int, messag
 		_mvr_xchange_panel.set_status(is_running, station_count, message)
 	if _status_presenter != null:
 		_status_presenter.set_mvr_xchange_badge(is_running, station_count)
+
+func _on_mvr_xchange_state_changed(state: String, metadata: Dictionary) -> void:
+	if _mvr_xchange_panel != null:
+		_mvr_xchange_panel.set_state(state, metadata)
+	if _status_presenter != null:
+		_status_presenter.set_mvr_xchange_badge(_mvr_xchange_controller != null and _mvr_xchange_controller.is_running(), _mvr_xchange_controller.get_stations().size() if _mvr_xchange_controller != null else 0, state)
+
+func _on_mvr_xchange_station_selected(service_name: String) -> void:
+	if _mvr_xchange_controller != null:
+		_mvr_xchange_controller.select_station(service_name)
+
+func _on_mvr_xchange_update_requested() -> void:
+	if _mvr_xchange_controller != null:
+		_mvr_xchange_controller.request_update()
+
+func _on_mvr_xchange_file_received(path: String, metadata: Dictionary) -> void:
+	if path.is_empty():
+		return
+	_load_mvr_scene(path, "mvr", false)
+	if _mvr_xchange_controller != null:
+		_mvr_xchange_controller.mark_loaded(path)
+	if _status_presenter != null:
+		_status_presenter.show_toast("Loaded MVR from MVR-xchange")
 
 func _on_manual_fixture_toggle(enabled: bool) -> void:
 	ProjectSettings.set_setting("peraviz_manual_fixture_test", enabled)

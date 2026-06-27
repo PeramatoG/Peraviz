@@ -4,12 +4,18 @@ class_name MvrXchangePanel
 signal start_requested(group: String, bind_ip: String)
 signal stop_requested
 signal preferences_changed(group: String, bind_ip: String)
+signal station_selected(service_name: String)
+signal update_requested
 
 var _group_input: LineEdit
 var _bind_ip_input: LineEdit
 var _toggle_button: Button
 var _station_list: ItemList
 var _status_label: Label
+var _selected_label: Label
+var _update_button: Button
+var _stations: Array = []
+var _can_update: bool = false
 var _running: bool = false
 
 func _ready() -> void:
@@ -34,13 +40,35 @@ func set_status(is_running: bool, station_count: int, message: String) -> void:
 
 func set_stations(stations: Array) -> void:
 	_ensure_ui()
+	_stations = stations.duplicate(true)
 	_station_list.clear()
-	for station in stations:
+	for station in _stations:
 		var item: Dictionary = station as Dictionary
 		var name: String = str(item.get("station_name", "Unnamed"))
 		var address: String = str(item.get("address", item.get("host", "")))
 		var port: int = int(item.get("port", 0))
 		_station_list.add_item("%s  %s:%d" % [name, address, port])
+
+func set_state(state: String, metadata: Dictionary) -> void:
+	_ensure_ui()
+	_can_update = bool(metadata.get("can_update", state == "revision_available"))
+	_update_button.disabled = not _can_update
+	var selected: String = str(metadata.get("selected_service_name", metadata.get("service_name", "")))
+	_selected_label.text = "Selected: %s" % (selected if not selected.is_empty() else "None")
+	match state:
+		"joining":
+			_status_label.text = "Joining station..."
+		"joined":
+			_status_label.text = "Joined"
+		"revision_available":
+			_status_label.text = "New MVR revision available"
+		"requesting":
+			_update_button.disabled = true
+			_status_label.text = "Receiving MVR..."
+		"received":
+			_status_label.text = "MVR loaded"
+		"error":
+			_status_label.text = "Transfer failed: %s" % str(metadata.get("message", "Unknown error"))
 
 func _build_ui() -> void:
 	if _group_input != null:
@@ -70,11 +98,16 @@ func _build_ui() -> void:
 	_station_list = ItemList.new()
 	_station_list.custom_minimum_size = Vector2(0, 96)
 	vbox.add_child(_station_list)
-	var update_button := Button.new()
-	update_button.text = "Update"
-	update_button.disabled = true
-	update_button.tooltip_text = "Available in next phase"
-	vbox.add_child(update_button)
+	_station_list.item_selected.connect(_on_station_selected)
+	_selected_label = Label.new()
+	_selected_label.text = "Selected: None"
+	vbox.add_child(_selected_label)
+	_update_button = Button.new()
+	_update_button.text = "Update"
+	_update_button.disabled = true
+	_update_button.tooltip_text = "Request the latest MVR revision from the selected station"
+	vbox.add_child(_update_button)
+	_update_button.pressed.connect(_on_update_pressed)
 	_status_label = Label.new()
 	_status_label.text = "OFF"
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -90,3 +123,13 @@ func _on_toggle_pressed() -> void:
 		stop_requested.emit()
 	else:
 		start_requested.emit(_group_input.text, _bind_ip_input.text)
+
+func _on_station_selected(index: int) -> void:
+	if index < 0 or index >= _stations.size():
+		return
+	var station: Dictionary = _stations[index] as Dictionary
+	station_selected.emit(str(station.get("service_name", "")))
+
+func _on_update_pressed() -> void:
+	if _can_update:
+		update_requested.emit()
