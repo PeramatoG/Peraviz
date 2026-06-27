@@ -56,6 +56,8 @@ var _fixture_emitter_photometrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
 var _ui_controller: UiController
 var _dmx_controller: DmxController
+var _mvr_xchange_controller: MvrXchangeController
+var _mvr_xchange_panel: MvrXchangePanel
 var _fixture_debug_controller: FixtureDebugController
 var _fixture_inspection_panel: FixtureInspectionPanel
 var _loaded_mvr_path: String = ""
@@ -142,11 +144,13 @@ const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_li
 const UiVisibilityPolicyScript = preload("res://scripts/ui/ui_visibility_policy.gd")
 const UiControllerScript = preload("res://scripts/controllers/ui_controller.gd")
 const DmxControllerScript = preload("res://scripts/controllers/dmx_controller.gd")
+const MvrXchangeControllerScript = preload("res://scripts/controllers/mvr_xchange_controller.gd")
 const FixtureInspectionPanelScript = preload("res://scripts/ui/fixture_inspection_panel.gd")
 const PeravizProjectArchiveScript = preload("res://scripts/project/peraviz_project_archive.gd")
 const FixtureDebugControllerScript = preload("res://scripts/controllers/fixture_debug_controller.gd")
 const StatusPresenterScript = preload("res://scripts/ui/status_presenter.gd")
 const UserPreferencesScript = preload("res://scripts/ui/user_preferences.gd")
+const MvrXchangePanelScript = preload("res://scripts/ui/mvr_xchange_panel.gd")
 
 const SUPPORTED_LAST_FILE_TYPES := ["mvr", "pvz"]
 
@@ -335,6 +339,7 @@ func _ready() -> void:
 	_setup_fixture_inspection_panel()
 	_refresh_fixture_debug_panel()
 	_setup_dmx_controls()
+	_setup_mvr_xchange_panel()
 	_setup_dmx_fixture_runtime()
 	_apply_environment_quality_preset()
 	_capture_visual_environment_baseline()
@@ -771,6 +776,52 @@ func _save_user_preferences() -> void:
 	_user_preferences.set_module_visible(UiVisibilityPolicyScript.MODULE_ADVANCED, advanced_module != null and advanced_module.visible)
 	_user_preferences.set_module_visible(UiVisibilityPolicyScript.MODULE_DEBUG, debug_module != null and debug_module.visible)
 	_user_preferences.save_to_disk()
+
+
+func _setup_mvr_xchange_panel() -> void:
+	if _mvr_xchange_panel != null and is_instance_valid(_mvr_xchange_panel):
+		return
+	if user_module == null:
+		return
+	_mvr_xchange_controller = MvrXchangeControllerScript.new()
+	_mvr_xchange_controller.configure(self)
+	_mvr_xchange_controller.stations_changed.connect(_on_mvr_xchange_stations_changed)
+	_mvr_xchange_controller.status_changed.connect(_on_mvr_xchange_status_changed)
+	_mvr_xchange_panel = MvrXchangePanelScript.new()
+	_mvr_xchange_panel.name = "MvrXchangePanel"
+	user_module.add_child(_mvr_xchange_panel)
+	_mvr_xchange_panel.set_preferences(_user_preferences.mvr_xchange_group if _user_preferences != null else "Default", _user_preferences.mvr_xchange_bind_ip if _user_preferences != null else "")
+	_mvr_xchange_panel.set_available(_mvr_xchange_controller.is_available())
+	_mvr_xchange_panel.start_requested.connect(_on_mvr_xchange_start_requested)
+	_mvr_xchange_panel.stop_requested.connect(_on_mvr_xchange_stop_requested)
+	_mvr_xchange_panel.preferences_changed.connect(_on_mvr_xchange_preferences_changed)
+	_on_mvr_xchange_status_changed(false, 0, "OFF")
+
+func _on_mvr_xchange_start_requested(group: String, bind_ip: String) -> void:
+	_on_mvr_xchange_preferences_changed(group, bind_ip)
+	if _mvr_xchange_controller != null:
+		_mvr_xchange_controller.start_discovery(group, bind_ip)
+
+func _on_mvr_xchange_stop_requested() -> void:
+	if _mvr_xchange_controller != null:
+		_mvr_xchange_controller.stop_discovery()
+
+func _on_mvr_xchange_preferences_changed(group: String, bind_ip: String) -> void:
+	if _user_preferences == null:
+		return
+	_user_preferences.mvr_xchange_group = group if not group.is_empty() else "Default"
+	_user_preferences.mvr_xchange_bind_ip = bind_ip
+	_user_preferences.save_to_disk()
+
+func _on_mvr_xchange_stations_changed(stations: Array) -> void:
+	if _mvr_xchange_panel != null:
+		_mvr_xchange_panel.set_stations(stations)
+
+func _on_mvr_xchange_status_changed(is_running: bool, station_count: int, message: String) -> void:
+	if _mvr_xchange_panel != null:
+		_mvr_xchange_panel.set_status(is_running, station_count, message)
+	if _status_presenter != null:
+		_status_presenter.set_mvr_xchange_badge(is_running, station_count)
 
 func _on_manual_fixture_toggle(enabled: bool) -> void:
 	ProjectSettings.set_setting("peraviz_manual_fixture_test", enabled)

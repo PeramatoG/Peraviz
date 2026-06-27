@@ -4,6 +4,10 @@
 #include "peraviz_loader.h"
 #include "gobo_vectorizer.h"
 
+#ifdef PERAVIZ_ENABLE_MVR_XCHANGE
+#include "peraviz_mvr_xchange_client.h"
+#endif
+
 #ifdef PERAVIZ_ENABLE_DMX
 #include "peraviz_dmx_receiver.h"
 #endif
@@ -19,6 +23,9 @@ void initialize_peraviz_module(godot::ModuleInitializationLevel p_level) {
     godot::ClassDB::register_class<godot::PeravizGoboVectorizer>();
 #ifdef PERAVIZ_ENABLE_DMX
     godot::ClassDB::register_class<godot::PeravizDmxReceiver>();
+#endif
+#ifdef PERAVIZ_ENABLE_MVR_XCHANGE
+    godot::ClassDB::register_class<godot::PeravizMvrXchangeClient>();
 #endif
 }
 

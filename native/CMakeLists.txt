@@ -27,6 +27,7 @@ include(CTest)
 set(GODOT_CPP_DIR "" CACHE PATH "Path to a local godot-cpp checkout")
 option(PERAVIZ_FETCH_GODOT_CPP "Fetch godot-cpp automatically when GODOT_CPP_DIR is not provided" ON)
 option(PERAVIZ_ENABLE_DMX "Enable DMX input (Art-Net RX)" ON)
+option(PERAVIZ_ENABLE_MVR_XCHANGE "Enable MVR-xchange discovery" ON)
 
 # Uses the standalone Peraviz repository root as the Godot project location.
 set(PERAVIZ_GODOT_PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Path to the Peraviz Godot project")
@@ -73,6 +74,10 @@ if(NOT TARGET tinyxml2::tinyxml2)
         IMPORTED_LOCATION "${TINYXML2_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${TINYXML2_INCLUDE_DIR}"
     )
+endif()
+
+if(PERAVIZ_ENABLE_MVR_XCHANGE)
+    find_package(mdns CONFIG REQUIRED)
 endif()
 
 if(PERAVIZ_USING_VCPKG)
@@ -125,6 +130,19 @@ if(PERAVIZ_ENABLE_DMX)
     endif()
 endif()
 
+if(PERAVIZ_ENABLE_MVR_XCHANGE)
+    target_sources(peraviz_native PRIVATE
+        src/mvrxchange/mvr_xchange_service_name.cpp
+        src/mvrxchange/mvr_xchange_discovery.cpp
+        src/peraviz_mvr_xchange_client.cpp
+    )
+    target_compile_definitions(peraviz_native PRIVATE PERAVIZ_ENABLE_MVR_XCHANGE=1)
+    target_link_libraries(peraviz_native PRIVATE mdns::mdns)
+    if(WIN32)
+        target_link_libraries(peraviz_native PRIVATE ws2_32 iphlpapi)
+    endif()
+endif()
+
 target_include_directories(peraviz_native PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
@@ -152,6 +170,15 @@ if(WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_mvr_xchange_tests
+        tests/mvr_xchange_service_name_test.cpp
+        src/mvrxchange/mvr_xchange_service_name.cpp
+    )
+    target_include_directories(peraviz_native_mvr_xchange_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    add_test(NAME peraviz_native_mvr_xchange_tests COMMAND peraviz_native_mvr_xchange_tests)
+
     add_executable(peraviz_native_dmx_tests
         tests/gdtf_attribute_classifier_test.cpp
         src/archive/zip_archive.cpp
