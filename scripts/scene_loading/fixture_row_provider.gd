@@ -6,6 +6,7 @@ var _scene_registry: SceneRegistry = null
 var _loaded_nodes: Array = []
 var _fixture_node_lookup: Dictionary = {}
 var _fixture_patch_lookup: Dictionary = {}
+var _runtime_fixture_rows: Dictionary = {}
 var _bindings: Array = []
 var _unbound: Array = []
 
@@ -13,11 +14,13 @@ func configure(loader, scene_registry: SceneRegistry) -> void:
 	_loader = loader
 	_scene_registry = scene_registry
 	_rebuild_fixture_patch_lookup()
+	_rebuild_runtime_fixture_rows()
 
 func clear() -> void:
 	_loaded_nodes.clear()
 	_fixture_node_lookup.clear()
 	_fixture_patch_lookup.clear()
+	_runtime_fixture_rows.clear()
 	_bindings.clear()
 	_unbound.clear()
 
@@ -25,11 +28,13 @@ func set_loaded_nodes(nodes: Array) -> void:
 	_loaded_nodes = nodes.duplicate(true)
 	_rebuild_fixture_node_lookup()
 	_rebuild_fixture_patch_lookup()
+	_rebuild_runtime_fixture_rows()
 
 func set_dmx_state(bindings: Array, unbound: Array) -> void:
 	_bindings = bindings.duplicate(true)
 	_unbound = unbound.duplicate(true)
 	_rebuild_fixture_patch_lookup()
+	_rebuild_runtime_fixture_rows()
 
 func get_fixture_rows() -> Array:
 	var rows: Array = []
@@ -43,16 +48,17 @@ func get_fixture_row(fixture_uuid: String) -> Dictionary:
 		return {}
 	var node_data: Dictionary = _fixture_node_lookup.get(fixture_uuid, {})
 	var patch: Dictionary = _fixture_patch_lookup.get(fixture_uuid, {})
+	var runtime_row: Dictionary = _runtime_fixture_rows.get(fixture_uuid, {})
 	var binding: Dictionary = _find_binding_for_fixture(fixture_uuid)
 	var unbound: Dictionary = _find_unbound_for_fixture(fixture_uuid)
 	var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid) if _scene_registry != null else null
 	return {
 		"fixture_uuid": fixture_uuid,
-		"fixture_name": _resolve_fixture_name(node_data, patch, binding, fixture_node),
-		"fixture_id": _resolve_fixture_id(node_data, patch, binding, fixture_node),
-		"fixture_type": _resolve_fixture_type(node_data, patch, binding, fixture_node),
-		"universe": _resolve_fixture_universe(patch, binding),
-		"address": _resolve_fixture_address(patch, binding),
+		"fixture_name": _resolve_runtime_cell(runtime_row, 1, _resolve_fixture_name(node_data, patch, binding, fixture_node)),
+		"fixture_id": _resolve_runtime_cell(runtime_row, 0, _resolve_fixture_id(node_data, patch, binding, fixture_node)),
+		"fixture_type": _resolve_runtime_cell(runtime_row, 2, _resolve_fixture_type(node_data, patch, binding, fixture_node)),
+		"universe": _resolve_runtime_cell(runtime_row, 5, _resolve_fixture_universe(patch, binding)),
+		"address": _resolve_runtime_cell(runtime_row, 6, _resolve_fixture_address(patch, binding)),
 		"binding_status": _resolve_fixture_binding_status(binding, unbound, patch),
 		"binding_detail": _resolve_fixture_binding_detail(binding, unbound, patch),
 		"position": _resolve_vector3(node_data, ["pos", "position"]),
@@ -63,7 +69,29 @@ func get_fixture_row(fixture_uuid: String) -> Dictionary:
 
 func get_fixture_patch_lookup() -> Dictionary:
 	_rebuild_fixture_patch_lookup()
+	_rebuild_runtime_fixture_rows()
 	return _fixture_patch_lookup.duplicate(true)
+
+
+func _rebuild_runtime_fixture_rows() -> void:
+	_runtime_fixture_rows.clear()
+	if _loader == null or not _loader.has_method("get_runtime_table_rows"):
+		return
+	var rows: Array = _loader.get_runtime_table_rows("fixtures")
+	for row_value in rows:
+		if row_value is not Dictionary:
+			continue
+		var row: Dictionary = row_value
+		var row_uuid: String = str(row.get("row_uuid", ""))
+		if not row_uuid.is_empty():
+			_runtime_fixture_rows[row_uuid] = row
+
+func _resolve_runtime_cell(runtime_row: Dictionary, column_index: int, fallback: String) -> String:
+	var cells: Array = runtime_row.get("cells", [])
+	if column_index < 0 or column_index >= cells.size() or cells[column_index] == null:
+		return fallback
+	var value := str(cells[column_index])
+	return fallback if value.is_empty() or value == "-1" else value
 
 func _rebuild_fixture_node_lookup() -> void:
 	_fixture_node_lookup.clear()
@@ -97,6 +125,8 @@ func _collect_known_fixture_uuids() -> PackedStringArray:
 	for fixture_uuid in _fixture_node_lookup.keys():
 		uuid_lookup[str(fixture_uuid)] = true
 	for fixture_uuid in _fixture_patch_lookup.keys():
+		uuid_lookup[str(fixture_uuid)] = true
+	for fixture_uuid in _runtime_fixture_rows.keys():
 		uuid_lookup[str(fixture_uuid)] = true
 	for binding in _bindings:
 		if binding is Dictionary:
