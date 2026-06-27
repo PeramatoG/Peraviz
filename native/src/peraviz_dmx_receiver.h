@@ -3,6 +3,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -31,6 +32,8 @@ public:
     PackedInt32Array get_active_universes(int active_window_ms = 2000) const;
     Dictionary get_stats() const;
     PackedByteArray get_universe_data(int universe_id) const;
+    Dictionary get_universe_metadata(int universe_id) const;
+    Dictionary get_changed_universe_frames(const Dictionary &last_counters) const;
 
 private:
     static uint64_t now_microseconds();

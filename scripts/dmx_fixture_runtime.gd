@@ -24,6 +24,9 @@ var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _used_universes: Dictionary = {}
+var _bindings_by_universe: Dictionary = {}
+var _last_universe_counters: Dictionary = {}
+var _cached_universe_frames: Dictionary = {}
 var _fixture_time_tick_flags: Dictionary = {}
 var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
@@ -45,6 +48,9 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_snapshot_cache.clear()
 	_fixture_apply_plans.clear()
 	_used_universes.clear()
+	_bindings_by_universe.clear()
+	_last_universe_counters.clear()
+	_cached_universe_frames.clear()
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -87,6 +93,10 @@ func rebuild(universe_offset: int) -> Dictionary:
 		var universe_id: int = int(binding.get("artnet_universe_id", -1))
 		if universe_id >= 0:
 			_used_universes[universe_id] = true
+			if not _bindings_by_universe.has(universe_id):
+				_bindings_by_universe[universe_id] = []
+			_bindings_by_universe[universe_id].append(binding)
+			_last_universe_counters[universe_id] = -1
 
 	if _fixture_row_provider != null:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
@@ -171,55 +181,94 @@ func _string_requires_time_tick(value: String) -> bool:
 
 func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	if receiver == null or not receiver.is_running():
-		return {"updated": 0, "skipped": 0}
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
 	if apply_fixture_callback.is_null():
-		return {"updated": 0, "skipped": 0}
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
 
-	var universe_frames: Dictionary = {}
-	for universe_key in _used_universes.keys():
-		var universe_id: int = int(universe_key)
-		universe_frames[universe_id] = receiver.get_universe_data(universe_id)
+	var changed_frames: Dictionary = {}
+	if receiver.has_method("get_changed_universe_frames"):
+		changed_frames = receiver.get_changed_universe_frames(_last_universe_counters)
+	else:
+		changed_frames = _collect_changed_universe_frames_compat(receiver)
+
+	if changed_frames.is_empty() and not _debug_force_full_apply:
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
 
 	var updated: int = 0
 	var skipped: int = 0
-	for binding in _bindings:
-		if binding is not Dictionary:
-			continue
-		var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
-		if fixture_uuid.is_empty() or not _fixture_nodes.has(fixture_uuid):
-			continue
-		var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
-		if fixture_plan.is_empty():
-			fixture_plan = _build_fixture_apply_plan(binding)
-			_fixture_apply_plans[fixture_uuid] = fixture_plan
-		var universe_id: int = int(binding.get("artnet_universe_id", -1))
-		var frame: PackedByteArray = universe_frames.get(universe_id, PackedByteArray())
+	var fixtures_considered: int = 0
+	for universe_key in changed_frames.keys():
+		var universe_id: int = int(universe_key)
+		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
+		var frame: PackedByteArray = frame_entry.get("data", PackedByteArray())
 		if frame.is_empty():
 			continue
-		var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
-		if snapshot.is_empty():
-			var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame)
-			if not _has_any_capability(controls_without_cache):
+		_cached_universe_frames[universe_id] = frame
+		_last_universe_counters[universe_id] = int(frame_entry.get("counter", _last_universe_counters.get(universe_id, -1)))
+		var universe_bindings: Array = _bindings_by_universe.get(universe_id, [])
+		for binding in universe_bindings:
+			if binding is not Dictionary:
 				continue
-			_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache)
-			updated += 1
-			continue
-		var snapshot_hash: int = _compute_snapshot_hash(snapshot)
-		var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
-		if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
-			skipped += 1
-			continue
+			var result: Dictionary = _apply_binding_frame(binding, frame, apply_fixture_callback)
+			if result.is_empty():
+				continue
+			fixtures_considered += 1
+			updated += int(result.get("updated", 0))
+			skipped += int(result.get("skipped", 0))
 
-		var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame)
-		if not _has_any_capability(controls):
+	return {
+		"updated": updated,
+		"skipped": skipped,
+		"universes_changed": changed_frames.size(),
+		"fixtures_considered": fixtures_considered,
+	}
+
+func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
+	var changed_frames: Dictionary = {}
+	for universe_key in _used_universes.keys():
+		var universe_id: int = int(universe_key)
+		var metadata: Dictionary = receiver.get_universe_metadata(universe_id) if receiver.has_method("get_universe_metadata") else {}
+		var counter: int = int(metadata.get("counter", -2))
+		if counter >= 0 and counter == int(_last_universe_counters.get(universe_id, -1)) and not _debug_force_full_apply:
 			continue
-		_fixture_snapshot_cache[fixture_uuid] = {
-			"hash": snapshot_hash,
-			"snapshot": snapshot,
+		var frame: PackedByteArray = receiver.get_universe_data(universe_id)
+		if frame.is_empty():
+			continue
+		changed_frames[universe_id] = {
+			"data": frame,
+			"counter": counter,
 		}
-		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls)
-		updated += 1
-	return {"updated": updated, "skipped": skipped}
+	return changed_frames
+
+func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable) -> Dictionary:
+	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
+	if fixture_uuid.is_empty() or not _fixture_nodes.has(fixture_uuid):
+		return {}
+	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
+	if fixture_plan.is_empty():
+		fixture_plan = _build_fixture_apply_plan(binding)
+		_fixture_apply_plans[fixture_uuid] = fixture_plan
+	var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
+	if snapshot.is_empty():
+		var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame)
+		if not _has_any_capability(controls_without_cache):
+			return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
+		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache)
+		return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
+	var snapshot_hash: int = _compute_snapshot_hash(snapshot)
+	var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
+	if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
+		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 1}
+
+	var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame)
+	if not _has_any_capability(controls):
+		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
+	_fixture_snapshot_cache[fixture_uuid] = {
+		"hash": snapshot_hash,
+		"snapshot": snapshot,
+	}
+	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls)
+	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 
 func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 	var handler_scripts: Dictionary = {

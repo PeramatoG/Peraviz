@@ -197,6 +197,22 @@ if(BUILD_TESTING)
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_xml_reader.cpp
     )
+
+    add_executable(peraviz_native_artnet_flow_tests
+        tests/dmx_artnet_flow_test.cpp
+        src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_receiver.cpp
+        src/dmx/dmx_platform.cpp
+        src/dmx/dmx_universe_cache.cpp
+        src/dmx/udp_socket.cpp
+    )
+    target_include_directories(peraviz_native_artnet_flow_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    if(WIN32)
+        target_link_libraries(peraviz_native_artnet_flow_tests PRIVATE ws2_32)
+    endif()
+    add_test(NAME peraviz_native_artnet_flow_tests COMMAND peraviz_native_artnet_flow_tests)
     target_include_directories(peraviz_native_dmx_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${CMAKE_CURRENT_BINARY_DIR}/generated"
