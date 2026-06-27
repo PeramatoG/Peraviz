@@ -57,7 +57,7 @@ var _fixture_gobo_projector: FixtureGoboProjector = null
 var _ui_controller: UiController
 var _dmx_controller: DmxController
 var _mvr_xchange_controller: MvrXchangeController
-var _mvr_xchange_panel: MvrXchangePanel
+var _mvr_xchange_panel
 var _fixture_debug_controller: FixtureDebugController
 var _fixture_inspection_panel: FixtureInspectionPanel
 var _loaded_mvr_path: String = ""

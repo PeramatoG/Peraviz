@@ -45,7 +45,7 @@ Changes since the initial Peraviz repository split.
 
 ## Internal changes
 
-- Cleaned up GDScript editor warnings in the MVR-xchange panel, received-file callback, and fixture light apply service so project reloads stay quieter for maintainers.
+- Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, and fixture light apply service so project reloads stay quieter for maintainers.
 - Added Perastage-compatible runtime table schemas and in-memory row storage for fixtures, trusses, and scene objects to prepare Peraviz for future cell-based synchronization without adding Live Link transport or editing UI.
 - Added a focused fixture row provider so fixture inspection UI now reads stable fixture metadata rows built from loaded MVR scene data, patch metadata, and DMX binding state instead of assembling fixture details in UI-facing code.
 - Added a focused project archive service for reading and writing the initial `.pvz` archive files.
