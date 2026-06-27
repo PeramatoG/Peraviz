@@ -1,7 +1,10 @@
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
+
+#include "table_model/runtime_table.h"
 
 namespace peraviz {
 
@@ -75,6 +78,7 @@ struct SceneModel {
     int extracted_asset_count = 0;
     std::string cache_path;
     std::vector<FixturePatch> fixture_patches;
+    std::map<std::string, table_model::RuntimeTable> runtime_tables;
 };
 
 } // namespace peraviz

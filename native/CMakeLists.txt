@@ -107,6 +107,9 @@ add_library(peraviz_native SHARED
     src/gobo_vectorizer.cpp
     src/register_types.cpp
     src/entry.cpp
+    src/table_model/runtime_table_schema.cpp
+    src/table_model/runtime_table.cpp
+    src/table_model/perastage_table_schemas.cpp
 )
 
 if(PERAVIZ_ENABLE_DMX)
@@ -224,6 +227,16 @@ if(BUILD_TESTING)
         libzip::zip
     )
     add_test(NAME peraviz_native_dmx_e2e_tests COMMAND peraviz_native_dmx_e2e_tests)
+    add_executable(peraviz_native_runtime_table_tests
+        tests/runtime_table_model_test.cpp
+        src/table_model/runtime_table_schema.cpp
+        src/table_model/runtime_table.cpp
+        src/table_model/perastage_table_schemas.cpp
+    )
+    target_include_directories(peraviz_native_runtime_table_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    add_test(NAME peraviz_native_runtime_table_tests COMMAND peraviz_native_runtime_table_tests)
 endif()
 
 if(PERAVIZ_GODOT_PROJECT_DIR)

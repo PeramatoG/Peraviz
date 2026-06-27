@@ -2,6 +2,7 @@
 
 #include "mvr_scene_loader.h"
 #include "mesh_3ds_loader.h"
+#include "table_model/runtime_table.h"
 
 #ifdef PERAVIZ_ENABLE_DMX
 #include "dmx/fixture_dmx_binding.h"
@@ -15,6 +16,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <type_traits>
 #include <unordered_map>
 
 namespace {
@@ -36,6 +38,73 @@ godot::Array serialize_fixture_patches(const peraviz::SceneModel &model) {
     return out;
 }
 
+
+// Converts a runtime table cell value into a Godot Variant.
+godot::Variant to_variant(const peraviz::table_model::RuntimeCellValue &value) {
+    return std::visit([](const auto &cell) -> godot::Variant {
+        using T = std::decay_t<decltype(cell)>;
+        if constexpr (std::is_same_v<T, std::monostate>) {
+            return godot::Variant();
+        } else if constexpr (std::is_same_v<T, std::string>) {
+            return godot::String(cell.c_str());
+        } else {
+            return cell;
+        }
+    }, value);
+}
+
+// Converts a Godot Variant into a runtime table cell value.
+peraviz::table_model::RuntimeCellValue from_variant(const godot::Variant &value) {
+    switch (value.get_type()) {
+        case godot::Variant::NIL:
+            return std::monostate{};
+        case godot::Variant::BOOL:
+            return static_cast<bool>(value);
+        case godot::Variant::INT:
+            return static_cast<int64_t>(value);
+        case godot::Variant::FLOAT:
+            return static_cast<double>(value);
+        case godot::Variant::STRING:
+            return std::string(godot::String(value).utf8().get_data());
+        default:
+            return std::string(godot::String(value).utf8().get_data());
+    }
+}
+
+// Serializes a runtime table schema for Godot scripts.
+godot::Dictionary serialize_runtime_table_schema(const peraviz::table_model::RuntimeTable &table) {
+    godot::Dictionary out;
+    const auto &schema = table.schema();
+    out["table_id"] = godot::String(schema.table_id.c_str());
+    out["schema_version"] = schema.schema_version;
+    out["column_count"] = schema.column_count();
+    godot::Array columns;
+    columns.resize(schema.column_count());
+    for (int index = 0; index < schema.column_count(); ++index) {
+        const auto *column = schema.column_at(index);
+        godot::Dictionary item;
+        item["index"] = column->index;
+        item["name"] = godot::String(column->name.c_str());
+        item["value_kind"] = godot::String(peraviz::table_model::to_string(column->value_kind));
+        columns[index] = item;
+    }
+    out["columns"] = columns;
+    return out;
+}
+
+// Serializes one runtime table row for Godot scripts.
+godot::Dictionary serialize_runtime_table_row(const std::string &row_uuid, const peraviz::table_model::RuntimeTableRow &row) {
+    godot::Dictionary out;
+    out["row_uuid"] = godot::String(row_uuid.c_str());
+    godot::Array cells;
+    cells.resize(static_cast<int64_t>(row.size()));
+    for (int64_t index = 0; index < static_cast<int64_t>(row.size()); ++index) {
+        cells[index] = to_variant(row[static_cast<std::size_t>(index)]);
+    }
+    out["cells"] = cells;
+    return out;
+}
+
 } // namespace
 
 namespace godot {
@@ -45,6 +114,11 @@ void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_mvr", "path", "peraviz_debug_baseline", "peraviz_debug_coords"), &PeravizLoader::load_mvr);
     ClassDB::bind_method(D_METHOD("load_3ds_mesh_data", "path"), &PeravizLoader::load_3ds_mesh_data);
     ClassDB::bind_method(D_METHOD("get_fixtures_patch"), &PeravizLoader::get_fixtures_patch);
+    ClassDB::bind_method(D_METHOD("get_runtime_table_schema", "table_id"), &PeravizLoader::get_runtime_table_schema);
+    ClassDB::bind_method(D_METHOD("get_runtime_table_rows", "table_id"), &PeravizLoader::get_runtime_table_rows);
+    ClassDB::bind_method(D_METHOD("get_runtime_table_row", "table_id", "row_uuid"), &PeravizLoader::get_runtime_table_row);
+    ClassDB::bind_method(D_METHOD("get_runtime_table_cell", "table_id", "row_uuid", "column_index"), &PeravizLoader::get_runtime_table_cell);
+    ClassDB::bind_method(D_METHOD("set_runtime_table_cell_for_test", "table_id", "row_uuid", "column_index", "value"), &PeravizLoader::set_runtime_table_cell_for_test);
     ClassDB::bind_method(D_METHOD("build_fixture_dmx_bindings", "universe_offset"),
                          &PeravizLoader::build_fixture_dmx_bindings,
                          DEFVAL(-1));
@@ -384,6 +458,68 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) const 
 Dictionary PeravizLoader::build_fixture_dimmer_bindings(int universe_offset) const {
     UtilityFunctions::push_warning("[PeravizNative] build_fixture_dimmer_bindings is deprecated; use build_fixture_dmx_bindings instead.");
     return build_fixture_dmx_bindings(universe_offset);
+}
+
+
+// Returns runtime table schema metadata for a stable table id.
+Dictionary PeravizLoader::get_runtime_table_schema(const String &table_id) const {
+    const auto it = last_scene_model_.runtime_tables.find(std::string(table_id.utf8().get_data()));
+    if (it == last_scene_model_.runtime_tables.end()) {
+        return {};
+    }
+    return serialize_runtime_table_schema(it->second);
+}
+
+// Returns all runtime table rows in deterministic UUID order.
+Array PeravizLoader::get_runtime_table_rows(const String &table_id) const {
+    Array out;
+    const auto it = last_scene_model_.runtime_tables.find(std::string(table_id.utf8().get_data()));
+    if (it == last_scene_model_.runtime_tables.end()) {
+        return out;
+    }
+    const auto rows = it->second.rows();
+    out.resize(static_cast<int64_t>(rows.size()));
+    for (int64_t index = 0; index < static_cast<int64_t>(rows.size()); ++index) {
+        const auto &row = rows[static_cast<std::size_t>(index)];
+        out[index] = serialize_runtime_table_row(row.row_uuid, row.cells);
+    }
+    return out;
+}
+
+// Returns a runtime table row by UUID.
+Dictionary PeravizLoader::get_runtime_table_row(const String &table_id, const String &row_uuid) const {
+    const auto it = last_scene_model_.runtime_tables.find(std::string(table_id.utf8().get_data()));
+    if (it == last_scene_model_.runtime_tables.end()) {
+        return {};
+    }
+    const std::string uuid(row_uuid.utf8().get_data());
+    const auto *row = it->second.get_row(uuid);
+    if (!row) {
+        return {};
+    }
+    return serialize_runtime_table_row(uuid, *row);
+}
+
+// Returns a runtime table cell by UUID and stable column index.
+Variant PeravizLoader::get_runtime_table_cell(const String &table_id, const String &row_uuid, int column_index) const {
+    const auto it = last_scene_model_.runtime_tables.find(std::string(table_id.utf8().get_data()));
+    if (it == last_scene_model_.runtime_tables.end()) {
+        return {};
+    }
+    const auto cell = it->second.get_cell(std::string(row_uuid.utf8().get_data()), column_index);
+    if (!cell.has_value()) {
+        return {};
+    }
+    return to_variant(*cell);
+}
+
+// Updates one runtime table cell for validation without mutating the MVR file.
+bool PeravizLoader::set_runtime_table_cell_for_test(const String &table_id, const String &row_uuid, int column_index, const Variant &value) {
+    auto it = last_scene_model_.runtime_tables.find(std::string(table_id.utf8().get_data()));
+    if (it == last_scene_model_.runtime_tables.end()) {
+        return false;
+    }
+    return it->second.set_cell(std::string(row_uuid.utf8().get_data()), column_index, from_variant(value));
 }
 
 } // namespace godot

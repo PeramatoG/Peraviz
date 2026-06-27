@@ -6,6 +6,7 @@
 #include "gdtf_scene_builder.h"
 #include "matrixutils.h"
 #include "peraviz_debug_runtime.h"
+#include "table_model/perastage_table_schemas.h"
 #include "types.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <optional>
 
 #include <tinyxml2.h>
 
@@ -401,6 +403,147 @@ SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
     return patch;
 }
 
+
+// Reads an attribute using the first matching case-sensitive name.
+std::string read_string_attribute(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
+    if (!node) {
+        return {};
+    }
+    for (const char *name : names) {
+        if (const char *value = node->Attribute(name)) {
+            return trim_ascii(value);
+        }
+    }
+    return {};
+}
+
+// Reads child text using the first matching case-insensitive element name.
+std::string read_string_child(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
+    if (!node) {
+        return {};
+    }
+    for (const char *name : names) {
+        if (const char *value = child_text_ci(node, lower_ascii(name).c_str())) {
+            return trim_ascii(value);
+        }
+    }
+    return {};
+}
+
+// Reads a stable string value from attributes or child elements.
+std::string read_string_value(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
+    std::string value = read_string_attribute(node, names);
+    if (!value.empty()) {
+        return value;
+    }
+    return read_string_child(node, names);
+}
+
+// Reads a decimal value from attributes or child elements.
+std::optional<double> read_decimal_value(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
+    const std::string text = read_string_value(node, names);
+    if (text.empty()) {
+        return std::nullopt;
+    }
+    char *end = nullptr;
+    const double parsed = std::strtod(text.c_str(), &end);
+    if (end == text.c_str()) {
+        return std::nullopt;
+    }
+    return parsed;
+}
+
+// Converts an optional decimal to a runtime table cell.
+peraviz::table_model::RuntimeCellValue decimal_cell(std::optional<double> value) {
+    if (!value.has_value()) {
+        return std::monostate{};
+    }
+    return *value;
+}
+
+// Formats common MVR color attributes as stable hex strings when available.
+std::string read_color_value(tinyxml2::XMLElement *node) {
+    return read_string_value(node, {"Color", "color", "MvrColor", "mvrColor"});
+}
+
+// Returns the first model reference attached directly to an MVR node.
+std::string read_primary_model_file(tinyxml2::XMLElement *node) {
+    if (!node) {
+        return {};
+    }
+    if (tinyxml2::XMLElement *geometries = first_child_element_ci(node, "geometries")) {
+        for (tinyxml2::XMLElement *geo = geometries->FirstChildElement(); geo; geo = geo->NextSiblingElement()) {
+            const std::string model = normalize_geometry_file_name(parse_model_filename(geo));
+            if (!model.empty()) {
+                return model;
+            }
+        }
+    }
+    return normalize_geometry_file_name(parse_model_filename(node));
+}
+
+// Adds a Perastage-compatible fixture row to the runtime table store.
+void append_fixture_table_row(SceneModel &scene, tinyxml2::XMLElement *fixture_node, const std::string &id, const std::string &name, const Matrix &local_transform, const SceneModel::FixturePatch &patch) {
+    auto table_it = scene.runtime_tables.find(peraviz::table_model::kFixturesTableId);
+    if (table_it == scene.runtime_tables.end()) {
+        return;
+    }
+    const auto euler = MatrixUtils::MatrixToEuler(local_transform);
+    peraviz::table_model::RuntimeTableRow row(table_it->second.schema().column_count());
+    row[0] = static_cast<int64_t>(read_int_attribute(fixture_node, {"FixtureId", "fixtureId", "FixtureID", "fixtureID"}));
+    row[1] = name;
+    row[2] = read_string_value(fixture_node, {"GDTFSpec", "gdtfSpec", "Type", "type"});
+    row[3] = read_string_value(fixture_node, {"Layer", "layer"});
+    row[4] = read_string_value(fixture_node, {"HangPosition", "hangPosition", "Position"});
+    row[5] = static_cast<int64_t>(patch.mvr_universe);
+    row[6] = static_cast<int64_t>(patch.mvr_address);
+    row[7] = patch.dmx_mode;
+    row[8] = static_cast<int64_t>(read_int_attribute(fixture_node, {"ChannelCount", "channelCount"}));
+    row[9] = read_primary_model_file(fixture_node);
+    row[10] = static_cast<double>(local_transform.o[0]);
+    row[11] = static_cast<double>(local_transform.o[1]);
+    row[12] = static_cast<double>(local_transform.o[2]);
+    row[13] = static_cast<double>(euler[2]);
+    row[14] = static_cast<double>(euler[1]);
+    row[15] = static_cast<double>(euler[0]);
+    row[16] = decimal_cell(read_decimal_value(fixture_node, {"Power", "power"}));
+    row[17] = decimal_cell(read_decimal_value(fixture_node, {"Weight", "weight"}));
+    row[18] = read_string_value(fixture_node, {"Category", "category"});
+    row[19] = read_color_value(fixture_node);
+    row[20] = read_color_value(fixture_node);
+    table_it->second.set_row(id, std::move(row));
+}
+
+// Adds a Perastage-compatible truss row to the runtime table store.
+void append_truss_table_row(SceneModel &scene, tinyxml2::XMLElement *truss_node, const std::string &id, const std::string &name, const Matrix &local_transform) {
+    auto table_it = scene.runtime_tables.find(peraviz::table_model::kTrussesTableId);
+    if (table_it == scene.runtime_tables.end()) {
+        return;
+    }
+    const auto euler = MatrixUtils::MatrixToEuler(local_transform);
+    peraviz::table_model::RuntimeTableRow row(table_it->second.schema().column_count());
+    row[0] = name; row[1] = read_string_value(truss_node, {"Layer", "layer"}); row[2] = read_primary_model_file(truss_node); row[3] = read_string_value(truss_node, {"HangPosition", "hangPosition", "Position"});
+    row[4] = static_cast<double>(local_transform.o[0]); row[5] = static_cast<double>(local_transform.o[1]); row[6] = static_cast<double>(local_transform.o[2]);
+    row[7] = static_cast<double>(euler[2]); row[8] = static_cast<double>(euler[1]); row[9] = static_cast<double>(euler[0]);
+    row[10] = read_string_value(truss_node, {"Manufacturer", "manufacturer"}); row[11] = read_string_value(truss_node, {"Model", "model"});
+    row[12] = decimal_cell(read_decimal_value(truss_node, {"Length", "length"})); row[13] = decimal_cell(read_decimal_value(truss_node, {"Width", "width"})); row[14] = decimal_cell(read_decimal_value(truss_node, {"Height", "height"})); row[15] = decimal_cell(read_decimal_value(truss_node, {"Weight", "weight"})); row[16] = decimal_cell(read_decimal_value(truss_node, {"Load", "load"}));
+    table_it->second.set_row(id, std::move(row));
+}
+
+// Adds a Perastage-compatible scene object row to the runtime table store.
+void append_scene_object_table_row(SceneModel &scene, tinyxml2::XMLElement *object_node, const std::string &id, const std::string &name, const Matrix &local_transform) {
+    auto table_it = scene.runtime_tables.find(peraviz::table_model::kSceneObjectsTableId);
+    if (table_it == scene.runtime_tables.end()) {
+        return;
+    }
+    const auto euler = MatrixUtils::MatrixToEuler(local_transform);
+    peraviz::table_model::RuntimeTableRow row(table_it->second.schema().column_count());
+    row[0] = name; row[1] = read_string_value(object_node, {"Layer", "layer"}); row[2] = read_primary_model_file(object_node);
+    row[3] = static_cast<double>(local_transform.o[0]); row[4] = static_cast<double>(local_transform.o[1]); row[5] = static_cast<double>(local_transform.o[2]);
+    row[6] = static_cast<double>(euler[2]); row[7] = static_cast<double>(euler[1]); row[8] = static_cast<double>(euler[0]);
+    table_it->second.set_row(id, std::move(row));
+}
+
 // Parses symbol definitions referenced by scene fixtures.
 std::unordered_map<std::string, std::vector<SymdefGeometry>> parse_symdefs(tinyxml2::XMLElement *root) {
     std::unordered_map<std::string, std::vector<SymdefGeometry>> symdefs;
@@ -619,6 +762,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
     peraviz::debug_runtime::log_coordinate_mapping_metadata();
 
     SceneModel model;
+    model.runtime_tables = peraviz::table_model::create_perastage_runtime_tables();
     if (!std::filesystem::exists(std::filesystem::u8path(path))) {
         return model;
     }
@@ -685,6 +829,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
 
                 const SceneModel::FixturePatch fixture_patch = parse_fixture_patch(child, id, mvr_cache);
                 model.fixture_patches.push_back(fixture_patch);
+                append_fixture_table_row(model, child, id, node.name, local_transform, fixture_patch);
 
                 const std::string gdtf_mode = fixture_patch.dmx_mode;
                 const std::string gdtf_path = fixture_patch.gdtf_path;
@@ -700,6 +845,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                 node.node_class = "truss";
                 node.asset_kind = "none";
                 append_scene_node(model, node);
+                append_truss_table_row(model, child, id, node.name, local_transform);
                 append_geometry_children(model, child, id, node_world, mvr_cache, symdefs, id, serial);
             } else if (node_name_lower == "support") {
                 node.type = "support";
@@ -712,6 +858,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                 node.node_class = "scene_object";
                 node.asset_kind = "none";
                 append_scene_node(model, node);
+                append_scene_object_table_row(model, child, id, node.name, local_transform);
                 append_geometry_children(model, child, id, node_world, mvr_cache, symdefs, id, serial);
             }
 
