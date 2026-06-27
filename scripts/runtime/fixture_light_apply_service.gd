@@ -1,9 +1,6 @@
 extends RefCounted
 class_name FixtureLightApplyService
 
-var _fixture_emissive_cache: Dictionary = {}
-var _fixture_emitter_light_cache: Dictionary = {}
-var _fixture_emitter_last_state: Dictionary = {}
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
 	"fixture_apply": {"calls": 0, "total_usec": 0},

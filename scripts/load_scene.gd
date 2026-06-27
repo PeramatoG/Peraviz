@@ -841,7 +841,7 @@ func _on_mvr_xchange_update_requested() -> void:
 	if _mvr_xchange_controller != null:
 		_mvr_xchange_controller.request_update()
 
-func _on_mvr_xchange_file_received(path: String, metadata: Dictionary) -> void:
+func _on_mvr_xchange_file_received(path: String, _metadata: Dictionary) -> void:
 	if path.is_empty():
 		return
 	_load_mvr_scene(path, "mvr", false)
