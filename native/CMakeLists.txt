@@ -134,6 +134,8 @@ if(PERAVIZ_ENABLE_MVR_XCHANGE)
     target_sources(peraviz_native PRIVATE
         src/mvrxchange/mvr_xchange_service_name.cpp
         src/mvrxchange/mvr_xchange_discovery.cpp
+        src/mvrxchange/mvr_xchange_packet.cpp
+        src/mvrxchange/mvr_xchange_local_station.cpp
         src/mvrxchange/mvr_xchange_transfer.cpp
         src/peraviz_mvr_xchange_client.cpp
     )
@@ -174,6 +176,8 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_mvr_xchange_tests
         tests/mvr_xchange_service_name_test.cpp
         src/mvrxchange/mvr_xchange_service_name.cpp
+        src/mvrxchange/mvr_xchange_packet.cpp
+        src/mvrxchange/mvr_xchange_local_station.cpp
         src/mvrxchange/mvr_xchange_transfer.cpp
     )
     target_include_directories(peraviz_native_mvr_xchange_tests PRIVATE

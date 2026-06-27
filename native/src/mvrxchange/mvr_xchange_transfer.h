@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mvrxchange/mvr_xchange_types.h"
+#include "mvrxchange/mvr_xchange_local_station.h"
 
 #include <atomic>
 #include <mutex>
@@ -41,6 +42,8 @@ public:
     MvrXchangeTransferClient();
     ~MvrXchangeTransferClient();
 
+    bool start_local_station(const std::string &group, const std::string &bind_ip);
+    void stop_local_station();
     void set_stations(const std::vector<StationInfo> &stations);
     bool join_station(const std::string &service_name);
     bool request_latest_mvr(const std::string &service_name, const std::string &target_path);
@@ -64,10 +67,11 @@ private:
     std::unordered_map<std::string, MvrXchangeCommitInfo> commits_;
     std::queue<MvrXchangeEvent> events_;
     std::string last_error_;
+    std::string station_uuid_;
+    MvrXchangeLocalStation local_station_;
     uint64_t event_count_ = 0;
 };
 
-std::string build_line_message(const std::string &type, const std::string &file_uuid = std::string());
 MvrXchangeCommitInfo parse_commit_message(const std::string &message, const StationInfo &station);
 bool write_completed_mvr_file(const std::string &target_path, const std::string &payload, std::string &error);
 

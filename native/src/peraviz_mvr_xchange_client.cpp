@@ -32,7 +32,11 @@ PeravizMvrXchangeClient::~PeravizMvrXchangeClient() {
 
 // Starts discovery for the requested group and optional interface address.
 bool PeravizMvrXchangeClient::start(const String &group, const String &bind_ip) {
-    return discovery_->start(std::string(group.utf8().get_data()), std::string(bind_ip.utf8().get_data()));
+    const std::string group_name(group.utf8().get_data());
+    const std::string bind_address(bind_ip.utf8().get_data());
+    const bool local_started = transfer_->start_local_station(group_name, bind_address);
+    const bool discovery_started = discovery_->start(group_name, bind_address);
+    return local_started && discovery_started;
 }
 
 // Stops discovery.

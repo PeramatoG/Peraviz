@@ -1,9 +1,11 @@
 #include "mvrxchange/mvr_xchange_transfer.h"
 
+#include "mvrxchange/mvr_xchange_packet.h"
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <regex>
+#include <iomanip>
 #include <sstream>
 #include <vector>
 
@@ -94,22 +96,6 @@ bool send_all(int socket_fd, const std::string &data) {
     return true;
 }
 
-// Extracts a common JSON/XML field from protocol text.
-std::string extract_field(const std::string &text, const std::vector<std::string> &names) {
-    for (const std::string &name : names) {
-        std::regex json("[\"']" + name + "[\"']\\s*:\\s*[\"']([^\"']+)[\"']", std::regex::icase);
-        std::smatch match;
-        if (std::regex_search(text, match, json) && match.size() > 1) {
-            return match[1].str();
-        }
-        std::regex xml(name + "\\s*=\\s*[\"']([^\"']+)[\"']", std::regex::icase);
-        if (std::regex_search(text, match, xml) && match.size() > 1) {
-            return match[1].str();
-        }
-    }
-    return std::string();
-}
-
 // Reads all available TCP bytes until the peer closes the transfer.
 std::string read_all(int socket_fd) {
     std::string data;
@@ -132,11 +118,40 @@ bool looks_like_zip(const std::string &payload) {
 }
 
 // Creates an idle transfer client.
-MvrXchangeTransferClient::MvrXchangeTransferClient() = default;
+MvrXchangeTransferClient::MvrXchangeTransferClient() {
+    std::ostringstream stream;
+    stream << "00000000-0000-4000-8000-" << std::hex << std::setw(12) << std::setfill('0') << (now_microseconds() & 0xffffffffffffULL);
+    station_uuid_ = stream.str();
+}
 
 // Stops any active transfer before destruction.
 MvrXchangeTransferClient::~MvrXchangeTransferClient() {
     stop();
+}
+
+// Starts the local advertised station required by TCP mode discovery.
+bool MvrXchangeTransferClient::start_local_station(const std::string &group, const std::string &bind_ip) {
+    return local_station_.start(group, bind_ip, station_uuid_, [this](const std::string &type, const std::string &payload) {
+        if (type == "MVR_COMMIT") {
+            StationInfo station;
+            station.service_name = json_string_value(payload, {"StationUUID"});
+            station.station_name = station.service_name;
+            MvrXchangeCommitInfo commit = parse_commit_message(payload, station);
+            if (commit.service_name.empty()) {
+                commit.service_name = commit.station_name;
+            }
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                commits_[commit.service_name] = commit;
+            }
+            push_event({"commit_available", commit.service_name, commit.station_name, commit.file_uuid, std::string(), commit.message, 0});
+        }
+    });
+}
+
+// Stops the local advertised station.
+void MvrXchangeTransferClient::stop_local_station() {
+    local_station_.stop();
 }
 
 // Replaces the current station snapshot from discovery.
@@ -210,6 +225,7 @@ std::string MvrXchangeTransferClient::get_last_error() const {
 
 // Waits for any active worker to finish.
 void MvrXchangeTransferClient::stop() {
+    local_station_.stop();
     if (worker_.joinable()) {
         worker_.join();
     }
@@ -262,8 +278,8 @@ void MvrXchangeTransferClient::worker_main(StationInfo station, std::string file
         busy_.store(false);
         return;
     }
-    const std::string type = request_file ? "MVR_REQUEST" : "MVR_JOIN";
-    if (!send_all(socket_fd, build_line_message(type, file_uuid))) {
+    const std::string json = request_file ? build_request_message(station_uuid_, file_uuid) : build_join_message("Peraviz", station_uuid_);
+    if (!send_all(socket_fd, build_mvr_package(kMvrPackageTypeJson, json))) {
         error = "Unable to send MVR-xchange message";
         close_socket_handle(socket_fd);
         set_last_error(error);
@@ -274,21 +290,33 @@ void MvrXchangeTransferClient::worker_main(StationInfo station, std::string file
     const std::string received = read_all(socket_fd);
     close_socket_handle(socket_fd);
 
+    const std::vector<MvrXchangePacket> packets = parse_mvr_packages(received);
     if (!request_file) {
-        const MvrXchangeCommitInfo commit = parse_commit_message(received, station);
-        push_event({"join_succeeded", station.service_name, station.station_name, commit.file_uuid, std::string(), "Joined", 0});
-        if (!commit.file_uuid.empty() || received.find("MVR_COMMIT") != std::string::npos) {
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                commits_[station.service_name] = commit;
+        push_event({"join_succeeded", station.service_name, station.station_name, file_uuid, std::string(), "Joined", 0});
+        for (const MvrXchangePacket &packet : packets) {
+            if (packet.package_type != kMvrPackageTypeJson) {
+                continue;
             }
-            push_event({"commit_available", station.service_name, station.station_name, commit.file_uuid, std::string(), commit.message, 0});
+            const MvrXchangeCommitInfo commit = parse_commit_message(packet.payload, station);
+            if (!commit.file_uuid.empty() || packet.payload.find("MVR_COMMIT") != std::string::npos || packet.payload.find("Commits") != std::string::npos) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    commits_[station.service_name] = commit;
+                }
+                push_event({"commit_available", station.service_name, station.station_name, commit.file_uuid, std::string(), commit.message, 0});
+            }
         }
     } else {
-        std::string payload = received;
-        const size_t zip_offset = payload.find("PK");
-        if (zip_offset != std::string::npos) {
-            payload.erase(0, zip_offset);
+        std::string payload;
+        for (const MvrXchangePacket &packet : packets) {
+            if (packet.package_type == kMvrPackageTypeMvr) {
+                payload.append(packet.payload);
+            } else if (packet.package_type == kMvrPackageTypeJson && packet.payload.find("MVR_REQUEST_RET") != std::string::npos) {
+                error = json_string_value(packet.payload, {"Message"});
+            }
+        }
+        if (payload.empty() && received.size() >= 4 && received[0] == 'P' && received[1] == 'K') {
+            payload = received;
         }
         if (!write_completed_mvr_file(target_path, payload, error)) {
             set_last_error(error);
@@ -316,25 +344,14 @@ void MvrXchangeTransferClient::set_last_error(const std::string &message) {
     last_error_ = message;
 }
 
-// Builds a line-delimited MVR-xchange control message.
-std::string build_line_message(const std::string &type, const std::string &file_uuid) {
-    std::ostringstream stream;
-    stream << "{\"Type\":\"" << type << "\"";
-    if (!file_uuid.empty()) {
-        stream << ",\"FileUUID\":\"" << file_uuid << "\"";
-    }
-    stream << "}\n";
-    return stream.str();
-}
-
 // Parses commit details from a received control message.
 MvrXchangeCommitInfo parse_commit_message(const std::string &message, const StationInfo &station) {
     MvrXchangeCommitInfo commit;
     commit.service_name = station.service_name;
     commit.station_name = station.station_name;
-    commit.file_uuid = extract_field(message, {"FileUUID", "FileUuid", "file_uuid", "uuid"});
-    commit.timestamp = extract_field(message, {"Timestamp", "CommitTime", "timestamp"});
-    commit.message = extract_field(message, {"Message", "CommitMessage", "Name", "message"});
+    commit.file_uuid = json_string_value(message, {"FileUUID", "FileUuid", "file_uuid", "uuid"});
+    commit.timestamp = json_string_value(message, {"Timestamp", "CommitTime", "timestamp"});
+    commit.message = json_string_value(message, {"Message", "Comment", "CommitMessage", "Name", "message"});
     commit.seen_us = now_microseconds();
     return commit;
 }

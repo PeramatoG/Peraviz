@@ -1,4 +1,5 @@
 #include "mvrxchange/mvr_xchange_service_name.h"
+#include "mvrxchange/mvr_xchange_packet.h"
 #include "mvrxchange/mvr_xchange_transfer.h"
 
 #include <cstdlib>
@@ -33,7 +34,10 @@ int main() {
     station.station_name = "Perastage";
     MvrXchangeCommitInfo commit = parse_commit_message("{\"Type\":\"MVR_COMMIT\",\"FileUUID\":\"abc\",\"Message\":\"Published\"}", station);
     expect_true(commit.file_uuid == "abc", "Expected parsed commit file UUID");
-    expect_true(build_line_message("MVR_REQUEST", "abc").find("MVR_REQUEST") != std::string::npos, "Expected request message type");
+    const std::string request_package = build_mvr_package(kMvrPackageTypeJson, build_request_message("station", "abc"));
+    std::vector<MvrXchangePacket> packets = parse_mvr_packages(request_package);
+    expect_true(packets.size() == 1, "Expected one parsed package");
+    expect_true(packets[0].payload.find("MVR_REQUEST") != std::string::npos, "Expected request message type");
 
     const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "peraviz_mvr_xchange_test";
     std::filesystem::create_directories(temp_dir);

@@ -10,15 +10,17 @@ The first phase discovers services advertised as `_mvrxchange._tcp.local.` and e
 
 The current phase extends the same native client with TCP client behavior for the first real transfer workflow:
 
-1. Peraviz discovers a station through the existing mDNS discovery path.
-2. The controller selects a station and asks the native client to join it asynchronously.
-3. The native client sends `MVR_JOIN` and tracks `MVR_JOIN_RET` / `MVR_COMMIT` information when it is received.
-4. The UI enables `Update` only after a joined station has an available MVR revision.
-5. Pressing `Update` sends `MVR_REQUEST` for the latest known file UUID.
-6. The native client receives the binary MVR payload on a background worker, writes it to a `.part` file, validates that the payload is non-empty and ZIP-like, and renames it to the final `.mvr` path only after success.
-7. `scripts/load_scene.gd` receives the completed path and calls the existing MVR loading path without adding protocol logic to scene loading code.
+1. Peraviz registers its own `_mvrxchange._tcp.local.` mDNS service with `StationName` and `StationUUID` TXT records, as required by TCP mode.
+2. Peraviz discovers peer stations through the existing mDNS discovery path.
+3. The controller selects a station and asks the native client to join it asynchronously.
+4. The native client sends `MVR_JOIN` using the official MVR-xchange TCP package header and tracks `MVR_JOIN_RET` / `MVR_COMMIT` information when it is received.
+5. The local Peraviz TCP service also accepts inbound `MVR_JOIN` and `MVR_COMMIT` messages from peer stations that discovered Peraviz.
+6. The UI enables `Update` only after a joined station has an available MVR revision.
+7. Pressing `Update` sends `MVR_REQUEST` for the latest known file UUID.
+8. The native client receives the binary MVR package on a background worker, writes it to a `.part` file, validates that the payload is non-empty and ZIP-like, and renames it to the final `.mvr` path only after success.
+9. `scripts/load_scene.gd` receives the completed path and calls the existing MVR loading path without adding protocol logic to scene loading code.
 
-Peraviz stores received files in a user-writable MVR-xchange cache directory. Previously completed files are not deleted by the transfer path, so a loaded scene is not invalidated while it may still be in use.
+Peraviz follows the MVR-xchange TCP package structure with the `778682` package header, package version `1`, JSON package type `0`, MVR binary package type `1`, and big-endian multi-byte fields. Peraviz stores received files in a user-writable MVR-xchange cache directory. Previously completed files are not deleted by the transfer path, so a loaded scene is not invalidated while it may still be in use.
 
 ## Project roles and scope
 
