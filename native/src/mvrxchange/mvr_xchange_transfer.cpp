@@ -115,6 +115,11 @@ bool looks_like_zip(const std::string &payload) {
     return payload.size() >= 4 && payload[0] == 'P' && payload[1] == 'K';
 }
 
+// Returns true when the ZIP payload references the required MVR scene description.
+bool contains_general_scene_description(const std::string &payload) {
+    return payload.find("GeneralSceneDescription.xml") != std::string::npos;
+}
+
 }
 
 // Creates an idle transfer client.
@@ -137,6 +142,11 @@ bool MvrXchangeTransferClient::start_local_station(const std::string &group, con
             station.service_name = json_string_value(payload, {"StationUUID"});
             station.station_name = station.service_name;
             MvrXchangeCommitInfo commit = parse_commit_message(payload, station);
+            if (commit.file_uuid.empty()) {
+                set_last_error("Received MVR_COMMIT without a valid FileUUID");
+                push_event({"protocol_error", commit.service_name, commit.station_name, std::string(), std::string(), "Received MVR_COMMIT without a valid FileUUID", 0});
+                return;
+            }
             if (commit.service_name.empty()) {
                 commit.service_name = commit.station_name;
             }
@@ -174,16 +184,26 @@ bool MvrXchangeTransferClient::request_latest_mvr(const std::string &service_nam
         std::lock_guard<std::mutex> lock(mutex_);
         const auto commit = commits_.find(service_name);
         if (commit == commits_.end()) {
+            last_error_ = "No MVR revision is available for the selected station";
             return false;
         }
         file_uuid = commit->second.file_uuid;
+    }
+    if (!is_valid_uuid(file_uuid)) {
+        set_last_error("Selected MVR revision has an invalid FileUUID");
+        return false;
     }
     return request_mvr(service_name, file_uuid, target_path);
 }
 
 // Starts an asynchronous MVR request for a specific file UUID.
 bool MvrXchangeTransferClient::request_mvr(const std::string &service_name, const std::string &file_uuid, const std::string &target_path) {
-    return start_worker(service_name, file_uuid, target_path, true);
+    const std::string canonical_file_uuid = canonicalize_uuid(file_uuid);
+    if (canonical_file_uuid.empty()) {
+        set_last_error("MVR request requires a valid FileUUID");
+        return false;
+    }
+    return start_worker(service_name, canonical_file_uuid, target_path, true);
 }
 
 // Returns tracked commits.
@@ -214,6 +234,11 @@ TransferStats MvrXchangeTransferClient::get_stats() const {
     stats.busy = busy_.load();
     stats.commit_count = commits_.size();
     stats.event_count = event_count_;
+    stats.station_uuid = station_uuid_;
+    stats.current_station_uuid = current_station_uuid_;
+    stats.current_file_uuid = current_file_uuid_;
+    stats.last_received_file_path = last_received_file_path_;
+    stats.received_byte_count = received_byte_count_;
     return stats;
 }
 
@@ -251,6 +276,14 @@ bool MvrXchangeTransferClient::start_worker(const std::string &service_name, con
             return false;
         }
         station = found->second;
+        current_station_uuid_ = canonicalize_uuid(json_string_value(station.txt.count("StationUUID") ? station.txt.at("StationUUID") : std::string(), {"StationUUID"}));
+        if (current_station_uuid_.empty()) {
+            const auto txt_uuid = station.txt.find("StationUUID");
+            if (txt_uuid != station.txt.end()) {
+                current_station_uuid_ = canonicalize_uuid(txt_uuid->second);
+            }
+        }
+        current_file_uuid_ = file_uuid;
     }
     worker_ = std::thread(&MvrXchangeTransferClient::worker_main, this, station, file_uuid, target_path, request_file);
     return true;
@@ -291,6 +324,13 @@ void MvrXchangeTransferClient::worker_main(StationInfo station, std::string file
     close_socket_handle(socket_fd);
 
     const std::vector<MvrXchangePacket> packets = parse_mvr_packages(received);
+    if (!received.empty() && packets.empty()) {
+        error = "Received malformed MVR-xchange package";
+        set_last_error(error);
+        push_event({request_file ? "transfer_failed" : "join_failed", station.service_name, station.station_name, file_uuid, target_path, error, 0});
+        busy_.store(false);
+        return;
+    }
     if (!request_file) {
         push_event({"join_succeeded", station.service_name, station.station_name, file_uuid, std::string(), "Joined", 0});
         for (const MvrXchangePacket &packet : packets) {
@@ -322,6 +362,11 @@ void MvrXchangeTransferClient::worker_main(StationInfo station, std::string file
             set_last_error(error);
             push_event({"transfer_failed", station.service_name, station.station_name, file_uuid, target_path, error, 0});
         } else {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                last_received_file_path_ = target_path;
+                received_byte_count_ = payload.size();
+            }
             push_event({"transfer_finished", station.service_name, station.station_name, file_uuid, target_path, "MVR received", payload.size()});
         }
     }
@@ -349,7 +394,7 @@ MvrXchangeCommitInfo parse_commit_message(const std::string &message, const Stat
     MvrXchangeCommitInfo commit;
     commit.service_name = station.service_name;
     commit.station_name = station.station_name;
-    commit.file_uuid = json_string_value(message, {"FileUUID", "FileUuid", "file_uuid", "uuid"});
+    commit.file_uuid = canonicalize_uuid(json_string_value(message, {"FileUUID", "FileUuid", "file_uuid", "uuid"}));
     commit.timestamp = json_string_value(message, {"Timestamp", "CommitTime", "timestamp"});
     commit.message = json_string_value(message, {"Message", "Comment", "CommitMessage", "Name", "message"});
     commit.seen_us = now_microseconds();
@@ -368,6 +413,10 @@ bool write_completed_mvr_file(const std::string &target_path, const std::string 
     }
     if (!looks_like_zip(payload)) {
         error = "Received payload does not look like a ZIP/MVR file";
+        return false;
+    }
+    if (!contains_general_scene_description(payload)) {
+        error = "Received MVR archive is missing GeneralSceneDescription.xml";
         return false;
     }
     const std::filesystem::path final_path(target_path);

@@ -24,5 +24,7 @@ std::string build_join_message(const std::string &station_name, const std::strin
 std::string build_join_ret_message(const std::string &station_name, const std::string &station_uuid, bool ok, const std::string &message);
 std::string build_request_message(const std::string &station_uuid, const std::string &file_uuid);
 std::string json_string_value(const std::string &text, const std::vector<std::string> &names);
+std::string canonicalize_uuid(const std::string &value);
+bool is_valid_uuid(const std::string &value);
 
 } // namespace peraviz::mvrxchange

@@ -14,6 +14,7 @@ const STATE_JOINING: String = "joining"
 const STATE_JOINED: String = "joined"
 const STATE_REVISION_AVAILABLE: String = "revision_available"
 const STATE_REQUESTING: String = "requesting"
+const STATE_RECEIVING: String = "receiving"
 const STATE_RECEIVED: String = "received"
 const STATE_ERROR: String = "error"
 
@@ -75,7 +76,7 @@ func get_selected_service_name() -> String:
 	return _selected_service_name
 
 func can_request_update() -> bool:
-	return _state == STATE_REVISION_AVAILABLE and not _selected_service_name.is_empty()
+	return _state == STATE_REVISION_AVAILABLE and not _selected_service_name.is_empty() and not _is_transfer_busy()
 
 func get_last_error() -> String:
 	return "" if _client == null else str(_client.get_last_error())
@@ -148,13 +149,13 @@ func _handle_events(events: Array) -> void:
 			"commit_available":
 				_set_state(STATE_REVISION_AVAILABLE, event)
 			"transfer_started":
-				_set_state(STATE_REQUESTING, event)
+				_set_state(STATE_RECEIVING, event)
 			"transfer_progress":
-				_set_state(STATE_REQUESTING, event)
+				_set_state(STATE_RECEIVING, event)
 			"transfer_finished":
 				_set_state(STATE_RECEIVED, event)
 				mvr_file_received.emit(str(event.get("path", "")), event)
-			"transfer_failed":
+			"transfer_failed", "protocol_error":
 				_set_state(STATE_ERROR, event)
 
 func _set_state(state: String, metadata: Dictionary) -> void:
@@ -162,7 +163,13 @@ func _set_state(state: String, metadata: Dictionary) -> void:
 	state_changed.emit(_state, metadata)
 
 func _state_metadata() -> Dictionary:
-	return {"selected_service_name": _selected_service_name, "commits": _commits, "can_update": can_request_update()}
+	return {"selected_service_name": _selected_service_name, "commits": _commits, "can_update": can_request_update(), "transfer_busy": _is_transfer_busy()}
+
+func _is_transfer_busy() -> bool:
+	if _client == null or not _client.has_method("get_stats"):
+		return false
+	var stats: Dictionary = _client.get_stats()
+	return bool(stats.get("transfer_busy", false))
 
 func _message_for_state() -> String:
 	match _state:
@@ -179,6 +186,8 @@ func _message_for_state() -> String:
 		STATE_REVISION_AVAILABLE:
 			return "New MVR revision available"
 		STATE_REQUESTING:
+			return "Requesting MVR..."
+		STATE_RECEIVING:
 			return "Receiving MVR..."
 		STATE_RECEIVED:
 			return "MVR loaded"

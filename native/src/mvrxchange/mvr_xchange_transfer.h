@@ -35,6 +35,11 @@ struct TransferStats {
     bool busy = false;
     uint64_t commit_count = 0;
     uint64_t event_count = 0;
+    std::string station_uuid;
+    std::string current_station_uuid;
+    std::string current_file_uuid;
+    std::string last_received_file_path;
+    uint64_t received_byte_count = 0;
 };
 
 class MvrXchangeTransferClient {
@@ -68,6 +73,10 @@ private:
     std::queue<MvrXchangeEvent> events_;
     std::string last_error_;
     std::string station_uuid_;
+    std::string current_station_uuid_;
+    std::string current_file_uuid_;
+    std::string last_received_file_path_;
+    uint64_t received_byte_count_ = 0;
     MvrXchangeLocalStation local_station_;
     uint64_t event_count_ = 0;
 };

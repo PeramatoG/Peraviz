@@ -64,6 +64,9 @@ func set_state(state: String, metadata: Dictionary) -> void:
 			_status_label.text = "New MVR revision available"
 		"requesting":
 			_update_button.disabled = true
+			_status_label.text = "Requesting MVR..."
+		"receiving":
+			_update_button.disabled = true
 			_status_label.text = "Receiving MVR..."
 		"received":
 			_status_label.text = "MVR loaded"
