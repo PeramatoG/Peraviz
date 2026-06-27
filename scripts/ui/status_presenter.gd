@@ -68,7 +68,23 @@ func set_dmx_badge(is_running: bool, receiving_signal: bool) -> void:
 		return
 	_set_badge("DMX", "Connected" if receiving_signal else "No signal")
 
-func set_mvr_xchange_badge(is_running: bool, station_count: int) -> void:
+func set_mvr_xchange_badge(is_running: bool, station_count: int, state: String = "") -> void:
+	match state:
+		"joined":
+			_set_badge("MVR-xchange", "Joined")
+			return
+		"revision_available":
+			_set_badge("MVR-xchange", "New revision")
+			return
+		"requesting":
+			_set_badge("MVR-xchange", "Receiving")
+			return
+		"received":
+			_set_badge("MVR-xchange", "Loaded")
+			return
+		"error":
+			_set_badge("MVR-xchange", "Error")
+			return
 	if not is_running:
 		_set_badge("MVR-xchange", "OFF")
 	elif station_count <= 0:

@@ -7,6 +7,7 @@
 #include <godot_cpp/variant/string.hpp>
 
 #include "mvrxchange/mvr_xchange_discovery.h"
+#include "mvrxchange/mvr_xchange_transfer.h"
 
 #include <memory>
 
@@ -27,12 +28,18 @@ public:
     bool is_running() const;
     String get_last_error() const;
     Array get_stations() const;
+    Array get_commits() const;
+    bool join_station(const String &service_name);
+    bool request_latest_mvr(const String &service_name, const String &target_path);
+    bool request_mvr(const String &service_name, const String &file_uuid, const String &target_path);
+    Array poll_events();
     Dictionary get_stats() const;
 
 private:
     static uint64_t now_microseconds();
 
     std::unique_ptr<peraviz::mvrxchange::MvrXchangeDiscovery> discovery_;
+    mutable std::unique_ptr<peraviz::mvrxchange::MvrXchangeTransferClient> transfer_;
 };
 
 } // namespace godot
