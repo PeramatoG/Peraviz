@@ -11,5 +11,8 @@ func ensure_beam(_light: SpotLight3D) -> void:
 func update_beam(_light: SpotLight3D, _params: Dictionary) -> void:
 	pass
 
+func update_beam_intensity(_light: SpotLight3D, _params: Dictionary) -> bool:
+	return false
+
 func cleanup_beam(_light: SpotLight3D) -> void:
 	pass

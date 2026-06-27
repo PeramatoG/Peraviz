@@ -159,9 +159,16 @@ func refresh_fixture_bindings() -> Dictionary:
 		return {}
 	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value))
 	_fixture_binding_summary = summary
+	_prewarm_bound_fixture_lighting()
 	_refresh_dmx_unbound_details()
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
+
+func _prewarm_bound_fixture_lighting() -> void:
+	if _dmx_fixture_runtime == null or not _apply_dmx_controls_callback.is_valid():
+		return
+	for fixture_uuid in _dmx_fixture_runtime.get_bound_fixture_ids():
+		_apply_dmx_controls_callback.call(str(fixture_uuid), {"prewarm_only": true})
 
 func get_fixture_rows() -> Array:
 	if _dmx_fixture_runtime == null:

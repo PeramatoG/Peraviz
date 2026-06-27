@@ -74,6 +74,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
 	var shape_result: Dictionary = _active_shape_provider.apply_shape(beam, light, params)
 	var gobo_projection_radius: float = max(float(shape_result.get("gobo_projection_radius", 0.1)), 0.001)
+	params["gobo_projection_radius"] = gobo_projection_radius
 	var beam_rotation_deg: float = float(shape_result.get("beam_rotation_deg", 0.0))
 
 	if bool(params.get("beam_debug_optics", false)):
@@ -113,6 +114,38 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		beam_material.set_shader_parameter("gobo_mirror_x", bool(shape_result.get("mirror_x", true)))
 		beam_material.set_shader_parameter("gobo_mirror_z", bool(shape_result.get("mirror_z", false)))
 		beam_material.set_shader_parameter("depth_feather_enabled", false)
+
+func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
+	if not light.has_meta(BEAM_META_KEY):
+		return false
+	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
+	if beam == null or not is_instance_valid(beam):
+		return false
+
+	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
+	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
+	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
+	if not bool(params.get("is_visible", true)) or intensity <= threshold:
+		beam.visible = false
+		beam.set_instance_shader_parameter("beam_visibility", 0.0)
+		return true
+
+	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
+	var beam_intensity_norm: float = clamp(intensity / reference_max, 0.0, 1.0)
+	var perceptual_intensity: float = pow(beam_intensity_norm, VOLUMETRIC_INTENSITY_RESPONSE_EXPONENT)
+	var overdrive_norm: float = 0.0
+	if intensity_max > reference_max:
+		overdrive_norm = clamp((intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
+	var beam_color: Color = params.get("beam_color", Color.WHITE)
+	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
+	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
+	beam.visible = true
+	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
+	beam.set_instance_shader_parameter("beam_visibility", 1.0)
+	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
+	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
+	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
+	return true
 
 func cleanup_beam(light: SpotLight3D) -> void:
 	if not light.has_meta(BEAM_META_KEY):

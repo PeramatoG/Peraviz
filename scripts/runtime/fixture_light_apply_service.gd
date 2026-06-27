@@ -11,6 +11,10 @@ var _phase_metrics: Dictionary = {
 func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls: Dictionary) -> void:
 	var phase_start: int = Time.get_ticks_usec()
 	controls["fixture_uuid"] = fixture_uuid
+	if bool(controls.get("prewarm_only", false)):
+		prewarm_lighting_for_fixture(loader, fixture_uuid)
+		_track_phase("fixture_apply", phase_start)
+		return
 	if not controls.has("frame_delta_sec"):
 		controls["frame_delta_sec"] = loader.get_process_delta_time()
 	else:
@@ -136,6 +140,29 @@ func has_lighting_controls(controls: Dictionary) -> bool:
 	var gobo_controls: Dictionary = resolve_gobo_controls(controls)
 	return bool(gobo_controls.get("has_gobo", false)) or bool(gobo_controls.get("has_gobo_index", false)) or bool(gobo_controls.get("has_gobo_rotation", false))
 
+func prewarm_lighting_for_fixture(loader: Node, fixture_uuid: String) -> void:
+	var geometry_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "geometry_nodes"))
+	var emitter_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "emitters"))
+	loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
+	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
+	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
+	var prewarm_controls: Dictionary = {
+		"capabilities": {
+			"dimmer": [{"has_dimmer": true, "dimmer_norm": 0.0}],
+		}
+	}
+	for index in range(emitter_lights.size()):
+		var light: SpotLight3D = emitter_lights[index]
+		if light == null or not is_instance_valid(light):
+			continue
+		loader._ensure_beam_runtime_for_light(light)
+		if light.has_meta("peraviz_beam_last_params"):
+			continue
+		var photometric: Dictionary = loader.DEFAULT_EMITTER_PHOTOMETRICS.duplicate(true)
+		if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary:
+			photometric.merge(emitter_photometrics[index], true)
+		loader._apply_emitter_light_state(light, photometric, 0.0, prewarm_controls)
+
 func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer: float, controls: Dictionary = {}) -> void:
 	var geometry_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "geometry_nodes"))
 	var emitter_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "emitters"))
@@ -145,6 +172,10 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 	var normalized_dimmer: float = dimmer_percent / 100.0
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
 	var beam_color: Color = loader._resolve_fixture_beam_color(emitter_photometrics, controls)
+	_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
+	_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)
+
+func _apply_emissive_material_dimmer(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, normalized_dimmer: float) -> void:
 	var emissive_materials: Array = loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
 	var energy_multiplier: float = lerp(0.0, 4.0, normalized_dimmer)
 	for material in emissive_materials:
@@ -152,7 +183,10 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 			material.emission_enabled = true
 			material.emission = beam_color
 			material.emission_energy_multiplier = energy_multiplier
+
+func _apply_emitter_light_dimmer(loader: Node, fixture_uuid: String, emitter_nodes: Array, emitter_photometrics: Array, beam_color: Color, normalized_dimmer: float, controls: Dictionary) -> void:
 	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
+	var can_use_fast_path: bool = _can_use_dimmer_only_fast_path(controls)
 	for index in range(emitter_lights.size()):
 		var light: SpotLight3D = emitter_lights[index]
 		if light == null or not is_instance_valid(light):
@@ -160,7 +194,24 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 		var photometric: Dictionary = loader.DEFAULT_EMITTER_PHOTOMETRICS.duplicate(true)
 		if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary:
 			photometric.merge(emitter_photometrics[index], true)
+		if can_use_fast_path and _apply_emitter_light_dimmer_fast(loader, light, photometric, beam_color, normalized_dimmer):
+			continue
 		loader._apply_emitter_light_state(light, photometric, normalized_dimmer, controls)
+
+func _apply_emitter_light_dimmer_fast(loader: Node, light: SpotLight3D, photometric: Dictionary, beam_color: Color, normalized_dimmer: float) -> bool:
+	return loader._apply_emitter_light_dimmer_fast(light, photometric, normalized_dimmer, beam_color)
+
+func _can_use_dimmer_only_fast_path(controls: Dictionary) -> bool:
+	if bool(controls.get("time_tick_only", false)):
+		return false
+	var dimmer_controls: Dictionary = resolve_dimmer_controls(controls)
+	if not bool(dimmer_controls.get("has_dimmer", false)) or bool(dimmer_controls.get("has_zoom", false)):
+		return false
+	var color_controls: Dictionary = resolve_color_wheel_controls(controls)
+	if bool(color_controls.get("has_cyan", false)) or bool(color_controls.get("has_magenta", false)) or bool(color_controls.get("has_yellow", false)):
+		return false
+	var gobo_controls: Dictionary = resolve_gobo_controls(controls)
+	return not bool(gobo_controls.get("has_gobo", false)) and not bool(gobo_controls.get("has_gobo_index", false)) and not bool(gobo_controls.get("has_gobo_rotation", false))
 
 func record_beam_update() -> void:
 	_track_phase("beam_update", Time.get_ticks_usec())

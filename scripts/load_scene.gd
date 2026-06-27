@@ -541,12 +541,47 @@ func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service._track_phase("beam_update", beam_phase_start)
 
+func _ensure_beam_runtime_for_light(light: SpotLight3D) -> void:
+	if _active_beam_renderer == null or light == null or not is_instance_valid(light):
+		return
+	_active_beam_renderer.ensure_beam(light)
+
 func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void:
 	if _active_beam_renderer == null:
 		return
 	light.set_meta("peraviz_beam_last_params", beam_params.duplicate(true))
 	_active_beam_renderer.ensure_beam(light)
 	_active_beam_renderer.update_beam(light, beam_params)
+
+func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color) -> bool:
+	if light == null or not is_instance_valid(light) or not light.has_meta("peraviz_beam_last_params"):
+		return false
+	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
+	_set_light_property_bool(light, "visible", normalized_dimmer > 0.0001, last_state)
+	var luminous_flux: float = max(float(photometric.get("luminous_flux", 10000.0)), 0.0)
+	var base_light_energy: float = luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
+	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
+	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
+	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
+	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color)
+
+func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: float, beam_color: Color) -> bool:
+	if _active_beam_renderer == null or not light.has_meta("peraviz_beam_last_params"):
+		return false
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
+	if beam_params.is_empty():
+		return false
+	var scaled_intensity: float = clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
+	beam_params["normalized_dimmer"] = clamp(normalized_dimmer, 0.0, 1.0)
+	beam_params["scaled_intensity"] = scaled_intensity
+	beam_params["beam_intensity"] = scaled_intensity
+	beam_params["beam_color"] = beam_color
+	beam_params["is_visible"] = light.visible
+	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
+	if _active_beam_renderer.update_beam_intensity(light, beam_params):
+		light.set_meta("peraviz_beam_last_params", beam_params)
+		return true
+	return false
 
 func _open_visual_settings_window() -> void:
 	if visual_settings_window != null and visual_settings_window.has_method("popup_settings"):
