@@ -80,13 +80,19 @@ bool DmxUniverseCache::try_get_metadata(uint16_t universe_id, DmxUniverseMetadat
     return true;
 }
 
-// Returns the list of universes that currently have cached data.
+// Returns active universes by scanning only allocated universe slots.
 std::vector<uint16_t> DmxUniverseCache::get_active_universes(uint64_t now_us, uint64_t active_window_us) const {
+    std::vector<uint16_t> known_universes;
+    {
+        std::lock_guard<std::mutex> lock(active_universe_mutex_);
+        known_universes = active_universe_ids_;
+    }
+
     std::vector<uint16_t> active;
-    std::shared_lock<std::shared_mutex> lock(slots_mutex_);
-    for (size_t universe_id = 0; universe_id < slots_.size(); ++universe_id) {
-        const std::unique_ptr<UniverseSlot> &slot = slots_[universe_id];
-        if (!slot) {
+    active.reserve(known_universes.size());
+    for (const uint16_t universe_id : known_universes) {
+        const UniverseSlot *slot = get_slot(universe_id);
+        if (slot == nullptr) {
             continue;
         }
         const uint64_t last_rx_us = slot->last_rx_us.load(std::memory_order_relaxed);
@@ -94,7 +100,7 @@ std::vector<uint16_t> DmxUniverseCache::get_active_universes(uint64_t now_us, ui
             continue;
         }
         if (now_us - last_rx_us <= active_window_us) {
-            active.push_back(static_cast<uint16_t>(universe_id));
+            active.push_back(universe_id);
         }
     }
     return active;
@@ -124,6 +130,10 @@ DmxUniverseCache::UniverseSlot *DmxUniverseCache::get_or_create_slot(uint16_t un
     std::unique_ptr<UniverseSlot> &slot = slots_[universe_id];
     if (!slot) {
         slot = std::make_unique<UniverseSlot>();
+        {
+            std::lock_guard<std::mutex> active_lock(active_universe_mutex_);
+            active_universe_ids_.push_back(universe_id);
+        }
         active_slot_count_.fetch_add(1, std::memory_order_relaxed);
     }
     return slot.get();

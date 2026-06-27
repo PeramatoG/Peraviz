@@ -32,7 +32,7 @@ Changes since the initial Peraviz repository split.
 
 ## Stability and reliability
 
-- Hardened and optimized Art-Net/DMX reception and fixture application so the network thread keeps bounded latest-frame state, the main thread only copies and processes changed universes, and dimmer-only updates avoid expensive beam geometry refreshes after fixtures are warmed.
+- Hardened and optimized Art-Net/DMX reception and fixture application so the network thread keeps bounded latest-frame state, the main thread avoids idle universe scans, only copies and processes changed universes, and dimmer-only updates avoid expensive beam geometry refreshes after fixtures are warmed.
 - Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 

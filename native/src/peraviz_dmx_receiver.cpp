@@ -80,6 +80,12 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     out["source_changes"] = static_cast<int64_t>(stats.source_changes);
     out["active_slot_count"] = static_cast<int64_t>(stats.active_slot_count);
     out["approx_cache_bytes"] = static_cast<int64_t>(stats.approximate_cache_bytes);
+    PackedInt32Array active_universes;
+    active_universes.resize(static_cast<int64_t>(stats.active_universes.size()));
+    for (int64_t i = 0; i < active_universes.size(); ++i) {
+        active_universes[i] = stats.active_universes[static_cast<size_t>(i)];
+    }
+    out["active_universes"] = active_universes;
 
     int64_t last_packet_ms_ago = -1;
     if (stats.last_packet_us > 0 && now_us >= stats.last_packet_us) {

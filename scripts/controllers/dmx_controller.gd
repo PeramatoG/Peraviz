@@ -30,6 +30,9 @@ var _last_considered_fixtures: int = 0
 var _last_changed_universes: int = 0
 var _worst_dmx_tick_usec: int = 0
 var _last_monitor_refresh_msec: int = 0
+var _last_receiving_signal: bool = false
+var _last_active_universes := PackedInt32Array()
+var _last_packet_ms: int = -1
 var _debug_force_full_apply: bool = false
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
@@ -241,6 +244,9 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 	_last_skipped_fixtures = 0
 	_last_considered_fixtures = 0
 	_last_changed_universes = 0
+	_last_receiving_signal = false
+	_last_active_universes = PackedInt32Array()
+	_last_packet_ms = -1
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	_emit_dmx_status(false, false)
 	return true
@@ -266,6 +272,9 @@ func _on_dmx_timer_timeout() -> void:
 		_last_skipped_fixtures = 0
 		_last_considered_fixtures = 0
 		_last_changed_universes = 0
+		_last_receiving_signal = false
+		_last_active_universes = PackedInt32Array()
+		_last_packet_ms = -1
 		_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 		return
 
@@ -291,16 +300,17 @@ func _on_dmx_timer_timeout() -> void:
 			_owner.bridge_record_dmx_decode_phase(tick_usec)
 		_apply_fixture_time_tick(delta_sec)
 
-	var stats: Dictionary = _dmx_receiver.get_stats()
-	var active_universes: PackedInt32Array = _dmx_receiver.get_active_universes(2000)
-	var last_ms: int = int(stats.get("last_packet_ms_ago", -1))
-	var receiving: bool = active_universes.size() > 0 and last_ms >= 0 and last_ms <= 2000
-	_update_dmx_toggle_color(true, receiving)
 	if now_msec - _last_monitor_refresh_msec >= 125:
 		_last_monitor_refresh_msec = now_msec
+		var stats: Dictionary = _dmx_receiver.get_stats()
+		var stats_active_universes: Variant = stats.get("active_universes", PackedInt32Array())
+		_last_active_universes = stats_active_universes if stats_active_universes is PackedInt32Array else PackedInt32Array()
+		_last_packet_ms = int(stats.get("last_packet_ms_ago", -1))
+		_last_receiving_signal = _last_active_universes.size() > 0 and _last_packet_ms >= 0 and _last_packet_ms <= 2000
+		_update_dmx_toggle_color(true, _last_receiving_signal)
 		_refresh_dmx_monitor_window(true)
-		_refresh_dmx_quick_panel(true, receiving, active_universes, last_ms)
-	_emit_dmx_status(true, receiving)
+		_refresh_dmx_quick_panel(true, _last_receiving_signal, _last_active_universes, _last_packet_ms)
+	_emit_dmx_status(true, _last_receiving_signal)
 
 func _update_dmx_toggle_color(enabled: bool, receiving_signal: bool) -> void:
 	if _dmx_toggle_button == null:

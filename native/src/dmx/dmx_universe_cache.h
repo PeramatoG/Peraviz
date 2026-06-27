@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <vector>
 
@@ -58,6 +59,8 @@ private:
 
     std::vector<std::unique_ptr<UniverseSlot>> slots_;
     mutable std::shared_mutex slots_mutex_;
+    mutable std::mutex active_universe_mutex_;
+    std::vector<uint16_t> active_universe_ids_;
     std::atomic<size_t> active_slot_count_ {0};
 };
 
