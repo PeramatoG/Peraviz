@@ -44,10 +44,10 @@ func set_stations(stations: Array) -> void:
 	_station_list.clear()
 	for station in _stations:
 		var item: Dictionary = station as Dictionary
-		var name: String = str(item.get("station_name", "Unnamed"))
+		var station_name: String = str(item.get("station_name", "Unnamed"))
 		var address: String = str(item.get("address", item.get("host", "")))
 		var port: int = int(item.get("port", 0))
-		_station_list.add_item("%s  %s:%d" % [name, address, port])
+		_station_list.add_item("%s  %s:%d" % [station_name, address, port])
 
 func set_state(state: String, metadata: Dictionary) -> void:
 	_ensure_ui()
