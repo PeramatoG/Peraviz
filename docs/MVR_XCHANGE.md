@@ -1,37 +1,56 @@
 # MVR-xchange support
 
-Peraviz includes modular MVR-xchange support so it can act as a viewer/client for an upstream technical data source such as Perastage.
+Peraviz includes modular MVR-xchange support so it can act as a viewer/runtime client for an upstream technical data source such as Perastage. The implementation follows the official MVR-xchange TCP-mode package framing and keeps protocol, networking, and binary transfer logic in native C++.
 
-## Phase 1: discovery
+## Supported official client behavior
 
-The first phase discovers services advertised as `_mvrxchange._tcp.local.` and exposes them through the native `PeravizMvrXchangeClient` wrapper. The UI supports the MVR-xchange group preference, defaulting to `Default`, and an optional bind/interface IP preference for installations that need interface selection.
+Peraviz supports the manual viewer/client workflow:
 
-## Current phase: TCP join and manual MVR transfer
+1. Discover stations advertised as `_mvrxchange._tcp.local.`.
+2. Filter service instances by MVR-xchange group, defaulting to `Default`.
+3. Optionally bind discovery and the local TCP station to a selected interface IP when configured.
+4. Register a local TCP-mode station with `StationName` and `StationUUID` TXT records.
+5. Send official `MVR_JOIN` messages to selected stations.
+6. Handle official `MVR_JOIN_RET` and `MVR_COMMIT` information when received.
+7. Track available commit/revision metadata and canonicalize valid `FileUUID` values.
+8. Send official `MVR_REQUEST` messages for a selected revision.
+9. Receive the binary MVR payload using official MVR-xchange TCP package framing.
+10. Load the completed MVR through the existing Peraviz MVR import path.
 
-The current phase extends the same native client with TCP client behavior for the first real transfer workflow:
+The TCP package header uses the official `778682` package header, package version `1`, JSON package type `0`, MVR binary package type `1`, and network byte order for multi-byte fields. Unknown, malformed, or unsupported data is handled conservatively and surfaced through native state/events instead of being treated as proprietary behavior.
 
-1. Peraviz registers its own `_mvrxchange._tcp.local.` mDNS service with `StationName` and `StationUUID` TXT records, as required by TCP mode.
-2. Peraviz discovers peer stations through the existing mDNS discovery path.
-3. The controller selects a station and asks the native client to join it asynchronously.
-4. The native client sends `MVR_JOIN` using the official MVR-xchange TCP package header and tracks `MVR_JOIN_RET` / `MVR_COMMIT` information when it is received.
-5. The local Peraviz TCP service also accepts inbound `MVR_JOIN` and `MVR_COMMIT` messages from peer stations that discovered Peraviz.
-6. The UI enables `Update` only after a joined station has an available MVR revision.
-7. Pressing `Update` sends `MVR_REQUEST` for the latest known file UUID.
-8. The native client receives the binary MVR package on a background worker, writes it to a `.part` file, validates that the payload is non-empty and ZIP-like, and renames it to the final `.mvr` path only after success.
-9. `scripts/load_scene.gd` receives the completed path and calls the existing MVR loading path without adding protocol logic to scene loading code.
+## State and errors
 
-Peraviz follows the MVR-xchange TCP package structure with the `778682` package header, package version `1`, JSON package type `0`, MVR binary package type `1`, and big-endian multi-byte fields. Peraviz stores received files in a user-writable MVR-xchange cache directory. Previously completed files are not deleted by the transfer path, so a loaded scene is not invalidated while it may still be in use.
+The native client exposes discovery, station, commit, request, transfer, completion, failure, last error, file UUID, received path, and received byte-count information through the existing polling/event architecture. The Godot UI keeps the panel compact and reports the current state using concise labels such as discovering, joining, revision available, requesting, receiving, loaded, and failed.
 
-## Project roles and scope
+## Received-file storage and safety
 
-Perastage remains the technical data authority. Peraviz remains the MVR-xchange client/viewer and loads received MVR files exactly as it loads a local `.mvr` file.
+GDScript provides native code with a globalized `user://mvrxchange` cache path. Native transfer code writes received payloads to a temporary `.part` file, validates that the payload is non-empty, ZIP-like, and references `GeneralSceneDescription.xml`, then renames it to the final `.mvr` path only after successful completion.
 
-This implementation does not introduce a proprietary Perastage-to-Peraviz bridge. It also does not implement incremental object synchronization, editing features, or non-standard MVR mutations.
+A failed transfer does not create or replace a final `.mvr` file, and temporary `.part` files are removed where practical. Previously completed received files are intentionally not deleted by the transfer path, so a currently loaded scene is not invalidated while Godot may still be using it.
 
-## Auto-update
+## Testing with Perastage
 
-Auto-update remains off by default through the `mvr_xchange_auto_update` preference. Manual `Update` is the supported workflow for this phase. If automatic requesting is expanded later, it must remain opt-in and must not start while a transfer is already running.
+1. Build Peraviz with `PERAVIZ_ENABLE_MVR_XCHANGE=ON`.
+2. Start Perastage with MVR-xchange enabled on the same local network.
+3. Use the Peraviz MVR-xchange panel and keep the group as `Default`, unless Perastage is using a custom group.
+4. Start discovery and select the Perastage station when it appears.
+5. Wait until Peraviz reports that a revision is available.
+6. Press `Update` to request the MVR.
+7. Confirm that the status progresses through requesting/receiving/loading and that the scene loads through the normal importer.
 
-## Build behavior
+No real network is required for the native unit tests; they cover service-name parsing, message/package handling, UUID canonicalization, commit tracking helpers, and safe received-file finalization.
 
-Native MVR-xchange support is controlled by `PERAVIZ_ENABLE_MVR_XCHANGE`, which defaults to `ON`. Builds with the option disabled still run the Godot project; the UI reports that native MVR-xchange support is unavailable and fails gracefully.
+## Not implemented in this phase
+
+Peraviz remains a viewer/runtime client. This MVR-xchange layer does not add:
+
+- Perastage automatic `Connect to Peraviz` workflows.
+- Aggressive auto-accept or always-on auto-load behavior.
+- Peraviz Live Link.
+- Incremental table/object synchronization.
+- Private MVR-xchange messages.
+- Peraviz-side editing, rewriting, or mutation of MVR source data.
+- Automatic Perastage launching.
+
+If a protocol detail is ambiguous in the public specification, Peraviz keeps the behavior conservative and interoperable rather than inventing application-specific extensions.

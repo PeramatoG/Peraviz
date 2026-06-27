@@ -32,9 +32,11 @@ int main() {
     StationInfo station;
     station.service_name = "Perastage@Default._mvrxchange._tcp.local.";
     station.station_name = "Perastage";
-    MvrXchangeCommitInfo commit = parse_commit_message("{\"Type\":\"MVR_COMMIT\",\"FileUUID\":\"abc\",\"Message\":\"Published\"}", station);
-    expect_true(commit.file_uuid == "abc", "Expected parsed commit file UUID");
-    const std::string request_package = build_mvr_package(kMvrPackageTypeJson, build_request_message("station", "abc"));
+    MvrXchangeCommitInfo commit = parse_commit_message("{\"Type\":\"MVR_COMMIT\",\"FileUUID\":\"ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF\",\"Message\":\"Published\"}", station);
+    expect_true(commit.file_uuid == "abcdefab-cdef-4abc-8def-abcdefabcdef", "Expected canonical commit file UUID");
+    expect_true(canonicalize_uuid("{ABCDEFABCDEF4ABC8DEFABCDEFABCDEF}") == "abcdefab-cdef-4abc-8def-abcdefabcdef", "Expected UUID canonicalization");
+    expect_true(!is_valid_uuid("abc"), "Expected invalid UUID rejection");
+    const std::string request_package = build_mvr_package(kMvrPackageTypeJson, build_request_message("abcdefab-cdef-4abc-8def-abcdefabcdef", "ABCDEFABCDEF4ABC8DEFABCDEFABCDEF"));
     std::vector<MvrXchangePacket> packets = parse_mvr_packages(request_package);
     expect_true(packets.size() == 1, "Expected one parsed package");
     expect_true(packets[0].payload.find("MVR_REQUEST") != std::string::npos, "Expected request message type");
@@ -43,9 +45,11 @@ int main() {
     std::filesystem::create_directories(temp_dir);
     const std::filesystem::path target = temp_dir / "received.mvr";
     std::string error;
-    expect_true(write_completed_mvr_file(target.string(), "PK\003\004test", error), "Expected safe MVR write to succeed");
+    expect_true(write_completed_mvr_file(target.string(), std::string("PK\003\004test-GeneralSceneDescription.xml"), error), "Expected safe MVR write to succeed");
     expect_true(std::filesystem::exists(target), "Expected final MVR path");
     expect_true(!std::filesystem::exists(target.string() + ".part"), "Expected no remaining part file");
+    expect_true(!write_completed_mvr_file((temp_dir / "bad.mvr").string(), std::string("PK\003\004test"), error), "Expected missing scene description to fail");
+    expect_true(!std::filesystem::exists(temp_dir / "bad.mvr"), "Expected no final file after validation failure");
     std::filesystem::remove_all(temp_dir);
     return 0;
 }

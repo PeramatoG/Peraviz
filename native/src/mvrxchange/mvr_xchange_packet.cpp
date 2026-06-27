@@ -2,6 +2,8 @@
 
 #include <regex>
 #include <sstream>
+#include <algorithm>
+#include <cctype>
 
 namespace peraviz::mvrxchange {
 namespace {
@@ -109,10 +111,12 @@ std::string build_join_ret_message(const std::string &station_name, const std::s
 
 // Builds an MVR_REQUEST JSON message.
 std::string build_request_message(const std::string &station_uuid, const std::string &file_uuid) {
+    const std::string from_station_uuid = canonicalize_uuid(station_uuid);
+    const std::string requested_file_uuid = canonicalize_uuid(file_uuid);
     std::ostringstream stream;
-    stream << "{\"Type\":\"MVR_REQUEST\",\"FromStationUUID\":\"" << json_escape(station_uuid) << "\"";
-    if (!file_uuid.empty()) {
-        stream << ",\"FileUUID\":\"" << json_escape(file_uuid) << "\"";
+    stream << "{\"Type\":\"MVR_REQUEST\",\"FromStationUUID\":\"" << json_escape(from_station_uuid.empty() ? station_uuid : from_station_uuid) << "\"";
+    if (!requested_file_uuid.empty()) {
+        stream << ",\"FileUUID\":\"" << json_escape(requested_file_uuid) << "\"";
     }
     stream << "}";
     return stream.str();
@@ -132,6 +136,30 @@ std::string json_string_value(const std::string &text, const std::vector<std::st
         }
     }
     return std::string();
+}
+
+// Canonicalizes UUID text to lower-case 8-4-4-4-12 form.
+std::string canonicalize_uuid(const std::string &value) {
+    std::string hex;
+    hex.reserve(32);
+    for (char ch : value) {
+        if (ch == '{' || ch == '}' || ch == '-') {
+            continue;
+        }
+        if (!std::isxdigit(static_cast<unsigned char>(ch))) {
+            return std::string();
+        }
+        hex.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    if (hex.size() != 32) {
+        return std::string();
+    }
+    return hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" + hex.substr(16, 4) + "-" + hex.substr(20, 12);
+}
+
+// Returns true when text contains a valid UUID value.
+bool is_valid_uuid(const std::string &value) {
+    return !canonicalize_uuid(value).empty();
 }
 
 } // namespace peraviz::mvrxchange

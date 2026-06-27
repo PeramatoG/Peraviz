@@ -147,6 +147,11 @@ Dictionary PeravizMvrXchangeClient::get_stats() const {
     out["transfer_busy"] = transfer_stats.busy;
     out["commit_count"] = static_cast<int64_t>(transfer_stats.commit_count);
     out["event_count"] = static_cast<int64_t>(transfer_stats.event_count);
+    out["station_uuid"] = String(transfer_stats.station_uuid.c_str());
+    out["current_station_uuid"] = String(transfer_stats.current_station_uuid.c_str());
+    out["current_file_uuid"] = String(transfer_stats.current_file_uuid.c_str());
+    out["last_received_file_path"] = String(transfer_stats.last_received_file_path.c_str());
+    out["received_byte_count"] = static_cast<int64_t>(transfer_stats.received_byte_count);
     return out;
 }
 
