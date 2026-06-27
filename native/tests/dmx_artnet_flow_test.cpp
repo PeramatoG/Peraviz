@@ -62,7 +62,7 @@ bool send_udp_packets(uint16_t port, const std::vector<std::vector<uint8_t>> &pa
     sockaddr_in address {};
     address.sin_family = AF_INET;
     address.sin_port = htons(port);
-    inet_pton(AF_INET, "127.0.0.1", &address.sin_addr);
+    address.sin_addr.s_addr = htonl(0x7f000001UL);
     for (const std::vector<uint8_t> &packet : packets) {
         const int sent = sendto(socket_handle,
 #ifdef _WIN32
