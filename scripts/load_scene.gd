@@ -51,6 +51,8 @@ var _debug_asset_cache_enabled: bool = false
 var _debug_gizmos_root: Node3D
 var _fixture_emissive_cache: Dictionary = {}
 var _fixture_emitter_light_cache: Dictionary = {}
+var _fixture_geometry_nodes_cache: Dictionary = {}
+var _fixture_emitter_nodes_cache: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
@@ -1553,6 +1555,7 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 
 func _clear_scene() -> void:
 	_clear_fixture_inspection_panel()
+	_clear_fixture_node_cache()
 	_fixture_row_provider.clear()
 	_scene_import_service.clear_scene(
 		_scene_registry,
@@ -1704,6 +1707,28 @@ func _has_lighting_controls(controls: Dictionary) -> bool:
 func _apply_dimmer_feedback_to_fixture(fixture_uuid: String, dimmer: float, controls: Dictionary = {}) -> void:
 	_fixture_light_apply_service.apply_dimmer_feedback_to_fixture(self, fixture_uuid, dimmer, controls)
 
+func _prepare_fixture_node_cache(fixture_uuid: String) -> void:
+	_get_fixture_geometry_nodes(fixture_uuid)
+	_get_fixture_emitter_nodes(fixture_uuid)
+
+func _clear_fixture_node_cache() -> void:
+	_fixture_geometry_nodes_cache.clear()
+	_fixture_emitter_nodes_cache.clear()
+
+func _get_fixture_geometry_nodes(fixture_uuid: String) -> Array:
+	if _fixture_geometry_nodes_cache.has(fixture_uuid):
+		return _fixture_geometry_nodes_cache.get(fixture_uuid, [])
+	var nodes: Array = _to_node3d_array(_scene_registry.get_anchor(fixture_uuid, "geometry_nodes"))
+	_fixture_geometry_nodes_cache[fixture_uuid] = nodes
+	return nodes
+
+func _get_fixture_emitter_nodes(fixture_uuid: String) -> Array:
+	if _fixture_emitter_nodes_cache.has(fixture_uuid):
+		return _fixture_emitter_nodes_cache.get(fixture_uuid, [])
+	var nodes: Array = _to_node3d_array(_scene_registry.get_anchor(fixture_uuid, "emitters"))
+	_fixture_emitter_nodes_cache[fixture_uuid] = nodes
+	return nodes
+
 func _collect_fixture_emissive_materials(fixture_uuid: String, geometry_nodes: Array) -> Array:
 	if _fixture_emissive_cache.has(fixture_uuid):
 		return _fixture_emissive_cache.get(fixture_uuid, [])
@@ -1751,9 +1776,8 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 		if child is SpotLight3D and child.name == "PeravizEmitterLight":
 			if child.rotation_degrees != EMITTER_LIGHT_DIRECTION_FIX:
 				child.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
-			# Keep spotlight footprint behavior stable while pan/tilt moves the fixture.
-			# Self/caster shadows from fixture geometry can clip the floor footprint.
-			child.shadow_enabled = true
+			# Fixture beams use dedicated mesh shaders, so positional shadows stay off by default.
+			child.shadow_enabled = false
 			child.shadow_bias = 0.05
 			child.shadow_normal_bias = 1.2
 			child.set_meta("peraviz_lens_radius", lens_radius)
@@ -1764,7 +1788,7 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 	light.position = Vector3.ZERO
 	light.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
 	light.light_negative = false
-	light.shadow_enabled = true
+	light.shadow_enabled = false
 	light.shadow_bias = 0.05
 	light.shadow_normal_bias = 1.2
 	light.spot_range = 60.0

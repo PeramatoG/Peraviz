@@ -95,6 +95,8 @@ func rebuild(universe_offset: int) -> Dictionary:
 			continue
 		_fixture_nodes[fixture_uuid] = fixture_node
 		_bound_fixture_ids[fixture_uuid] = true
+		if _loader.has_method("_prepare_fixture_node_cache"):
+			_loader._prepare_fixture_node_cache(fixture_uuid)
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
