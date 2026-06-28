@@ -2,11 +2,12 @@ extends RefCounted
 class_name FixtureLightApplyService
 
 var _phase_metrics: Dictionary = {
-	"dmx_decode": {"calls": 0, "total_usec": 0},
-	"fixture_apply": {"calls": 0, "total_usec": 0},
-	"beam_update": {"calls": 0, "total_usec": 0},
-	"gobo_update": {"calls": 0, "total_usec": 0},
+	"dmx_decode": {"calls": 0, "total_usec": 0, "worst_usec": 0},
+	"fixture_apply": {"calls": 0, "total_usec": 0, "worst_usec": 0},
+	"beam_update": {"calls": 0, "total_usec": 0, "worst_usec": 0},
+	"gobo_update": {"calls": 0, "total_usec": 0, "worst_usec": 0},
 }
+var _hot_path_counters: Dictionary = {}
 
 func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls: Dictionary) -> void:
 	var phase_start: int = Time.get_ticks_usec()
@@ -178,9 +179,12 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 	var beam_color: Color = loader._resolve_fixture_beam_color(emitter_photometrics, controls)
 	var can_prioritize_light_dimmer: bool = dimmer_changed and not color_changed and _can_use_dimmer_only_fast_path(controls)
 	if can_prioritize_light_dimmer:
+		record_hot_path_counter("dimmer_fast_path_used", 1)
 		_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)
 		_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
 		return
+	if dimmer_changed and not can_prioritize_light_dimmer:
+		record_hot_path_counter("dimmer_fast_path_missed", 1)
 	if dimmer_changed or color_changed:
 		_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
 	_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)
@@ -210,7 +214,9 @@ func _apply_emitter_light_dimmer(loader: Node, fixture_uuid: String, emitter_nod
 			continue
 		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
 		if can_use_fast_path and _apply_emitter_light_dimmer_fast(loader, light, photometric, beam_color, normalized_dimmer):
+			record_hot_path_counter("beam_intensity_only_update_called", 1)
 			continue
+		record_hot_path_counter("full_light_state_used", 1)
 		loader._apply_emitter_light_state(light, photometric, normalized_dimmer, controls)
 
 func _resolve_emitter_photometric(loader: Node, emitter_photometrics: Array, index: int) -> Dictionary:
@@ -269,15 +275,29 @@ func record_gobo_update() -> void:
 	_track_phase("gobo_update", Time.get_ticks_usec())
 
 func get_phase_metrics() -> Dictionary:
-	return _phase_metrics.duplicate(true)
+	var result: Dictionary = _phase_metrics.duplicate(true)
+	for phase in result.keys():
+		if phase == "counters":
+			continue
+		var bucket: Dictionary = result.get(phase, {})
+		var calls: int = int(bucket.get("calls", 0))
+		if calls > 0:
+			bucket["avg_usec"] = int(int(bucket.get("total_usec", 0)) / calls)
+			result[phase] = bucket
+	result["counters"] = _hot_path_counters.duplicate(true)
+	return result
+
+func record_hot_path_counter(name: String, amount: int = 1) -> void:
+	_hot_path_counters[name] = int(_hot_path_counters.get(name, 0)) + amount
 
 func _track_phase(phase: String, phase_start_usec: int) -> void:
 	var elapsed: int = max(Time.get_ticks_usec() - phase_start_usec, 0)
 	if not _phase_metrics.has(phase):
-		_phase_metrics[phase] = {"calls": 0, "total_usec": 0}
+		_phase_metrics[phase] = {"calls": 0, "total_usec": 0, "worst_usec": 0}
 	var bucket: Dictionary = _phase_metrics.get(phase, {})
 	bucket["calls"] = int(bucket.get("calls", 0)) + 1
 	bucket["total_usec"] = int(bucket.get("total_usec", 0)) + elapsed
+	bucket["worst_usec"] = max(int(bucket.get("worst_usec", 0)), elapsed)
 	_phase_metrics[phase] = bucket
 
 func record_dmx_decode_elapsed(elapsed_usec: int) -> void:

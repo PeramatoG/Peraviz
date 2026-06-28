@@ -2065,19 +2065,25 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		var gobo_phase_start: int = Time.get_ticks_usec()
 		gobo_topology_changed = _fixture_gobo_projector.apply_gobo_projection(light, gobo_controls)
 		if _fixture_light_apply_service != null:
+			_fixture_light_apply_service.record_hot_path_counter("gobo_projection_called", 1)
 			_fixture_light_apply_service._track_phase("gobo_update", gobo_phase_start)
 		_set_light_meta_variant(light, "peraviz_last_gobo_key", str(gobo_controls.get("key", "")), last_state)
 		var applied_gobo_rotation_deg: float = float(light.get_meta("peraviz_gobo_applied_rotation_deg", beam_params.get("gobo_rotation_deg", 0.0)))
 		beam_params["gobo_rotation_deg"] = applied_gobo_rotation_deg
 	if gobo_topology_changed:
 		_emitter_mesh_rebuild_count += 1
+		if _fixture_light_apply_service != null:
+			_fixture_light_apply_service.record_hot_path_counter("gobo_topology_rebuild_count", 1)
 		_cleanup_light_beam_renderers(light)
 	_set_light_property_float(light, "light_volumetric_fog_energy", float(_visual_settings.get("light_volumetric_fog_energy", 12.0)) * float(_visual_settings.get("haze_density_multiplier", 0.22)), last_state)
 	var beam_phase_start: int = Time.get_ticks_usec()
 	_update_beam_for_light(light, beam_params)
 	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service.record_hot_path_counter("beam_full_update_called", 1)
 		_fixture_light_apply_service._track_phase("beam_update", beam_phase_start)
 	_emitter_parametric_update_count += 1
+	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service.record_hot_path_counter("beam_parametric_update_count", 1)
 	if _fixture_gobo_projector != null:
 		light.set_meta("peraviz_gobo_debug_counters", _fixture_gobo_projector.get_debug_counters())
 	light.set_meta("peraviz_emitter_debug_counters", {
@@ -2100,8 +2106,12 @@ func _is_close_color(a: Color, b: Color, epsilon: float = EMITTER_LIGHT_COLOR_EP
 func _track_property_change(applied: bool) -> void:
 	if applied:
 		_debug_properties_applied += 1
+		if _fixture_light_apply_service != null:
+			_fixture_light_apply_service.record_hot_path_counter("light_properties_applied", 1)
 	else:
 		_debug_properties_skipped += 1
+		if _fixture_light_apply_service != null:
+			_fixture_light_apply_service.record_hot_path_counter("light_properties_skipped", 1)
 
 func _set_light_property_float(light: SpotLight3D, property_name: String, value: float, last_state: Dictionary) -> void:
 	var cache_key: String = "prop:" + property_name
@@ -2676,9 +2686,28 @@ func _on_dmx_start_failed(error_message: String) -> void:
 	_status_presenter.show_toast(message)
 
 func bridge_get_fixture_light_phase_metrics() -> Dictionary:
-	if _fixture_light_apply_service == null:
-		return {}
-	return _fixture_light_apply_service.get_phase_metrics()
+	var metrics: Dictionary = {}
+	if _fixture_light_apply_service != null:
+		metrics["fixture_light"] = _fixture_light_apply_service.get_phase_metrics()
+	if _dmx_controller != null:
+		metrics["dmx_hot_path"] = _dmx_controller.get_hot_path_metrics()
+	return metrics
+
+func bridge_set_debug_print_dmx_hot_path_metrics(enabled: bool) -> void:
+	if _dmx_controller != null:
+		_dmx_controller.set_debug_print_hot_path_metrics(enabled)
+
+func bridge_set_disable_dmx_time_tick_updates(enabled: bool) -> void:
+	if _dmx_controller != null:
+		_dmx_controller.set_disable_time_tick_updates(enabled)
+
+func bridge_set_max_dmx_time_tick_rate_hz(rate_hz: float) -> void:
+	if _dmx_controller != null:
+		_dmx_controller.set_max_time_tick_rate_hz(rate_hz)
+
+func bridge_set_max_dmx_visual_apply_rate_hz(rate_hz: float) -> void:
+	if _dmx_controller != null:
+		_dmx_controller.set_max_dmx_visual_apply_rate_hz(rate_hz)
 
 func bridge_record_dmx_decode_phase(elapsed_usec: int) -> void:
 	if _fixture_light_apply_service == null:

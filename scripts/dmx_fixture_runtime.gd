@@ -22,7 +22,7 @@ var _fixture_patch_lookup: Dictionary = {}
 var _fixture_nodes: Dictionary = {}
 var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
-var _fixture_snapshot_cache: Dictionary = {}
+var _fixture_offset_hash_cache: Dictionary = {}
 var _fixture_capability_hash_cache: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _fixture_output_buffers: Dictionary = {}
@@ -51,7 +51,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_nodes.clear()
 	_bound_fixture_ids.clear()
 	_fixture_channel_offsets.clear()
-	_fixture_snapshot_cache.clear()
+	_fixture_offset_hash_cache.clear()
 	_fixture_capability_hash_cache.clear()
 	_fixture_apply_plans.clear()
 	_fixture_output_buffers.clear()
@@ -225,6 +225,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var pending_controls: Array = []
+	var compacted_control_fields: int = 0
 	for universe_key in changed_frames.keys():
 		var universe_id: int = int(universe_key)
 		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
@@ -254,6 +255,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 			fixtures_considered += 1
 			updated += int(result.get("updated", 0))
 			skipped += int(result.get("skipped", 0))
+			compacted_control_fields += int(result.get("compacted_control_fields", 0))
 
 	return {
 		"updated": updated,
@@ -261,6 +263,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		"universes_changed": changed_frames.size(),
 		"fixtures_considered": fixtures_considered,
 		"controls": pending_controls,
+		"compacted_control_fields": compacted_control_fields,
 	}
 
 func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
@@ -329,27 +332,23 @@ func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fix
 		_fixture_apply_plans[fixture_uuid] = fixture_plan
 	if not _fixture_output_buffers.has(fixture_uuid):
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
-	var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
-	if snapshot.is_empty():
+	var fixture_hash: int = _compute_fixture_offsets_hash(fixture_uuid, frame)
+	if fixture_hash < 0:
 		var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame, fixture_uuid)
 		if not _has_any_capability(controls_without_cache):
 			return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
-		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache, pending_controls)
-		return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
-	var snapshot_hash: int = _compute_snapshot_hash(snapshot)
-	var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
-	if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
+		var uncached_field_count: int = _apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache, pending_controls)
+		return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0, "compacted_control_fields": uncached_field_count}
+	var previous_hash: int = int(_fixture_offset_hash_cache.get(fixture_uuid, -1))
+	if not _debug_force_full_apply and previous_hash == fixture_hash:
 		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 1}
 
 	var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame, fixture_uuid)
 	if not _has_any_capability(controls):
 		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
-	_fixture_snapshot_cache[fixture_uuid] = {
-		"hash": snapshot_hash,
-		"snapshot": snapshot,
-	}
-	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls, pending_controls)
-	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
+	_fixture_offset_hash_cache[fixture_uuid] = fixture_hash
+	var compacted_field_count: int = _apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls, pending_controls)
+	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0, "compacted_control_fields": compacted_field_count}
 
 func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 	var handler_scripts: Dictionary = {
@@ -484,37 +483,51 @@ func _append_capability_from_plan(capabilities: Dictionary, capability_type: Str
 		blocks = script.collect(fixture_plan.get("binding", {}), frame, ControlReaderScript, FORCE_COARSE_ONLY_DMX_READ)
 	_append_capabilities(capabilities, capability_type, blocks)
 
-func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary, pending_controls: Array = []) -> void:
+func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary, pending_controls: Array = []) -> int:
 	# Temporary compatibility adapter for incremental migration.
 	# Old callback contract receives (fixture_uuid, controls).
 	# New contract may receive a precompiled output envelope.
 	if apply_fixture_callback.is_null():
-		pending_controls.append({"fixture_uuid": fixture_uuid, "controls": controls.duplicate(true)})
-		return
+		var compacted: Dictionary = _compact_controls_for_pending_queue(controls)
+		pending_controls.append({"fixture_uuid": fixture_uuid, "controls": compacted})
+		return _count_compact_control_fields(compacted)
 	apply_fixture_callback.call(fixture_uuid, controls)
+	return _count_compact_control_fields(controls)
 
-func _snapshot_is_unchanged(previous_state: Dictionary, snapshot_hash: int, snapshot: PackedByteArray) -> bool:
-	if previous_state.is_empty():
-		return false
-	if int(previous_state.get("hash", -1)) != snapshot_hash:
-		return false
-	var previous_snapshot: PackedByteArray = previous_state.get("snapshot", PackedByteArray())
-	return previous_snapshot == snapshot
+func _compact_controls_for_pending_queue(controls: Dictionary) -> Dictionary:
+	var compacted: Dictionary = {}
+	var compacted_capabilities: Dictionary = {}
+	var capabilities: Dictionary = controls.get("capabilities", {})
+	if capabilities is Dictionary:
+		for capability_type in capabilities.keys():
+			var bucket: Array = capabilities.get(capability_type, [])
+			if bucket is Array and not bucket.is_empty():
+				compacted_capabilities[capability_type] = bucket.duplicate(true)
+	if not compacted_capabilities.is_empty():
+		compacted["capabilities"] = compacted_capabilities
+	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
+	if changed_capability_types is Dictionary and not changed_capability_types.is_empty():
+		compacted["changed_capability_types"] = changed_capability_types.duplicate(false)
+	return compacted
 
-func _extract_snapshot_for_fixture(fixture_uuid: String, frame: PackedByteArray) -> PackedByteArray:
+func _count_compact_control_fields(controls: Dictionary) -> int:
+	var count: int = 0
+	var capabilities: Dictionary = controls.get("capabilities", {})
+	if capabilities is Dictionary:
+		for capability_type in capabilities.keys():
+			var bucket: Array = capabilities.get(capability_type, [])
+			count += bucket.size() if bucket is Array else 1
+	return count
+
+func _compute_fixture_offsets_hash(fixture_uuid: String, frame: PackedByteArray) -> int:
 	var offsets: PackedInt32Array = _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array())
-	var snapshot := PackedByteArray()
-	for offset in offsets:
-		if offset < 0 or offset >= frame.size():
-			snapshot.append(0)
-		else:
-			snapshot.append(frame[offset])
-	return snapshot
-
-func _compute_snapshot_hash(snapshot: PackedByteArray) -> int:
+	if offsets.is_empty():
+		return -1
 	var hash_value: int = 2166136261
-	for value in snapshot:
-		hash_value = int((hash_value ^ int(value)) * 16777619)
+	for offset in offsets:
+		var value: int = int(frame[offset]) if offset >= 0 and offset < frame.size() else 0
+		hash_value = int((hash_value ^ value) * 16777619)
+		hash_value = int((hash_value ^ int(offset)) * 16777619)
 	return hash_value
 
 func _collect_used_channel_offsets(binding: Dictionary) -> PackedInt32Array:
