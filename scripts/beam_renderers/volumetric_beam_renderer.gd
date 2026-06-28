@@ -40,6 +40,7 @@ func ensure_beam(light: SpotLight3D) -> void:
 	beam.visible = false
 	light.add_child(beam)
 	light.set_meta(BEAM_META_KEY, beam)
+	_apply_static_beam_params(beam, {})
 	_ensure_debug_axis(light)
 
 func update_beam(light: SpotLight3D, params: Dictionary) -> void:
@@ -87,9 +88,33 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	beam.set_instance_shader_parameter("beam_visibility", 1.0)
 	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
 	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
+	_apply_static_beam_params(beam, params)
+	beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
+	beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
+	beam.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
+	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
+	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
+	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
+	_apply_beam_material_params(beam, beam_range, shape_result)
+
+func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void:
+	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
+	var static_signature: String = "%s|%s|%s|%s|%s|%s|%s|%s|%s" % [
+		str(_settings.get("beam_noise_amount", 0.06)),
+		str(_settings.get("beam_noise_scale", 1.4)),
+		str(_settings.get("beam_haze_density", 0.17)),
+		str(haze_density),
+		str(_settings.get("beam_anisotropy", 0.62)),
+		str(_settings.get("beam_quality", 1)),
+		str(params.get("beam_radial_falloff", 1.1)),
+		str(params.get("beam_longitudinal_falloff", 1.0)),
+		str(params.get("beam_softness", 0.35)),
+	]
+	if str(beam.get_meta("peraviz_static_beam_signature", "")) == static_signature:
+		return
+	beam.set_meta("peraviz_static_beam_signature", static_signature)
 	beam.set_instance_shader_parameter("beam_noise_amount", float(_settings.get("beam_noise_amount", 0.06)))
 	beam.set_instance_shader_parameter("beam_noise_scale", float(_settings.get("beam_noise_scale", 1.4)))
-	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	beam.set_instance_shader_parameter("beam_haze_density", float(_settings.get("beam_haze_density", 0.17)) * haze_density)
 	beam.set_instance_shader_parameter("haze_density", max(haze_density, 0.2))
 	beam.set_instance_shader_parameter("beam_anisotropy", float(_settings.get("beam_anisotropy", 0.62)))
@@ -97,23 +122,24 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	beam.set_instance_shader_parameter("radial_falloff", max(float(params.get("beam_radial_falloff", 1.1)), 0.05))
 	beam.set_instance_shader_parameter("longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05))
 	beam.set_instance_shader_parameter("beam_softness", clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0))
-	beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
-	beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
-	beam.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
-	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
-	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
-	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
+
+func _apply_beam_material_params(beam: MeshInstance3D, beam_range: float, shape_result: Dictionary) -> void:
 	var far_fade_end: float = max(400.0, beam_range * 12.0)
+	var material_signature: String = "%s|%s|%s|%s|%s" % [str(beam_range), str(shape_result.get("mirror_x", true)), str(shape_result.get("mirror_z", false)), str(far_fade_end), str(_active_shape_provider.shape_mode())]
+	if str(beam.get_meta("peraviz_beam_material_signature", "")) == material_signature:
+		return
+	beam.set_meta("peraviz_beam_material_signature", material_signature)
 	var beam_material: ShaderMaterial = beam.material_override as ShaderMaterial
-	if beam_material != null:
-		beam_material.set_shader_parameter("near_fade_end", max(2.0, beam_range * 0.2))
-		beam_material.set_shader_parameter("far_fade_start", far_fade_end * 0.6)
-		beam_material.set_shader_parameter("far_fade_end", far_fade_end)
-		beam_material.set_shader_parameter("use_gobo", false)
-		beam_material.set_shader_parameter("gobo_invert", false)
-		beam_material.set_shader_parameter("gobo_mirror_x", bool(shape_result.get("mirror_x", true)))
-		beam_material.set_shader_parameter("gobo_mirror_z", bool(shape_result.get("mirror_z", false)))
-		beam_material.set_shader_parameter("depth_feather_enabled", false)
+	if beam_material == null:
+		return
+	beam_material.set_shader_parameter("near_fade_end", max(2.0, beam_range * 0.2))
+	beam_material.set_shader_parameter("far_fade_start", far_fade_end * 0.6)
+	beam_material.set_shader_parameter("far_fade_end", far_fade_end)
+	beam_material.set_shader_parameter("use_gobo", false)
+	beam_material.set_shader_parameter("gobo_invert", false)
+	beam_material.set_shader_parameter("gobo_mirror_x", bool(shape_result.get("mirror_x", true)))
+	beam_material.set_shader_parameter("gobo_mirror_z", bool(shape_result.get("mirror_z", false)))
+	beam_material.set_shader_parameter("depth_feather_enabled", false)
 
 func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	if not light.has_meta(BEAM_META_KEY):
