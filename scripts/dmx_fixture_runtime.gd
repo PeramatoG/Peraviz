@@ -455,6 +455,10 @@ func _compute_snapshot_hash(snapshot: PackedByteArray) -> int:
 func _collect_used_channel_offsets(binding: Dictionary) -> PackedInt32Array:
 	var offsets := PackedInt32Array()
 	var used_offsets := {}
+	for key in _collect_direct_channel_offset_keys():
+		var offset: int = int(binding.get(key, -1))
+		if offset >= 0:
+			used_offsets[offset] = true
 	var channel_bindings: Array = binding.get("channel_bindings", [])
 	for channel_binding in channel_bindings:
 		if channel_binding is not Dictionary:
@@ -470,6 +474,21 @@ func _collect_used_channel_offsets(binding: Dictionary) -> PackedInt32Array:
 	for offset in sorted_offsets:
 		offsets.append(int(offset))
 	return offsets
+
+func _collect_direct_channel_offset_keys() -> PackedStringArray:
+	return PackedStringArray([
+		"dimmer_channel_index_0", "dimmer_fine_channel_index_0", "dimmer_ultra_fine_channel_index_0",
+		"pan_channel_index_0", "pan_fine_channel_index_0", "pan_ultra_fine_channel_index_0",
+		"tilt_channel_index_0", "tilt_fine_channel_index_0", "tilt_ultra_fine_channel_index_0",
+		"zoom_channel_index_0", "zoom_fine_channel_index_0", "zoom_ultra_fine_channel_index_0",
+		"cyan_channel_index_0", "cyan_fine_channel_index_0", "cyan_ultra_fine_channel_index_0",
+		"magenta_channel_index_0", "magenta_fine_channel_index_0", "magenta_ultra_fine_channel_index_0",
+		"yellow_channel_index_0", "yellow_fine_channel_index_0", "yellow_ultra_fine_channel_index_0",
+		"gobo_channel_index_0", "gobo_fine_channel_index_0", "gobo_ultra_fine_channel_index_0",
+		"gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0",
+		"gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0",
+		"gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0",
+	])
 
 func _append_capabilities(capabilities: Dictionary, capability_type: String, blocks: Array) -> void:
 	if blocks.is_empty():
