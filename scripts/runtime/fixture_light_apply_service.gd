@@ -131,6 +131,9 @@ func resolve_gobo_controls(controls: Dictionary) -> Dictionary:
 	}
 
 func has_lighting_controls(controls: Dictionary) -> bool:
+	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
+	if not changed_capability_types.is_empty():
+		return _has_changed_lighting_capability(changed_capability_types)
 	var dimmer_controls: Dictionary = resolve_dimmer_controls(controls)
 	if bool(dimmer_controls.get("has_dimmer", false)) or bool(dimmer_controls.get("has_zoom", false)):
 		return true
@@ -168,12 +171,23 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 	var emitter_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "emitters"))
 	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
 		return
+	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
+	var dimmer_changed: bool = changed_capability_types.is_empty() or bool(changed_capability_types.get("dimmer", false))
+	var color_changed: bool = changed_capability_types.is_empty() or bool(changed_capability_types.get("color_wheel", false))
 	var dimmer_percent: float = clamp(dimmer, 0.0, 100.0)
-	var normalized_dimmer: float = dimmer_percent / 100.0
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
+	var normalized_dimmer: float = dimmer_percent / 100.0 if dimmer_changed else _resolve_current_fixture_dimmer(loader, fixture_uuid, emitter_nodes)
 	var beam_color: Color = loader._resolve_fixture_beam_color(emitter_photometrics, controls)
-	_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
+	if dimmer_changed or color_changed:
+		_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
 	_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)
+
+func _resolve_current_fixture_dimmer(loader: Node, fixture_uuid: String, emitter_nodes: Array) -> float:
+	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
+	for light in emitter_lights:
+		if light is SpotLight3D and is_instance_valid(light):
+			return clamp(float(light.get_meta("peraviz_beam_base_intensity", 0.0)), 0.0, 1.0)
+	return 0.0
 
 func _apply_emissive_material_dimmer(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, normalized_dimmer: float) -> void:
 	var emissive_materials: Array = loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
@@ -206,7 +220,8 @@ func _can_use_dimmer_only_fast_path(controls: Dictionary) -> bool:
 		return false
 	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
 	if not changed_capability_types.is_empty():
-		return _only_dimmer_capability_changed(changed_capability_types)
+		var changed_dimmer_controls: Dictionary = resolve_dimmer_controls(controls)
+		return _only_dimmer_capability_changed(changed_capability_types) and bool(changed_dimmer_controls.get("has_dimmer", false)) and not bool(changed_dimmer_controls.get("has_zoom", false))
 	var dimmer_controls: Dictionary = resolve_dimmer_controls(controls)
 	if not bool(dimmer_controls.get("has_dimmer", false)) or bool(dimmer_controls.get("has_zoom", false)):
 		return false
@@ -216,10 +231,16 @@ func _can_use_dimmer_only_fast_path(controls: Dictionary) -> bool:
 	var gobo_controls: Dictionary = resolve_gobo_controls(controls)
 	return not bool(gobo_controls.get("has_gobo", false)) and not bool(gobo_controls.get("has_gobo_index", false)) and not bool(gobo_controls.get("has_gobo_rotation", false))
 
+func _has_changed_lighting_capability(changed_capability_types: Dictionary) -> bool:
+	for capability_type in ["dimmer", "color_wheel", "gobo", "prism", "strobe"]:
+		if bool(changed_capability_types.get(capability_type, false)):
+			return true
+	return false
+
 func _only_dimmer_capability_changed(changed_capability_types: Dictionary) -> bool:
 	if not bool(changed_capability_types.get("dimmer", false)):
 		return false
-	for capability_type in ["pan_tilt", "color_wheel", "gobo", "prism", "strobe"]:
+	for capability_type in ["color_wheel", "gobo", "prism", "strobe"]:
 		if bool(changed_capability_types.get(capability_type, false)):
 			return false
 	return true
