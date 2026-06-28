@@ -176,6 +176,11 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
 	var normalized_dimmer: float = dimmer_percent / 100.0 if dimmer_changed else _resolve_current_fixture_dimmer(loader, fixture_uuid, emitter_nodes)
 	var beam_color: Color = loader._resolve_fixture_beam_color(emitter_photometrics, controls)
+	var can_prioritize_light_dimmer: bool = dimmer_changed and not color_changed and _can_use_dimmer_only_fast_path(controls)
+	if can_prioritize_light_dimmer:
+		_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)
+		_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
+		return
 	if dimmer_changed or color_changed:
 		_apply_emissive_material_dimmer(loader, fixture_uuid, geometry_nodes, beam_color, normalized_dimmer)
 	_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)

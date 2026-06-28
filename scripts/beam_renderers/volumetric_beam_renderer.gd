@@ -182,9 +182,6 @@ func cleanup_beam(light: SpotLight3D) -> void:
 	if beam != null and is_instance_valid(beam):
 		beam.queue_free()
 	light.remove_meta(BEAM_META_KEY)
-	for provider in _shape_providers.values():
-		if provider is VolumetricBeamShapeProvider:
-			(provider as VolumetricBeamShapeProvider).clear_cache()
 
 func _select_shape_provider() -> VolumetricBeamShapeProvider:
 	var requested_mode: String = str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)).to_lower()

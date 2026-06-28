@@ -14,14 +14,6 @@ uint64_t now_microseconds() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
 
-// Returns true when an Art-Net sequence value is older than the last accepted non-zero sequence.
-bool is_out_of_order_sequence(uint8_t last_sequence, uint8_t sequence) {
-    if (sequence == 0 || last_sequence == 0 || sequence == last_sequence) {
-        return false;
-    }
-    return static_cast<uint8_t>(sequence - last_sequence) > 127;
-}
-
 } // namespace
 
 // Constructs an Art-Net receiver with default state.
@@ -168,7 +160,7 @@ void ArtNetReceiver::run() {
     }
 }
 
-// Applies latest-wins source tracking and Art-Net sequence filtering for a parsed frame.
+// Applies latest-wins source tracking for a parsed frame.
 bool ArtNetReceiver::should_accept_frame(const ArtNetDmxFrameView &frame_view, const std::string &sender_ip, uint16_t sender_port) {
     const std::string endpoint = sender_ip + ":" + std::to_string(sender_port);
     std::lock_guard<std::mutex> lock(source_state_mutex_);
@@ -179,18 +171,7 @@ bool ArtNetReceiver::should_accept_frame(const ArtNetDmxFrameView &frame_view, c
         state.has_sequence = false;
     }
     state.endpoint = endpoint;
-
-    if (frame_view.sequence == 0) {
-        state.has_sequence = false;
-        state.last_sequence = 0;
-        return true;
-    }
-
-    if (state.has_sequence && is_out_of_order_sequence(state.last_sequence, frame_view.sequence)) {
-        return false;
-    }
-
-    state.has_sequence = true;
+    state.has_sequence = frame_view.sequence != 0;
     state.last_sequence = frame_view.sequence;
     return true;
 }
