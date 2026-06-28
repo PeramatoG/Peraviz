@@ -205,7 +205,6 @@ if(BUILD_TESTING)
         src/dmx/artnet_receiver.cpp
         src/dmx/dmx_platform.cpp
         src/dmx/dmx_universe_cache.cpp
-        src/dmx/dmx_universe_decoder.cpp
         src/dmx/udp_socket.cpp
     )
     target_include_directories(peraviz_native_artnet_flow_tests PRIVATE
