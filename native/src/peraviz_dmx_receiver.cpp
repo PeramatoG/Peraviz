@@ -4,6 +4,23 @@
 #include <chrono>
 
 namespace godot {
+namespace {
+
+// Computes a stable hash for selected DMX channels only.
+uint32_t compute_interest_hash(const peraviz::dmx::DmxFrame &frame, const PackedInt32Array &offsets) {
+    uint32_t hash = 2166136261U;
+    for (int64_t i = 0; i < offsets.size(); ++i) {
+        const int64_t offset = offsets[i];
+        const uint8_t value = offset >= 0 && offset < frame.length ? frame.data[static_cast<size_t>(offset)] : 0;
+        hash ^= value;
+        hash *= 16777619U;
+        hash ^= static_cast<uint32_t>(offset);
+        hash *= 16777619U;
+    }
+    return hash;
+}
+
+} // namespace
 
 // Registers class methods so they are callable from Godot scripts.
 void PeravizDmxReceiver::_bind_methods() {
@@ -14,6 +31,8 @@ void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_active_universes", "active_window_ms"), &PeravizDmxReceiver::get_active_universes, DEFVAL(2000));
     ClassDB::bind_method(D_METHOD("get_stats"), &PeravizDmxReceiver::get_stats);
     ClassDB::bind_method(D_METHOD("get_universe_data", "universe_id"), &PeravizDmxReceiver::get_universe_data);
+    ClassDB::bind_method(D_METHOD("get_universe_metadata", "universe_id"), &PeravizDmxReceiver::get_universe_metadata);
+    ClassDB::bind_method(D_METHOD("get_changed_universe_frames", "last_counters"), &PeravizDmxReceiver::get_changed_universe_frames);
 }
 
 // Initializes the wrapper with a dedicated Art-Net receiver instance.
@@ -69,6 +88,21 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     out["running"] = stats.running;
     out["packets_per_sec"] = static_cast<int64_t>(stats.packets_per_second);
     out["total_packets"] = static_cast<int64_t>(stats.total_packets);
+    out["packets_received"] = static_cast<int64_t>(stats.packets_received);
+    out["packets_parsed"] = static_cast<int64_t>(stats.packets_parsed);
+    out["malformed_packets"] = static_cast<int64_t>(stats.packets_ignored_malformed);
+    out["out_of_order_dropped"] = static_cast<int64_t>(stats.packets_dropped_out_of_order);
+    out["overload_dropped"] = static_cast<int64_t>(stats.packets_dropped_by_overload);
+    out["frames_written"] = static_cast<int64_t>(stats.frames_written);
+    out["source_changes"] = static_cast<int64_t>(stats.source_changes);
+    out["active_slot_count"] = static_cast<int64_t>(stats.active_slot_count);
+    out["approx_cache_bytes"] = static_cast<int64_t>(stats.approximate_cache_bytes);
+    PackedInt32Array active_universes;
+    active_universes.resize(static_cast<int64_t>(stats.active_universes.size()));
+    for (int64_t i = 0; i < active_universes.size(); ++i) {
+        active_universes[i] = stats.active_universes[static_cast<size_t>(i)];
+    }
+    out["active_universes"] = active_universes;
 
     int64_t last_packet_ms_ago = -1;
     if (stats.last_packet_us > 0 && now_us >= stats.last_packet_us) {
@@ -95,6 +129,80 @@ PackedByteArray PeravizDmxReceiver::get_universe_data(int universe_id) const {
         bytes[i] = frame.data[static_cast<size_t>(i)];
     }
     return bytes;
+}
+
+
+// Returns metadata for one universe without copying its DMX payload.
+Dictionary PeravizDmxReceiver::get_universe_metadata(int universe_id) const {
+    Dictionary out;
+    if (universe_id < 0 || universe_id > 32767) {
+        return out;
+    }
+
+    peraviz::dmx::DmxUniverseMetadata metadata;
+    if (!receiver_->try_get_metadata(static_cast<uint16_t>(universe_id), metadata)) {
+        return out;
+    }
+
+    out["universe_id"] = static_cast<int64_t>(metadata.universe_id);
+    out["counter"] = static_cast<int64_t>(metadata.counter);
+    out["length"] = static_cast<int64_t>(metadata.length);
+    out["last_rx_us"] = static_cast<int64_t>(metadata.last_rx_us);
+    out["sequence"] = static_cast<int64_t>(metadata.sequence);
+    out["content_hash"] = static_cast<int64_t>(metadata.content_hash);
+    return out;
+}
+
+// Returns only universe frames whose counters or content hashes differ from caller-provided state.
+Dictionary PeravizDmxReceiver::get_changed_universe_frames(const Dictionary &last_counters) const {
+    Dictionary out;
+    const Array universe_keys = last_counters.keys();
+    for (int64_t i = 0; i < universe_keys.size(); ++i) {
+        const Variant key = universe_keys[i];
+        const int universe_id = static_cast<int>(static_cast<int64_t>(key));
+        if (universe_id < 0 || universe_id > 32767) {
+            continue;
+        }
+
+        peraviz::dmx::DmxFrame frame;
+        if (!receiver_->try_get_frame(static_cast<uint16_t>(universe_id), frame)) {
+            continue;
+        }
+        const Variant last_state = last_counters[key];
+        int64_t interest_hash = -1;
+        if (last_state.get_type() == Variant::DICTIONARY) {
+            const Dictionary last_state_dict = static_cast<Dictionary>(last_state);
+            const Variant interest_offsets_value = last_state_dict.get("interest_offsets", PackedInt32Array());
+            if (interest_offsets_value.get_type() == Variant::PACKED_INT32_ARRAY) {
+                const PackedInt32Array interest_offsets = static_cast<PackedInt32Array>(interest_offsets_value);
+                interest_hash = static_cast<int64_t>(compute_interest_hash(frame, interest_offsets));
+                if (interest_hash == static_cast<int64_t>(last_state_dict.get("interest_hash", -1))) {
+                    continue;
+                }
+            } else if (static_cast<int64_t>(frame.content_hash) == static_cast<int64_t>(last_state_dict.get("content_hash", -1))) {
+                continue;
+            }
+        } else if (static_cast<int64_t>(frame.counter) == static_cast<int64_t>(last_state)) {
+            continue;
+        }
+
+        PackedByteArray bytes;
+        bytes.resize(frame.length);
+        for (int64_t channel = 0; channel < frame.length; ++channel) {
+            bytes[channel] = frame.data[static_cast<size_t>(channel)];
+        }
+
+        Dictionary entry;
+        entry["data"] = bytes;
+        entry["counter"] = static_cast<int64_t>(frame.counter);
+        entry["length"] = static_cast<int64_t>(frame.length);
+        entry["last_rx_us"] = static_cast<int64_t>(frame.last_rx_us);
+        entry["sequence"] = static_cast<int64_t>(frame.sequence);
+        entry["content_hash"] = static_cast<int64_t>(frame.content_hash);
+        entry["interest_hash"] = interest_hash;
+        out[universe_id] = entry;
+    }
+    return out;
 }
 
 // Returns a monotonic timestamp in microseconds.

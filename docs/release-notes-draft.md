@@ -32,6 +32,7 @@ Changes since the initial Peraviz repository split.
 
 ## Stability and reliability
 
+- Hardened and optimized Art-Net/DMX reception and fixture application so the network thread keeps bounded latest-frame state, the main thread avoids idle universe scans, ignores unchanged DMX payloads before copying, only processes patched-channel changes, and dimmer-only updates avoid expensive beam geometry refreshes after fixtures are warmed.
 - Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 
@@ -45,6 +46,7 @@ Changes since the initial Peraviz repository split.
 
 ## Internal changes
 
+- Fixed the native Art-Net flow test helper so it builds consistently with Windows toolchains.
 - Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, and fixture light apply service so project reloads stay quieter for maintainers.
 - Added Perastage-compatible runtime table schemas and in-memory row storage for fixtures, trusses, and scene objects to prepare Peraviz for future cell-based synchronization without adding Live Link transport or editing UI.
 - Added a focused fixture row provider so fixture inspection UI now reads stable fixture metadata rows built from loaded MVR scene data, patch metadata, and DMX binding state instead of assembling fixture details in UI-facing code.

@@ -101,6 +101,31 @@ func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
 	node.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
 	node.rotate_object_local(Vector3.UP, deg_to_rad(-beam_rotation_deg))
 
+func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
+	if not light.has_meta(MAIN_KEY):
+		return false
+	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
+	if prism == null or not is_instance_valid(prism):
+		return false
+
+	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
+	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
+	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
+	var is_visible: bool = bool(params.get("is_visible", true)) and scaled_intensity > threshold
+	prism.visible = is_visible
+	if not is_visible:
+		return true
+
+	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
+	var gobo_projection_radius: float = max(float(params.get("gobo_projection_radius", 0.1)), 0.001)
+	var beam_color: Color = params.get("beam_color", Color.WHITE)
+	var beam_softness: float = clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0)
+	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
+	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
+	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
+	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
+	return true
+
 func cleanup_beam(light: SpotLight3D) -> void:
 	if light.has_meta(MAIN_KEY):
 		var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D

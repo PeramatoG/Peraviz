@@ -24,6 +24,11 @@ var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _used_universes: Dictionary = {}
+var _bindings_by_universe: Dictionary = {}
+var _last_universe_counters: Dictionary = {}
+var _cached_universe_frames: Dictionary = {}
+var _universe_interest_offsets: Dictionary = {}
+var _last_universe_interest_hashes: Dictionary = {}
 var _fixture_time_tick_flags: Dictionary = {}
 var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
@@ -45,6 +50,11 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_snapshot_cache.clear()
 	_fixture_apply_plans.clear()
 	_used_universes.clear()
+	_bindings_by_universe.clear()
+	_last_universe_counters.clear()
+	_cached_universe_frames.clear()
+	_universe_interest_offsets.clear()
+	_last_universe_interest_hashes.clear()
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -87,6 +97,19 @@ func rebuild(universe_offset: int) -> Dictionary:
 		var universe_id: int = int(binding.get("artnet_universe_id", -1))
 		if universe_id >= 0:
 			_used_universes[universe_id] = true
+			if not _bindings_by_universe.has(universe_id):
+				_bindings_by_universe[universe_id] = []
+			_bindings_by_universe[universe_id].append(binding)
+			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
+
+	for universe_key in _used_universes.keys():
+		var tracked_universe_id: int = int(universe_key)
+		_last_universe_counters[tracked_universe_id] = {
+			"counter": -1,
+			"content_hash": -1,
+			"interest_hash": -1,
+			"interest_offsets": _get_universe_interest_offsets_array(tracked_universe_id),
+		}
 
 	if _fixture_row_provider != null:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
@@ -171,55 +194,144 @@ func _string_requires_time_tick(value: String) -> bool:
 
 func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	if receiver == null or not receiver.is_running():
-		return {"updated": 0, "skipped": 0}
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
 	if apply_fixture_callback.is_null():
-		return {"updated": 0, "skipped": 0}
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
 
-	var universe_frames: Dictionary = {}
-	for universe_key in _used_universes.keys():
-		var universe_id: int = int(universe_key)
-		universe_frames[universe_id] = receiver.get_universe_data(universe_id)
+	var changed_frames: Dictionary = {}
+	if receiver.has_method("get_changed_universe_frames"):
+		changed_frames = receiver.get_changed_universe_frames(_last_universe_counters)
+	else:
+		changed_frames = _collect_changed_universe_frames_compat(receiver)
+
+	if changed_frames.is_empty() and not _debug_force_full_apply:
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
 
 	var updated: int = 0
 	var skipped: int = 0
-	for binding in _bindings:
-		if binding is not Dictionary:
-			continue
-		var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
-		if fixture_uuid.is_empty() or not _fixture_nodes.has(fixture_uuid):
-			continue
-		var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
-		if fixture_plan.is_empty():
-			fixture_plan = _build_fixture_apply_plan(binding)
-			_fixture_apply_plans[fixture_uuid] = fixture_plan
-		var universe_id: int = int(binding.get("artnet_universe_id", -1))
-		var frame: PackedByteArray = universe_frames.get(universe_id, PackedByteArray())
+	var fixtures_considered: int = 0
+	for universe_key in changed_frames.keys():
+		var universe_id: int = int(universe_key)
+		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
+		var frame: PackedByteArray = frame_entry.get("data", PackedByteArray())
 		if frame.is_empty():
 			continue
-		var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
-		if snapshot.is_empty():
-			var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame)
-			if not _has_any_capability(controls_without_cache):
-				continue
-			_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache)
-			updated += 1
-			continue
-		var snapshot_hash: int = _compute_snapshot_hash(snapshot)
-		var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
-		if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
-			skipped += 1
-			continue
-
-		var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame)
-		if not _has_any_capability(controls):
-			continue
-		_fixture_snapshot_cache[fixture_uuid] = {
-			"hash": snapshot_hash,
-			"snapshot": snapshot,
+		_cached_universe_frames[universe_id] = frame
+		var interest_hash: int = int(frame_entry.get("interest_hash", -1))
+		if interest_hash < 0:
+			interest_hash = _compute_universe_interest_hash(universe_id, frame)
+		_last_universe_counters[universe_id] = {
+			"counter": int(frame_entry.get("counter", -1)),
+			"content_hash": int(frame_entry.get("content_hash", -1)),
+			"interest_hash": interest_hash,
+			"interest_offsets": _get_universe_interest_offsets_array(universe_id),
 		}
-		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls)
-		updated += 1
-	return {"updated": updated, "skipped": skipped}
+		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
+			continue
+		_last_universe_interest_hashes[universe_id] = interest_hash
+		var universe_bindings: Array = _bindings_by_universe.get(universe_id, [])
+		for binding in universe_bindings:
+			if binding is not Dictionary:
+				continue
+			var result: Dictionary = _apply_binding_frame(binding, frame, apply_fixture_callback)
+			if result.is_empty():
+				continue
+			fixtures_considered += 1
+			updated += int(result.get("updated", 0))
+			skipped += int(result.get("skipped", 0))
+
+	return {
+		"updated": updated,
+		"skipped": skipped,
+		"universes_changed": changed_frames.size(),
+		"fixtures_considered": fixtures_considered,
+	}
+
+func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
+	var changed_frames: Dictionary = {}
+	for universe_key in _used_universes.keys():
+		var universe_id: int = int(universe_key)
+		var metadata: Dictionary = receiver.get_universe_metadata(universe_id) if receiver.has_method("get_universe_metadata") else {}
+		var counter: int = int(metadata.get("counter", -2))
+		var content_hash: int = int(metadata.get("content_hash", -1))
+		var previous_state: Variant = _last_universe_counters.get(universe_id, {"counter": -1, "content_hash": -1})
+		var previous_hash: int = -1
+		var previous_counter: int = -1
+		if previous_state is Dictionary:
+			var previous_state_dict: Dictionary = previous_state
+			previous_hash = int(previous_state_dict.get("content_hash", -1))
+			previous_counter = int(previous_state_dict.get("counter", -1))
+		else:
+			previous_counter = int(previous_state)
+		if not _debug_force_full_apply and ((content_hash >= 0 and content_hash == previous_hash) or (content_hash < 0 and counter >= 0 and counter == previous_counter)):
+			continue
+		var frame: PackedByteArray = receiver.get_universe_data(universe_id)
+		if frame.is_empty():
+			continue
+		changed_frames[universe_id] = {
+			"data": frame,
+			"counter": counter,
+			"content_hash": content_hash,
+		}
+	return changed_frames
+
+func _add_universe_interest_offsets(universe_id: int, offsets: PackedInt32Array) -> void:
+	if not _universe_interest_offsets.has(universe_id):
+		_universe_interest_offsets[universe_id] = {}
+	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	for offset in offsets:
+		if offset >= 0:
+			offset_map[int(offset)] = true
+	_universe_interest_offsets[universe_id] = offset_map
+
+func _get_universe_interest_offsets_array(universe_id: int) -> PackedInt32Array:
+	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	var offsets: Array = offset_map.keys()
+	offsets.sort()
+	var packed_offsets := PackedInt32Array()
+	for offset in offsets:
+		packed_offsets.append(int(offset))
+	return packed_offsets
+
+func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -> int:
+	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	var hash_value: int = 2166136261
+	for offset_key in offset_map.keys():
+		var offset: int = int(offset_key)
+		var value: int = int(frame[offset]) if offset >= 0 and offset < frame.size() else 0
+		hash_value = int((hash_value ^ value) * 16777619)
+		hash_value = int((hash_value ^ offset) * 16777619)
+	return hash_value
+
+func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable) -> Dictionary:
+	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
+	if fixture_uuid.is_empty() or not _fixture_nodes.has(fixture_uuid):
+		return {}
+	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
+	if fixture_plan.is_empty():
+		fixture_plan = _build_fixture_apply_plan(binding)
+		_fixture_apply_plans[fixture_uuid] = fixture_plan
+	var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
+	if snapshot.is_empty():
+		var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame)
+		if not _has_any_capability(controls_without_cache):
+			return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
+		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache)
+		return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
+	var snapshot_hash: int = _compute_snapshot_hash(snapshot)
+	var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
+	if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
+		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 1}
+
+	var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame)
+	if not _has_any_capability(controls):
+		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
+	_fixture_snapshot_cache[fixture_uuid] = {
+		"hash": snapshot_hash,
+		"snapshot": snapshot,
+	}
+	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls)
+	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 
 func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 	var handler_scripts: Dictionary = {
@@ -343,6 +455,10 @@ func _compute_snapshot_hash(snapshot: PackedByteArray) -> int:
 func _collect_used_channel_offsets(binding: Dictionary) -> PackedInt32Array:
 	var offsets := PackedInt32Array()
 	var used_offsets := {}
+	for key in _collect_direct_channel_offset_keys():
+		var offset: int = int(binding.get(key, -1))
+		if offset >= 0:
+			used_offsets[offset] = true
 	var channel_bindings: Array = binding.get("channel_bindings", [])
 	for channel_binding in channel_bindings:
 		if channel_binding is not Dictionary:
@@ -358,6 +474,21 @@ func _collect_used_channel_offsets(binding: Dictionary) -> PackedInt32Array:
 	for offset in sorted_offsets:
 		offsets.append(int(offset))
 	return offsets
+
+func _collect_direct_channel_offset_keys() -> PackedStringArray:
+	return PackedStringArray([
+		"dimmer_channel_index_0", "dimmer_fine_channel_index_0", "dimmer_ultra_fine_channel_index_0",
+		"pan_channel_index_0", "pan_fine_channel_index_0", "pan_ultra_fine_channel_index_0",
+		"tilt_channel_index_0", "tilt_fine_channel_index_0", "tilt_ultra_fine_channel_index_0",
+		"zoom_channel_index_0", "zoom_fine_channel_index_0", "zoom_ultra_fine_channel_index_0",
+		"cyan_channel_index_0", "cyan_fine_channel_index_0", "cyan_ultra_fine_channel_index_0",
+		"magenta_channel_index_0", "magenta_fine_channel_index_0", "magenta_ultra_fine_channel_index_0",
+		"yellow_channel_index_0", "yellow_fine_channel_index_0", "yellow_ultra_fine_channel_index_0",
+		"gobo_channel_index_0", "gobo_fine_channel_index_0", "gobo_ultra_fine_channel_index_0",
+		"gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0",
+		"gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0",
+		"gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0",
+	])
 
 func _append_capabilities(capabilities: Dictionary, capability_type: String, blocks: Array) -> void:
 	if blocks.is_empty():

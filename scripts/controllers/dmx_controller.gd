@@ -26,6 +26,13 @@ var _dmx_start_failed_callback: Callable
 var _fixture_binding_summary: Dictionary = {}
 var _last_updated_fixtures: int = 0
 var _last_skipped_fixtures: int = 0
+var _last_considered_fixtures: int = 0
+var _last_changed_universes: int = 0
+var _worst_dmx_tick_usec: int = 0
+var _last_monitor_refresh_msec: int = 0
+var _last_receiving_signal: bool = false
+var _last_active_universes := PackedInt32Array()
+var _last_packet_ms: int = -1
 var _debug_force_full_apply: bool = false
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
@@ -155,9 +162,16 @@ func refresh_fixture_bindings() -> Dictionary:
 		return {}
 	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value))
 	_fixture_binding_summary = summary
+	_prewarm_bound_fixture_lighting()
 	_refresh_dmx_unbound_details()
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
+
+func _prewarm_bound_fixture_lighting() -> void:
+	if _dmx_fixture_runtime == null or not _apply_dmx_controls_callback.is_valid():
+		return
+	for fixture_uuid in _dmx_fixture_runtime.get_bound_fixture_ids():
+		_apply_dmx_controls_callback.call(str(fixture_uuid), {"prewarm_only": true})
 
 func get_fixture_rows() -> Array:
 	if _dmx_fixture_runtime == null:
@@ -228,6 +242,11 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 	_refresh_dmx_monitor_window(false)
 	_last_updated_fixtures = 0
 	_last_skipped_fixtures = 0
+	_last_considered_fixtures = 0
+	_last_changed_universes = 0
+	_last_receiving_signal = false
+	_last_active_universes = PackedInt32Array()
+	_last_packet_ms = -1
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	_emit_dmx_status(false, false)
 	return true
@@ -251,6 +270,11 @@ func _on_dmx_timer_timeout() -> void:
 		_refresh_dmx_monitor_window(false)
 		_last_updated_fixtures = 0
 		_last_skipped_fixtures = 0
+		_last_considered_fixtures = 0
+		_last_changed_universes = 0
+		_last_receiving_signal = false
+		_last_active_universes = PackedInt32Array()
+		_last_packet_ms = -1
 		_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 		return
 
@@ -268,18 +292,25 @@ func _on_dmx_timer_timeout() -> void:
 		)
 		_last_updated_fixtures = int(apply_stats.get("updated", 0))
 		_last_skipped_fixtures = int(apply_stats.get("skipped", 0))
+		_last_considered_fixtures = int(apply_stats.get("fixtures_considered", 0))
+		_last_changed_universes = int(apply_stats.get("universes_changed", 0))
+		var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
+		_worst_dmx_tick_usec = max(_worst_dmx_tick_usec, tick_usec)
 		if _owner != null and _owner.has_method("bridge_record_dmx_decode_phase"):
-			_owner.bridge_record_dmx_decode_phase(max(Time.get_ticks_usec() - decode_phase_start, 0))
+			_owner.bridge_record_dmx_decode_phase(tick_usec)
 		_apply_fixture_time_tick(delta_sec)
 
-	var stats: Dictionary = _dmx_receiver.get_stats()
-	var active_universes: PackedInt32Array = _dmx_receiver.get_active_universes(2000)
-	var last_ms: int = int(stats.get("last_packet_ms_ago", -1))
-	var receiving: bool = active_universes.size() > 0 and last_ms >= 0 and last_ms <= 2000
-	_update_dmx_toggle_color(true, receiving)
-	_refresh_dmx_monitor_window(true)
-	_refresh_dmx_quick_panel(true, receiving, active_universes, last_ms)
-	_emit_dmx_status(true, receiving)
+	if now_msec - _last_monitor_refresh_msec >= 125:
+		_last_monitor_refresh_msec = now_msec
+		var stats: Dictionary = _dmx_receiver.get_stats()
+		var stats_active_universes: Variant = stats.get("active_universes", PackedInt32Array())
+		_last_active_universes = stats_active_universes if stats_active_universes is PackedInt32Array else PackedInt32Array()
+		_last_packet_ms = int(stats.get("last_packet_ms_ago", -1))
+		_last_receiving_signal = _last_active_universes.size() > 0 and _last_packet_ms >= 0 and _last_packet_ms <= 2000
+		_update_dmx_toggle_color(true, _last_receiving_signal)
+		_refresh_dmx_monitor_window(true)
+		_refresh_dmx_quick_panel(true, _last_receiving_signal, _last_active_universes, _last_packet_ms)
+	_emit_dmx_status(true, _last_receiving_signal)
 
 func _update_dmx_toggle_color(enabled: bool, receiving_signal: bool) -> void:
 	if _dmx_toggle_button == null:
