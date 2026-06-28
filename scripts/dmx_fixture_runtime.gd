@@ -27,6 +27,8 @@ var _used_universes: Dictionary = {}
 var _bindings_by_universe: Dictionary = {}
 var _last_universe_counters: Dictionary = {}
 var _cached_universe_frames: Dictionary = {}
+var _universe_interest_offsets: Dictionary = {}
+var _last_universe_interest_hashes: Dictionary = {}
 var _fixture_time_tick_flags: Dictionary = {}
 var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
@@ -51,6 +53,8 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_bindings_by_universe.clear()
 	_last_universe_counters.clear()
 	_cached_universe_frames.clear()
+	_universe_interest_offsets.clear()
+	_last_universe_interest_hashes.clear()
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -96,7 +100,16 @@ func rebuild(universe_offset: int) -> Dictionary:
 			if not _bindings_by_universe.has(universe_id):
 				_bindings_by_universe[universe_id] = []
 			_bindings_by_universe[universe_id].append(binding)
-			_last_universe_counters[universe_id] = -1
+			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
+
+	for universe_key in _used_universes.keys():
+		var tracked_universe_id: int = int(universe_key)
+		_last_universe_counters[tracked_universe_id] = {
+			"counter": -1,
+			"content_hash": -1,
+			"interest_hash": -1,
+			"interest_offsets": _get_universe_interest_offsets_array(tracked_universe_id),
+		}
 
 	if _fixture_row_provider != null:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
@@ -204,7 +217,18 @@ func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if frame.is_empty():
 			continue
 		_cached_universe_frames[universe_id] = frame
-		_last_universe_counters[universe_id] = int(frame_entry.get("counter", _last_universe_counters.get(universe_id, -1)))
+		var interest_hash: int = int(frame_entry.get("interest_hash", -1))
+		if interest_hash < 0:
+			interest_hash = _compute_universe_interest_hash(universe_id, frame)
+		_last_universe_counters[universe_id] = {
+			"counter": int(frame_entry.get("counter", -1)),
+			"content_hash": int(frame_entry.get("content_hash", -1)),
+			"interest_hash": interest_hash,
+			"interest_offsets": _get_universe_interest_offsets_array(universe_id),
+		}
+		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
+			continue
+		_last_universe_interest_hashes[universe_id] = interest_hash
 		var universe_bindings: Array = _bindings_by_universe.get(universe_id, [])
 		for binding in universe_bindings:
 			if binding is not Dictionary:
@@ -229,7 +253,17 @@ func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
 		var universe_id: int = int(universe_key)
 		var metadata: Dictionary = receiver.get_universe_metadata(universe_id) if receiver.has_method("get_universe_metadata") else {}
 		var counter: int = int(metadata.get("counter", -2))
-		if counter >= 0 and counter == int(_last_universe_counters.get(universe_id, -1)) and not _debug_force_full_apply:
+		var content_hash: int = int(metadata.get("content_hash", -1))
+		var previous_state: Variant = _last_universe_counters.get(universe_id, {"counter": -1, "content_hash": -1})
+		var previous_hash: int = -1
+		var previous_counter: int = -1
+		if previous_state is Dictionary:
+			var previous_state_dict: Dictionary = previous_state
+			previous_hash = int(previous_state_dict.get("content_hash", -1))
+			previous_counter = int(previous_state_dict.get("counter", -1))
+		else:
+			previous_counter = int(previous_state)
+		if not _debug_force_full_apply and ((content_hash >= 0 and content_hash == previous_hash) or (content_hash < 0 and counter >= 0 and counter == previous_counter)):
 			continue
 		var frame: PackedByteArray = receiver.get_universe_data(universe_id)
 		if frame.is_empty():
@@ -237,8 +271,37 @@ func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
 		changed_frames[universe_id] = {
 			"data": frame,
 			"counter": counter,
+			"content_hash": content_hash,
 		}
 	return changed_frames
+
+func _add_universe_interest_offsets(universe_id: int, offsets: PackedInt32Array) -> void:
+	if not _universe_interest_offsets.has(universe_id):
+		_universe_interest_offsets[universe_id] = {}
+	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	for offset in offsets:
+		if offset >= 0:
+			offset_map[int(offset)] = true
+	_universe_interest_offsets[universe_id] = offset_map
+
+func _get_universe_interest_offsets_array(universe_id: int) -> PackedInt32Array:
+	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	var offsets: Array = offset_map.keys()
+	offsets.sort()
+	var packed_offsets := PackedInt32Array()
+	for offset in offsets:
+		packed_offsets.append(int(offset))
+	return packed_offsets
+
+func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -> int:
+	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	var hash_value: int = 2166136261
+	for offset_key in offset_map.keys():
+		var offset: int = int(offset_key)
+		var value: int = int(frame[offset]) if offset >= 0 and offset < frame.size() else 0
+		hash_value = int((hash_value ^ value) * 16777619)
+		hash_value = int((hash_value ^ offset) * 16777619)
+	return hash_value
 
 func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable) -> Dictionary:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))

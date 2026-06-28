@@ -160,12 +160,12 @@ int test_universe_cache() {
     if (!cache.try_get_frame(10, frame)) {
         return fail("Expected cached DMX frame");
     }
-    if (frame.length != 4 || frame.data[0] != 5 || frame.data[3] != 8 || frame.counter != 2 || frame.sequence != 2) {
+    if (frame.length != 4 || frame.data[0] != 5 || frame.data[3] != 8 || frame.counter != 2 || frame.sequence != 2 || frame.content_hash == 0) {
         return fail("Cached DMX frame did not reflect latest write");
     }
 
     peraviz::dmx::DmxUniverseMetadata metadata;
-    if (!cache.try_get_metadata(10, metadata) || metadata.counter != 2 || metadata.length != 4 || metadata.sequence != 2) {
+    if (!cache.try_get_metadata(10, metadata) || metadata.counter != 2 || metadata.length != 4 || metadata.sequence != 2 || metadata.content_hash != frame.content_hash) {
         return fail("DMX universe metadata did not reflect latest write");
     }
 

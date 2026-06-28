@@ -6,6 +6,21 @@
 #include <shared_mutex>
 
 namespace peraviz::dmx {
+namespace {
+
+// Computes a small stable hash for a DMX payload.
+uint32_t compute_dmx_content_hash(const uint8_t *data, uint16_t length) {
+    uint32_t hash = 2166136261U;
+    for (uint16_t index = 0; index < length; ++index) {
+        hash ^= data[index];
+        hash *= 16777619U;
+    }
+    hash ^= length;
+    hash *= 16777619U;
+    return hash;
+}
+
+} // namespace
 
 // Creates a cache for the latest DMX frame per universe.
 DmxUniverseCache::DmxUniverseCache() {
@@ -39,6 +54,7 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     slot->length.store(safe_length, std::memory_order_relaxed);
     slot->last_rx_us.store(now_us, std::memory_order_relaxed);
     slot->sequence.store(sequence, std::memory_order_relaxed);
+    slot->content_hash.store(compute_dmx_content_hash(slot->buffers[next_front].data(), safe_length), std::memory_order_relaxed);
     slot->counter.fetch_add(1, std::memory_order_relaxed);
     slot->front_index.store(next_front, std::memory_order_release);
 }
@@ -62,6 +78,7 @@ bool DmxUniverseCache::try_get_frame(uint16_t universe_id, DmxFrame &out_frame) 
     out_frame.last_rx_us = slot->last_rx_us.load(std::memory_order_relaxed);
     out_frame.counter = slot->counter.load(std::memory_order_relaxed);
     out_frame.sequence = slot->sequence.load(std::memory_order_relaxed);
+    out_frame.content_hash = slot->content_hash.load(std::memory_order_relaxed);
     return true;
 }
 
@@ -77,6 +94,7 @@ bool DmxUniverseCache::try_get_metadata(uint16_t universe_id, DmxUniverseMetadat
     out_metadata.last_rx_us = slot->last_rx_us.load(std::memory_order_relaxed);
     out_metadata.counter = slot->counter.load(std::memory_order_relaxed);
     out_metadata.sequence = slot->sequence.load(std::memory_order_relaxed);
+    out_metadata.content_hash = slot->content_hash.load(std::memory_order_relaxed);
     return true;
 }
 

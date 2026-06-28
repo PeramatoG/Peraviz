@@ -17,6 +17,7 @@ struct DmxFrame {
     uint64_t last_rx_us = 0;
     uint32_t counter = 0;
     uint8_t sequence = 0;
+    uint32_t content_hash = 0;
 };
 
 struct DmxUniverseMetadata {
@@ -25,6 +26,7 @@ struct DmxUniverseMetadata {
     uint64_t last_rx_us = 0;
     uint32_t counter = 0;
     uint8_t sequence = 0;
+    uint32_t content_hash = 0;
 };
 
 class DmxUniverseCache {
@@ -51,6 +53,7 @@ private:
         std::atomic<uint64_t> last_rx_us {0};
         std::atomic<uint32_t> counter {0};
         std::atomic<uint8_t> sequence {0};
+        std::atomic<uint32_t> content_hash {0};
         mutable std::shared_mutex frame_mutex;
     };
 

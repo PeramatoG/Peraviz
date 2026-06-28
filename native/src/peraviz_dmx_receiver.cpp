@@ -4,6 +4,23 @@
 #include <chrono>
 
 namespace godot {
+namespace {
+
+// Computes a stable hash for selected DMX channels only.
+uint32_t compute_interest_hash(const peraviz::dmx::DmxFrame &frame, const PackedInt32Array &offsets) {
+    uint32_t hash = 2166136261U;
+    for (int64_t i = 0; i < offsets.size(); ++i) {
+        const int64_t offset = offsets[i];
+        const uint8_t value = offset >= 0 && offset < frame.length ? frame.data[static_cast<size_t>(offset)] : 0;
+        hash ^= value;
+        hash *= 16777619U;
+        hash ^= static_cast<uint32_t>(offset);
+        hash *= 16777619U;
+    }
+    return hash;
+}
+
+} // namespace
 
 // Registers class methods so they are callable from Godot scripts.
 void PeravizDmxReceiver::_bind_methods() {
@@ -132,10 +149,11 @@ Dictionary PeravizDmxReceiver::get_universe_metadata(int universe_id) const {
     out["length"] = static_cast<int64_t>(metadata.length);
     out["last_rx_us"] = static_cast<int64_t>(metadata.last_rx_us);
     out["sequence"] = static_cast<int64_t>(metadata.sequence);
+    out["content_hash"] = static_cast<int64_t>(metadata.content_hash);
     return out;
 }
 
-// Returns only universe frames whose counters differ from the caller-provided counters.
+// Returns only universe frames whose counters or content hashes differ from caller-provided state.
 Dictionary PeravizDmxReceiver::get_changed_universe_frames(const Dictionary &last_counters) const {
     Dictionary out;
     const Array universe_keys = last_counters.keys();
@@ -150,7 +168,21 @@ Dictionary PeravizDmxReceiver::get_changed_universe_frames(const Dictionary &las
         if (!receiver_->try_get_frame(static_cast<uint16_t>(universe_id), frame)) {
             continue;
         }
-        if (static_cast<int64_t>(frame.counter) == static_cast<int64_t>(last_counters[key])) {
+        const Variant last_state = last_counters[key];
+        int64_t interest_hash = -1;
+        if (last_state.get_type() == Variant::DICTIONARY) {
+            const Dictionary last_state_dict = static_cast<Dictionary>(last_state);
+            const Variant interest_offsets_value = last_state_dict.get("interest_offsets", PackedInt32Array());
+            if (interest_offsets_value.get_type() == Variant::PACKED_INT32_ARRAY) {
+                const PackedInt32Array interest_offsets = static_cast<PackedInt32Array>(interest_offsets_value);
+                interest_hash = static_cast<int64_t>(compute_interest_hash(frame, interest_offsets));
+                if (interest_hash == static_cast<int64_t>(last_state_dict.get("interest_hash", -1))) {
+                    continue;
+                }
+            } else if (static_cast<int64_t>(frame.content_hash) == static_cast<int64_t>(last_state_dict.get("content_hash", -1))) {
+                continue;
+            }
+        } else if (static_cast<int64_t>(frame.counter) == static_cast<int64_t>(last_state)) {
             continue;
         }
 
@@ -166,6 +198,8 @@ Dictionary PeravizDmxReceiver::get_changed_universe_frames(const Dictionary &las
         entry["length"] = static_cast<int64_t>(frame.length);
         entry["last_rx_us"] = static_cast<int64_t>(frame.last_rx_us);
         entry["sequence"] = static_cast<int64_t>(frame.sequence);
+        entry["content_hash"] = static_cast<int64_t>(frame.content_hash);
+        entry["interest_hash"] = interest_hash;
         out[universe_id] = entry;
     }
     return out;
