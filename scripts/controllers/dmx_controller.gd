@@ -42,6 +42,16 @@ var _dmx_thread_running: bool = false
 var _pending_controls: Array = []
 var _pending_stats: Dictionary = {}
 var _pending_decode_usec: int = 0
+var disable_time_tick_updates: bool = false
+var max_time_tick_rate_hz: float = 0.0
+var max_dmx_visual_apply_rate_hz: float = 0.0
+var _time_tick_accumulated_delta_sec: float = 0.0
+var _dmx_visual_apply_accumulated_delta_sec: float = 0.0
+var _hot_path_metrics: Dictionary = {}
+var _hot_path_window_started_msec: int = 0
+var _last_hot_path_snapshot: Dictionary = {}
+var _debug_print_hot_path_metrics: bool = false
+var _hot_path_metrics_mutex := Mutex.new()
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
@@ -139,6 +149,26 @@ func set_debug_force_full_apply(enabled: bool) -> void:
 	_debug_force_full_apply = enabled
 	if _dmx_fixture_runtime != null:
 		_dmx_fixture_runtime.set_debug_force_full_apply(enabled)
+
+func set_disable_time_tick_updates(enabled: bool) -> void:
+	disable_time_tick_updates = enabled
+
+func set_max_time_tick_rate_hz(rate_hz: float) -> void:
+	max_time_tick_rate_hz = max(rate_hz, 0.0)
+	_time_tick_accumulated_delta_sec = 0.0
+
+func set_max_dmx_visual_apply_rate_hz(rate_hz: float) -> void:
+	max_dmx_visual_apply_rate_hz = max(rate_hz, 0.0)
+	_dmx_visual_apply_accumulated_delta_sec = 0.0
+
+func set_debug_print_hot_path_metrics(enabled: bool) -> void:
+	_debug_print_hot_path_metrics = enabled
+
+func get_hot_path_metrics() -> Dictionary:
+	_hot_path_metrics_mutex.lock()
+	var snapshot: Dictionary = _last_hot_path_snapshot.duplicate(true)
+	_hot_path_metrics_mutex.unlock()
+	return snapshot
 
 
 func set_universe_offset(value: int) -> void:
@@ -291,8 +321,13 @@ func process_dmx(_delta: float) -> void:
 		delta_sec = max(float(now_msec - _last_dmx_tick_msec) * 0.001, 0.0)
 	_last_dmx_tick_msec = now_msec
 
-	_dmx_semaphore.post()
-	_drain_pending_dmx_controls(delta_sec)
+	_dmx_visual_apply_accumulated_delta_sec += delta_sec
+	if _should_process_dmx_visual_tick():
+		_dmx_semaphore.post()
+		_drain_pending_dmx_controls(_consume_dmx_visual_delta(delta_sec))
+	else:
+		_record_hot_path_counter("dmx_visual_ticks_coalesced", 1)
+		_apply_fixture_time_tick(delta_sec)
 	_refresh_dmx_status_if_needed(now_msec)
 	_emit_dmx_status(true, _last_receiving_signal)
 
@@ -320,6 +355,7 @@ func _stop_dmx_thread() -> void:
 
 func _dmx_worker() -> void:
 	while _dmx_thread_running:
+		_record_hot_path_counter("dmx_worker_wakeups", 1)
 		_dmx_semaphore.wait()
 		if not _dmx_thread_running:
 			break
@@ -330,6 +366,13 @@ func _dmx_worker() -> void:
 		var collect_stats: Dictionary = _dmx_fixture_runtime.collect_pending_controls(_dmx_receiver)
 		_dmx_runtime_mutex.unlock()
 		var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
+		_record_hot_path_counter("changed_universes", int(collect_stats.get("universes_changed", 0)))
+		_record_hot_path_counter("fixtures_considered", int(collect_stats.get("fixtures_considered", 0)))
+		_record_hot_path_counter("fixtures_updated", int(collect_stats.get("updated", 0)))
+		_record_hot_path_counter("fixtures_skipped", int(collect_stats.get("skipped", 0)))
+		_record_hot_path_counter("controls_batch_size", int(collect_stats.get("controls", []).size()))
+		_record_hot_path_counter("compacted_control_fields", int(collect_stats.get("compacted_control_fields", 0)))
+		_record_hot_path_phase("dmx_decode", tick_usec)
 		if int(collect_stats.get("updated", 0)) > 0 or int(collect_stats.get("skipped", 0)) > 0 or int(collect_stats.get("universes_changed", 0)) > 0:
 			_dmx_pending_mutex.lock()
 			_pending_controls = collect_stats.get("controls", [])
@@ -434,11 +477,27 @@ func _apply_fixture_time_tick(delta_sec: float) -> void:
 		return
 	if _dmx_fixture_runtime == null or not _apply_dmx_controls_callback.is_valid():
 		return
-	for fixture_uuid in _dmx_fixture_runtime.get_time_tick_fixture_ids():
+	var fixture_ids: PackedStringArray = _dmx_fixture_runtime.get_time_tick_fixture_ids()
+	_record_hot_path_counter("time_tick_candidates", fixture_ids.size())
+	_record_hot_path_counter("time_tick_fixture_count", fixture_ids.size())
+	if disable_time_tick_updates:
+		_record_hot_path_counter("time_tick_skipped_by_debug_flag", fixture_ids.size())
+		return
+	_time_tick_accumulated_delta_sec += delta_sec
+	var applied_delta_sec: float = delta_sec
+	if max_time_tick_rate_hz > 0.0:
+		var min_interval_sec: float = 1.0 / max_time_tick_rate_hz
+		if _time_tick_accumulated_delta_sec < min_interval_sec:
+			return
+		applied_delta_sec = _time_tick_accumulated_delta_sec
+		_time_tick_accumulated_delta_sec = 0.0
+	for fixture_uuid in fixture_ids:
 		_apply_dmx_controls_callback.call(str(fixture_uuid), {
-			"frame_delta_sec": delta_sec,
+			"frame_delta_sec": applied_delta_sec,
 			"time_tick_only": true,
 		})
+	_record_hot_path_counter("time_tick_applied", fixture_ids.size())
+	_record_hot_path_counter("time_tick_callbacks_applied", fixture_ids.size())
 
 func _emit_dmx_status(running: bool, receiving_signal: bool) -> void:
 	if _dmx_status_changed_callback.is_valid():
@@ -447,3 +506,61 @@ func _emit_dmx_status(running: bool, receiving_signal: bool) -> void:
 func _emit_dmx_start_failed(error_message: String) -> void:
 	if _dmx_start_failed_callback.is_valid():
 		_dmx_start_failed_callback.call(error_message)
+
+func _should_process_dmx_visual_tick() -> bool:
+	if max_dmx_visual_apply_rate_hz <= 0.0:
+		return true
+	return _dmx_visual_apply_accumulated_delta_sec >= 1.0 / max_dmx_visual_apply_rate_hz
+
+func _consume_dmx_visual_delta(fallback_delta_sec: float) -> float:
+	if max_dmx_visual_apply_rate_hz <= 0.0:
+		_dmx_visual_apply_accumulated_delta_sec = 0.0
+		return fallback_delta_sec
+	var accumulated: float = _dmx_visual_apply_accumulated_delta_sec
+	_dmx_visual_apply_accumulated_delta_sec = 0.0
+	return max(accumulated, fallback_delta_sec)
+
+func _record_hot_path_counter(name: String, amount: int = 1) -> void:
+	_hot_path_metrics_mutex.lock()
+	_ensure_hot_path_window()
+	_hot_path_metrics[name] = int(_hot_path_metrics.get(name, 0)) + amount
+	_publish_hot_path_metrics_if_needed()
+	_hot_path_metrics_mutex.unlock()
+
+func _record_hot_path_phase(name: String, elapsed_usec: int) -> void:
+	_hot_path_metrics_mutex.lock()
+	_ensure_hot_path_window()
+	var key: String = "%s_usec" % name
+	var bucket: Dictionary = _hot_path_metrics.get(key, {"calls": 0, "total_usec": 0, "worst_usec": 0})
+	bucket["calls"] = int(bucket.get("calls", 0)) + 1
+	bucket["total_usec"] = int(bucket.get("total_usec", 0)) + max(elapsed_usec, 0)
+	bucket["worst_usec"] = max(int(bucket.get("worst_usec", 0)), max(elapsed_usec, 0))
+	_hot_path_metrics[key] = bucket
+	_publish_hot_path_metrics_if_needed()
+	_hot_path_metrics_mutex.unlock()
+
+func _ensure_hot_path_window() -> void:
+	if _hot_path_window_started_msec <= 0:
+		_hot_path_window_started_msec = Time.get_ticks_msec()
+
+func _publish_hot_path_metrics_if_needed() -> void:
+	var now_msec: int = Time.get_ticks_msec()
+	if _hot_path_window_started_msec <= 0 or now_msec - _hot_path_window_started_msec < 1000:
+		return
+	_last_hot_path_snapshot = _build_hot_path_snapshot(now_msec)
+	if _debug_print_hot_path_metrics:
+		print("DMX hot path metrics: ", _last_hot_path_snapshot)
+	_hot_path_metrics.clear()
+	_hot_path_window_started_msec = now_msec
+
+func _build_hot_path_snapshot(now_msec: int) -> Dictionary:
+	var snapshot: Dictionary = _hot_path_metrics.duplicate(true)
+	snapshot["window_msec"] = max(now_msec - _hot_path_window_started_msec, 1)
+	for phase in ["dmx_decode", "fixture_apply", "beam_update", "gobo_update"]:
+		var key: String = "%s_usec" % phase
+		var bucket: Dictionary = snapshot.get(key, {})
+		var calls: int = int(bucket.get("calls", 0))
+		if calls > 0:
+			bucket["avg_usec"] = int(int(bucket.get("total_usec", 0)) / calls)
+			snapshot[key] = bucket
+	return snapshot

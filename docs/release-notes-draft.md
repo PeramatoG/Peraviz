@@ -20,6 +20,8 @@ Changes since the initial Peraviz repository split.
 
 ## Improvements
 
+- Improved live DMX diagnostics and runtime performance controls with rolling hot-path metrics, safe time-tick kill switches, optional tick/apply-rate caps, lighter pending-control transfer, and lower-allocation fixture change detection.
+
 - Hardened the MVR-xchange viewer/client path with stricter UUID handling, safer received-file finalization, clearer request/receive/load state reporting, and documentation for the standard-compatible manual update workflow.
 
 - Improved DMX unlinked fixture presentation so fixture names and available patch details are shown in user-facing summaries instead of exposing UUIDs by default.
@@ -28,6 +30,7 @@ Changes since the initial Peraviz repository split.
 
 ## Fixes
 
+- Fixed a live DMX issue where fixtures without an active dimmer update, or with only low fine-byte dimmer noise on 16-bit dimmer channels, could appear lit when DMX was connected.
 - Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
 
 ## Stability and reliability
@@ -41,6 +44,8 @@ Changes since the initial Peraviz repository split.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 
 ## Documentation
+
+- Expanded the batched beam rendering plan with a fixture-type shared-geometry batching strategy, MultiMesh instance ownership boundaries, and a safe migration checklist for a future opt-in renderer mode.
 
 - Expanded MVR-xchange documentation with the current TCP join, commit detection, manual request, receive, and load workflow.
 - Added MVR-xchange documentation that clarifies the Phase 1 discovery-only scope and Peraviz viewer role.

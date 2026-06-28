@@ -33,8 +33,18 @@ static func _apply_channel(block: Dictionary,
 	var value: Dictionary = control_reader.read_channel(binding, frame, coarse_key, fine_key, ultra_fine_key, force_coarse_only)
 	if not bool(value.get("has_value", false)):
 		return
+	var bytes: PackedInt32Array = value.get("bytes", PackedInt32Array())
+	var resolution_bits: int = int(value.get("resolution_bits", 8))
 	block["has_%s" % prefix] = true
-	block["%s_norm" % prefix] = float(value.get("norm", 0.0))
+	block["%s_norm" % prefix] = _normalize_dimmer_value(prefix, float(value.get("norm", 0.0)), resolution_bits, bytes)
 	block["%s_raw_value" % prefix] = int(value.get("raw", 0))
-	block["%s_resolution_bits" % prefix] = int(value.get("resolution_bits", 8))
-	block["%s_bytes" % prefix] = value.get("bytes", PackedInt32Array())
+	block["%s_resolution_bits" % prefix] = resolution_bits
+	block["%s_bytes" % prefix] = bytes
+
+# Fine bytes should not make a high-byte-zero dimmer visibly glow.
+static func _normalize_dimmer_value(prefix: String, norm: float, resolution_bits: int, bytes: PackedInt32Array) -> float:
+	if prefix != "dimmer" or resolution_bits <= 8 or bytes.is_empty():
+		return norm
+	if int(bytes[0]) <= 0:
+		return 0.0
+	return norm
