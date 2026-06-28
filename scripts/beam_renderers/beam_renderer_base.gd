@@ -2,6 +2,8 @@ extends RefCounted
 
 class_name BeamRendererBase
 
+# Keep new renderer modes behind this interface; see docs/batched-beam-rendering-plan.md for the planned batched path.
+
 func configure(_view_camera: Camera3D, _settings: Dictionary) -> void:
 	pass
 

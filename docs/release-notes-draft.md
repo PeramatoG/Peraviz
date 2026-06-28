@@ -44,7 +44,7 @@ Changes since the initial Peraviz repository split.
 
 ## Documentation
 
-- Added a batched beam rendering plan that outlines an incremental MultiMesh-based path for heavier live DMX rigs while keeping current renderer modes intact.
+- Expanded the batched beam rendering plan with a fixture-type shared-geometry batching strategy, MultiMesh instance ownership boundaries, and a safe migration checklist for a future opt-in renderer mode.
 
 - Expanded MVR-xchange documentation with the current TCP join, commit detection, manual request, receive, and load workflow.
 - Added MVR-xchange documentation that clarifies the Phase 1 discovery-only scope and Peraviz viewer role.
