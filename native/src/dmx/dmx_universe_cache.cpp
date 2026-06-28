@@ -47,6 +47,10 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     const uint8_t current_front = slot->front_index.load(std::memory_order_relaxed);
     const uint8_t next_front = static_cast<uint8_t>(1 - current_front);
 
+    const uint16_t current_length = slot->length.load(std::memory_order_relaxed);
+    const bool payload_changed = current_length != safe_length ||
+        (safe_length > 0 && std::memcmp(slot->buffers[current_front].data(), data, safe_length) != 0);
+
     if (safe_length > 0) {
         std::memcpy(slot->buffers[next_front].data(), data, safe_length);
     }
@@ -55,7 +59,10 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     slot->last_rx_us.store(now_us, std::memory_order_relaxed);
     slot->sequence.store(sequence, std::memory_order_relaxed);
     slot->content_hash.store(compute_dmx_content_hash(slot->buffers[next_front].data(), safe_length), std::memory_order_relaxed);
-    slot->counter.fetch_add(1, std::memory_order_relaxed);
+    if (payload_changed) {
+        slot->counter.fetch_add(1, std::memory_order_relaxed);
+        slot->dirty.store(true, std::memory_order_release);
+    }
     slot->front_index.store(next_front, std::memory_order_release);
 }
 
@@ -95,6 +102,57 @@ bool DmxUniverseCache::try_get_metadata(uint16_t universe_id, DmxUniverseMetadat
     out_metadata.counter = slot->counter.load(std::memory_order_relaxed);
     out_metadata.sequence = slot->sequence.load(std::memory_order_relaxed);
     out_metadata.content_hash = slot->content_hash.load(std::memory_order_relaxed);
+    return true;
+}
+
+
+// Returns universe IDs with new frame data that has not yet been consumed.
+std::vector<uint16_t> DmxUniverseCache::get_dirty_universes() const {
+    std::vector<uint16_t> known_universes;
+    {
+        std::lock_guard<std::mutex> lock(active_universe_mutex_);
+        known_universes = active_universe_ids_;
+    }
+
+    std::vector<uint16_t> dirty_universes;
+    dirty_universes.reserve(known_universes.size());
+    for (const uint16_t universe_id : known_universes) {
+        const UniverseSlot *slot = get_slot(universe_id);
+        if (slot != nullptr && slot->dirty.load(std::memory_order_acquire)) {
+            dirty_universes.push_back(universe_id);
+        }
+    }
+    return dirty_universes;
+}
+
+// Copies and clears the latest dirty frame for one universe.
+bool DmxUniverseCache::consume_frame(uint16_t universe_id, DmxFrame &out_frame) {
+    if (universe_id >= slots_.size()) {
+        return false;
+    }
+
+    UniverseSlot *slot = nullptr;
+    {
+        std::shared_lock<std::shared_mutex> slots_lock(slots_mutex_);
+        slot = slots_[universe_id].get();
+    }
+    if (slot == nullptr || !slot->dirty.exchange(false, std::memory_order_acq_rel)) {
+        return false;
+    }
+
+    std::shared_lock<std::shared_mutex> frame_lock(slot->frame_mutex);
+    const uint8_t front_index = slot->front_index.load(std::memory_order_acquire);
+    const uint16_t length = slot->length.load(std::memory_order_relaxed);
+
+    out_frame.universe_id = universe_id;
+    out_frame.length = length;
+    if (length > 0) {
+        std::memcpy(out_frame.data.data(), slot->buffers[front_index].data(), length);
+    }
+    out_frame.last_rx_us = slot->last_rx_us.load(std::memory_order_relaxed);
+    out_frame.counter = slot->counter.load(std::memory_order_relaxed);
+    out_frame.sequence = slot->sequence.load(std::memory_order_relaxed);
+    out_frame.content_hash = slot->content_hash.load(std::memory_order_relaxed);
     return true;
 }
 

@@ -76,6 +76,16 @@ bool ArtNetReceiver::try_get_metadata(uint16_t universe_id, DmxUniverseMetadata 
     return cache_.try_get_metadata(universe_id, out_metadata);
 }
 
+// Returns dirty universes that have received unconsumed frame data.
+std::vector<uint16_t> ArtNetReceiver::get_dirty_universes() const {
+    return cache_.get_dirty_universes();
+}
+
+// Copies and clears the latest dirty frame for one universe.
+bool ArtNetReceiver::consume_frame(uint16_t universe_id, DmxFrame &out_frame) {
+    return cache_.consume_frame(universe_id, out_frame);
+}
+
 // Returns runtime counters collected by the receiver.
 ArtNetReceiverStats ArtNetReceiver::get_stats(uint64_t now_us, uint64_t active_window_us) const {
     ArtNetReceiverStats stats;

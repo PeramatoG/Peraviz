@@ -118,6 +118,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/udp_socket.cpp
         src/dmx/artnet_dmx_parser.cpp
         src/dmx/dmx_universe_cache.cpp
+        src/dmx/dmx_universe_decoder.cpp
         src/dmx/artnet_receiver.cpp
         src/dmx/gdtf_xml_reader.cpp
         src/dmx/gdtf_attribute_classifier.cpp

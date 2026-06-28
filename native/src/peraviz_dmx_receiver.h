@@ -32,6 +32,8 @@ public:
     PackedInt32Array get_active_universes(int active_window_ms = 2000) const;
     Dictionary get_stats() const;
     PackedByteArray get_universe_data(int universe_id) const;
+    PackedInt32Array get_dirty_universes() const;
+    PackedByteArray consume_universe(int universe_id);
     Dictionary get_universe_metadata(int universe_id) const;
     Dictionary get_changed_universe_frames(const Dictionary &last_counters) const;
 

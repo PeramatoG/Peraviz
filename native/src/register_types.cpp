@@ -10,6 +10,7 @@
 
 #ifdef PERAVIZ_ENABLE_DMX
 #include "peraviz_dmx_receiver.h"
+#include "dmx/dmx_universe_decoder.h"
 #endif
 
 // Registers module classes when the Peraviz module is initialized.
@@ -23,6 +24,7 @@ void initialize_peraviz_module(godot::ModuleInitializationLevel p_level) {
     godot::ClassDB::register_class<godot::PeravizGoboVectorizer>();
 #ifdef PERAVIZ_ENABLE_DMX
     godot::ClassDB::register_class<godot::PeravizDmxReceiver>();
+    godot::ClassDB::register_class<godot::PeravizDmxUniverseDecoder>();
 #endif
 #ifdef PERAVIZ_ENABLE_MVR_XCHANGE
     godot::ClassDB::register_class<godot::PeravizMvrXchangeClient>();

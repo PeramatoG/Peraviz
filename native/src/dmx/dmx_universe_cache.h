@@ -41,6 +41,8 @@ public:
 
     bool try_get_frame(uint16_t universe_id, DmxFrame &out_frame) const;
     bool try_get_metadata(uint16_t universe_id, DmxUniverseMetadata &out_metadata) const;
+    std::vector<uint16_t> get_dirty_universes() const;
+    bool consume_frame(uint16_t universe_id, DmxFrame &out_frame);
     std::vector<uint16_t> get_active_universes(uint64_t now_us, uint64_t active_window_us) const;
     size_t get_active_slot_count() const;
     size_t get_approximate_cache_bytes() const;
@@ -54,6 +56,7 @@ private:
         std::atomic<uint32_t> counter {0};
         std::atomic<uint8_t> sequence {0};
         std::atomic<uint32_t> content_hash {0};
+        std::atomic<bool> dirty {false};
         mutable std::shared_mutex frame_mutex;
     };
 
