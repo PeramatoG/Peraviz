@@ -22,6 +22,7 @@ var _fixture_patch_lookup: Dictionary = {}
 var _fixture_nodes: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
+var _fixture_capability_hash_cache: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _fixture_output_buffers: Dictionary = {}
 var _used_universes: Dictionary = {}
@@ -49,6 +50,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_nodes.clear()
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
+	_fixture_capability_hash_cache.clear()
 	_fixture_apply_plans.clear()
 	_fixture_output_buffers.clear()
 	_used_universes.clear()
@@ -422,8 +424,33 @@ func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray, 
 	_append_capability_from_plan(capabilities, "gobo", fixture_plan, handlers, frame)
 	_append_capability_from_plan(capabilities, "prism", fixture_plan, handlers, frame)
 	_append_capability_from_plan(capabilities, "strobe", fixture_plan, handlers, frame)
+	var changed_capability_types: Dictionary = _filter_unchanged_capabilities(fixture_uuid, capabilities)
+	output["changed_capability_types"] = changed_capability_types
 	output["metadata"] = fixture_plan.get("metadata", output.get("metadata", {}))
 	return output
+
+func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictionary) -> Dictionary:
+	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
+	var next_hashes: Dictionary = {}
+	var changed_capability_types: Dictionary = {}
+	for capability_type in ["pan_tilt", "dimmer", "color_wheel", "gobo", "prism", "strobe"]:
+		var bucket: Array = capabilities.get(capability_type, [])
+		var bucket_hash: int = _hash_capability_bucket(bucket)
+		next_hashes[capability_type] = bucket_hash
+		if not previous_hashes.has(capability_type) or int(previous_hashes.get(capability_type, 0)) != bucket_hash:
+			changed_capability_types[capability_type] = true
+		elif not bucket.is_empty():
+			bucket.clear()
+	_fixture_capability_hash_cache[fixture_uuid] = next_hashes
+	return changed_capability_types
+
+func _hash_capability_bucket(bucket: Array) -> int:
+	var hash_value: int = 2166136261
+	for item in bucket:
+		var item_text: String = str(item)
+		for index in range(item_text.length()):
+			hash_value = int((hash_value ^ item_text.unicode_at(index)) * 16777619)
+	return hash_value
 
 func _clear_capability_output(capabilities: Dictionary) -> void:
 	for capability_type in ["pan_tilt", "dimmer", "color_wheel", "gobo", "prism", "strobe"]:

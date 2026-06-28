@@ -204,6 +204,9 @@ func _apply_emitter_light_dimmer_fast(loader: Node, light: SpotLight3D, photomet
 func _can_use_dimmer_only_fast_path(controls: Dictionary) -> bool:
 	if bool(controls.get("time_tick_only", false)):
 		return false
+	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
+	if not changed_capability_types.is_empty():
+		return _only_dimmer_capability_changed(changed_capability_types)
 	var dimmer_controls: Dictionary = resolve_dimmer_controls(controls)
 	if not bool(dimmer_controls.get("has_dimmer", false)) or bool(dimmer_controls.get("has_zoom", false)):
 		return false
@@ -212,6 +215,14 @@ func _can_use_dimmer_only_fast_path(controls: Dictionary) -> bool:
 		return false
 	var gobo_controls: Dictionary = resolve_gobo_controls(controls)
 	return not bool(gobo_controls.get("has_gobo", false)) and not bool(gobo_controls.get("has_gobo_index", false)) and not bool(gobo_controls.get("has_gobo_rotation", false))
+
+func _only_dimmer_capability_changed(changed_capability_types: Dictionary) -> bool:
+	if not bool(changed_capability_types.get("dimmer", false)):
+		return false
+	for capability_type in ["pan_tilt", "color_wheel", "gobo", "prism", "strobe"]:
+		if bool(changed_capability_types.get(capability_type, false)):
+			return false
+	return true
 
 func record_beam_update() -> void:
 	_track_phase("beam_update", Time.get_ticks_usec())
