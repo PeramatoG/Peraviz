@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <vector>
 
 namespace godot {
 namespace {
@@ -32,6 +33,8 @@ void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_active_universes", "active_window_ms"), &PeravizDmxReceiver::get_active_universes, DEFVAL(2000));
     ClassDB::bind_method(D_METHOD("get_stats"), &PeravizDmxReceiver::get_stats);
     ClassDB::bind_method(D_METHOD("get_universe_data", "universe_id"), &PeravizDmxReceiver::get_universe_data);
+    ClassDB::bind_method(D_METHOD("get_dirty_universes"), &PeravizDmxReceiver::get_dirty_universes);
+    ClassDB::bind_method(D_METHOD("consume_universe", "universe_id"), &PeravizDmxReceiver::consume_universe);
     ClassDB::bind_method(D_METHOD("get_universe_metadata", "universe_id"), &PeravizDmxReceiver::get_universe_metadata);
     ClassDB::bind_method(D_METHOD("get_changed_universe_frames", "last_counters"), &PeravizDmxReceiver::get_changed_universe_frames);
 }
@@ -132,6 +135,36 @@ PackedByteArray PeravizDmxReceiver::get_universe_data(int universe_id) const {
     return bytes;
 }
 
+
+// Returns universes that have received new data since their last consume call.
+PackedInt32Array PeravizDmxReceiver::get_dirty_universes() const {
+    const std::vector<uint16_t> dirty_universes = receiver_->get_dirty_universes();
+    PackedInt32Array out;
+    out.resize(static_cast<int64_t>(dirty_universes.size()));
+    for (int64_t i = 0; i < out.size(); ++i) {
+        out[i] = dirty_universes[static_cast<size_t>(i)];
+    }
+    return out;
+}
+
+// Returns and marks consumed the latest DMX channel data for one universe.
+PackedByteArray PeravizDmxReceiver::consume_universe(int universe_id) {
+    PackedByteArray bytes;
+    if (universe_id < 0 || universe_id > 32767) {
+        return bytes;
+    }
+
+    peraviz::dmx::DmxFrame frame;
+    if (!receiver_->consume_frame(static_cast<uint16_t>(universe_id), frame)) {
+        return bytes;
+    }
+
+    bytes.resize(frame.length);
+    if (frame.length > 0) {
+        std::memcpy(bytes.ptrw(), frame.data.data(), static_cast<size_t>(frame.length));
+    }
+    return bytes;
+}
 
 // Returns metadata for one universe without copying its DMX payload.
 Dictionary PeravizDmxReceiver::get_universe_metadata(int universe_id) const {

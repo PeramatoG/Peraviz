@@ -43,6 +43,8 @@ public:
 
     bool try_get_frame(uint16_t universe_id, DmxFrame &out_frame) const;
     bool try_get_metadata(uint16_t universe_id, DmxUniverseMetadata &out_metadata) const;
+    std::vector<uint16_t> get_dirty_universes() const;
+    bool consume_frame(uint16_t universe_id, DmxFrame &out_frame);
     ArtNetReceiverStats get_stats(uint64_t now_us, uint64_t active_window_us) const;
     std::string get_last_error() const;
 

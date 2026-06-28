@@ -37,6 +37,7 @@ Changes since the initial Peraviz repository split.
 - Improved live DMX rendering performance by disabling fixture spotlight shadows by default, caching resolved fixture nodes, reducing per-tick photometric dictionary copying, lowering volumetric fog allocation defaults, and speeding native changed-universe frame copies.
 - Improved DMX runtime responsiveness by moving fixture control decoding off the main thread, keeping threaded DMX work on flat fixture data, waking the worker without busy polling, reducing repeated beam parameter writes, reusing fixture control buffers, and scoping live Art-Net updates to the fixture attributes whose DMX capabilities actually changed.
 - Hardened and optimized Art-Net/DMX reception and fixture application so the network thread keeps bounded latest-frame state, the main thread avoids idle universe scans, ignores unchanged DMX payloads before copying, only processes patched-channel changes, capability comparisons avoid string serialization, and dimmer-only updates avoid expensive beam geometry refreshes after fixtures are warmed.
+- Improved DMX runtime latency by exposing dirty-universe consumption from the native Art-Net receiver and adding a native batch universe decoder foundation for changed channel updates.
 - Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 

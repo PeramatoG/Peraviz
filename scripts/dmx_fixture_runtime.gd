@@ -213,7 +213,9 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var changed_frames: Dictionary = {}
-	if receiver.has_method("get_changed_universe_frames"):
+	if receiver.has_method("get_dirty_universes") and receiver.has_method("consume_universe"):
+		changed_frames = _consume_dirty_universe_frames(receiver)
+	elif receiver.has_method("get_changed_universe_frames"):
 		changed_frames = receiver.get_changed_universe_frames(_last_universe_counters)
 	else:
 		changed_frames = _collect_changed_universe_frames_compat(receiver)
@@ -262,6 +264,29 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		"fixtures_considered": fixtures_considered,
 		"controls": pending_controls,
 	}
+
+
+func _consume_dirty_universe_frames(receiver) -> Dictionary:
+	var changed_frames: Dictionary = {}
+	var dirty_universes: PackedInt32Array = receiver.get_dirty_universes()
+	for universe_id in dirty_universes:
+		if not _used_universes.has(int(universe_id)):
+			continue
+		var frame: PackedByteArray = receiver.consume_universe(int(universe_id))
+		if frame.is_empty():
+			continue
+		var interest_hash: int = _compute_universe_interest_hash(int(universe_id), frame)
+		var previous_state: Variant = _last_universe_counters.get(int(universe_id), {})
+		var previous_counter: int = -1
+		if previous_state is Dictionary:
+			previous_counter = int((previous_state as Dictionary).get("counter", -1))
+		changed_frames[int(universe_id)] = {
+			"data": frame,
+			"counter": previous_counter + 1,
+			"content_hash": _compute_snapshot_hash(frame),
+			"interest_hash": interest_hash,
+		}
+	return changed_frames
 
 func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
 	var changed_frames: Dictionary = {}
