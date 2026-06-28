@@ -20,6 +20,7 @@ var _bindings: Array = []
 var _unbound: Array = []
 var _fixture_patch_lookup: Dictionary = {}
 var _fixture_nodes: Dictionary = {}
+var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_capability_hash_cache: Dictionary = {}
@@ -48,6 +49,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_unbound.clear()
 	_fixture_patch_lookup.clear()
 	_fixture_nodes.clear()
+	_bound_fixture_ids.clear()
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
 	_fixture_capability_hash_cache.clear()
@@ -92,6 +94,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			})
 			continue
 		_fixture_nodes[fixture_uuid] = fixture_node
+		_bound_fixture_ids[fixture_uuid] = true
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
@@ -126,7 +129,7 @@ func set_debug_force_full_apply(enabled: bool) -> void:
 
 func get_bound_fixture_ids() -> PackedStringArray:
 	var fixture_ids := PackedStringArray()
-	for fixture_uuid in _fixture_nodes.keys():
+	for fixture_uuid in _bound_fixture_ids.keys():
 		fixture_ids.append(str(fixture_uuid))
 	return fixture_ids
 
@@ -316,7 +319,7 @@ func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -
 
 func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
-	if fixture_uuid.is_empty() or not _fixture_nodes.has(fixture_uuid):
+	if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
 		return {}
 	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
 	if fixture_plan.is_empty():
@@ -447,9 +450,14 @@ func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictiona
 func _hash_capability_bucket(bucket: Array) -> int:
 	var hash_value: int = 2166136261
 	for item in bucket:
-		var item_text: String = str(item)
-		for index in range(item_text.length()):
-			hash_value = int((hash_value ^ item_text.unicode_at(index)) * 16777619)
+		if item is not Dictionary:
+			continue
+		var row: Dictionary = item
+		var keys: Array = row.keys()
+		keys.sort()
+		for key in keys:
+			hash_value = int((hash_value ^ hash(key)) * 16777619)
+			hash_value = int((hash_value ^ hash(row.get(key))) * 16777619)
 	return hash_value
 
 func _clear_capability_output(capabilities: Dictionary) -> void:
@@ -565,7 +573,7 @@ func _has_any_capability(controls: Dictionary) -> bool:
 	return false
 
 func get_bound_count() -> int:
-	return _fixture_nodes.size()
+	return _bound_fixture_ids.size()
 
 func get_unbound_count() -> int:
 	return _unbound.size()
