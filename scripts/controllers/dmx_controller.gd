@@ -42,9 +42,6 @@ var _dmx_thread_running: bool = false
 var _pending_controls: Array = []
 var _pending_stats: Dictionary = {}
 var _pending_decode_usec: int = 0
-var _last_worker_wakeup_msec: int = 0
-
-const DMX_WORKER_WAKEUP_INTERVAL_MSEC: int = 22
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
@@ -267,7 +264,6 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 	_last_receiving_signal = false
 	_last_active_universes = PackedInt32Array()
 	_last_packet_ms = -1
-	_last_worker_wakeup_msec = 0
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	_emit_dmx_status(false, false)
 	return true
@@ -295,9 +291,7 @@ func process_dmx(_delta: float) -> void:
 		delta_sec = max(float(now_msec - _last_dmx_tick_msec) * 0.001, 0.0)
 	_last_dmx_tick_msec = now_msec
 
-	if now_msec - _last_worker_wakeup_msec >= DMX_WORKER_WAKEUP_INTERVAL_MSEC:
-		_last_worker_wakeup_msec = now_msec
-		_dmx_semaphore.post()
+	_dmx_semaphore.post()
 	_drain_pending_dmx_controls(delta_sec)
 	_refresh_dmx_status_if_needed(now_msec)
 	_emit_dmx_status(true, _last_receiving_signal)
@@ -322,7 +316,6 @@ func _stop_dmx_thread() -> void:
 	_pending_controls.clear()
 	_pending_stats.clear()
 	_pending_decode_usec = 0
-	_last_worker_wakeup_msec = 0
 	_dmx_pending_mutex.unlock()
 
 func _dmx_worker() -> void:
