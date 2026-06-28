@@ -549,7 +549,7 @@ func _ensure_beam_runtime_for_light(light: SpotLight3D) -> void:
 func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void:
 	if _active_beam_renderer == null:
 		return
-	light.set_meta("peraviz_beam_last_params", beam_params.duplicate(true))
+	light.set_meta("peraviz_beam_last_params", beam_params)
 	_active_beam_renderer.ensure_beam(light)
 	_active_beam_renderer.update_beam(light, beam_params)
 
@@ -2603,6 +2603,10 @@ func _refresh_dmx_fixture_bindings() -> void:
 	var unbound_count: int = int(summary.get("unbound", 0))
 	if _status_presenter != null and unbound_count > 0:
 		_status_presenter.set_scene_state_warning_unbound(unbound_count)
+
+func _process(delta: float) -> void:
+	if _dmx_controller != null:
+		_dmx_controller.process_dmx(delta)
 
 func _exit_tree() -> void:
 	_save_user_preferences()

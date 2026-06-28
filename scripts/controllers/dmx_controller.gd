@@ -34,6 +34,13 @@ var _last_receiving_signal: bool = false
 var _last_active_universes := PackedInt32Array()
 var _last_packet_ms: int = -1
 var _debug_force_full_apply: bool = false
+var _dmx_thread: Thread = null
+var _dmx_runtime_mutex := Mutex.new()
+var _dmx_pending_mutex := Mutex.new()
+var _dmx_thread_running: bool = false
+var _pending_controls: Array = []
+var _pending_stats: Dictionary = {}
+var _pending_decode_usec: int = 0
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
@@ -106,8 +113,8 @@ func setup_controls() -> void:
 	controls_vbox.add_child(_dmx_unbound_preview_label)
 
 	_dmx_timer = Timer.new()
-	_dmx_timer.wait_time = 0.03
-	_dmx_timer.autostart = true
+	_dmx_timer.wait_time = 0.125
+	_dmx_timer.autostart = false
 	_owner.add_child(_dmx_timer)
 	_dmx_timer.timeout.connect(_on_dmx_timer_timeout)
 
@@ -160,7 +167,13 @@ func stop_dmx() -> void:
 func refresh_fixture_bindings() -> Dictionary:
 	if _dmx_fixture_runtime == null or _dmx_universe_offset_input == null:
 		return {}
+	_dmx_runtime_mutex.lock()
 	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value))
+	_dmx_pending_mutex.lock()
+	_pending_controls.clear()
+	_pending_stats.clear()
+	_dmx_pending_mutex.unlock()
+	_dmx_runtime_mutex.unlock()
 	_fixture_binding_summary = summary
 	_prewarm_bound_fixture_lighting()
 	_refresh_dmx_unbound_details()
@@ -189,6 +202,7 @@ func resolve_controls_host() -> Control:
 	return _get_controls_host_callback.call() as Control
 
 func exit_tree() -> void:
+	_stop_dmx_thread()
 	if _dmx_receiver != null:
 		_dmx_receiver.stop()
 
@@ -231,9 +245,11 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 			_dmx_toggle_button.button_pressed = true
 			_dmx_toggle_button.text = "DMX ON"
 			_dmx_toggle_button.tooltip_text = ""
+		_start_dmx_thread()
 		_emit_dmx_status(true, false)
 		return true
 
+	_stop_dmx_thread()
 	_dmx_receiver.stop()
 	if _dmx_toggle_button != null:
 		_dmx_toggle_button.button_pressed = false
@@ -261,21 +277,11 @@ func _on_dmx_monitor_pressed() -> void:
 	_dmx_monitor_window.popup_centered_ratio(0.75)
 	_refresh_dmx_monitor_window(_dmx_receiver.is_running())
 
-func _on_dmx_timer_timeout() -> void:
+func process_dmx(_delta: float) -> void:
 	if _dmx_receiver == null:
 		return
 	if not _dmx_receiver.is_running():
-		if _dmx_toggle_button != null and not _dmx_toggle_button.button_pressed:
-			_update_dmx_toggle_color(false, false)
-		_refresh_dmx_monitor_window(false)
-		_last_updated_fixtures = 0
-		_last_skipped_fixtures = 0
-		_last_considered_fixtures = 0
-		_last_changed_universes = 0
-		_last_receiving_signal = false
-		_last_active_universes = PackedInt32Array()
-		_last_packet_ms = -1
-		_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
+		_reset_stopped_dmx_state()
 		return
 
 	var now_msec: int = Time.get_ticks_msec()
@@ -284,33 +290,106 @@ func _on_dmx_timer_timeout() -> void:
 		delta_sec = max(float(now_msec - _last_dmx_tick_msec) * 0.001, 0.0)
 	_last_dmx_tick_msec = now_msec
 
-	if _dmx_fixture_runtime != null and _apply_dmx_controls_callback.is_valid():
-		var decode_phase_start: int = Time.get_ticks_usec()
-		var apply_stats: Dictionary = _dmx_fixture_runtime.apply_dmx(_dmx_receiver, func(fixture_uuid: String, controls: Dictionary) -> void:
-			controls["frame_delta_sec"] = delta_sec
-			_apply_dmx_controls_callback.call(fixture_uuid, controls)
-		)
-		_last_updated_fixtures = int(apply_stats.get("updated", 0))
-		_last_skipped_fixtures = int(apply_stats.get("skipped", 0))
-		_last_considered_fixtures = int(apply_stats.get("fixtures_considered", 0))
-		_last_changed_universes = int(apply_stats.get("universes_changed", 0))
-		var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
-		_worst_dmx_tick_usec = max(_worst_dmx_tick_usec, tick_usec)
-		if _owner != null and _owner.has_method("bridge_record_dmx_decode_phase"):
-			_owner.bridge_record_dmx_decode_phase(tick_usec)
-		_apply_fixture_time_tick(delta_sec)
-
-	if now_msec - _last_monitor_refresh_msec >= 125:
-		_last_monitor_refresh_msec = now_msec
-		var stats: Dictionary = _dmx_receiver.get_stats()
-		var stats_active_universes: Variant = stats.get("active_universes", PackedInt32Array())
-		_last_active_universes = stats_active_universes if stats_active_universes is PackedInt32Array else PackedInt32Array()
-		_last_packet_ms = int(stats.get("last_packet_ms_ago", -1))
-		_last_receiving_signal = _last_active_universes.size() > 0 and _last_packet_ms >= 0 and _last_packet_ms <= 2000
-		_update_dmx_toggle_color(true, _last_receiving_signal)
-		_refresh_dmx_monitor_window(true)
-		_refresh_dmx_quick_panel(true, _last_receiving_signal, _last_active_universes, _last_packet_ms)
+	_drain_pending_dmx_controls(delta_sec)
+	_refresh_dmx_status_if_needed(now_msec)
 	_emit_dmx_status(true, _last_receiving_signal)
+
+func _on_dmx_timer_timeout() -> void:
+	process_dmx(0.0)
+
+func _start_dmx_thread() -> void:
+	if _dmx_thread != null and _dmx_thread.is_started():
+		return
+	_dmx_thread_running = true
+	_dmx_thread = Thread.new()
+	_dmx_thread.start(Callable(self, "_dmx_worker"))
+
+func _stop_dmx_thread() -> void:
+	_dmx_thread_running = false
+	if _dmx_thread != null and _dmx_thread.is_started():
+		_dmx_thread.wait_to_finish()
+	_dmx_thread = null
+	_dmx_pending_mutex.lock()
+	_pending_controls.clear()
+	_pending_stats.clear()
+	_pending_decode_usec = 0
+	_dmx_pending_mutex.unlock()
+
+func _dmx_worker() -> void:
+	while _dmx_thread_running:
+		if _dmx_receiver == null or not _dmx_receiver.is_running() or _dmx_fixture_runtime == null:
+			OS.delay_msec(8)
+			continue
+		var decode_phase_start: int = Time.get_ticks_usec()
+		_dmx_runtime_mutex.lock()
+		var collect_stats: Dictionary = _dmx_fixture_runtime.collect_pending_controls(_dmx_receiver)
+		_dmx_runtime_mutex.unlock()
+		var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
+		if int(collect_stats.get("updated", 0)) > 0 or int(collect_stats.get("skipped", 0)) > 0 or int(collect_stats.get("universes_changed", 0)) > 0:
+			_dmx_pending_mutex.lock()
+			_pending_controls = collect_stats.get("controls", [])
+			_pending_stats = collect_stats
+			_pending_decode_usec = tick_usec
+			_dmx_pending_mutex.unlock()
+		OS.delay_msec(8)
+
+func _drain_pending_dmx_controls(delta_sec: float) -> void:
+	if not _apply_dmx_controls_callback.is_valid():
+		return
+	_dmx_pending_mutex.lock()
+	var controls_batch: Array = _pending_controls
+	var apply_stats: Dictionary = _pending_stats
+	var tick_usec: int = _pending_decode_usec
+	_pending_controls = []
+	_pending_stats = {}
+	_pending_decode_usec = 0
+	_dmx_pending_mutex.unlock()
+	if apply_stats.is_empty():
+		_apply_fixture_time_tick(delta_sec)
+		return
+	for item in controls_batch:
+		if item is not Dictionary:
+			continue
+		var fixture_uuid: String = str(item.get("fixture_uuid", ""))
+		var controls: Dictionary = item.get("controls", {})
+		if fixture_uuid.is_empty() or controls.is_empty():
+			continue
+		controls["frame_delta_sec"] = delta_sec
+		_apply_dmx_controls_callback.call(fixture_uuid, controls)
+	_last_updated_fixtures = int(apply_stats.get("updated", 0))
+	_last_skipped_fixtures = int(apply_stats.get("skipped", 0))
+	_last_considered_fixtures = int(apply_stats.get("fixtures_considered", 0))
+	_last_changed_universes = int(apply_stats.get("universes_changed", 0))
+	_worst_dmx_tick_usec = max(_worst_dmx_tick_usec, tick_usec)
+	if _owner != null and _owner.has_method("bridge_record_dmx_decode_phase"):
+		_owner.bridge_record_dmx_decode_phase(tick_usec)
+	_apply_fixture_time_tick(delta_sec)
+
+func _refresh_dmx_status_if_needed(now_msec: int) -> void:
+	if now_msec - _last_monitor_refresh_msec < 125:
+		return
+	_last_monitor_refresh_msec = now_msec
+	var stats: Dictionary = _dmx_receiver.get_stats()
+	var stats_active_universes: Variant = stats.get("active_universes", PackedInt32Array())
+	_last_active_universes = stats_active_universes if stats_active_universes is PackedInt32Array else PackedInt32Array()
+	_last_packet_ms = int(stats.get("last_packet_ms_ago", -1))
+	_last_receiving_signal = _last_active_universes.size() > 0 and _last_packet_ms >= 0 and _last_packet_ms <= 2000
+	_update_dmx_toggle_color(true, _last_receiving_signal)
+	_refresh_dmx_monitor_window(true)
+	_refresh_dmx_quick_panel(true, _last_receiving_signal, _last_active_universes, _last_packet_ms)
+
+func _reset_stopped_dmx_state() -> void:
+	if _dmx_toggle_button != null and not _dmx_toggle_button.button_pressed:
+		_update_dmx_toggle_color(false, false)
+	_refresh_dmx_monitor_window(false)
+	_last_updated_fixtures = 0
+	_last_skipped_fixtures = 0
+	_last_considered_fixtures = 0
+	_last_changed_universes = 0
+	_last_receiving_signal = false
+	_last_active_universes = PackedInt32Array()
+	_last_packet_ms = -1
+	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 
 func _update_dmx_toggle_color(enabled: bool, receiving_signal: bool) -> void:
 	if _dmx_toggle_button == null:

@@ -22,7 +22,9 @@ var _fixture_patch_lookup: Dictionary = {}
 var _fixture_nodes: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
+var _fixture_capability_hash_cache: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
+var _fixture_output_buffers: Dictionary = {}
 var _used_universes: Dictionary = {}
 var _bindings_by_universe: Dictionary = {}
 var _last_universe_counters: Dictionary = {}
@@ -48,7 +50,9 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_nodes.clear()
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
+	_fixture_capability_hash_cache.clear()
 	_fixture_apply_plans.clear()
+	_fixture_output_buffers.clear()
 	_used_universes.clear()
 	_bindings_by_universe.clear()
 	_last_universe_counters.clear()
@@ -89,6 +93,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			continue
 		_fixture_nodes[fixture_uuid] = fixture_node
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
+		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
 		var requires_time_tick: bool = _binding_requires_time_tick(binding)
 		_fixture_time_tick_flags[fixture_uuid] = requires_time_tick
@@ -192,11 +197,15 @@ func _string_requires_time_tick(value: String) -> bool:
 		return true
 	return false
 
+func collect_pending_controls(receiver) -> Dictionary:
+	return _collect_dmx(receiver, Callable())
+
 func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
+	return _collect_dmx(receiver, apply_fixture_callback)
+
+func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	if receiver == null or not receiver.is_running():
-		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
-	if apply_fixture_callback.is_null():
-		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var changed_frames: Dictionary = {}
 	if receiver.has_method("get_changed_universe_frames"):
@@ -205,11 +214,12 @@ func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		changed_frames = _collect_changed_universe_frames_compat(receiver)
 
 	if changed_frames.is_empty() and not _debug_force_full_apply:
-		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0}
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var updated: int = 0
 	var skipped: int = 0
 	var fixtures_considered: int = 0
+	var pending_controls: Array = []
 	for universe_key in changed_frames.keys():
 		var universe_id: int = int(universe_key)
 		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
@@ -233,7 +243,7 @@ func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		for binding in universe_bindings:
 			if binding is not Dictionary:
 				continue
-			var result: Dictionary = _apply_binding_frame(binding, frame, apply_fixture_callback)
+			var result: Dictionary = _apply_binding_frame(binding, frame, apply_fixture_callback, pending_controls)
 			if result.is_empty():
 				continue
 			fixtures_considered += 1
@@ -245,6 +255,7 @@ func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		"skipped": skipped,
 		"universes_changed": changed_frames.size(),
 		"fixtures_considered": fixtures_considered,
+		"controls": pending_controls,
 	}
 
 func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
@@ -303,7 +314,7 @@ func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -
 		hash_value = int((hash_value ^ offset) * 16777619)
 	return hash_value
 
-func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable) -> Dictionary:
+func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
 	if fixture_uuid.is_empty() or not _fixture_nodes.has(fixture_uuid):
 		return {}
@@ -311,26 +322,28 @@ func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fix
 	if fixture_plan.is_empty():
 		fixture_plan = _build_fixture_apply_plan(binding)
 		_fixture_apply_plans[fixture_uuid] = fixture_plan
+	if not _fixture_output_buffers.has(fixture_uuid):
+		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 	var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
 	if snapshot.is_empty():
-		var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame)
+		var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame, fixture_uuid)
 		if not _has_any_capability(controls_without_cache):
 			return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
-		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache)
+		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache, pending_controls)
 		return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 	var snapshot_hash: int = _compute_snapshot_hash(snapshot)
 	var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
 	if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
 		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 1}
 
-	var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame)
+	var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame, fixture_uuid)
 	if not _has_any_capability(controls):
 		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
 	_fixture_snapshot_cache[fixture_uuid] = {
 		"hash": snapshot_hash,
 		"snapshot": snapshot,
 	}
-	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls)
+	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls, pending_controls)
 	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 
 func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
@@ -386,15 +399,24 @@ func _build_active_handlers_for_plan(binding: Dictionary, handler_scripts: Dicti
 		return handler_scripts.duplicate(true)
 	return active_handlers
 
-func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray) -> Dictionary:
-	var capabilities := {
-		"pan_tilt": [],
-		"dimmer": [],
-		"color_wheel": [],
-		"gobo": [],
-		"prism": [],
-		"strobe": [],
+func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
+	return {
+		"capabilities": {
+			"pan_tilt": [],
+			"dimmer": [],
+			"color_wheel": [],
+			"gobo": [],
+			"prism": [],
+			"strobe": [],
+		},
+		"metadata": binding.get("metadata", {}),
 	}
+
+func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
+	var output: Dictionary = _fixture_output_buffers.get(fixture_uuid, _build_fixture_output_buffer(fixture_plan.get("binding", {})))
+	_fixture_output_buffers[fixture_uuid] = output
+	var capabilities: Dictionary = output.get("capabilities", {})
+	_clear_capability_output(capabilities)
 	var handlers: Dictionary = fixture_plan.get("handlers", {})
 	_append_capability_from_plan(capabilities, "pan_tilt", fixture_plan, handlers, frame)
 	_append_capability_from_plan(capabilities, "dimmer", fixture_plan, handlers, frame)
@@ -402,10 +424,40 @@ func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray) 
 	_append_capability_from_plan(capabilities, "gobo", fixture_plan, handlers, frame)
 	_append_capability_from_plan(capabilities, "prism", fixture_plan, handlers, frame)
 	_append_capability_from_plan(capabilities, "strobe", fixture_plan, handlers, frame)
-	return {
-		"capabilities": capabilities,
-		"metadata": fixture_plan.get("metadata", {}),
-	}
+	var changed_capability_types: Dictionary = _filter_unchanged_capabilities(fixture_uuid, capabilities)
+	output["changed_capability_types"] = changed_capability_types
+	output["metadata"] = fixture_plan.get("metadata", output.get("metadata", {}))
+	return output
+
+func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictionary) -> Dictionary:
+	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
+	var next_hashes: Dictionary = {}
+	var changed_capability_types: Dictionary = {}
+	for capability_type in ["pan_tilt", "dimmer", "color_wheel", "gobo", "prism", "strobe"]:
+		var bucket: Array = capabilities.get(capability_type, [])
+		var bucket_hash: int = _hash_capability_bucket(bucket)
+		next_hashes[capability_type] = bucket_hash
+		if not previous_hashes.has(capability_type) or int(previous_hashes.get(capability_type, 0)) != bucket_hash:
+			changed_capability_types[capability_type] = true
+		elif not bucket.is_empty():
+			bucket.clear()
+	_fixture_capability_hash_cache[fixture_uuid] = next_hashes
+	return changed_capability_types
+
+func _hash_capability_bucket(bucket: Array) -> int:
+	var hash_value: int = 2166136261
+	for item in bucket:
+		var item_text: String = str(item)
+		for index in range(item_text.length()):
+			hash_value = int((hash_value ^ item_text.unicode_at(index)) * 16777619)
+	return hash_value
+
+func _clear_capability_output(capabilities: Dictionary) -> void:
+	for capability_type in ["pan_tilt", "dimmer", "color_wheel", "gobo", "prism", "strobe"]:
+		if not capabilities.has(capability_type):
+			capabilities[capability_type] = []
+		else:
+			(capabilities[capability_type] as Array).clear()
 
 func _append_capability_from_plan(capabilities: Dictionary, capability_type: String, fixture_plan: Dictionary, handlers: Dictionary, frame: PackedByteArray) -> void:
 	if not handlers.has(capability_type):
@@ -422,10 +474,13 @@ func _append_capability_from_plan(capabilities: Dictionary, capability_type: Str
 		blocks = script.collect(fixture_plan.get("binding", {}), frame, ControlReaderScript, FORCE_COARSE_ONLY_DMX_READ)
 	_append_capabilities(capabilities, capability_type, blocks)
 
-func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary) -> void:
+func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary, pending_controls: Array = []) -> void:
 	# Temporary compatibility adapter for incremental migration.
 	# Old callback contract receives (fixture_uuid, controls).
 	# New contract may receive a precompiled output envelope.
+	if apply_fixture_callback.is_null():
+		pending_controls.append({"fixture_uuid": fixture_uuid, "controls": controls.duplicate(true)})
+		return
 	apply_fixture_callback.call(fixture_uuid, controls)
 
 func _snapshot_is_unchanged(previous_state: Dictionary, snapshot_hash: int, snapshot: PackedByteArray) -> bool:
