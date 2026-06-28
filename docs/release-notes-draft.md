@@ -32,6 +32,7 @@ Changes since the initial Peraviz repository split.
 
 ## Stability and reliability
 
+- Improved Art-Net responsiveness by treating received DMX frames as latest-wins even when a controller sends irregular sequence values, avoiding visible stalls from sequence filtering during rapid cues.
 - Improved live DMX performance by keeping beam geometry caches warm during per-light cleanup, caching resolved pan/tilt axes per fixture, and prioritizing light/beam updates for dimmer-only changes so rapid intensity cues stay more responsive.
 - Improved live DMX rendering performance by disabling fixture spotlight shadows by default, caching resolved fixture nodes, reducing per-tick photometric dictionary copying, lowering volumetric fog allocation defaults, and speeding native changed-universe frame copies.
 - Improved DMX runtime responsiveness by moving fixture control decoding off the main thread, keeping threaded DMX work on flat fixture data, waking the worker without busy polling, reducing repeated beam parameter writes, reusing fixture control buffers, and scoping live Art-Net updates to the fixture attributes whose DMX capabilities actually changed.
