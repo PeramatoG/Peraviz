@@ -441,9 +441,11 @@ func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictiona
 		var bucket: Array = capabilities.get(capability_type, [])
 		var bucket_hash: int = _hash_capability_bucket(bucket)
 		next_hashes[capability_type] = bucket_hash
+		if bucket.is_empty():
+			continue
 		if not previous_hashes.has(capability_type) or int(previous_hashes.get(capability_type, 0)) != bucket_hash:
 			changed_capability_types[capability_type] = true
-		elif not bucket.is_empty():
+		else:
 			bucket.clear()
 	_fixture_capability_hash_cache[fixture_uuid] = next_hashes
 	return changed_capability_types

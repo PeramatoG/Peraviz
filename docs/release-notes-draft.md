@@ -30,6 +30,7 @@ Changes since the initial Peraviz repository split.
 
 ## Fixes
 
+- Fixed a live DMX issue where fixtures without an active dimmer update, or with only low fine-byte dimmer noise on 16-bit dimmer channels, could appear lit when DMX was connected.
 - Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
 
 ## Stability and reliability
