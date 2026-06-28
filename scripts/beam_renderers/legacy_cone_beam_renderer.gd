@@ -133,8 +133,6 @@ func cleanup_beam(light: SpotLight3D) -> void:
 			prism.queue_free()
 		light.remove_meta(MAIN_KEY)
 	_cleanup_legacy_cones(light)
-	if _mesh_builder != null:
-		_mesh_builder.clear_cache()
 
 func _cleanup_legacy_cones(light: SpotLight3D) -> void:
 	for meta_key in [LEGACY_MID_KEY, LEGACY_CORE_KEY, "peraviz_beam_cone"]:

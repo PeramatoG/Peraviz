@@ -53,6 +53,7 @@ var _fixture_emissive_cache: Dictionary = {}
 var _fixture_emitter_light_cache: Dictionary = {}
 var _fixture_geometry_nodes_cache: Dictionary = {}
 var _fixture_emitter_nodes_cache: Dictionary = {}
+var _fixture_axis_nodes_cache: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
@@ -1646,9 +1647,9 @@ func _apply_pan_tilt_components_to_fixture(fixture_uuid: String,
 		pan_degrees: float,
 		has_tilt: bool,
 		tilt_degrees: float) -> void:
-	var axis_nodes: Array = _to_node3d_array(_scene_registry.get_anchor(fixture_uuid, "axis"))
-	var pan_axis: Node3D = _find_axis_for_role(axis_nodes, "pan")
-	var tilt_axis: Node3D = _find_axis_for_role(axis_nodes, "tilt")
+	var axis_entry: Dictionary = _get_fixture_axis_nodes(fixture_uuid)
+	var pan_axis: Node3D = axis_entry.get("pan", null) as Node3D
+	var tilt_axis: Node3D = axis_entry.get("tilt", null) as Node3D
 	if has_pan and pan_axis != null:
 		pan_axis.rotation_degrees.y = pan_degrees
 	if has_tilt and tilt_axis != null:
@@ -1710,10 +1711,12 @@ func _apply_dimmer_feedback_to_fixture(fixture_uuid: String, dimmer: float, cont
 func _prepare_fixture_node_cache(fixture_uuid: String) -> void:
 	_get_fixture_geometry_nodes(fixture_uuid)
 	_get_fixture_emitter_nodes(fixture_uuid)
+	_get_fixture_axis_nodes(fixture_uuid)
 
 func _clear_fixture_node_cache() -> void:
 	_fixture_geometry_nodes_cache.clear()
 	_fixture_emitter_nodes_cache.clear()
+	_fixture_axis_nodes_cache.clear()
 
 func _get_fixture_geometry_nodes(fixture_uuid: String) -> Array:
 	if _fixture_geometry_nodes_cache.has(fixture_uuid):
@@ -1728,6 +1731,17 @@ func _get_fixture_emitter_nodes(fixture_uuid: String) -> Array:
 	var nodes: Array = _to_node3d_array(_scene_registry.get_anchor(fixture_uuid, "emitters"))
 	_fixture_emitter_nodes_cache[fixture_uuid] = nodes
 	return nodes
+
+func _get_fixture_axis_nodes(fixture_uuid: String) -> Dictionary:
+	if _fixture_axis_nodes_cache.has(fixture_uuid):
+		return _fixture_axis_nodes_cache.get(fixture_uuid, {})
+	var axis_nodes: Array = _to_node3d_array(_scene_registry.get_anchor(fixture_uuid, "axis"))
+	var axis_entry: Dictionary = {
+		"pan": _find_axis_for_role(axis_nodes, "pan"),
+		"tilt": _find_axis_for_role(axis_nodes, "tilt"),
+	}
+	_fixture_axis_nodes_cache[fixture_uuid] = axis_entry
+	return axis_entry
 
 func _collect_fixture_emissive_materials(fixture_uuid: String, geometry_nodes: Array) -> Array:
 	if _fixture_emissive_cache.has(fixture_uuid):
