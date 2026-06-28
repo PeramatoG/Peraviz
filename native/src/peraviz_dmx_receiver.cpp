@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 
 namespace godot {
 namespace {
@@ -188,8 +189,8 @@ Dictionary PeravizDmxReceiver::get_changed_universe_frames(const Dictionary &las
 
         PackedByteArray bytes;
         bytes.resize(frame.length);
-        for (int64_t channel = 0; channel < frame.length; ++channel) {
-            bytes[channel] = frame.data[static_cast<size_t>(channel)];
+        if (frame.length > 0) {
+            std::memcpy(bytes.ptrw(), frame.data.data(), static_cast<size_t>(frame.length));
         }
 
         Dictionary entry;

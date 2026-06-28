@@ -144,8 +144,8 @@ func has_lighting_controls(controls: Dictionary) -> bool:
 	return bool(gobo_controls.get("has_gobo", false)) or bool(gobo_controls.get("has_gobo_index", false)) or bool(gobo_controls.get("has_gobo_rotation", false))
 
 func prewarm_lighting_for_fixture(loader: Node, fixture_uuid: String) -> void:
-	var geometry_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "geometry_nodes"))
-	var emitter_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "emitters"))
+	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
+	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
 	loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
 	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
@@ -161,14 +161,12 @@ func prewarm_lighting_for_fixture(loader: Node, fixture_uuid: String) -> void:
 		loader._ensure_beam_runtime_for_light(light)
 		if light.has_meta("peraviz_beam_last_params"):
 			continue
-		var photometric: Dictionary = loader.DEFAULT_EMITTER_PHOTOMETRICS.duplicate(true)
-		if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary:
-			photometric.merge(emitter_photometrics[index], true)
+		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
 		loader._apply_emitter_light_state(light, photometric, 0.0, prewarm_controls)
 
 func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer: float, controls: Dictionary = {}) -> void:
-	var geometry_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "geometry_nodes"))
-	var emitter_nodes: Array = loader._to_node3d_array(loader._scene_registry.get_anchor(fixture_uuid, "emitters"))
+	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
+	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
 	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
 		return
 	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
@@ -205,12 +203,26 @@ func _apply_emitter_light_dimmer(loader: Node, fixture_uuid: String, emitter_nod
 		var light: SpotLight3D = emitter_lights[index]
 		if light == null or not is_instance_valid(light):
 			continue
-		var photometric: Dictionary = loader.DEFAULT_EMITTER_PHOTOMETRICS.duplicate(true)
-		if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary:
-			photometric.merge(emitter_photometrics[index], true)
+		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
 		if can_use_fast_path and _apply_emitter_light_dimmer_fast(loader, light, photometric, beam_color, normalized_dimmer):
 			continue
 		loader._apply_emitter_light_state(light, photometric, normalized_dimmer, controls)
+
+func _resolve_emitter_photometric(loader: Node, emitter_photometrics: Array, index: int) -> Dictionary:
+	if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary:
+		var photometric: Dictionary = emitter_photometrics[index]
+		if _has_required_photometric_keys(loader, photometric):
+			return photometric
+		var merged: Dictionary = loader.DEFAULT_EMITTER_PHOTOMETRICS.duplicate(true)
+		merged.merge(photometric, true)
+		return merged
+	return loader.DEFAULT_EMITTER_PHOTOMETRICS
+
+func _has_required_photometric_keys(loader: Node, photometric: Dictionary) -> bool:
+	for key in loader.DEFAULT_EMITTER_PHOTOMETRICS.keys():
+		if not photometric.has(key):
+			return false
+	return true
 
 func _apply_emitter_light_dimmer_fast(loader: Node, light: SpotLight3D, photometric: Dictionary, beam_color: Color, normalized_dimmer: float) -> bool:
 	return loader._apply_emitter_light_dimmer_fast(light, photometric, normalized_dimmer, beam_color)
