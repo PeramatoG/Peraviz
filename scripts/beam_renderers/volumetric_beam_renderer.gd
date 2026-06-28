@@ -14,6 +14,7 @@ const SHAPE_MODE_CONE: String = "cone"
 var _beam_material_template: ShaderMaterial
 var _camera: Camera3D
 var _settings: Dictionary = {}
+var _beam_settings_hash: int = 0
 var _shape_providers: Dictionary = {}
 var _active_shape_provider: VolumetricBeamShapeProvider
 
@@ -27,6 +28,7 @@ func _init() -> void:
 func configure(view_camera: Camera3D, settings: Dictionary) -> void:
 	_camera = view_camera
 	_settings = settings.duplicate(true)
+	_beam_settings_hash = _compute_beam_settings_hash()
 	_active_shape_provider = _select_shape_provider()
 
 func ensure_beam(light: SpotLight3D) -> void:
@@ -97,22 +99,22 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
 	_apply_beam_material_params(beam, beam_range, shape_result)
 
+func _compute_beam_settings_hash() -> int:
+	var hash_value: int = 2166136261
+	for key in ["beam_noise_amount", "beam_noise_scale", "beam_haze_density", "beam_anisotropy", "beam_quality"]:
+		hash_value = int((hash_value ^ hash(_settings.get(key, null))) * 16777619)
+	return hash_value
+
 func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void:
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
-	var static_signature: String = "%s|%s|%s|%s|%s|%s|%s|%s|%s" % [
-		str(_settings.get("beam_noise_amount", 0.06)),
-		str(_settings.get("beam_noise_scale", 1.4)),
-		str(_settings.get("beam_haze_density", 0.17)),
-		str(haze_density),
-		str(_settings.get("beam_anisotropy", 0.62)),
-		str(_settings.get("beam_quality", 1)),
-		str(params.get("beam_radial_falloff", 1.1)),
-		str(params.get("beam_longitudinal_falloff", 1.0)),
-		str(params.get("beam_softness", 0.35)),
-	]
-	if str(beam.get_meta("peraviz_static_beam_signature", "")) == static_signature:
+	var static_hash: int = _beam_settings_hash
+	static_hash = int((static_hash ^ hash(haze_density)) * 16777619)
+	static_hash = int((static_hash ^ hash(float(params.get("beam_radial_falloff", 1.1)))) * 16777619)
+	static_hash = int((static_hash ^ hash(float(params.get("beam_longitudinal_falloff", 1.0)))) * 16777619)
+	static_hash = int((static_hash ^ hash(float(params.get("beam_softness", 0.35)))) * 16777619)
+	if int(beam.get_meta("peraviz_static_beam_hash", 0)) == static_hash:
 		return
-	beam.set_meta("peraviz_static_beam_signature", static_signature)
+	beam.set_meta("peraviz_static_beam_hash", static_hash)
 	beam.set_instance_shader_parameter("beam_noise_amount", float(_settings.get("beam_noise_amount", 0.06)))
 	beam.set_instance_shader_parameter("beam_noise_scale", float(_settings.get("beam_noise_scale", 1.4)))
 	beam.set_instance_shader_parameter("beam_haze_density", float(_settings.get("beam_haze_density", 0.17)) * haze_density)

@@ -70,6 +70,7 @@ var _visual_environment_baseline := {
 	"glow_strength": 0.55,
 	"background_color": Color(0.129412, 0.137255, 0.156863, 1.0),
 }
+var _cached_beam_defaults: Dictionary = {}
 var _visual_settings := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
@@ -259,6 +260,7 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 }
 
 func _ready() -> void:
+	_cached_beam_defaults = BeamOpticsControllerScript.BuildDefaultMasterOptics()
 	_apply_imported_content_scale()
 	_scene_registry.configure(proxies_root)
 	_fixture_row_provider.configure(_loader, _scene_registry)
@@ -1979,7 +1981,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
 	_set_light_meta_variant(light, "peraviz_beam_angle_source", "gdtf_full_angle_deg", last_state)
 	var scaled_intensity: float = clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
-	var beam_defaults: Dictionary = BeamOpticsControllerScript.BuildDefaultMasterOptics()
+	var beam_defaults: Dictionary = _cached_beam_defaults
 	var beam_params: Dictionary = BeamOpticsControllerScript.BuildBeamParams(
 		light,
 		beam_angle,
