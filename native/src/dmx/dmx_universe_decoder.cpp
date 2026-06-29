@@ -122,11 +122,22 @@ PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_compact(int univer
         compact_updates.set(base + 2 + compact_index, static_cast<float>(read_normalized_value(current_frame, binding)));
     }
 
-    previous_frame = current_frame;
     if (fixture_offsets.empty()) {
+        previous_frame = current_frame;
         compact_updates.clear();
         return compact_updates;
     }
+
+    for (const FixtureChannelBinding &binding : bindings_it->second) {
+        const int compact_index = compact_index_for_channel_type(binding.channel_type);
+        const auto fixture_it = fixture_offsets.find(binding.fixture_id);
+        if (compact_index < 0 || fixture_it == fixture_offsets.end()) {
+            continue;
+        }
+        compact_updates.set(fixture_it->second + 2 + compact_index, static_cast<float>(read_normalized_value(current_frame, binding)));
+    }
+
+    previous_frame = current_frame;
     compact_updates.set(0, static_cast<float>(fixture_offsets.size()));
     return compact_updates;
 }
@@ -139,16 +150,40 @@ void PeravizDmxUniverseDecoder::set_fixture_render_params(int fixture_id, const 
     params.zoom_min_deg = static_cast<double>(render_params.get("zoom_min_deg", params.zoom_min_deg));
     params.zoom_max_deg = static_cast<double>(render_params.get("zoom_max_deg", params.zoom_max_deg));
     params.has_zoom = static_cast<bool>(render_params.get("has_zoom", params.has_zoom));
+    params.has_color_temperature = static_cast<bool>(render_params.get("has_color_temperature", params.has_color_temperature));
     params.color_temp_k = static_cast<double>(render_params.get("color_temp_k", params.color_temp_k));
     params.spot_multiplier = static_cast<double>(render_params.get("spot_multiplier", params.spot_multiplier));
     params.beam_multiplier = static_cast<double>(render_params.get("beam_multiplier", params.beam_multiplier));
     render_params_by_fixture_[fixture_id] = params;
 }
 
-// Reserves an API entry point for future render-ready fixture decoding.
+// Decodes changed fixtures with render-ready light parameters.
 PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_render_ready(int universe_id, const PackedByteArray &current_frame) {
-    // TODO: Return light energy, spot angle, and color values directly from native decoding.
-    return decode_universe_compact(universe_id, current_frame);
+    const PackedFloat32Array compact = decode_universe_compact(universe_id, current_frame);
+    if (compact.is_empty()) {
+        return compact;
+    }
+
+    constexpr int compact_stride = 15;
+    constexpr int render_ready_stride = 24;
+    PackedFloat32Array out;
+    const int fixture_count = static_cast<int>(compact[0]);
+    out.resize(1 + (fixture_count * render_ready_stride));
+    out.set(0, static_cast<float>(fixture_count));
+    int compact_base = 1;
+    int out_base = 1;
+    for (int i = 0; i < fixture_count; ++i) {
+        for (int j = 0; j < compact_stride; ++j) {
+            out.set(out_base + j, compact[compact_base + j]);
+        }
+        const int fixture_id = static_cast<int>(compact[compact_base]);
+        const auto params_it = render_params_by_fixture_.find(fixture_id);
+        const FixtureRenderParams params = params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams();
+        append_render_ready_values(out, compact, compact_base, params);
+        compact_base += compact_stride;
+        out_base += render_ready_stride;
+    }
+    return out;
 }
 
 // Clears all registered bindings and frame history.
@@ -264,6 +299,79 @@ int PeravizDmxUniverseDecoder::compact_index_for_channel_type(int channel_type) 
         case 13: return 12;
         default: return -1;
     }
+}
+
+// Reads a compact normalized value from a fixture payload.
+double PeravizDmxUniverseDecoder::compact_value_at(const PackedFloat32Array &compact, int base, int compact_index) {
+    return static_cast<double>(compact[base + 2 + compact_index]);
+}
+
+// Appends render-ready light parameters derived from compact DMX values.
+void PeravizDmxUniverseDecoder::append_render_ready_values(PackedFloat32Array &out, const PackedFloat32Array &compact, int base, const FixtureRenderParams &params) {
+    constexpr double energy_scale = 0.02;
+    constexpr double default_zoom_min = 4.0;
+    constexpr double max_beam_angle = 90.0;
+    constexpr double beam_intensity_max = 50.0;
+    constexpr double cmy_epsilon = 0.0001;
+
+    const int out_base = 1 + ((base - 1) / 15 * 24);
+    const double dimmer = std::clamp(compact_value_at(compact, base, 0), 0.0, 1.0);
+    const double zoom = std::clamp(compact_value_at(compact, base, 3), 0.0, 1.0);
+    const double cyan = std::clamp(compact_value_at(compact, base, 4), 0.0, 1.0);
+    const double magenta = std::clamp(compact_value_at(compact, base, 5), 0.0, 1.0);
+    const double yellow = std::clamp(compact_value_at(compact, base, 6), 0.0, 1.0);
+
+    double beam_angle = std::clamp(params.beam_angle_default, 0.1, max_beam_angle);
+    if (params.has_zoom) {
+        double zoom_min = params.zoom_min_deg >= 0.0 ? params.zoom_min_deg : default_zoom_min;
+        double zoom_max = params.zoom_max_deg >= 0.0 ? params.zoom_max_deg : max_beam_angle;
+        if (zoom_max < zoom_min) {
+            std::swap(zoom_min, zoom_max);
+        }
+        zoom_min = std::clamp(zoom_min, 0.1, max_beam_angle);
+        zoom_max = std::clamp(zoom_max, zoom_min, max_beam_angle);
+        beam_angle = zoom_min + ((zoom_max - zoom_min) * zoom);
+    }
+
+    double red = 1.0;
+    double green = 1.0;
+    double blue = 1.0;
+    const bool has_cmy = cyan > cmy_epsilon || magenta > cmy_epsilon || yellow > cmy_epsilon;
+    if (has_cmy) {
+        red = 1.0 - cyan;
+        green = 1.0 - magenta;
+        blue = 1.0 - yellow;
+    } else if (params.has_color_temperature) {
+        const double clamped_temperature = std::clamp(params.color_temp_k, 1000.0, 12000.0);
+        const double warm_factor = std::clamp((3200.0 - clamped_temperature) / (3200.0 - 2000.0), 0.0, 1.0);
+        const double cool_factor = std::clamp((clamped_temperature - 8500.0) / (11000.0 - 8500.0), 0.0, 1.0);
+        const double tint_mix = std::clamp(std::max(warm_factor, cool_factor) * 0.04, 0.0, 1.0);
+        const double t = clamped_temperature / 100.0;
+        double kelvin_red = 255.0;
+        double kelvin_green = 255.0;
+        double kelvin_blue = 255.0;
+        if (t <= 66.0) {
+            kelvin_green = 99.4708025861 * std::log(t) - 161.1195681661;
+            kelvin_blue = t <= 19.0 ? 0.0 : 138.5177312231 * std::log(t - 10.0) - 305.0447927307;
+        } else {
+            kelvin_red = 329.698727446 * std::pow(t - 60.0, -0.1332047592);
+            kelvin_green = 288.1221695283 * std::pow(t - 60.0, -0.0755148492);
+        }
+        red = 1.0 + ((std::clamp(kelvin_red / 255.0, 0.0, 1.0) - 1.0) * tint_mix);
+        green = 1.0 + ((std::clamp(kelvin_green / 255.0, 0.0, 1.0) - 1.0) * tint_mix);
+        blue = 1.0 + ((std::clamp(kelvin_blue / 255.0, 0.0, 1.0) - 1.0) * tint_mix);
+    }
+
+    const double base_energy = std::max(params.luminous_flux, 0.0) * dimmer * energy_scale;
+    out.set(out_base + 15, static_cast<float>(base_energy));
+    out.set(out_base + 16, static_cast<float>(base_energy * params.spot_multiplier));
+    out.set(out_base + 17, static_cast<float>(beam_angle * 0.5));
+    out.set(out_base + 18, static_cast<float>(beam_angle));
+    out.set(out_base + 19, static_cast<float>(red));
+    out.set(out_base + 20, static_cast<float>(green));
+    out.set(out_base + 21, static_cast<float>(blue));
+    out.set(out_base + 22, static_cast<float>(std::clamp(dimmer * params.beam_multiplier, 0.0, beam_intensity_max)));
+    out.set(out_base + 23, static_cast<float>(dimmer * 4.0));
 }
 
 } // namespace godot

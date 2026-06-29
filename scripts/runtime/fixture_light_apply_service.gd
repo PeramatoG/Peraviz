@@ -164,6 +164,12 @@ func prewarm_lighting_for_fixture(loader: Node, fixture_uuid: String) -> void:
 		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
 		loader._apply_emitter_light_state(light, photometric, 0.0, prewarm_controls)
 
+func _resolve_render_ready_beam_color(controls: Dictionary) -> Color:
+	var values: Variant = controls.get("render_ready_values", PackedFloat32Array())
+	if values is PackedFloat32Array and values.size() >= 9:
+		return Color(clamp(values[4], 0.0, 1.0), clamp(values[5], 0.0, 1.0), clamp(values[6], 0.0, 1.0), 1.0)
+	return Color.TRANSPARENT
+
 func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer: float, controls: Dictionary = {}) -> void:
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
 	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
@@ -175,7 +181,8 @@ func apply_dimmer_feedback_to_fixture(loader: Node, fixture_uuid: String, dimmer
 	var dimmer_percent: float = clamp(dimmer, 0.0, 100.0)
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
 	var normalized_dimmer: float = dimmer_percent / 100.0 if dimmer_changed else _resolve_current_fixture_dimmer(loader, fixture_uuid, emitter_nodes)
-	var beam_color: Color = loader._resolve_fixture_beam_color(emitter_photometrics, controls)
+	var render_ready_color: Color = _resolve_render_ready_beam_color(controls)
+	var beam_color: Color = render_ready_color if render_ready_color.a > 0.0 else loader._resolve_fixture_beam_color(emitter_photometrics, controls)
 	var can_prioritize_light_dimmer: bool = dimmer_changed and not color_changed and _can_use_dimmer_only_fast_path(controls)
 	if can_prioritize_light_dimmer:
 		_apply_emitter_light_dimmer(loader, fixture_uuid, emitter_nodes, emitter_photometrics, beam_color, normalized_dimmer, controls)
@@ -227,7 +234,7 @@ func _apply_emitter_light_dimmer(loader: Node, fixture_uuid: String, emitter_nod
 		if light == null or not is_instance_valid(light):
 			continue
 		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
-		if can_use_fast_path and _apply_emitter_light_dimmer_fast(loader, light, photometric, beam_color, normalized_dimmer):
+		if can_use_fast_path and _apply_emitter_light_dimmer_fast(loader, light, photometric, beam_color, normalized_dimmer, controls):
 			continue
 		loader._apply_emitter_light_state(light, photometric, normalized_dimmer, controls)
 
@@ -247,8 +254,8 @@ func _has_required_photometric_keys(loader: Node, photometric: Dictionary) -> bo
 			return false
 	return true
 
-func _apply_emitter_light_dimmer_fast(loader: Node, light: SpotLight3D, photometric: Dictionary, beam_color: Color, normalized_dimmer: float) -> bool:
-	return loader._apply_emitter_light_dimmer_fast(light, photometric, normalized_dimmer, beam_color)
+func _apply_emitter_light_dimmer_fast(loader: Node, light: SpotLight3D, photometric: Dictionary, beam_color: Color, normalized_dimmer: float, controls: Dictionary = {}) -> bool:
+	return loader._apply_emitter_light_dimmer_fast(light, photometric, normalized_dimmer, beam_color, controls)
 
 func _can_use_dimmer_only_fast_path(controls: Dictionary) -> bool:
 	if bool(controls.get("time_tick_only", false)):

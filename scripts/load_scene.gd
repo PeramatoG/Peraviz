@@ -74,6 +74,7 @@ var _visual_environment_baseline := {
 	"background_color": Color(0.129412, 0.137255, 0.156863, 1.0),
 }
 var _cached_beam_defaults: Dictionary = {}
+var _beam_params_template_cache: Dictionary = {}
 var _visual_settings := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
@@ -261,6 +262,7 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 
 func _ready() -> void:
 	_cached_beam_defaults = BeamOpticsControllerScript.BuildDefaultMasterOptics()
+	_beam_params_template_cache.clear()
 	_apply_imported_content_scale()
 	_scene_registry.configure(proxies_root)
 	_fixture_row_provider.configure(_loader, _scene_registry)
@@ -435,6 +437,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 	# Renderer-level volumetric fog froxel settings are kept static in project.godot.
 	# Do not mutate froxel sizing/filtering at runtime, as it can cause renderer signal churn.
 
+	_beam_params_template_cache.clear()
 	_update_beam_renderer_mode(false)
 	_save_visual_settings_to_project()
 	_refresh_emitter_light_scalars()
@@ -558,13 +561,14 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void
 	_active_beam_renderer.ensure_beam(light)
 	_active_beam_renderer.update_beam(light, beam_params)
 
-func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color) -> bool:
+func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
 	if light == null or not is_instance_valid(light) or not light.has_meta("peraviz_beam_last_params"):
 		return false
 	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
 	_set_light_property_bool(light, "visible", normalized_dimmer > 0.0001, last_state)
+	var render_ready_values: PackedFloat32Array = _get_render_ready_values(controls)
 	var luminous_flux: float = max(float(photometric.get("luminous_flux", 10000.0)), 0.0)
-	var base_light_energy: float = luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
+	var base_light_energy: float = render_ready_values[0] if render_ready_values.size() >= 9 else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
 	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
@@ -1974,13 +1978,52 @@ func _extract_emitter_photometrics(item: Dictionary) -> Dictionary:
 		data["dominant_wavelength"] = float(item.get("dominant_wavelength", 0.0))
 	return data
 
+func _get_render_ready_values(controls: Dictionary) -> PackedFloat32Array:
+	var values: Variant = controls.get("render_ready_values", PackedFloat32Array())
+	return values if values is PackedFloat32Array else PackedFloat32Array()
+
+func _render_ready_color(values: PackedFloat32Array) -> Color:
+	if values.size() < 9:
+		return Color.WHITE
+	return Color(clamp(values[4], 0.0, 1.0), clamp(values[5], 0.0, 1.0), clamp(values[6], 0.0, 1.0), 1.0)
+
+func _build_cached_beam_params(light: SpotLight3D, beam_angle: float, beam_color: Color, normalized_dimmer: float, scaled_intensity: float, lens_radius: float, beam_defaults: Dictionary) -> Dictionary:
+	var cache_key: String = "%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%d" % [
+		beam_angle,
+		beam_color.r,
+		beam_color.g,
+		beam_color.b,
+		normalized_dimmer,
+		scaled_intensity,
+		lens_radius,
+		light.spot_range,
+		1 if light.visible else 0,
+	]
+	if _beam_params_template_cache.has(cache_key):
+		return (_beam_params_template_cache.get(cache_key, {}) as Dictionary).duplicate(false)
+	var params: Dictionary = BeamOpticsControllerScript.BuildBeamParams(
+		light,
+		beam_angle,
+		beam_color,
+		normalized_dimmer,
+		scaled_intensity,
+		lens_radius,
+		_visual_settings,
+		beam_defaults,
+		beam_defaults
+	)
+	_beam_params_template_cache[cache_key] = params.duplicate(false)
+	return params
+
 func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
 	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
+	var render_ready_values: PackedFloat32Array = _get_render_ready_values(controls)
+	var has_render_ready: bool = render_ready_values.size() >= 9
 	var luminous_flux: float = max(float(photometric.get("luminous_flux", 10000.0)), 0.0)
-	var beam_angle: float = clamp(float(photometric.get("beam_angle", 25.0)), 0.1, EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG)
+	var beam_angle: float = render_ready_values[3] if has_render_ready else clamp(float(photometric.get("beam_angle", 25.0)), 0.1, EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG)
 	var field_angle: float = clamp(float(photometric.get("field_angle", beam_angle)), beam_angle, EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG)
 	var dimmer_controls: Dictionary = _resolve_dimmer_controls(controls)
-	if bool(dimmer_controls.get("has_zoom", false)):
+	if not has_render_ready and bool(dimmer_controls.get("has_zoom", false)):
 		var zoom_norm: float = clamp(float(dimmer_controls.get("zoom_norm", 0.0)), 0.0, 1.0)
 		var zoom_limits: Dictionary = _resolve_zoom_beam_limits(light, controls)
 		var zoom_min_angle: float = float(zoom_limits.get("min_beam_angle", EMITTER_ZOOM_DEFAULT_MIN_BEAM_ANGLE_DEG))
@@ -1990,10 +2033,11 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var beam_radius_m: float = max(float(photometric.get("beam_radius", 0.05)), 0.001)
 
 	_set_light_property_bool(light, "visible", normalized_dimmer > 0.0001, last_state)
-	var base_light_energy: float = luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
+	var base_light_energy: float = render_ready_values[0] if has_render_ready else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
-	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
-	var beam_half_angle_deg: float = beam_angle * 0.5
+	var light_energy: float = base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0))
+	_set_light_property_float(light, "light_energy", light_energy, last_state)
+	var beam_half_angle_deg: float = render_ready_values[2] if has_render_ready else beam_angle * 0.5
 	# Godot 4.2 SpotLight3D.spot_angle behaves as cone half-angle in degrees.
 	# Keep zoom/beam limits as full GDTF aperture, and convert here for light projection.
 	_set_light_property_float(light, "spot_angle", beam_half_angle_deg, last_state)
@@ -2008,9 +2052,9 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	# avoids early floor clipping on steep tilt while keeping cone visuals unchanged.
 	_set_light_property_float(light, "spot_range", clamp(cone_range * EMITTER_LIGHT_FOOTPRINT_RANGE_MULTIPLIER, EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M, EMITTER_LIGHT_MAX_RANGE_M), last_state)
 	_set_light_property_float(light, "spot_attenuation", spot_attenuation, last_state)
-	var light_color: Color = _derive_emitter_color(photometric, controls)
+	var light_color: Color = _render_ready_color(render_ready_values) if has_render_ready else _derive_emitter_color(photometric, controls)
 	_set_light_property_color(light, "light_color", light_color, last_state)
-	var beam_color: Color = _derive_emitter_color(photometric, controls, BEAM_COLOR_TEMPERATURE_STRENGTH)
+	var beam_color: Color = light_color if has_render_ready else _derive_emitter_color(photometric, controls, BEAM_COLOR_TEMPERATURE_STRENGTH)
 	var beam_radius_from_gdtf: bool = bool(photometric.get("beam_radius_from_gdtf", false))
 	var source_beam_radius: float = beam_radius_m if beam_radius_from_gdtf else -1.0
 	var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
@@ -2020,17 +2064,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	_set_light_meta_variant(light, "peraviz_beam_angle_source", "gdtf_full_angle_deg", last_state)
 	var scaled_intensity: float = clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	var beam_defaults: Dictionary = _cached_beam_defaults
-	var beam_params: Dictionary = BeamOpticsControllerScript.BuildBeamParams(
-		light,
-		beam_angle,
-		beam_color,
-		normalized_dimmer,
-		scaled_intensity,
-		lens_radius,
-		_visual_settings,
-		beam_defaults,
-		beam_defaults
-	)
+	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
 	beam_params["fade_end_ratio"] = EMITTER_CONE_FADE_END_RATIO
 	beam_params["intensity_visibility_threshold"] = BEAM_INTENSITY_VISIBILITY_THRESHOLD
 	beam_params["distance_cull_m"] = BEAM_DISTANCE_CULL_M

@@ -35,6 +35,7 @@ private:
         double zoom_min_deg = -1.0;
         double zoom_max_deg = -1.0;
         bool has_zoom = false;
+        bool has_color_temperature = false;
         double color_temp_k = 5600.0;
         double spot_multiplier = 1.0;
         double beam_multiplier = 20.0;
@@ -58,6 +59,8 @@ private:
     static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
     static int bytes_for_bit_depth(int bit_depth);
     static int compact_index_for_channel_type(int channel_type);
+    static double compact_value_at(const PackedFloat32Array &compact, int base, int compact_index);
+    static void append_render_ready_values(PackedFloat32Array &out, const PackedFloat32Array &compact, int base, const FixtureRenderParams &params);
 
     std::unordered_map<int, std::vector<FixtureChannelBinding>> bindings_by_universe_;
     std::unordered_map<int, PackedByteArray> previous_frames_by_universe_;
