@@ -28,6 +28,7 @@ Changes since the initial Peraviz repository split.
 
 ## Fixes
 
+- Fixed repeated RenderingServer light RID errors during scene import by skipping direct light server updates until imported SpotLight3D resources are ready.
 - Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
 - Fixed direct RenderingServer light updates so fixture lighting prewarm uses the correct light resource RID and loads without runtime errors.
 
