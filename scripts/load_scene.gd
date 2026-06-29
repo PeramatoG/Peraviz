@@ -222,9 +222,6 @@ const BEAM_RENDER_MODE_LEGACY: int = 1
 const BEAM_INTENSITY_VISIBILITY_THRESHOLD: float = 0.015
 const BEAM_DISTANCE_CULL_M: float = 180.0
 const BEAM_INTENSITY_MAX: float = 100.0
-const FIXED_VOLUMETRIC_FOG_VOLUME_SIZE: int = 1024
-const FIXED_VOLUMETRIC_FOG_VOLUME_DEPTH: int = 256
-const FIXED_VOLUMETRIC_FOG_USE_FILTER: bool = true
 const EMITTER_LIGHT_STATE_EPSILON: float = 0.0001
 const EMITTER_LIGHT_COLOR_EPSILON: float = 0.001
 
@@ -528,9 +525,12 @@ func _refresh_existing_beam_material_scalars() -> void:
 				_update_existing_beam_material_scalars(light)
 
 func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
+	var light_rid: RID = _get_light_base_rid(light)
+	if not light_rid.is_valid():
+		return
 	var base_energy: float = float(light.get_meta("peraviz_base_light_energy", light.light_energy))
-	RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
-	RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
+	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
+	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
 
 func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	var base_intensity: float = float(light.get_meta("peraviz_beam_base_intensity", 0.0))
@@ -2113,9 +2113,11 @@ func _set_light_property_float(light: SpotLight3D, property_name: String, value:
 	if _is_close_float(previous, value):
 		_track_property_change(false)
 		return
-	last_state[cache_key] = value
-	_apply_light_server_float(light, property_name, value)
-	_track_property_change(true)
+	if _apply_light_server_float(light, property_name, value):
+		last_state[cache_key] = value
+		_track_property_change(true)
+	else:
+		_track_property_change(false)
 
 func _set_light_property_bool(light: SpotLight3D, property_name: String, value: bool, last_state: Dictionary) -> void:
 	var cache_key: String = "prop:" + property_name
@@ -2123,25 +2125,33 @@ func _set_light_property_bool(light: SpotLight3D, property_name: String, value: 
 	if has_previous and bool(last_state.get(cache_key, false)) == value:
 		_track_property_change(false)
 		return
-	last_state[cache_key] = value
-	_apply_light_server_bool(light, property_name, value)
-	_track_property_change(true)
+	if _apply_light_server_bool(light, property_name, value):
+		last_state[cache_key] = value
+		_track_property_change(true)
+	else:
+		_track_property_change(false)
 
 func _set_light_property_color(light: SpotLight3D, property_name: String, value: Color, last_state: Dictionary) -> void:
 	var cache_key: String = "prop:" + property_name
 	if last_state.has(cache_key) and _is_close_color(last_state.get(cache_key, Color.BLACK), value):
 		_track_property_change(false)
 		return
-	last_state[cache_key] = value
-	_apply_light_server_color(light, property_name, value)
-	_track_property_change(true)
+	if _apply_light_server_color(light, property_name, value):
+		last_state[cache_key] = value
+		_track_property_change(true)
+	else:
+		_track_property_change(false)
 
-func _apply_light_server_float(light: SpotLight3D, property_name: String, value: float) -> void:
+func _apply_light_server_float(light: SpotLight3D, property_name: String, value: float) -> bool:
 	var param: int = _get_light_server_float_param(property_name)
 	if param == -1:
 		push_warning("Unsupported light float property for RenderingServer update: %s" % property_name)
-		return
-	RenderingServer.light_set_param(light.get_base(), param, value)
+		return false
+	var light_rid: RID = _get_light_base_rid(light)
+	if not light_rid.is_valid():
+		return false
+	RenderingServer.light_set_param(light_rid, param, value)
+	return true
 
 func _get_light_server_float_param(property_name: String) -> int:
 	match property_name:
@@ -2158,17 +2168,30 @@ func _get_light_server_float_param(property_name: String) -> int:
 		_:
 			return -1
 
-func _apply_light_server_bool(light: SpotLight3D, property_name: String, value: bool) -> void:
+func _apply_light_server_bool(light: SpotLight3D, property_name: String, value: bool) -> bool:
 	if property_name == "visible":
-		RenderingServer.instance_set_visible(light.get_instance(), value)
-		return
+		var instance_rid: RID = light.get_instance() if light != null and is_instance_valid(light) else RID()
+		if not instance_rid.is_valid():
+			return false
+		RenderingServer.instance_set_visible(instance_rid, value)
+		return true
 	push_warning("Unsupported light bool property for RenderingServer update: %s" % property_name)
+	return false
 
-func _apply_light_server_color(light: SpotLight3D, property_name: String, value: Color) -> void:
+func _apply_light_server_color(light: SpotLight3D, property_name: String, value: Color) -> bool:
 	if property_name == "light_color":
-		RenderingServer.light_set_color(light.get_base(), value)
-		return
+		var light_rid: RID = _get_light_base_rid(light)
+		if not light_rid.is_valid():
+			return false
+		RenderingServer.light_set_color(light_rid, value)
+		return true
 	push_warning("Unsupported light color property for RenderingServer update: %s" % property_name)
+	return false
+
+func _get_light_base_rid(light: SpotLight3D) -> RID:
+	if light == null or not is_instance_valid(light):
+		return RID()
+	return light.get_base()
 
 func _set_light_meta_float(light: SpotLight3D, meta_key: String, value: float, last_state: Dictionary) -> void:
 	var cache_key: String = "meta:" + meta_key

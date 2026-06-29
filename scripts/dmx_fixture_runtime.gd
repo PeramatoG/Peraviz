@@ -20,6 +20,37 @@ const NATIVE_CHANNEL_PRISM: int = 11
 const NATIVE_CHANNEL_PRISM_ROTATION: int = 12
 const NATIVE_CHANNEL_STROBE: int = 13
 
+const COMPACT_CONTROL_SIZE: int = 29
+const COMPACT_HAS_PAN: int = 0
+const COMPACT_PAN_NORM: int = 1
+const COMPACT_HAS_TILT: int = 2
+const COMPACT_TILT_NORM: int = 3
+const COMPACT_HAS_DIMMER: int = 4
+const COMPACT_DIMMER_NORM: int = 5
+const COMPACT_HAS_ZOOM: int = 6
+const COMPACT_ZOOM_NORM: int = 7
+const COMPACT_HAS_ZOOM_LIMITS: int = 8
+const COMPACT_ZOOM_MIN_DEG: int = 9
+const COMPACT_ZOOM_MAX_DEG: int = 10
+const COMPACT_HAS_CYAN: int = 11
+const COMPACT_CYAN_NORM: int = 12
+const COMPACT_HAS_MAGENTA: int = 13
+const COMPACT_MAGENTA_NORM: int = 14
+const COMPACT_HAS_YELLOW: int = 15
+const COMPACT_YELLOW_NORM: int = 16
+const COMPACT_HAS_GOBO: int = 17
+const COMPACT_GOBO_NORM: int = 18
+const COMPACT_HAS_GOBO_INDEX: int = 19
+const COMPACT_GOBO_INDEX_NORM: int = 20
+const COMPACT_HAS_GOBO_ROTATION: int = 21
+const COMPACT_GOBO_ROTATION_NORM: int = 22
+const COMPACT_HAS_PRISM: int = 23
+const COMPACT_PRISM_NORM: int = 24
+const COMPACT_HAS_PRISM_ROTATION: int = 25
+const COMPACT_PRISM_ROTATION_NORM: int = 26
+const COMPACT_HAS_STROBE: int = 27
+const COMPACT_STROBE_NORM: int = 28
+
 var _loader = null
 var _scene_registry: SceneRegistry = null
 var _bindings: Array = []
@@ -29,7 +60,7 @@ var _fixture_nodes: Dictionary = {}
 var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
-var _fixture_capability_hash_cache: Dictionary = {}
+var _fixture_capability_state_cache: Dictionary = {}
 var _native_dmx_decoder: PeravizDmxUniverseDecoder = PeravizDmxUniverseDecoder.new()
 var _native_fixture_ids_by_uuid: Dictionary = {}
 var _native_fixture_uuids_by_id: Dictionary = {}
@@ -62,7 +93,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_bound_fixture_ids.clear()
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
-	_fixture_capability_hash_cache.clear()
+	_fixture_capability_state_cache.clear()
 	_native_dmx_decoder.clear()
 	_native_fixture_ids_by_uuid.clear()
 	_native_fixture_uuids_by_id.clear()
@@ -457,74 +488,62 @@ func _apply_native_fixture_updates(fixture_uuid: String, apply_fixture_callback:
 func _build_controls_from_native_values(fixture_plan: Dictionary, fixture_uuid: String) -> Dictionary:
 	var output: Dictionary = _fixture_output_buffers.get(fixture_uuid, _build_fixture_output_buffer(fixture_plan.get("binding", {})))
 	_fixture_output_buffers[fixture_uuid] = output
-	var capabilities: Dictionary = output.get("capabilities", {})
-	_clear_capability_output(capabilities)
+	var compact_values: PackedFloat32Array = output.get("compact_values", PackedFloat32Array())
+	_reset_compact_controls(compact_values)
 	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
-	_append_native_pan_tilt(capabilities, values)
-	_append_native_dimmer(capabilities, values, fixture_plan.get("binding", {}))
-	_append_native_color(capabilities, values)
-	_append_native_gobo(capabilities, values, fixture_plan.get("binding", {}))
-	_append_native_prism(capabilities, values)
-	_append_native_strobe(capabilities, values)
-	output["changed_capability_types"] = _filter_unchanged_capabilities(fixture_uuid, capabilities)
+	var binding: Dictionary = fixture_plan.get("binding", {})
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_PAN, "has_pan", "pan_norm", "pan_raw_value", "pan_resolution_bits", "pan_bytes", COMPACT_HAS_PAN, COMPACT_PAN_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_TILT, "has_tilt", "tilt_norm", "tilt_raw_value", "tilt_resolution_bits", "tilt_bytes", COMPACT_HAS_TILT, COMPACT_TILT_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_DIMMER, "has_dimmer", "dimmer_norm", "dimmer_raw_value", "dimmer_resolution_bits", "dimmer_bytes", COMPACT_HAS_DIMMER, COMPACT_DIMMER_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_ZOOM, "has_zoom", "zoom_norm", "zoom_raw_value", "zoom_resolution_bits", "zoom_bytes", COMPACT_HAS_ZOOM, COMPACT_ZOOM_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_CYAN, "has_cyan", "cyan_norm", "cyan_raw_value", "cyan_resolution_bits", "cyan_bytes", COMPACT_HAS_CYAN, COMPACT_CYAN_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_MAGENTA, "has_magenta", "magenta_norm", "magenta_raw_value", "magenta_resolution_bits", "magenta_bytes", COMPACT_HAS_MAGENTA, COMPACT_MAGENTA_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_YELLOW, "has_yellow", "yellow_norm", "yellow_raw_value", "yellow_resolution_bits", "yellow_bytes", COMPACT_HAS_YELLOW, COMPACT_YELLOW_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_GOBO, "has_gobo", "gobo_norm", "gobo_raw_value", "gobo_resolution_bits", "gobo_bytes", COMPACT_HAS_GOBO, COMPACT_GOBO_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_GOBO_INDEX, "has_gobo_index", "gobo_index_norm", "gobo_index_raw_value", "gobo_index_resolution_bits", "gobo_index_bytes", COMPACT_HAS_GOBO_INDEX, COMPACT_GOBO_INDEX_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_GOBO_ROTATION, "has_gobo_rotation", "gobo_rotation_norm", "gobo_rotation_raw_value", "gobo_rotation_resolution_bits", "gobo_rotation_bytes", COMPACT_HAS_GOBO_ROTATION, COMPACT_GOBO_ROTATION_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_PRISM, "has_prism", "prism_norm", "prism_raw_value", "prism_resolution_bits", "prism_bytes", COMPACT_HAS_PRISM, COMPACT_PRISM_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_PRISM_ROTATION, "has_prism_rotation", "prism_rotation_norm", "prism_rotation_raw_value", "prism_rotation_resolution_bits", "prism_rotation_bytes", COMPACT_HAS_PRISM_ROTATION, COMPACT_PRISM_ROTATION_NORM)
+	_sync_native_value(output, compact_values, values, NATIVE_CHANNEL_STROBE, "has_strobe", "strobe_norm", "strobe_raw_value", "strobe_resolution_bits", "strobe_bytes", COMPACT_HAS_STROBE, COMPACT_STROBE_NORM)
+	if bool(output.get("has_zoom", false)):
+		output["has_zoom_physical_limits"] = bool(binding.get("has_zoom_physical_limits", false))
+		output["zoom_physical_min_degrees"] = float(binding.get("zoom_physical_min_degrees", -1.0))
+		output["zoom_physical_max_degrees"] = float(binding.get("zoom_physical_max_degrees", -1.0))
+		compact_values[COMPACT_HAS_ZOOM_LIMITS] = 1.0 if bool(output.get("has_zoom_physical_limits", false)) else 0.0
+		compact_values[COMPACT_ZOOM_MIN_DEG] = float(output.get("zoom_physical_min_degrees", -1.0))
+		compact_values[COMPACT_ZOOM_MAX_DEG] = float(output.get("zoom_physical_max_degrees", -1.0))
+	if bool(output.get("has_gobo", false)):
+		output["gobo_slots"] = binding.get("gobo1_slots", binding.get("gobo_slots", []))
+		output["gobo_ranges"] = binding.get("gobo1_ranges", binding.get("gobo_ranges", []))
+		output["gobo_wheel_name"] = str(binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", "")))
+		output["gobo_wheel_number"] = int(binding.get("gobo_wheel_number", 0))
+	output["compact_values"] = compact_values
+	output["changed_capability_types"] = _filter_unchanged_compact_controls(fixture_uuid, compact_values)
 	output["metadata"] = fixture_plan.get("metadata", output.get("metadata", {}))
 	return output
 
-func _append_native_pan_tilt(capabilities: Dictionary, values: Dictionary) -> void:
-	var block := {"type": "pan_tilt", "has_pan": false, "pan_norm": 0.0, "has_tilt": false, "tilt_norm": 0.0}
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_PAN, "pan")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_TILT, "tilt")
-	_append_capabilities(capabilities, "pan_tilt", [block] if bool(block.get("has_pan", false)) or bool(block.get("has_tilt", false)) else [])
-
-func _append_native_dimmer(capabilities: Dictionary, values: Dictionary, binding: Dictionary) -> void:
-	var block := {"type": "dimmer", "has_dimmer": false, "dimmer_norm": 0.0, "has_zoom": false, "zoom_norm": 0.0}
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_DIMMER, "dimmer")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_ZOOM, "zoom")
-	if bool(block.get("has_zoom", false)):
-		block["has_zoom_physical_limits"] = bool(binding.get("has_zoom_physical_limits", false))
-		block["zoom_physical_min_degrees"] = float(binding.get("zoom_physical_min_degrees", -1.0))
-		block["zoom_physical_max_degrees"] = float(binding.get("zoom_physical_max_degrees", -1.0))
-	_append_capabilities(capabilities, "dimmer", [block] if bool(block.get("has_dimmer", false)) or bool(block.get("has_zoom", false)) else [])
-
-func _append_native_color(capabilities: Dictionary, values: Dictionary) -> void:
-	var block := {"type": "color_wheel", "has_cyan": false, "cyan_norm": 0.0, "has_magenta": false, "magenta_norm": 0.0, "has_yellow": false, "yellow_norm": 0.0}
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_CYAN, "cyan")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_MAGENTA, "magenta")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_YELLOW, "yellow")
-	_append_capabilities(capabilities, "color_wheel", [block] if bool(block.get("has_cyan", false)) or bool(block.get("has_magenta", false)) or bool(block.get("has_yellow", false)) else [])
-
-func _append_native_gobo(capabilities: Dictionary, values: Dictionary, binding: Dictionary) -> void:
-	var block := {"type": "gobo", "has_gobo": false, "gobo_norm": 0.0, "has_gobo_index": false, "gobo_index_norm": 0.0, "has_gobo_rotation": false, "gobo_rotation_norm": 0.0}
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_GOBO, "gobo")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_GOBO_INDEX, "gobo_index")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_GOBO_ROTATION, "gobo_rotation")
-	if bool(block.get("has_gobo", false)):
-		block["gobo_slots"] = binding.get("gobo1_slots", binding.get("gobo_slots", []))
-		block["gobo_ranges"] = binding.get("gobo1_ranges", binding.get("gobo_ranges", []))
-		block["gobo_wheel_name"] = str(binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", "")))
-		block["gobo_wheel_number"] = int(binding.get("gobo_wheel_number", 0))
-	_append_capabilities(capabilities, "gobo", [block] if bool(block.get("has_gobo", false)) or bool(block.get("has_gobo_index", false)) or bool(block.get("has_gobo_rotation", false)) else [])
-
-func _append_native_prism(capabilities: Dictionary, values: Dictionary) -> void:
-	var block := {"type": "prism", "has_prism": false, "prism_norm": 0.0, "has_prism_rotation": false, "prism_rotation_norm": 0.0}
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_PRISM, "prism")
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation")
-	_append_capabilities(capabilities, "prism", [block] if bool(block.get("has_prism", false)) or bool(block.get("has_prism_rotation", false)) else [])
-
-func _append_native_strobe(capabilities: Dictionary, values: Dictionary) -> void:
-	var block := {"type": "strobe", "has_strobe": false, "strobe_norm": 0.0}
-	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_STROBE, "strobe")
-	_append_capabilities(capabilities, "strobe", [block] if bool(block.get("has_strobe", false)) else [])
-
-func _apply_native_value_to_block(block: Dictionary, values: Dictionary, channel_type: int, prefix: String) -> void:
-	if not values.has(channel_type):
+func _sync_native_value(output: Dictionary, compact_values: PackedFloat32Array, values: Dictionary, channel_type: int, has_key: String, norm_key: String, raw_key: String, resolution_key: String, bytes_key: String, compact_has_index: int, compact_value_index: int) -> void:
+	var has_value: bool = values.has(channel_type)
+	output[has_key] = has_value
+	if not has_value:
+		output[norm_key] = 0.0
 		return
 	var value: Dictionary = values.get(channel_type, {})
-	block["has_%s" % prefix] = true
-	block["%s_norm" % prefix] = float(value.get("normalized_value", 0.0))
-	block["%s_raw_value" % prefix] = int(value.get("raw_value", 0))
-	block["%s_resolution_bits" % prefix] = int(value.get("resolution_bits", 8))
-	block["%s_bytes" % prefix] = value.get("bytes", PackedInt32Array())
+	var normalized_value: float = float(value.get("normalized_value", 0.0))
+	output[norm_key] = normalized_value
+	output[raw_key] = int(value.get("raw_value", 0))
+	output[resolution_key] = int(value.get("resolution_bits", 8))
+	output[bytes_key] = value.get("bytes", PackedInt32Array())
+	compact_values[compact_has_index] = 1.0
+	if compact_value_index >= 0:
+		compact_values[compact_value_index] = normalized_value
+
+func _reset_compact_controls(compact_values: PackedFloat32Array) -> void:
+	compact_values.resize(COMPACT_CONTROL_SIZE)
+	for index in range(COMPACT_CONTROL_SIZE):
+		compact_values[index] = 0.0
+	compact_values[COMPACT_ZOOM_MIN_DEG] = -1.0
+	compact_values[COMPACT_ZOOM_MAX_DEG] = -1.0
 
 func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -566,16 +585,15 @@ func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 
 func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
 	return {
-		"capabilities": {
-			"pan_tilt": [],
-			"dimmer": [],
-			"color_wheel": [],
-			"gobo": [],
-			"prism": [],
-			"strobe": [],
-		},
+		"compact_values": _build_empty_compact_controls(),
+		"capabilities": {},
 		"metadata": binding.get("metadata", {}),
 	}
+
+func _build_empty_compact_controls() -> PackedFloat32Array:
+	var compact_values := PackedFloat32Array()
+	_reset_compact_controls(compact_values)
+	return compact_values
 
 func _build_controls_for_plan(fixture_plan: Dictionary, _frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
 	return _build_controls_from_native_values(fixture_plan, fixture_uuid)
@@ -655,127 +673,46 @@ func _collect_direct_channel_offset_keys() -> PackedStringArray:
 		"strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0",
 	])
 
-func _clear_capability_output(capabilities: Dictionary) -> void:
-	for capability_type in capabilities.keys():
-		if capabilities.get(capability_type) is Array:
-			var bucket: Array = capabilities.get(capability_type, [])
-			bucket.clear()
-			capabilities[capability_type] = bucket
-
-func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictionary) -> Dictionary:
+func _filter_unchanged_compact_controls(fixture_uuid: String, compact_values: PackedFloat32Array) -> Dictionary:
 	var changed_capability_types: Dictionary = {}
-	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
-	var current_hashes: Dictionary = {}
-	for capability_type in capabilities.keys():
-		var capability_hash: int = _hash_capability_bucket(str(capability_type), capabilities.get(capability_type, []))
-		current_hashes[capability_type] = capability_hash
-		if _debug_force_full_apply or int(previous_hashes.get(capability_type, -1)) != capability_hash:
-			changed_capability_types[capability_type] = true
-	_fixture_capability_hash_cache[fixture_uuid] = current_hashes
+	var previous_state: PackedFloat32Array = _fixture_capability_state_cache.get(fixture_uuid, PackedFloat32Array())
+	if _debug_force_full_apply or not _compact_control_state_matches(previous_state, compact_values):
+		_add_changed_compact_capability_types(changed_capability_types, previous_state, compact_values)
+	_fixture_capability_state_cache[fixture_uuid] = compact_values.duplicate()
 	return changed_capability_types
 
-func _hash_capability_bucket(capability_type: String, bucket: Array) -> int:
-	var hash_value: int = _hash_string_into(capability_type, 2166136261)
-	for item in bucket:
-		if item is not Dictionary:
-			hash_value = _hash_string_into(str(item), hash_value)
-			continue
-		var row: Dictionary = item
-		match capability_type:
-			"pan_tilt":
-				hash_value = _hash_bool_into(bool(row.get("has_pan", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("pan_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_tilt", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("tilt_norm", 0.0)), hash_value)
-			"dimmer":
-				hash_value = _hash_bool_into(bool(row.get("has_dimmer", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("dimmer_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_zoom", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("zoom_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_zoom_physical_limits", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("zoom_physical_min_degrees", -1.0)), hash_value)
-				hash_value = _hash_float_into(float(row.get("zoom_physical_max_degrees", -1.0)), hash_value)
-			"color_wheel":
-				hash_value = _hash_bool_into(bool(row.get("has_cyan", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("cyan_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_magenta", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("magenta_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_yellow", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("yellow_norm", 0.0)), hash_value)
-			"gobo":
-				hash_value = _hash_bool_into(bool(row.get("has_gobo", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("gobo_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_gobo_index", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("gobo_index_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_gobo_rotation", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("gobo_rotation_norm", 0.0)), hash_value)
-				hash_value = _hash_string_into(str(row.get("gobo_wheel_name", "")), hash_value)
-				hash_value = _hash_int_into(int(row.get("gobo_wheel_number", 0)), hash_value)
-				hash_value = _hash_variant_into(row.get("gobo_slots", []), hash_value)
-				hash_value = _hash_variant_into(row.get("gobo_ranges", []), hash_value)
-			"prism":
-				hash_value = _hash_bool_into(bool(row.get("has_prism", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("prism_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_prism_rotation", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("prism_rotation_norm", 0.0)), hash_value)
-			"strobe":
-				hash_value = _hash_bool_into(bool(row.get("has_strobe", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("strobe_norm", 0.0)), hash_value)
-			_:
-				hash_value = _hash_variant_into(row, hash_value)
-	return hash_value
+func _add_changed_compact_capability_types(changed_capability_types: Dictionary, previous_state: PackedFloat32Array, current_state: PackedFloat32Array) -> void:
+	_add_changed_compact_capability_type(changed_capability_types, "pan_tilt", previous_state, current_state, [COMPACT_HAS_PAN, COMPACT_PAN_NORM, COMPACT_HAS_TILT, COMPACT_TILT_NORM])
+	_add_changed_compact_capability_type(changed_capability_types, "dimmer", previous_state, current_state, [COMPACT_HAS_DIMMER, COMPACT_DIMMER_NORM, COMPACT_HAS_ZOOM, COMPACT_ZOOM_NORM, COMPACT_HAS_ZOOM_LIMITS, COMPACT_ZOOM_MIN_DEG, COMPACT_ZOOM_MAX_DEG])
+	_add_changed_compact_capability_type(changed_capability_types, "color_wheel", previous_state, current_state, [COMPACT_HAS_CYAN, COMPACT_CYAN_NORM, COMPACT_HAS_MAGENTA, COMPACT_MAGENTA_NORM, COMPACT_HAS_YELLOW, COMPACT_YELLOW_NORM])
+	_add_changed_compact_capability_type(changed_capability_types, "gobo", previous_state, current_state, [COMPACT_HAS_GOBO, COMPACT_GOBO_NORM, COMPACT_HAS_GOBO_INDEX, COMPACT_GOBO_INDEX_NORM, COMPACT_HAS_GOBO_ROTATION, COMPACT_GOBO_ROTATION_NORM])
+	_add_changed_compact_capability_type(changed_capability_types, "prism", previous_state, current_state, [COMPACT_HAS_PRISM, COMPACT_PRISM_NORM, COMPACT_HAS_PRISM_ROTATION, COMPACT_PRISM_ROTATION_NORM])
+	_add_changed_compact_capability_type(changed_capability_types, "strobe", previous_state, current_state, [COMPACT_HAS_STROBE, COMPACT_STROBE_NORM])
 
-func _hash_bool_into(value: bool, hash_value: int) -> int:
-	return _hash_int_into(1 if value else 0, hash_value)
-
-func _hash_float_into(value: float, hash_value: int) -> int:
-	return _hash_int_into(int(round(value * 1000000.0)), hash_value)
-
-func _hash_variant(value: Variant) -> int:
-	return _hash_variant_into(value, 2166136261)
-
-func _hash_variant_into(value: Variant, hash_value: int) -> int:
-	if value is Dictionary:
-		var keys: Array = (value as Dictionary).keys()
-		keys.sort()
-		for key in keys:
-			hash_value = _hash_string_into(str(key), hash_value)
-			hash_value = _hash_variant_into((value as Dictionary).get(key), hash_value)
-		return hash_value
-	if value is Array:
-		for item in value:
-			hash_value = _hash_variant_into(item, hash_value)
-		return hash_value
-	if value is PackedInt32Array:
-		for item in value:
-			hash_value = _hash_int_into(int(item), hash_value)
-		return hash_value
-	if value is PackedByteArray:
-		for item in value:
-			hash_value = _hash_int_into(int(item), hash_value)
-		return hash_value
-	return _hash_string_into(str(value), hash_value)
-
-func _hash_string_into(value: String, hash_value: int) -> int:
-	for index in range(value.length()):
-		hash_value = int((hash_value ^ value.unicode_at(index)) * 16777619)
-	return hash_value
-
-func _hash_int_into(value: int, hash_value: int) -> int:
-	return int((hash_value ^ value) * 16777619)
-
-func _append_capabilities(capabilities: Dictionary, capability_type: String, blocks: Array) -> void:
-	if blocks.is_empty():
+func _add_changed_compact_capability_type(changed_capability_types: Dictionary, capability_type: String, previous_state: PackedFloat32Array, current_state: PackedFloat32Array, indexes: Array) -> void:
+	if previous_state.size() != current_state.size():
+		changed_capability_types[capability_type] = true
 		return
-	if not capabilities.has(capability_type):
-		capabilities[capability_type] = []
-	var bucket: Array = capabilities.get(capability_type, [])
-	for block in blocks:
-		if block is Dictionary:
-			bucket.append(block)
-	capabilities[capability_type] = bucket
+	for index in indexes:
+		if not is_equal_approx(float(previous_state[int(index)]), float(current_state[int(index)])):
+			changed_capability_types[capability_type] = true
+			return
+
+func _compact_control_state_matches(previous_state: Variant, current_state: PackedFloat32Array) -> bool:
+	if previous_state is not PackedFloat32Array:
+		return false
+	var previous: PackedFloat32Array = previous_state
+	if previous.size() != current_state.size():
+		return false
+	for index in range(current_state.size()):
+		if not is_equal_approx(float(previous[index]), float(current_state[index])):
+			return false
+	return true
 
 func _has_any_capability(controls: Dictionary) -> bool:
+	var compact_values: PackedFloat32Array = controls.get("compact_values", PackedFloat32Array())
+	if compact_values.size() == COMPACT_CONTROL_SIZE:
+		return compact_values[COMPACT_HAS_PAN] > 0.5 or compact_values[COMPACT_HAS_TILT] > 0.5 or compact_values[COMPACT_HAS_DIMMER] > 0.5 or compact_values[COMPACT_HAS_ZOOM] > 0.5 or compact_values[COMPACT_HAS_CYAN] > 0.5 or compact_values[COMPACT_HAS_MAGENTA] > 0.5 or compact_values[COMPACT_HAS_YELLOW] > 0.5 or compact_values[COMPACT_HAS_GOBO] > 0.5 or compact_values[COMPACT_HAS_GOBO_INDEX] > 0.5 or compact_values[COMPACT_HAS_GOBO_ROTATION] > 0.5 or compact_values[COMPACT_HAS_PRISM] > 0.5 or compact_values[COMPACT_HAS_PRISM_ROTATION] > 0.5 or compact_values[COMPACT_HAS_STROBE] > 0.5
 	var capabilities: Dictionary = controls.get("capabilities", {})
 	for key in capabilities.keys():
 		var items: Array = capabilities.get(key, [])
