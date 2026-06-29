@@ -48,17 +48,22 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     const uint8_t next_front = static_cast<uint8_t>(1 - current_front);
 
     const uint16_t current_length = slot->length.load(std::memory_order_relaxed);
-    const bool payload_changed = current_length != safe_length ||
-        (safe_length > 0 && std::memcmp(slot->buffers[current_front].data(), data, safe_length) != 0);
+    const uint16_t effective_length = std::max(current_length, safe_length);
+    const bool payload_changed = safe_length > 0 &&
+        std::memcmp(slot->buffers[current_front].data(), data, safe_length) != 0;
 
+    if (current_length > 0) {
+        std::memcpy(slot->buffers[next_front].data(), slot->buffers[current_front].data(), current_length);
+    }
     if (safe_length > 0) {
         std::memcpy(slot->buffers[next_front].data(), data, safe_length);
     }
 
-    slot->length.store(safe_length, std::memory_order_relaxed);
+    slot->length.store(effective_length, std::memory_order_relaxed);
     slot->last_rx_us.store(now_us, std::memory_order_relaxed);
     slot->sequence.store(sequence, std::memory_order_relaxed);
-    slot->content_hash.store(compute_dmx_content_hash(slot->buffers[next_front].data(), safe_length), std::memory_order_relaxed);
+    slot->content_hash.store(compute_dmx_content_hash(slot->buffers[next_front].data(), effective_length),
+                             std::memory_order_relaxed);
     if (payload_changed) {
         slot->counter.fetch_add(1, std::memory_order_relaxed);
         slot->dirty.store(true, std::memory_order_release);

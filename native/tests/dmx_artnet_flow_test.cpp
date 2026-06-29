@@ -169,6 +169,16 @@ int test_universe_cache() {
         return fail("DMX universe metadata did not reflect latest write");
     }
 
+    uint8_t partial[2] = {9, 10};
+    cache.write_frame(10, partial, 2, 3, 300);
+    if (!cache.try_get_frame(10, frame)) {
+        return fail("Expected cached DMX frame after partial write");
+    }
+    if (frame.length != 4 || frame.data[0] != 9 || frame.data[1] != 10 || frame.data[2] != 7 ||
+        frame.data[3] != 8 || frame.counter != 3) {
+        return fail("Short DMX frame did not preserve previously received higher channel slots");
+    }
+
     std::atomic<bool> running {true};
     std::thread writer([&cache, &running]() {
         uint8_t data[8] = {0};
