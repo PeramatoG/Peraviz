@@ -128,6 +128,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
 
 	_register_native_universe_bindings()
+	_finalize_universe_interest_offsets()
 
 	for universe_key in _used_universes.keys():
 		var tracked_universe_id: int = int(universe_key)
@@ -342,20 +343,23 @@ func _add_universe_interest_offsets(universe_id: int, offsets: PackedInt32Array)
 			offset_map[int(offset)] = true
 	_universe_interest_offsets[universe_id] = offset_map
 
+func _finalize_universe_interest_offsets() -> void:
+	for universe_key in _universe_interest_offsets.keys():
+		var offset_map: Dictionary = _universe_interest_offsets.get(universe_key, {})
+		var offsets: Array = offset_map.keys()
+		offsets.sort()
+		var packed_offsets := PackedInt32Array()
+		for offset in offsets:
+			packed_offsets.append(int(offset))
+		_universe_interest_offsets[int(universe_key)] = packed_offsets
+
 func _get_universe_interest_offsets_array(universe_id: int) -> PackedInt32Array:
-	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
-	var offsets: Array = offset_map.keys()
-	offsets.sort()
-	var packed_offsets := PackedInt32Array()
-	for offset in offsets:
-		packed_offsets.append(int(offset))
-	return packed_offsets
+	return _universe_interest_offsets.get(universe_id, PackedInt32Array())
 
 func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -> int:
-	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
+	var offsets: PackedInt32Array = _get_universe_interest_offsets_array(universe_id)
 	var hash_value: int = 2166136261
-	for offset_key in offset_map.keys():
-		var offset: int = int(offset_key)
+	for offset in offsets:
 		var value: int = int(frame[offset]) if offset >= 0 and offset < frame.size() else 0
 		hash_value = int((hash_value ^ value) * 16777619)
 		hash_value = int((hash_value ^ offset) * 16777619)
