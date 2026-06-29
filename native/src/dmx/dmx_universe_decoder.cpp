@@ -41,7 +41,7 @@ Array PeravizDmxUniverseDecoder::decode_universe(int universe_id, const PackedBy
         const int byte_count = bytes_for_bit_depth(binding.bit_depth);
         bool changed = previous_frame.size() != current_frame.size();
         for (int offset = 0; !changed && offset < byte_count; ++offset) {
-            const int address = binding.start_address + offset;
+            const int address = address_for_byte_index(binding, offset);
             const uint8_t current_value = address >= 0 && address < current_frame.size() ? current_frame[address] : 0;
             const uint8_t previous_value = address >= 0 && address < previous_frame.size() ? previous_frame[address] : 0;
             changed = current_value != previous_value;
@@ -53,7 +53,11 @@ Array PeravizDmxUniverseDecoder::decode_universe(int universe_id, const PackedBy
         Dictionary update;
         update["fixture_id"] = binding.fixture_id;
         update["channel_type"] = binding.channel_type;
-        update["normalized_value"] = read_normalized_value(current_frame, binding);
+        const Dictionary channel_value = read_channel_value(current_frame, binding);
+        update["normalized_value"] = channel_value.get("normalized_value", 0.0);
+        update["raw_value"] = channel_value.get("raw_value", 0);
+        update["resolution_bits"] = channel_value.get("resolution_bits", 8);
+        update["bytes"] = channel_value.get("bytes", PackedInt32Array());
         updates.append(update);
     }
 
@@ -72,6 +76,8 @@ PeravizDmxUniverseDecoder::FixtureChannelBinding PeravizDmxUniverseDecoder::pars
     FixtureChannelBinding out;
     out.fixture_id = static_cast<int>(static_cast<int64_t>(binding.get("fixture_id", 0)));
     out.start_address = static_cast<int>(static_cast<int64_t>(binding.get("start_address", 0)));
+    out.fine_address = static_cast<int>(static_cast<int64_t>(binding.get("fine_address", -1)));
+    out.ultra_fine_address = static_cast<int>(static_cast<int64_t>(binding.get("ultra_fine_address", -1)));
     out.channel_type = static_cast<int>(static_cast<int64_t>(binding.get("channel_type", binding.get("type", 0))));
     out.bit_depth = static_cast<int>(static_cast<int64_t>(binding.get("bit_depth", 8)));
     out.scale_min = static_cast<double>(binding.get("scale_min", 0.0));
@@ -79,20 +85,57 @@ PeravizDmxUniverseDecoder::FixtureChannelBinding PeravizDmxUniverseDecoder::pars
     return out;
 }
 
-// Reads a DMX value and scales it to a normalized zero-to-one value.
-double PeravizDmxUniverseDecoder::read_normalized_value(const PackedByteArray &frame, const FixtureChannelBinding &binding) {
+// Reads a DMX channel and returns normalized, raw, resolution, and byte values.
+Dictionary PeravizDmxUniverseDecoder::read_channel_value(const PackedByteArray &frame, const FixtureChannelBinding &binding) {
     const int byte_count = bytes_for_bit_depth(binding.bit_depth);
     uint32_t raw_value = 0;
     uint32_t max_value = 0;
     for (int i = 0; i < byte_count; ++i) {
-        const int address = binding.start_address + i;
+        const int address = address_for_byte_index(binding, i);
         const uint8_t byte_value = address >= 0 && address < frame.size() ? frame[address] : 0;
         raw_value = (raw_value << 8U) | byte_value;
         max_value = (max_value << 8U) | 0xffU;
     }
     const double normalized = max_value > 0 ? static_cast<double>(raw_value) / static_cast<double>(max_value) : 0.0;
     const double scaled = binding.scale_min + ((binding.scale_max - binding.scale_min) * normalized);
-    return std::clamp(scaled, 0.0, 1.0);
+
+    Dictionary out;
+    out["normalized_value"] = std::clamp(scaled, 0.0, 1.0);
+    out["raw_value"] = static_cast<int64_t>(raw_value);
+    out["resolution_bits"] = byte_count * 8;
+    out["bytes"] = read_channel_bytes(frame, binding);
+    return out;
+}
+
+// Reads a DMX value and scales it to a normalized zero-to-one value.
+double PeravizDmxUniverseDecoder::read_normalized_value(const PackedByteArray &frame, const FixtureChannelBinding &binding) {
+    const Dictionary channel_value = read_channel_value(frame, binding);
+    return static_cast<double>(channel_value.get("normalized_value", 0.0));
+}
+
+// Returns the DMX bytes used to compose a native channel value.
+PackedInt32Array PeravizDmxUniverseDecoder::read_channel_bytes(const PackedByteArray &frame, const FixtureChannelBinding &binding) {
+    PackedInt32Array bytes;
+    const int byte_count = bytes_for_bit_depth(binding.bit_depth);
+    for (int i = 0; i < byte_count; ++i) {
+        const int address = address_for_byte_index(binding, i);
+        bytes.append(address >= 0 && address < frame.size() ? frame[address] : 0);
+    }
+    return bytes;
+}
+
+// Resolves the frame address for a coarse, fine, or ultra-fine byte.
+int PeravizDmxUniverseDecoder::address_for_byte_index(const FixtureChannelBinding &binding, int byte_index) {
+    if (byte_index == 0) {
+        return binding.start_address;
+    }
+    if (byte_index == 1 && binding.fine_address >= 0) {
+        return binding.fine_address;
+    }
+    if (byte_index == 2 && binding.ultra_fine_address >= 0) {
+        return binding.ultra_fine_address;
+    }
+    return binding.start_address + byte_index;
 }
 
 // Returns how many DMX bytes are required for the requested channel bit depth.

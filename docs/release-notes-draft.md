@@ -39,6 +39,7 @@ Changes since the initial Peraviz repository split.
 - Hardened and optimized Art-Net/DMX reception and fixture application so the network thread keeps bounded latest-frame state, the main thread avoids idle universe scans, ignores unchanged DMX payloads before copying, only processes patched-channel changes, capability comparisons avoid string serialization, and dimmer-only updates avoid expensive beam geometry refreshes after fixtures are warmed.
 - Improved DMX runtime latency by exposing dirty-universe consumption from the native Art-Net receiver and adding a native batch universe decoder foundation for changed channel updates, while keeping standalone Art-Net flow tests independent of Godot-only decoder headers.
 - Reduced live DMX latency by letting the threaded DMX control decoder run continuously on its own short polling interval and queue main-thread application immediately when fresh controls are available, instead of waking only from the render update loop.
+- Reduced per-frame DMX decode overhead by routing fixture channel normalization through the native universe decoder and sending only changed fixture control values back to the runtime.
 - Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 
