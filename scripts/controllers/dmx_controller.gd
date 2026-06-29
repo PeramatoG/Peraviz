@@ -37,11 +37,11 @@ var _debug_force_full_apply: bool = false
 var _dmx_thread: Thread = null
 var _dmx_runtime_mutex := Mutex.new()
 var _dmx_pending_mutex := Mutex.new()
-var _dmx_semaphore := Semaphore.new()
 var _dmx_thread_running: bool = false
 var _pending_controls: Array = []
 var _pending_stats: Dictionary = {}
 var _pending_decode_usec: int = 0
+var _pending_drain_requested: bool = false
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
@@ -285,15 +285,9 @@ func process_dmx(_delta: float) -> void:
 		_reset_stopped_dmx_state()
 		return
 
-	var now_msec: int = Time.get_ticks_msec()
-	var delta_sec: float = 0.0
-	if _last_dmx_tick_msec > 0:
-		delta_sec = max(float(now_msec - _last_dmx_tick_msec) * 0.001, 0.0)
-	_last_dmx_tick_msec = now_msec
-
-	_dmx_semaphore.post()
+	var delta_sec: float = _consume_dmx_delta_sec()
 	_drain_pending_dmx_controls(delta_sec)
-	_refresh_dmx_status_if_needed(now_msec)
+	_refresh_dmx_status_if_needed(_last_dmx_tick_msec)
 	_emit_dmx_status(true, _last_receiving_signal)
 
 func _on_dmx_timer_timeout() -> void:
@@ -308,7 +302,6 @@ func _start_dmx_thread() -> void:
 
 func _stop_dmx_thread() -> void:
 	_dmx_thread_running = false
-	_dmx_semaphore.post()
 	if _dmx_thread != null and _dmx_thread.is_started():
 		_dmx_thread.wait_to_finish()
 	_dmx_thread = null
@@ -316,14 +309,13 @@ func _stop_dmx_thread() -> void:
 	_pending_controls.clear()
 	_pending_stats.clear()
 	_pending_decode_usec = 0
+	_pending_drain_requested = false
 	_dmx_pending_mutex.unlock()
 
 func _dmx_worker() -> void:
 	while _dmx_thread_running:
-		_dmx_semaphore.wait()
-		if not _dmx_thread_running:
-			break
 		if _dmx_receiver == null or not _dmx_receiver.is_running() or _dmx_fixture_runtime == null:
+			OS.delay_msec(2)
 			continue
 		var decode_phase_start: int = Time.get_ticks_usec()
 		_dmx_runtime_mutex.lock()
@@ -335,11 +327,24 @@ func _dmx_worker() -> void:
 			_pending_controls = collect_stats.get("controls", [])
 			_pending_stats = collect_stats
 			_pending_decode_usec = tick_usec
+			if not _pending_drain_requested:
+				_pending_drain_requested = true
+				call_deferred("_drain_pending_dmx_controls_deferred")
 			_dmx_pending_mutex.unlock()
+		OS.delay_msec(2)
+
+func _drain_pending_dmx_controls_deferred() -> void:
+	_drain_pending_dmx_controls(_consume_dmx_delta_sec())
+
+func _consume_dmx_delta_sec() -> float:
+	var now_msec: int = Time.get_ticks_msec()
+	var delta_sec: float = 0.0
+	if _last_dmx_tick_msec > 0:
+		delta_sec = max(float(now_msec - _last_dmx_tick_msec) * 0.001, 0.0)
+	_last_dmx_tick_msec = now_msec
+	return delta_sec
 
 func _drain_pending_dmx_controls(delta_sec: float) -> void:
-	if not _apply_dmx_controls_callback.is_valid():
-		return
 	_dmx_pending_mutex.lock()
 	var controls_batch: Array = _pending_controls
 	var apply_stats: Dictionary = _pending_stats
@@ -347,7 +352,10 @@ func _drain_pending_dmx_controls(delta_sec: float) -> void:
 	_pending_controls = []
 	_pending_stats = {}
 	_pending_decode_usec = 0
+	_pending_drain_requested = false
 	_dmx_pending_mutex.unlock()
+	if not _apply_dmx_controls_callback.is_valid():
+		return
 	if apply_stats.is_empty():
 		_apply_fixture_time_tick(delta_sec)
 		return
