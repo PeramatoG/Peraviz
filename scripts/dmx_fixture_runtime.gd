@@ -581,7 +581,8 @@ func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable,
 	# Old callback contract receives (fixture_uuid, controls).
 	# New contract may receive a precompiled output envelope.
 	if apply_fixture_callback.is_null():
-		pending_controls.append({"fixture_uuid": fixture_uuid, "controls": controls.duplicate(true)})
+		# Threaded DMX drains hold the runtime mutex while applying these shared buffers.
+		pending_controls.append({"fixture_uuid": fixture_uuid, "controls": controls})
 		return
 	apply_fixture_callback.call(fixture_uuid, controls)
 

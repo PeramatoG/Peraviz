@@ -42,6 +42,7 @@ Changes since the initial Peraviz repository split.
 - Fixed DMX runtime script loading after the native decoder path so live fixture capability buffers are cleared, compared, and skipped correctly when incoming channel values do not change.
 - Reduced live DMX latency by letting the threaded DMX control decoder run continuously on its own short polling interval and queue main-thread application immediately when fresh controls are available, instead of waking only from the render update loop.
 - Reduced per-frame DMX decode overhead by routing fixture channel normalization through the native universe decoder and sending only changed fixture control values back to the runtime.
+- Reduced threaded DMX apply pressure by sharing decoded fixture control buffers with the main-thread drain under runtime locking instead of deep-copying capability dictionaries for every updated fixture.
 - Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 
