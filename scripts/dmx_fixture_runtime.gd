@@ -5,14 +5,20 @@ const MAX_UNBOUND_PREVIEW: int = 8
 const FORCE_COARSE_ONLY_DMX_READ: bool = false
 
 const GoboVectorizationCacheScript = preload("res://scripts/gobo_vectorization/gobo_vectorization_cache.gd")
-const ControlReaderScript = preload("res://scripts/dmx_capability_control_reader.gd")
-const CapabilityNormalizerScript = preload("res://scripts/dmx_capability_normalizer.gd")
-const PanTiltCapabilityHandlerScript = preload("res://scripts/dmx_capabilities/pan_tilt_capability_handler.gd")
-const DimmerCapabilityHandlerScript = preload("res://scripts/dmx_capabilities/dimmer_capability_handler.gd")
-const ColorWheelCapabilityHandlerScript = preload("res://scripts/dmx_capabilities/color_wheel_capability_handler.gd")
-const GoboCapabilityHandlerScript = preload("res://scripts/dmx_capabilities/gobo_capability_handler.gd")
-const PrismCapabilityHandlerScript = preload("res://scripts/dmx_capabilities/prism_capability_handler.gd")
-const StrobeCapabilityHandlerScript = preload("res://scripts/dmx_capabilities/strobe_capability_handler.gd")
+
+const NATIVE_CHANNEL_PAN: int = 1
+const NATIVE_CHANNEL_TILT: int = 2
+const NATIVE_CHANNEL_DIMMER: int = 3
+const NATIVE_CHANNEL_ZOOM: int = 4
+const NATIVE_CHANNEL_CYAN: int = 5
+const NATIVE_CHANNEL_MAGENTA: int = 6
+const NATIVE_CHANNEL_YELLOW: int = 7
+const NATIVE_CHANNEL_GOBO: int = 8
+const NATIVE_CHANNEL_GOBO_INDEX: int = 9
+const NATIVE_CHANNEL_GOBO_ROTATION: int = 10
+const NATIVE_CHANNEL_PRISM: int = 11
+const NATIVE_CHANNEL_PRISM_ROTATION: int = 12
+const NATIVE_CHANNEL_STROBE: int = 13
 
 var _loader = null
 var _scene_registry: SceneRegistry = null
@@ -24,6 +30,10 @@ var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_capability_hash_cache: Dictionary = {}
+var _native_dmx_decoder: PeravizDmxUniverseDecoder = PeravizDmxUniverseDecoder.new()
+var _native_fixture_ids_by_uuid: Dictionary = {}
+var _native_fixture_uuids_by_id: Dictionary = {}
+var _native_channel_values: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _fixture_output_buffers: Dictionary = {}
 var _used_universes: Dictionary = {}
@@ -53,6 +63,10 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
 	_fixture_capability_hash_cache.clear()
+	_native_dmx_decoder.clear()
+	_native_fixture_ids_by_uuid.clear()
+	_native_fixture_uuids_by_id.clear()
+	_native_channel_values.clear()
 	_fixture_apply_plans.clear()
 	_fixture_output_buffers.clear()
 	_used_universes.clear()
@@ -97,6 +111,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 		_bound_fixture_ids[fixture_uuid] = true
 		if _loader.has_method("_prepare_fixture_node_cache"):
 			_loader._prepare_fixture_node_cache(fixture_uuid)
+		_register_native_fixture_id(fixture_uuid)
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
@@ -111,6 +126,8 @@ func rebuild(universe_offset: int) -> Dictionary:
 				_bindings_by_universe[universe_id] = []
 			_bindings_by_universe[universe_id].append(binding)
 			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
+
+	_register_native_universe_bindings()
 
 	for universe_key in _used_universes.keys():
 		var tracked_universe_id: int = int(universe_key)
@@ -246,11 +263,11 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
-		var universe_bindings: Array = _bindings_by_universe.get(universe_id, [])
-		for binding in universe_bindings:
-			if binding is not Dictionary:
-				continue
-			var result: Dictionary = _apply_binding_frame(binding, frame, apply_fixture_callback, pending_controls)
+		var native_updates: Array = _native_dmx_decoder.decode_universe(universe_id, frame)
+		var changed_fixture_uuids: Dictionary = _store_native_channel_updates(native_updates)
+		for fixture_uuid_key in changed_fixture_uuids.keys():
+			var fixture_uuid: String = str(fixture_uuid_key)
+			var result: Dictionary = _apply_native_fixture_updates(fixture_uuid, apply_fixture_callback, pending_controls)
 			if result.is_empty():
 				continue
 			fixtures_considered += 1
@@ -344,6 +361,164 @@ func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -
 		hash_value = int((hash_value ^ offset) * 16777619)
 	return hash_value
 
+
+func _register_native_fixture_id(fixture_uuid: String) -> void:
+	if _native_fixture_ids_by_uuid.has(fixture_uuid):
+		return
+	var fixture_id: int = _native_fixture_ids_by_uuid.size() + 1
+	_native_fixture_ids_by_uuid[fixture_uuid] = fixture_id
+	_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
+	_native_channel_values[fixture_uuid] = {}
+
+func _register_native_universe_bindings() -> void:
+	for universe_key in _bindings_by_universe.keys():
+		var native_bindings: Array = []
+		for binding in _bindings_by_universe.get(universe_key, []):
+			if binding is Dictionary:
+				_append_native_bindings_for_fixture(native_bindings, binding)
+		_native_dmx_decoder.set_fixture_bindings(int(universe_key), native_bindings)
+
+func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
+	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
+	var fixture_id: int = int(_native_fixture_ids_by_uuid.get(fixture_uuid, 0))
+	if fixture_id <= 0:
+		return
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PAN, "pan_channel_index_0", "pan_fine_channel_index_0", "pan_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_TILT, "tilt_channel_index_0", "tilt_fine_channel_index_0", "tilt_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_DIMMER, "dimmer_channel_index_0", "dimmer_fine_channel_index_0", "dimmer_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_ZOOM, "zoom_channel_index_0", "zoom_fine_channel_index_0", "zoom_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_CYAN, "cyan_channel_index_0", "cyan_fine_channel_index_0", "cyan_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_MAGENTA, "magenta_channel_index_0", "magenta_fine_channel_index_0", "magenta_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_YELLOW, "yellow_channel_index_0", "yellow_fine_channel_index_0", "yellow_ultra_fine_channel_index_0")
+	if int(binding.get("gobo1_channel_index_0", -1)) >= 0:
+		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0")
+	else:
+		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo_channel_index_0", "gobo_fine_channel_index_0", "gobo_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_INDEX, "gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_ROTATION, "gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM, "prism_channel_index_0", "prism_fine_channel_index_0", "prism_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0")
+	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_STROBE, "strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0")
+
+func _append_native_channel_binding(native_bindings: Array, binding: Dictionary, fixture_id: int, channel_type: int, coarse_key: String, fine_key: String, ultra_fine_key: String) -> void:
+	var coarse_index: int = int(binding.get(coarse_key, -1))
+	var fine_index: int = int(binding.get(fine_key, -1))
+	var ultra_fine_index: int = int(binding.get(ultra_fine_key, -1))
+	if coarse_index < 0 and fine_index < 0 and ultra_fine_index < 0:
+		return
+	var start_address: int = coarse_index
+	var resolved_fine_address: int = fine_index
+	var resolved_ultra_fine_address: int = ultra_fine_index
+	if start_address < 0:
+		start_address = fine_index if fine_index >= 0 else ultra_fine_index
+		resolved_fine_address = ultra_fine_index if fine_index >= 0 else -1
+		resolved_ultra_fine_address = -1
+	native_bindings.append({
+		"fixture_id": fixture_id,
+		"channel_type": channel_type,
+		"start_address": start_address,
+		"fine_address": resolved_fine_address,
+		"ultra_fine_address": resolved_ultra_fine_address,
+		"bit_depth": 8 + (8 if resolved_fine_address >= 0 else 0) + (8 if resolved_ultra_fine_address >= 0 else 0),
+	})
+
+func _store_native_channel_updates(native_updates: Array) -> Dictionary:
+	var changed_fixture_uuids: Dictionary = {}
+	for update in native_updates:
+		if update is not Dictionary:
+			continue
+		var fixture_uuid: String = str(_native_fixture_uuids_by_id.get(int(update.get("fixture_id", 0)), ""))
+		if fixture_uuid.is_empty():
+			continue
+		var channel_type: int = int(update.get("channel_type", 0))
+		var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
+		values[channel_type] = update
+		_native_channel_values[fixture_uuid] = values
+		changed_fixture_uuids[fixture_uuid] = true
+	return changed_fixture_uuids
+
+func _apply_native_fixture_updates(fixture_uuid: String, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
+	if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
+		return {}
+	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
+	var controls: Dictionary = _build_controls_from_native_values(fixture_plan, fixture_uuid)
+	if not _has_any_capability(controls):
+		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
+	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls, pending_controls)
+	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
+
+func _build_controls_from_native_values(fixture_plan: Dictionary, fixture_uuid: String) -> Dictionary:
+	var output: Dictionary = _fixture_output_buffers.get(fixture_uuid, _build_fixture_output_buffer(fixture_plan.get("binding", {})))
+	_fixture_output_buffers[fixture_uuid] = output
+	var capabilities: Dictionary = output.get("capabilities", {})
+	_clear_capability_output(capabilities)
+	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
+	_append_native_pan_tilt(capabilities, values)
+	_append_native_dimmer(capabilities, values, fixture_plan.get("binding", {}))
+	_append_native_color(capabilities, values)
+	_append_native_gobo(capabilities, values, fixture_plan.get("binding", {}))
+	_append_native_prism(capabilities, values)
+	_append_native_strobe(capabilities, values)
+	output["changed_capability_types"] = _filter_unchanged_capabilities(fixture_uuid, capabilities)
+	output["metadata"] = fixture_plan.get("metadata", output.get("metadata", {}))
+	return output
+
+func _append_native_pan_tilt(capabilities: Dictionary, values: Dictionary) -> void:
+	var block := {"type": "pan_tilt", "has_pan": false, "pan_norm": 0.0, "has_tilt": false, "tilt_norm": 0.0}
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_PAN, "pan")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_TILT, "tilt")
+	_append_capabilities(capabilities, "pan_tilt", [block] if bool(block.get("has_pan", false)) or bool(block.get("has_tilt", false)) else [])
+
+func _append_native_dimmer(capabilities: Dictionary, values: Dictionary, binding: Dictionary) -> void:
+	var block := {"type": "dimmer", "has_dimmer": false, "dimmer_norm": 0.0, "has_zoom": false, "zoom_norm": 0.0}
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_DIMMER, "dimmer")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_ZOOM, "zoom")
+	if bool(block.get("has_zoom", false)):
+		block["has_zoom_physical_limits"] = bool(binding.get("has_zoom_physical_limits", false))
+		block["zoom_physical_min_degrees"] = float(binding.get("zoom_physical_min_degrees", -1.0))
+		block["zoom_physical_max_degrees"] = float(binding.get("zoom_physical_max_degrees", -1.0))
+	_append_capabilities(capabilities, "dimmer", [block] if bool(block.get("has_dimmer", false)) or bool(block.get("has_zoom", false)) else [])
+
+func _append_native_color(capabilities: Dictionary, values: Dictionary) -> void:
+	var block := {"type": "color_wheel", "has_cyan": false, "cyan_norm": 0.0, "has_magenta": false, "magenta_norm": 0.0, "has_yellow": false, "yellow_norm": 0.0}
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_CYAN, "cyan")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_MAGENTA, "magenta")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_YELLOW, "yellow")
+	_append_capabilities(capabilities, "color_wheel", [block] if bool(block.get("has_cyan", false)) or bool(block.get("has_magenta", false)) or bool(block.get("has_yellow", false)) else [])
+
+func _append_native_gobo(capabilities: Dictionary, values: Dictionary, binding: Dictionary) -> void:
+	var block := {"type": "gobo", "has_gobo": false, "gobo_norm": 0.0, "has_gobo_index": false, "gobo_index_norm": 0.0, "has_gobo_rotation": false, "gobo_rotation_norm": 0.0}
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_GOBO, "gobo")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_GOBO_INDEX, "gobo_index")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_GOBO_ROTATION, "gobo_rotation")
+	if bool(block.get("has_gobo", false)):
+		block["gobo_slots"] = binding.get("gobo1_slots", binding.get("gobo_slots", []))
+		block["gobo_ranges"] = binding.get("gobo1_ranges", binding.get("gobo_ranges", []))
+		block["gobo_wheel_name"] = str(binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", "")))
+		block["gobo_wheel_number"] = int(binding.get("gobo_wheel_number", 0))
+	_append_capabilities(capabilities, "gobo", [block] if bool(block.get("has_gobo", false)) or bool(block.get("has_gobo_index", false)) or bool(block.get("has_gobo_rotation", false)) else [])
+
+func _append_native_prism(capabilities: Dictionary, values: Dictionary) -> void:
+	var block := {"type": "prism", "has_prism": false, "prism_norm": 0.0, "has_prism_rotation": false, "prism_rotation_norm": 0.0}
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_PRISM, "prism")
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation")
+	_append_capabilities(capabilities, "prism", [block] if bool(block.get("has_prism", false)) or bool(block.get("has_prism_rotation", false)) else [])
+
+func _append_native_strobe(capabilities: Dictionary, values: Dictionary) -> void:
+	var block := {"type": "strobe", "has_strobe": false, "strobe_norm": 0.0}
+	_apply_native_value_to_block(block, values, NATIVE_CHANNEL_STROBE, "strobe")
+	_append_capabilities(capabilities, "strobe", [block] if bool(block.get("has_strobe", false)) else [])
+
+func _apply_native_value_to_block(block: Dictionary, values: Dictionary, channel_type: int, prefix: String) -> void:
+	if not values.has(channel_type):
+		return
+	var value: Dictionary = values.get(channel_type, {})
+	block["has_%s" % prefix] = true
+	block["%s_norm" % prefix] = float(value.get("normalized_value", 0.0))
+	block["%s_raw_value" % prefix] = int(value.get("raw_value", 0))
+	block["%s_resolution_bits" % prefix] = int(value.get("resolution_bits", 8))
+	block["%s_bytes" % prefix] = value.get("bytes", PackedInt32Array())
+
 func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
 	if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
@@ -377,57 +552,10 @@ func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fix
 	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 
 func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
-	var handler_scripts: Dictionary = {
-		"pan_tilt": {
-			"script": PanTiltCapabilityHandlerScript,
-			"normalizer": null,
-		},
-		"dimmer": {
-			"script": DimmerCapabilityHandlerScript,
-			"normalizer": null,
-		},
-		"color_wheel": {
-			"script": ColorWheelCapabilityHandlerScript,
-			"normalizer": null,
-		},
-		"gobo": {
-			"script": GoboCapabilityHandlerScript,
-			"normalizer": CapabilityNormalizerScript,
-		},
-		"prism": {
-			"script": PrismCapabilityHandlerScript,
-			"normalizer": null,
-		},
-		"strobe": {
-			"script": StrobeCapabilityHandlerScript,
-			"normalizer": null,
-		},
-	}
 	return {
 		"binding": binding,
-		"handlers": _build_active_handlers_for_plan(binding, handler_scripts),
 		"metadata": binding.get("metadata", {}),
 	}
-
-func _build_active_handlers_for_plan(binding: Dictionary, handler_scripts: Dictionary) -> Dictionary:
-	var active_handlers: Dictionary = {}
-	var empty_frame := PackedByteArray()
-	for capability_type in handler_scripts.keys():
-		var definition: Dictionary = handler_scripts.get(capability_type, {})
-		var script = definition.get("script", null)
-		var normalizer = definition.get("normalizer", null)
-		var blocks: Array = []
-		if script == null:
-			continue
-		if normalizer != null:
-			blocks = script.collect(binding, empty_frame, ControlReaderScript, normalizer, FORCE_COARSE_ONLY_DMX_READ)
-		else:
-			blocks = script.collect(binding, empty_frame, ControlReaderScript, FORCE_COARSE_ONLY_DMX_READ)
-		if not blocks.is_empty():
-			active_handlers[capability_type] = definition
-	if active_handlers.is_empty():
-		return handler_scripts.duplicate(true)
-	return active_handlers
 
 func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
 	return {
@@ -443,71 +571,7 @@ func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
 	}
 
 func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
-	var output: Dictionary = _fixture_output_buffers.get(fixture_uuid, _build_fixture_output_buffer(fixture_plan.get("binding", {})))
-	_fixture_output_buffers[fixture_uuid] = output
-	var capabilities: Dictionary = output.get("capabilities", {})
-	_clear_capability_output(capabilities)
-	var handlers: Dictionary = fixture_plan.get("handlers", {})
-	_append_capability_from_plan(capabilities, "pan_tilt", fixture_plan, handlers, frame)
-	_append_capability_from_plan(capabilities, "dimmer", fixture_plan, handlers, frame)
-	_append_capability_from_plan(capabilities, "color_wheel", fixture_plan, handlers, frame)
-	_append_capability_from_plan(capabilities, "gobo", fixture_plan, handlers, frame)
-	_append_capability_from_plan(capabilities, "prism", fixture_plan, handlers, frame)
-	_append_capability_from_plan(capabilities, "strobe", fixture_plan, handlers, frame)
-	var changed_capability_types: Dictionary = _filter_unchanged_capabilities(fixture_uuid, capabilities)
-	output["changed_capability_types"] = changed_capability_types
-	output["metadata"] = fixture_plan.get("metadata", output.get("metadata", {}))
-	return output
-
-func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictionary) -> Dictionary:
-	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
-	var next_hashes: Dictionary = {}
-	var changed_capability_types: Dictionary = {}
-	for capability_type in ["pan_tilt", "dimmer", "color_wheel", "gobo", "prism", "strobe"]:
-		var bucket: Array = capabilities.get(capability_type, [])
-		var bucket_hash: int = _hash_capability_bucket(bucket)
-		next_hashes[capability_type] = bucket_hash
-		if not previous_hashes.has(capability_type) or int(previous_hashes.get(capability_type, 0)) != bucket_hash:
-			changed_capability_types[capability_type] = true
-		elif not bucket.is_empty():
-			bucket.clear()
-	_fixture_capability_hash_cache[fixture_uuid] = next_hashes
-	return changed_capability_types
-
-func _hash_capability_bucket(bucket: Array) -> int:
-	var hash_value: int = 2166136261
-	for item in bucket:
-		if item is not Dictionary:
-			continue
-		var row: Dictionary = item
-		var keys: Array = row.keys()
-		keys.sort()
-		for key in keys:
-			hash_value = int((hash_value ^ hash(key)) * 16777619)
-			hash_value = int((hash_value ^ hash(row.get(key))) * 16777619)
-	return hash_value
-
-func _clear_capability_output(capabilities: Dictionary) -> void:
-	for capability_type in ["pan_tilt", "dimmer", "color_wheel", "gobo", "prism", "strobe"]:
-		if not capabilities.has(capability_type):
-			capabilities[capability_type] = []
-		else:
-			(capabilities[capability_type] as Array).clear()
-
-func _append_capability_from_plan(capabilities: Dictionary, capability_type: String, fixture_plan: Dictionary, handlers: Dictionary, frame: PackedByteArray) -> void:
-	if not handlers.has(capability_type):
-		return
-	var handler_plan: Dictionary = handlers.get(capability_type, {})
-	var script = handler_plan.get("script", null)
-	if script == null:
-		return
-	var blocks: Array = []
-	var normalizer = handler_plan.get("normalizer", null)
-	if normalizer != null:
-		blocks = script.collect(fixture_plan.get("binding", {}), frame, ControlReaderScript, normalizer, FORCE_COARSE_ONLY_DMX_READ)
-	else:
-		blocks = script.collect(fixture_plan.get("binding", {}), frame, ControlReaderScript, FORCE_COARSE_ONLY_DMX_READ)
-	_append_capabilities(capabilities, capability_type, blocks)
+	return _build_controls_from_native_values(fixture_plan, fixture_uuid)
 
 func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary, pending_controls: Array = []) -> void:
 	# Temporary compatibility adapter for incremental migration.
@@ -578,6 +642,9 @@ func _collect_direct_channel_offset_keys() -> PackedStringArray:
 		"gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0",
 		"gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0",
 		"gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0",
+		"prism_channel_index_0", "prism_fine_channel_index_0", "prism_ultra_fine_channel_index_0",
+		"prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0",
+		"strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0",
 	])
 
 func _append_capabilities(capabilities: Dictionary, capability_type: String, blocks: Array) -> void:

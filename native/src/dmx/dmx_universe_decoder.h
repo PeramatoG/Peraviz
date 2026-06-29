@@ -5,6 +5,7 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 
 #include <cstdint>
 #include <unordered_map>
@@ -27,6 +28,8 @@ private:
     struct FixtureChannelBinding {
         int fixture_id = 0;
         int start_address = 0;
+        int fine_address = -1;
+        int ultra_fine_address = -1;
         int channel_type = 0;
         int bit_depth = 8;
         double scale_min = 0.0;
@@ -34,7 +37,10 @@ private:
     };
 
     static FixtureChannelBinding parse_binding(const Dictionary &binding);
+    static Dictionary read_channel_value(const PackedByteArray &frame, const FixtureChannelBinding &binding);
     static double read_normalized_value(const PackedByteArray &frame, const FixtureChannelBinding &binding);
+    static PackedInt32Array read_channel_bytes(const PackedByteArray &frame, const FixtureChannelBinding &binding);
+    static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
     static int bytes_for_bit_depth(int bit_depth);
 
     std::unordered_map<int, std::vector<FixtureChannelBinding>> bindings_by_universe_;
