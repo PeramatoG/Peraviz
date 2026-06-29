@@ -573,7 +573,7 @@ func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
 		"metadata": binding.get("metadata", {}),
 	}
 
-func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
+func _build_controls_for_plan(fixture_plan: Dictionary, _frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
 	return _build_controls_from_native_values(fixture_plan, fixture_uuid)
 
 func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary, pending_controls: Array = []) -> void:
@@ -663,12 +663,69 @@ func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictiona
 	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
 	var current_hashes: Dictionary = {}
 	for capability_type in capabilities.keys():
-		var capability_hash: int = _hash_variant(capabilities.get(capability_type, []))
+		var capability_hash: int = _hash_capability_bucket(str(capability_type), capabilities.get(capability_type, []))
 		current_hashes[capability_type] = capability_hash
 		if _debug_force_full_apply or int(previous_hashes.get(capability_type, -1)) != capability_hash:
 			changed_capability_types[capability_type] = true
 	_fixture_capability_hash_cache[fixture_uuid] = current_hashes
 	return changed_capability_types
+
+func _hash_capability_bucket(capability_type: String, bucket: Array) -> int:
+	var hash_value: int = _hash_string_into(capability_type, 2166136261)
+	for item in bucket:
+		if item is not Dictionary:
+			hash_value = _hash_string_into(str(item), hash_value)
+			continue
+		var row: Dictionary = item
+		match capability_type:
+			"pan_tilt":
+				hash_value = _hash_bool_into(bool(row.get("has_pan", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("pan_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_tilt", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("tilt_norm", 0.0)), hash_value)
+			"dimmer":
+				hash_value = _hash_bool_into(bool(row.get("has_dimmer", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("dimmer_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_zoom", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("zoom_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_zoom_physical_limits", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("zoom_physical_min_degrees", -1.0)), hash_value)
+				hash_value = _hash_float_into(float(row.get("zoom_physical_max_degrees", -1.0)), hash_value)
+			"color_wheel":
+				hash_value = _hash_bool_into(bool(row.get("has_cyan", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("cyan_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_magenta", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("magenta_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_yellow", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("yellow_norm", 0.0)), hash_value)
+			"gobo":
+				hash_value = _hash_bool_into(bool(row.get("has_gobo", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("gobo_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_gobo_index", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("gobo_index_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_gobo_rotation", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("gobo_rotation_norm", 0.0)), hash_value)
+				hash_value = _hash_string_into(str(row.get("gobo_wheel_name", "")), hash_value)
+				hash_value = _hash_int_into(int(row.get("gobo_wheel_number", 0)), hash_value)
+				hash_value = _hash_variant_into(row.get("gobo_slots", []), hash_value)
+				hash_value = _hash_variant_into(row.get("gobo_ranges", []), hash_value)
+			"prism":
+				hash_value = _hash_bool_into(bool(row.get("has_prism", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("prism_norm", 0.0)), hash_value)
+				hash_value = _hash_bool_into(bool(row.get("has_prism_rotation", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("prism_rotation_norm", 0.0)), hash_value)
+			"strobe":
+				hash_value = _hash_bool_into(bool(row.get("has_strobe", false)), hash_value)
+				hash_value = _hash_float_into(float(row.get("strobe_norm", 0.0)), hash_value)
+			_:
+				hash_value = _hash_variant_into(row, hash_value)
+	return hash_value
+
+func _hash_bool_into(value: bool, hash_value: int) -> int:
+	return _hash_int_into(1 if value else 0, hash_value)
+
+func _hash_float_into(value: float, hash_value: int) -> int:
+	return _hash_int_into(int(round(value * 1000000.0)), hash_value)
 
 func _hash_variant(value: Variant) -> int:
 	return _hash_variant_into(value, 2166136261)

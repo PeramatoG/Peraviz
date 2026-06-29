@@ -529,8 +529,8 @@ func _refresh_existing_beam_material_scalars() -> void:
 
 func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
 	var base_energy: float = float(light.get_meta("peraviz_base_light_energy", light.light_energy))
-	light.light_energy = base_energy * float(_visual_settings.get("spot_multiplier", 1.0))
-	light.light_volumetric_fog_energy = float(_visual_settings.get("light_volumetric_fog_energy", 12.0))
+	RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
+	RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
 
 func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	var base_intensity: float = float(light.get_meta("peraviz_beam_base_intensity", 0.0))
@@ -581,7 +581,7 @@ func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: flo
 	beam_params["scaled_intensity"] = scaled_intensity
 	beam_params["beam_intensity"] = scaled_intensity
 	beam_params["beam_color"] = beam_color
-	beam_params["is_visible"] = light.visible
+	beam_params["is_visible"] = _get_cached_light_visibility(light)
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
 	if _active_beam_renderer.update_beam_intensity(light, beam_params):
 		light.set_meta("peraviz_beam_last_params", beam_params)
@@ -2103,6 +2103,10 @@ func _track_property_change(applied: bool) -> void:
 	else:
 		_debug_properties_skipped += 1
 
+func _get_cached_light_visibility(light: SpotLight3D) -> bool:
+	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
+	return bool(last_state.get("prop:visible", light.visible))
+
 func _set_light_property_float(light: SpotLight3D, property_name: String, value: float, last_state: Dictionary) -> void:
 	var cache_key: String = "prop:" + property_name
 	var previous: float = float(last_state.get(cache_key, INF))
@@ -2110,7 +2114,7 @@ func _set_light_property_float(light: SpotLight3D, property_name: String, value:
 		_track_property_change(false)
 		return
 	last_state[cache_key] = value
-	light.set(property_name, value)
+	_apply_light_server_float(light, property_name, value)
 	_track_property_change(true)
 
 func _set_light_property_bool(light: SpotLight3D, property_name: String, value: bool, last_state: Dictionary) -> void:
@@ -2120,7 +2124,7 @@ func _set_light_property_bool(light: SpotLight3D, property_name: String, value: 
 		_track_property_change(false)
 		return
 	last_state[cache_key] = value
-	light.set(property_name, value)
+	_apply_light_server_bool(light, property_name, value)
 	_track_property_change(true)
 
 func _set_light_property_color(light: SpotLight3D, property_name: String, value: Color, last_state: Dictionary) -> void:
@@ -2129,8 +2133,35 @@ func _set_light_property_color(light: SpotLight3D, property_name: String, value:
 		_track_property_change(false)
 		return
 	last_state[cache_key] = value
-	light.set(property_name, value)
+	_apply_light_server_color(light, property_name, value)
 	_track_property_change(true)
+
+func _apply_light_server_float(light: SpotLight3D, property_name: String, value: float) -> void:
+	match property_name:
+		"light_energy":
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_ENERGY, value)
+		"light_volumetric_fog_energy":
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, value)
+		"spot_angle":
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_SPOT_ANGLE, value)
+		"spot_range":
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_RANGE, value)
+		"spot_attenuation":
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_SPOT_ATTENUATION, value)
+		_:
+			light.set(property_name, value)
+
+func _apply_light_server_bool(light: SpotLight3D, property_name: String, value: bool) -> void:
+	if property_name == "visible":
+		RenderingServer.instance_set_visible(light.get_instance(), value)
+		return
+	light.set(property_name, value)
+
+func _apply_light_server_color(light: SpotLight3D, property_name: String, value: Color) -> void:
+	if property_name == "light_color":
+		RenderingServer.light_set_color(light.get_base(), value)
+		return
+	light.set(property_name, value)
 
 func _set_light_meta_float(light: SpotLight3D, meta_key: String, value: float, last_state: Dictionary) -> void:
 	var cache_key: String = "meta:" + meta_key
