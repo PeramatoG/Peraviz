@@ -444,6 +444,9 @@ func _apply_native_fixture_updates(fixture_uuid: String, apply_fixture_callback:
 	var controls: Dictionary = _build_controls_from_native_values(fixture_plan, fixture_uuid)
 	if not _has_any_capability(controls):
 		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
+	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
+	if not _debug_force_full_apply and changed_capability_types.is_empty():
+		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 1}
 	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls, pending_controls)
 	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 
@@ -646,6 +649,58 @@ func _collect_direct_channel_offset_keys() -> PackedStringArray:
 		"prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0",
 		"strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0",
 	])
+
+func _clear_capability_output(capabilities: Dictionary) -> void:
+	for capability_type in capabilities.keys():
+		if capabilities.get(capability_type) is Array:
+			var bucket: Array = capabilities.get(capability_type, [])
+			bucket.clear()
+			capabilities[capability_type] = bucket
+
+func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictionary) -> Dictionary:
+	var changed_capability_types: Dictionary = {}
+	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
+	var current_hashes: Dictionary = {}
+	for capability_type in capabilities.keys():
+		var capability_hash: int = _hash_variant(capabilities.get(capability_type, []))
+		current_hashes[capability_type] = capability_hash
+		if _debug_force_full_apply or int(previous_hashes.get(capability_type, -1)) != capability_hash:
+			changed_capability_types[capability_type] = true
+	_fixture_capability_hash_cache[fixture_uuid] = current_hashes
+	return changed_capability_types
+
+func _hash_variant(value: Variant) -> int:
+	return _hash_variant_into(value, 2166136261)
+
+func _hash_variant_into(value: Variant, hash_value: int) -> int:
+	if value is Dictionary:
+		var keys: Array = (value as Dictionary).keys()
+		keys.sort()
+		for key in keys:
+			hash_value = _hash_string_into(str(key), hash_value)
+			hash_value = _hash_variant_into((value as Dictionary).get(key), hash_value)
+		return hash_value
+	if value is Array:
+		for item in value:
+			hash_value = _hash_variant_into(item, hash_value)
+		return hash_value
+	if value is PackedInt32Array:
+		for item in value:
+			hash_value = _hash_int_into(int(item), hash_value)
+		return hash_value
+	if value is PackedByteArray:
+		for item in value:
+			hash_value = _hash_int_into(int(item), hash_value)
+		return hash_value
+	return _hash_string_into(str(value), hash_value)
+
+func _hash_string_into(value: String, hash_value: int) -> int:
+	for index in range(value.length()):
+		hash_value = int((hash_value ^ value.unicode_at(index)) * 16777619)
+	return hash_value
+
+func _hash_int_into(value: int, hash_value: int) -> int:
+	return int((hash_value ^ value) * 16777619)
 
 func _append_capabilities(capabilities: Dictionary, capability_type: String, blocks: Array) -> void:
 	if blocks.is_empty():
