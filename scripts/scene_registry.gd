@@ -25,6 +25,7 @@ func register_fixture(uuid: String, root_node: Node, anchors: Dictionary = {}) -
 		"path": root_node.get_path(),
 		"weak": weakref(root_node),
 		"anchors": normalized_anchors,
+		"resolved_anchors": {},
 	}
 	_fixture_entries[uuid] = entry
 
@@ -86,9 +87,19 @@ func get_anchor(uuid: String, anchor_name_or_id: Variant) -> Variant:
 		return null
 
 	var key: String = str(anchor_name_or_id)
-	if anchors.has(key):
-		return _resolve_anchor_value(anchors.get(key))
-	return null
+	if not anchors.has(key):
+		return null
+
+	var resolved_anchors: Dictionary = entry.get("resolved_anchors", {})
+	var cached_value: Variant = resolved_anchors.get(key, null)
+	var resolved_value: Variant = _resolve_cached_anchor_value(cached_value)
+	if resolved_value != null:
+		return resolved_value
+
+	resolved_value = _resolve_anchor_value(anchors.get(key))
+	resolved_anchors[key] = _cache_anchor_value(resolved_value)
+	entry["resolved_anchors"] = resolved_anchors
+	return resolved_value
 
 func _normalize_anchor_dictionary(anchors: Dictionary) -> Dictionary:
 	var normalized: Dictionary = {}
@@ -119,6 +130,34 @@ func _resolve_anchor_value(anchor_value: Variant) -> Variant:
 			resolved_nodes.append(_resolve_anchor_value(entry))
 		return resolved_nodes
 	return anchor_value
+
+func _cache_anchor_value(anchor_value: Variant) -> Variant:
+	if anchor_value is Node:
+		return weakref(anchor_value)
+	if anchor_value is Array:
+		var cached_list: Array = []
+		for entry in anchor_value:
+			cached_list.append(_cache_anchor_value(entry))
+		return cached_list
+	return anchor_value
+
+func _resolve_cached_anchor_value(cached_value: Variant) -> Variant:
+	if cached_value == null:
+		return null
+	if cached_value is WeakRef:
+		var cached_node: Variant = cached_value.get_ref()
+		if cached_node is Node and is_instance_valid(cached_node):
+			return cached_node
+		return null
+	if cached_value is Array:
+		var resolved_nodes: Array = []
+		for entry in cached_value:
+			var resolved_entry: Variant = _resolve_cached_anchor_value(entry)
+			if resolved_entry == null:
+				return null
+			resolved_nodes.append(resolved_entry)
+		return resolved_nodes
+	return cached_value
 
 func _on_fixture_tree_exited(uuid: String) -> void:
 	unregister_fixture(uuid, "tree_exited")

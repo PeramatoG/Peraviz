@@ -146,7 +146,7 @@ func has_lighting_controls(controls: Dictionary) -> bool:
 func prewarm_lighting_for_fixture(loader: Node, fixture_uuid: String) -> void:
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
 	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
-	loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
+	_prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
 	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
 	var prewarm_controls: Dictionary = {
@@ -193,13 +193,31 @@ func _resolve_current_fixture_dimmer(loader: Node, fixture_uuid: String, emitter
 	return 0.0
 
 func _apply_emissive_material_dimmer(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, normalized_dimmer: float) -> void:
-	var emissive_materials: Array = loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
+	var emissive_materials: Array = _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
 	var energy_multiplier: float = lerp(0.0, 4.0, normalized_dimmer)
 	for material in emissive_materials:
 		if material is BaseMaterial3D:
+			var material_rid: RID = _get_cached_material_rid(material)
+			if material_rid.is_valid():
+				RenderingServer.material_set_param(material_rid, "emission", beam_color)
+				RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", energy_multiplier)
+
+func _prewarm_emissive_materials(loader: Node, fixture_uuid: String, geometry_nodes: Array) -> Array:
+	var emissive_materials: Array = loader._collect_fixture_emissive_materials(fixture_uuid, geometry_nodes)
+	for material in emissive_materials:
+		if material is BaseMaterial3D and not bool(material.get_meta("peraviz_emissive_material_prewarmed", false)):
 			material.emission_enabled = true
-			material.emission = beam_color
-			material.emission_energy_multiplier = energy_multiplier
+			material.set_meta("peraviz_material_rid", material.get_rid())
+			material.set_meta("peraviz_emissive_material_prewarmed", true)
+	return emissive_materials
+
+func _get_cached_material_rid(material: BaseMaterial3D) -> RID:
+	var cached_rid: Variant = material.get_meta("peraviz_material_rid", RID())
+	if cached_rid is RID and cached_rid.is_valid():
+		return cached_rid
+	var material_rid: RID = material.get_rid()
+	material.set_meta("peraviz_material_rid", material_rid)
+	return material_rid
 
 func _apply_emitter_light_dimmer(loader: Node, fixture_uuid: String, emitter_nodes: Array, emitter_photometrics: Array, beam_color: Color, normalized_dimmer: float, controls: Dictionary) -> void:
 	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
