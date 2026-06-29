@@ -573,7 +573,7 @@ func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
 		"metadata": binding.get("metadata", {}),
 	}
 
-func _build_controls_for_plan(fixture_plan: Dictionary, frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
+func _build_controls_for_plan(fixture_plan: Dictionary, _frame: PackedByteArray, fixture_uuid: String) -> Dictionary:
 	return _build_controls_from_native_values(fixture_plan, fixture_uuid)
 
 func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable, fixture_uuid: String, controls: Dictionary, pending_controls: Array = []) -> void:

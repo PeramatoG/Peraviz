@@ -29,6 +29,7 @@ Changes since the initial Peraviz repository split.
 ## Fixes
 
 - Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
+- Fixed direct RenderingServer light updates so fixture lighting prewarm uses the correct light resource RID and loads without runtime errors.
 
 ## Stability and reliability
 

@@ -529,8 +529,8 @@ func _refresh_existing_beam_material_scalars() -> void:
 
 func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
 	var base_energy: float = float(light.get_meta("peraviz_base_light_energy", light.light_energy))
-	RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
-	RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
+	RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
+	RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
 
 func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	var base_intensity: float = float(light.get_meta("peraviz_beam_base_intensity", 0.0))
@@ -2139,15 +2139,15 @@ func _set_light_property_color(light: SpotLight3D, property_name: String, value:
 func _apply_light_server_float(light: SpotLight3D, property_name: String, value: float) -> void:
 	match property_name:
 		"light_energy":
-			RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_ENERGY, value)
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_ENERGY, value)
 		"light_volumetric_fog_energy":
-			RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, value)
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, value)
 		"spot_angle":
-			RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_SPOT_ANGLE, value)
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_SPOT_ANGLE, value)
 		"spot_range":
-			RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_RANGE, value)
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_RANGE, value)
 		"spot_attenuation":
-			RenderingServer.light_set_param(light.get_rid(), RenderingServer.LIGHT_PARAM_SPOT_ATTENUATION, value)
+			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_SPOT_ATTENUATION, value)
 		_:
 			light.set(property_name, value)
 
@@ -2159,7 +2159,7 @@ func _apply_light_server_bool(light: SpotLight3D, property_name: String, value: 
 
 func _apply_light_server_color(light: SpotLight3D, property_name: String, value: Color) -> void:
 	if property_name == "light_color":
-		RenderingServer.light_set_color(light.get_rid(), value)
+		RenderingServer.light_set_color(light.get_base(), value)
 		return
 	light.set(property_name, value)
 
