@@ -2137,31 +2137,38 @@ func _set_light_property_color(light: SpotLight3D, property_name: String, value:
 	_track_property_change(true)
 
 func _apply_light_server_float(light: SpotLight3D, property_name: String, value: float) -> void:
+	var param: int = _get_light_server_float_param(property_name)
+	if param == -1:
+		push_warning("Unsupported light float property for RenderingServer update: %s" % property_name)
+		return
+	RenderingServer.light_set_param(light.get_base(), param, value)
+
+func _get_light_server_float_param(property_name: String) -> int:
 	match property_name:
 		"light_energy":
-			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_ENERGY, value)
+			return RenderingServer.LIGHT_PARAM_ENERGY
 		"light_volumetric_fog_energy":
-			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, value)
+			return RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY
 		"spot_angle":
-			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_SPOT_ANGLE, value)
+			return RenderingServer.LIGHT_PARAM_SPOT_ANGLE
 		"spot_range":
-			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_RANGE, value)
+			return RenderingServer.LIGHT_PARAM_RANGE
 		"spot_attenuation":
-			RenderingServer.light_set_param(light.get_base(), RenderingServer.LIGHT_PARAM_SPOT_ATTENUATION, value)
+			return RenderingServer.LIGHT_PARAM_SPOT_ATTENUATION
 		_:
-			light.set(property_name, value)
+			return -1
 
 func _apply_light_server_bool(light: SpotLight3D, property_name: String, value: bool) -> void:
 	if property_name == "visible":
 		RenderingServer.instance_set_visible(light.get_instance(), value)
 		return
-	light.set(property_name, value)
+	push_warning("Unsupported light bool property for RenderingServer update: %s" % property_name)
 
 func _apply_light_server_color(light: SpotLight3D, property_name: String, value: Color) -> void:
 	if property_name == "light_color":
 		RenderingServer.light_set_color(light.get_base(), value)
 		return
-	light.set(property_name, value)
+	push_warning("Unsupported light color property for RenderingServer update: %s" % property_name)
 
 func _set_light_meta_float(light: SpotLight3D, meta_key: String, value: float, last_state: Dictionary) -> void:
 	var cache_key: String = "meta:" + meta_key
