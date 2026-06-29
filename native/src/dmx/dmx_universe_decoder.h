@@ -6,6 +6,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 
 #include <cstdint>
 #include <unordered_map>
@@ -22,9 +23,23 @@ protected:
 public:
     void set_fixture_bindings(int universe_id, const Array &bindings);
     Array decode_universe(int universe_id, const PackedByteArray &current_frame);
+    PackedFloat32Array decode_universe_compact(int universe_id, const PackedByteArray &current_frame);
+    void set_fixture_render_params(int fixture_id, const Dictionary &render_params);
+    PackedFloat32Array decode_universe_render_ready(int universe_id, const PackedByteArray &current_frame);
     void clear();
 
 private:
+    struct FixtureRenderParams {
+        double luminous_flux = 10000.0;
+        double beam_angle_default = 25.0;
+        double zoom_min_deg = -1.0;
+        double zoom_max_deg = -1.0;
+        bool has_zoom = false;
+        double color_temp_k = 5600.0;
+        double spot_multiplier = 1.0;
+        double beam_multiplier = 20.0;
+    };
+
     struct FixtureChannelBinding {
         int fixture_id = 0;
         int start_address = 0;
@@ -42,9 +57,11 @@ private:
     static PackedInt32Array read_channel_bytes(const PackedByteArray &frame, const FixtureChannelBinding &binding);
     static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
     static int bytes_for_bit_depth(int bit_depth);
+    static int compact_index_for_channel_type(int channel_type);
 
     std::unordered_map<int, std::vector<FixtureChannelBinding>> bindings_by_universe_;
     std::unordered_map<int, PackedByteArray> previous_frames_by_universe_;
+    std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
 };
 
 } // namespace godot

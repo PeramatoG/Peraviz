@@ -20,6 +20,21 @@ const NATIVE_CHANNEL_PRISM: int = 11
 const NATIVE_CHANNEL_PRISM_ROTATION: int = 12
 const NATIVE_CHANNEL_STROBE: int = 13
 
+const NATIVE_COMPACT_STRIDE: int = 15
+const NATIVE_COMPACT_DIMMER: int = 0
+const NATIVE_COMPACT_PAN: int = 1
+const NATIVE_COMPACT_TILT: int = 2
+const NATIVE_COMPACT_ZOOM: int = 3
+const NATIVE_COMPACT_CYAN: int = 4
+const NATIVE_COMPACT_MAGENTA: int = 5
+const NATIVE_COMPACT_YELLOW: int = 6
+const NATIVE_COMPACT_GOBO: int = 7
+const NATIVE_COMPACT_GOBO_INDEX: int = 8
+const NATIVE_COMPACT_GOBO_ROTATION: int = 9
+const NATIVE_COMPACT_PRISM: int = 10
+const NATIVE_COMPACT_PRISM_ROTATION: int = 11
+const NATIVE_COMPACT_STROBE: int = 12
+
 const COMPACT_CONTROL_SIZE: int = 29
 const COMPACT_HAS_PAN: int = 0
 const COMPACT_PAN_NORM: int = 1
@@ -295,16 +310,13 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
-		var native_updates: Array = _native_dmx_decoder.decode_universe(universe_id, frame)
-		var changed_fixture_uuids: Dictionary = _store_native_channel_updates(native_updates)
-		for fixture_uuid_key in changed_fixture_uuids.keys():
-			var fixture_uuid: String = str(fixture_uuid_key)
-			var result: Dictionary = _apply_native_fixture_updates(fixture_uuid, apply_fixture_callback, pending_controls)
-			if result.is_empty():
-				continue
-			fixtures_considered += 1
-			updated += int(result.get("updated", 0))
-			skipped += int(result.get("skipped", 0))
+		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_compact(universe_id, frame)
+		if compact.is_empty():
+			continue
+		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls)
+		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
+		updated += int(compact_result.get("updated", 0))
+		skipped += int(compact_result.get("skipped", 0))
 
 	return {
 		"updated": updated,
@@ -418,6 +430,7 @@ func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictio
 	var fixture_id: int = int(_native_fixture_ids_by_uuid.get(fixture_uuid, 0))
 	if fixture_id <= 0:
 		return
+	_register_native_fixture_render_params(fixture_id, binding)
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PAN, "pan_channel_index_0", "pan_fine_channel_index_0", "pan_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_TILT, "tilt_channel_index_0", "tilt_fine_channel_index_0", "tilt_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_DIMMER, "dimmer_channel_index_0", "dimmer_fine_channel_index_0", "dimmer_ultra_fine_channel_index_0")
@@ -434,6 +447,18 @@ func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictio
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM, "prism_channel_index_0", "prism_fine_channel_index_0", "prism_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_STROBE, "strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0")
+
+func _register_native_fixture_render_params(fixture_id: int, binding: Dictionary) -> void:
+	_native_dmx_decoder.set_fixture_render_params(fixture_id, {
+		"luminous_flux": float(binding.get("luminous_flux", 10000.0)),
+		"beam_angle_default": float(binding.get("beam_angle", 25.0)),
+		"zoom_min_deg": float(binding.get("zoom_physical_min_degrees", -1.0)),
+		"zoom_max_deg": float(binding.get("zoom_physical_max_degrees", -1.0)),
+		"has_zoom": int(binding.get("zoom_channel_index_0", -1)) >= 0,
+		"color_temp_k": float(binding.get("color_temperature", 5600.0)),
+		"spot_multiplier": 1.0,
+		"beam_multiplier": 20.0,
+	})
 
 func _append_native_channel_binding(native_bindings: Array, binding: Dictionary, fixture_id: int, channel_type: int, coarse_key: String, fine_key: String, ultra_fine_key: String) -> void:
 	var coarse_index: int = int(binding.get(coarse_key, -1))
@@ -456,6 +481,61 @@ func _append_native_channel_binding(native_bindings: Array, binding: Dictionary,
 		"ultra_fine_address": resolved_ultra_fine_address,
 		"bit_depth": 8 + (8 if resolved_fine_address >= 0 else 0) + (8 if resolved_ultra_fine_address >= 0 else 0),
 	})
+
+func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
+	var updated: int = 0
+	var skipped: int = 0
+	var fixtures_considered: int = 0
+	var fixture_count: int = int(compact[0])
+	var base: int = 1
+	for _i in range(fixture_count):
+		if base + NATIVE_COMPACT_STRIDE > compact.size():
+			break
+		var fixture_id: int = int(compact[base])
+		var changed_mask: int = int(compact[base + 1])
+		var fixture_uuid: String = str(_native_fixture_uuids_by_id.get(fixture_id, ""))
+		if fixture_uuid.is_empty():
+			base += NATIVE_COMPACT_STRIDE
+			continue
+		_store_compact_fixture_channel_updates(fixture_uuid, compact, base, changed_mask)
+		var result: Dictionary = _apply_native_fixture_updates(fixture_uuid, apply_fixture_callback, pending_controls)
+		if not result.is_empty():
+			fixtures_considered += 1
+			updated += int(result.get("updated", 0))
+			skipped += int(result.get("skipped", 0))
+		base += NATIVE_COMPACT_STRIDE
+	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
+
+func _store_compact_fixture_channel_updates(fixture_uuid: String, compact: PackedFloat32Array, base: int, changed_mask: int) -> void:
+	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_DIMMER, NATIVE_CHANNEL_DIMMER, compact[base + 2 + NATIVE_COMPACT_DIMMER])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PAN, NATIVE_CHANNEL_PAN, compact[base + 2 + NATIVE_COMPACT_PAN])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_TILT, NATIVE_CHANNEL_TILT, compact[base + 2 + NATIVE_COMPACT_TILT])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_ZOOM, NATIVE_CHANNEL_ZOOM, compact[base + 2 + NATIVE_COMPACT_ZOOM])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_CYAN, NATIVE_CHANNEL_CYAN, compact[base + 2 + NATIVE_COMPACT_CYAN])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_MAGENTA, NATIVE_CHANNEL_MAGENTA, compact[base + 2 + NATIVE_COMPACT_MAGENTA])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_YELLOW, NATIVE_CHANNEL_YELLOW, compact[base + 2 + NATIVE_COMPACT_YELLOW])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO, NATIVE_CHANNEL_GOBO, compact[base + 2 + NATIVE_COMPACT_GOBO])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_INDEX, NATIVE_CHANNEL_GOBO_INDEX, compact[base + 2 + NATIVE_COMPACT_GOBO_INDEX])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_ROTATION, NATIVE_CHANNEL_GOBO_ROTATION, compact[base + 2 + NATIVE_COMPACT_GOBO_ROTATION])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PRISM, NATIVE_CHANNEL_PRISM, compact[base + 2 + NATIVE_COMPACT_PRISM])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PRISM_ROTATION, NATIVE_CHANNEL_PRISM_ROTATION, compact[base + 2 + NATIVE_COMPACT_PRISM_ROTATION])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_STROBE, NATIVE_CHANNEL_STROBE, compact[base + 2 + NATIVE_COMPACT_STROBE])
+	_native_channel_values[fixture_uuid] = values
+
+func _store_compact_channel_value(values: Dictionary, changed_mask: int, compact_index: int, channel_type: int, normalized_value: float) -> void:
+	if (changed_mask & (1 << compact_index)) == 0:
+		return
+	var clamped_value: float = clamp(normalized_value, 0.0, 1.0)
+	var raw_value: int = int(round(clamped_value * 255.0))
+	values[channel_type] = {
+		"fixture_id": 0,
+		"channel_type": channel_type,
+		"normalized_value": clamped_value,
+		"raw_value": raw_value,
+		"resolution_bits": 8,
+		"bytes": PackedInt32Array([raw_value]),
+	}
 
 func _store_native_channel_updates(native_updates: Array) -> Dictionary:
 	var changed_fixture_uuids: Dictionary = {}

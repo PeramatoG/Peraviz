@@ -24,10 +24,8 @@ static func BuildDefaultMasterOptics() -> Dictionary:
 
 static func BuildBeamParams(light: SpotLight3D, beam_angle_deg: float, beam_color: Color,
 		normalized_dimmer: float, scaled_intensity: float, lens_radius: float,
-		visual_settings: Dictionary, defaults: Dictionary) -> Dictionary:
-	var merged_defaults: Dictionary = BuildDefaultMasterOptics()
-	for key in defaults.keys():
-		merged_defaults[key] = defaults[key]
+		visual_settings: Dictionary, defaults: Dictionary, pre_merged_defaults: Dictionary = {}) -> Dictionary:
+	var merged_defaults: Dictionary = pre_merged_defaults if not pre_merged_defaults.is_empty() else _build_merged_defaults(defaults)
 	var params := {
 		"beam_angle": beam_angle_deg,
 		"beam_angle_deg": beam_angle_deg,
@@ -61,9 +59,7 @@ static func BuildBeamParams(light: SpotLight3D, beam_angle_deg: float, beam_colo
 	return params
 
 static func BuildGoboControls(controls: Dictionary, visual_settings: Dictionary, defaults: Dictionary) -> Dictionary:
-	var merged_defaults: Dictionary = BuildDefaultMasterOptics()
-	for key in defaults.keys():
-		merged_defaults[key] = defaults[key]
+	var merged_defaults: Dictionary = _build_merged_defaults(defaults)
 	var gobo_controls: Dictionary = controls.duplicate(false)
 	gobo_controls["prefer_native_fog_projector"] = bool(visual_settings.get("use_native_fog_projector_gobos", true))
 	gobo_controls["gobo_scale"] = float(visual_settings.get("gobo_scale", merged_defaults.get("gobo_scale", 1.0)))
@@ -76,3 +72,9 @@ static func BuildGoboControls(controls: Dictionary, visual_settings: Dictionary,
 		gobo_controls["gobo_debug_shake_frequency_hz"] = GoboShakeLimitsScript.clamp_frequency_hz(float(visual_settings.get("gobo_debug_shake_frequency_hz", GoboShakeLimitsScript.DEFAULT_DEBUG_SHAKE_FREQUENCY_HZ)))
 		gobo_controls["gobo_debug_shake_waveform"] = int(visual_settings.get("gobo_debug_shake_waveform", 0))
 	return gobo_controls
+
+static func _build_merged_defaults(defaults: Dictionary) -> Dictionary:
+	var merged_defaults: Dictionary = BuildDefaultMasterOptics()
+	for key in defaults.keys():
+		merged_defaults[key] = defaults[key]
+	return merged_defaults

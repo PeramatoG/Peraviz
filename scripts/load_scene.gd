@@ -2028,6 +2028,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		scaled_intensity,
 		lens_radius,
 		_visual_settings,
+		beam_defaults,
 		beam_defaults
 	)
 	beam_params["fade_end_ratio"] = EMITTER_CONE_FADE_END_RATIO
@@ -2037,7 +2038,9 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	beam_params["volumetric_fog_density"] = float(_visual_settings.get("volumetric_fog_density", 0.0))
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
 	var gobo_topology_changed: bool = false
-	if _fixture_gobo_projector != null:
+	var changed_capability_types: Dictionary = controls.get("changed_capability_types", {})
+	var gobo_capability_changed: bool = changed_capability_types.is_empty() or bool(changed_capability_types.get("gobo", false))
+	if _fixture_gobo_projector != null and gobo_capability_changed:
 		var resolved_gobo_controls: Dictionary = _resolve_gobo_controls(controls)
 		var gobo_source_controls: Dictionary = {
 			"capabilities": controls.get("capabilities", {}),
@@ -2069,6 +2072,9 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		_set_light_meta_variant(light, "peraviz_last_gobo_key", str(gobo_controls.get("key", "")), last_state)
 		var applied_gobo_rotation_deg: float = float(light.get_meta("peraviz_gobo_applied_rotation_deg", beam_params.get("gobo_rotation_deg", 0.0)))
 		beam_params["gobo_rotation_deg"] = applied_gobo_rotation_deg
+	elif _fixture_gobo_projector != null:
+		var applied_rotation: float = float(light.get_meta("peraviz_gobo_applied_rotation_deg", beam_params.get("gobo_rotation_deg", 0.0)))
+		beam_params["gobo_rotation_deg"] = applied_rotation
 	if gobo_topology_changed:
 		_emitter_mesh_rebuild_count += 1
 		_cleanup_light_beam_renderers(light)
