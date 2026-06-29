@@ -633,7 +633,7 @@ func _resolve_gobo_raw_8bit(controls: Dictionary) -> int:
 	return clampi(gobo_raw, 0, 255)
 
 func _resolve_gobo_controls(controls: Dictionary) -> Dictionary:
-	var merged_controls: Dictionary = controls.duplicate(true)
+	var merged_controls: Dictionary = controls.duplicate(false)
 	var capabilities: Dictionary = controls.get("capabilities", {})
 	if capabilities is Dictionary:
 		var gobo_blocks: Array = capabilities.get("gobo", [])
@@ -643,7 +643,7 @@ func _resolve_gobo_controls(controls: Dictionary) -> Dictionary:
 		var has_any_gobo: bool = false
 		for item in gobo_blocks:
 			if item is Dictionary:
-				var block: Dictionary = item.duplicate(true)
+				var block: Dictionary = item
 				if first_gobo_block.is_empty():
 					first_gobo_block = block
 				if bool(block.get("has_gobo", false)):

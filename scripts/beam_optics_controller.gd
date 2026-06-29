@@ -64,7 +64,7 @@ static func BuildGoboControls(controls: Dictionary, visual_settings: Dictionary,
 	var merged_defaults: Dictionary = BuildDefaultMasterOptics()
 	for key in defaults.keys():
 		merged_defaults[key] = defaults[key]
-	var gobo_controls: Dictionary = controls.duplicate(true)
+	var gobo_controls: Dictionary = controls.duplicate(false)
 	gobo_controls["prefer_native_fog_projector"] = bool(visual_settings.get("use_native_fog_projector_gobos", true))
 	gobo_controls["gobo_scale"] = float(visual_settings.get("gobo_scale", merged_defaults.get("gobo_scale", 1.0)))
 	gobo_controls["gobo_rotation_deg"] = float(visual_settings.get("gobo_rotation_deg", merged_defaults.get("gobo_rotation_deg", 0.0)))
