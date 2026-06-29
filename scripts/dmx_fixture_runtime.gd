@@ -29,7 +29,7 @@ var _fixture_nodes: Dictionary = {}
 var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
-var _fixture_capability_hash_cache: Dictionary = {}
+var _fixture_capability_state_cache: Dictionary = {}
 var _native_dmx_decoder: PeravizDmxUniverseDecoder = PeravizDmxUniverseDecoder.new()
 var _native_fixture_ids_by_uuid: Dictionary = {}
 var _native_fixture_uuids_by_id: Dictionary = {}
@@ -62,7 +62,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_bound_fixture_ids.clear()
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
-	_fixture_capability_hash_cache.clear()
+	_fixture_capability_state_cache.clear()
 	_native_dmx_decoder.clear()
 	_native_fixture_ids_by_uuid.clear()
 	_native_fixture_uuids_by_id.clear()
@@ -664,105 +664,63 @@ func _clear_capability_output(capabilities: Dictionary) -> void:
 
 func _filter_unchanged_capabilities(fixture_uuid: String, capabilities: Dictionary) -> Dictionary:
 	var changed_capability_types: Dictionary = {}
-	var previous_hashes: Dictionary = _fixture_capability_hash_cache.get(fixture_uuid, {})
-	var current_hashes: Dictionary = {}
+	var previous_states: Dictionary = _fixture_capability_state_cache.get(fixture_uuid, {})
+	var current_states: Dictionary = {}
 	for capability_type in capabilities.keys():
-		var capability_hash: int = _hash_capability_bucket(str(capability_type), capabilities.get(capability_type, []))
-		current_hashes[capability_type] = capability_hash
-		if _debug_force_full_apply or int(previous_hashes.get(capability_type, -1)) != capability_hash:
+		var capability_state: PackedFloat32Array = _build_capability_numeric_state(str(capability_type), capabilities.get(capability_type, []))
+		current_states[capability_type] = capability_state
+		if _debug_force_full_apply or not _capability_numeric_state_matches(previous_states.get(capability_type, PackedFloat32Array()), capability_state):
 			changed_capability_types[capability_type] = true
-	_fixture_capability_hash_cache[fixture_uuid] = current_hashes
+	_fixture_capability_state_cache[fixture_uuid] = current_states
 	return changed_capability_types
 
-func _hash_capability_bucket(capability_type: String, bucket: Array) -> int:
-	var hash_value: int = _hash_string_into(capability_type, 2166136261)
+func _build_capability_numeric_state(capability_type: String, bucket: Array) -> PackedFloat32Array:
+	var state := PackedFloat32Array()
+	state.append(float(bucket.size()))
 	for item in bucket:
 		if item is not Dictionary:
-			hash_value = _hash_string_into(str(item), hash_value)
 			continue
 		var row: Dictionary = item
 		match capability_type:
 			"pan_tilt":
-				hash_value = _hash_bool_into(bool(row.get("has_pan", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("pan_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_tilt", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("tilt_norm", 0.0)), hash_value)
+				_append_capability_flag_value(state, row, "has_pan", "pan_norm")
+				_append_capability_flag_value(state, row, "has_tilt", "tilt_norm")
 			"dimmer":
-				hash_value = _hash_bool_into(bool(row.get("has_dimmer", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("dimmer_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_zoom", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("zoom_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_zoom_physical_limits", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("zoom_physical_min_degrees", -1.0)), hash_value)
-				hash_value = _hash_float_into(float(row.get("zoom_physical_max_degrees", -1.0)), hash_value)
+				_append_capability_flag_value(state, row, "has_dimmer", "dimmer_norm")
+				_append_capability_flag_value(state, row, "has_zoom", "zoom_norm")
+				state.append(1.0 if bool(row.get("has_zoom_physical_limits", false)) else 0.0)
+				state.append(float(row.get("zoom_physical_min_degrees", -1.0)))
+				state.append(float(row.get("zoom_physical_max_degrees", -1.0)))
 			"color_wheel":
-				hash_value = _hash_bool_into(bool(row.get("has_cyan", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("cyan_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_magenta", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("magenta_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_yellow", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("yellow_norm", 0.0)), hash_value)
+				_append_capability_flag_value(state, row, "has_cyan", "cyan_norm")
+				_append_capability_flag_value(state, row, "has_magenta", "magenta_norm")
+				_append_capability_flag_value(state, row, "has_yellow", "yellow_norm")
 			"gobo":
-				hash_value = _hash_bool_into(bool(row.get("has_gobo", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("gobo_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_gobo_index", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("gobo_index_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_gobo_rotation", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("gobo_rotation_norm", 0.0)), hash_value)
-				hash_value = _hash_string_into(str(row.get("gobo_wheel_name", "")), hash_value)
-				hash_value = _hash_int_into(int(row.get("gobo_wheel_number", 0)), hash_value)
-				hash_value = _hash_variant_into(row.get("gobo_slots", []), hash_value)
-				hash_value = _hash_variant_into(row.get("gobo_ranges", []), hash_value)
+				_append_capability_flag_value(state, row, "has_gobo", "gobo_norm")
+				_append_capability_flag_value(state, row, "has_gobo_index", "gobo_index_norm")
+				_append_capability_flag_value(state, row, "has_gobo_rotation", "gobo_rotation_norm")
+				state.append(float(row.get("gobo_wheel_number", 0)))
 			"prism":
-				hash_value = _hash_bool_into(bool(row.get("has_prism", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("prism_norm", 0.0)), hash_value)
-				hash_value = _hash_bool_into(bool(row.get("has_prism_rotation", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("prism_rotation_norm", 0.0)), hash_value)
+				_append_capability_flag_value(state, row, "has_prism", "prism_norm")
+				_append_capability_flag_value(state, row, "has_prism_rotation", "prism_rotation_norm")
 			"strobe":
-				hash_value = _hash_bool_into(bool(row.get("has_strobe", false)), hash_value)
-				hash_value = _hash_float_into(float(row.get("strobe_norm", 0.0)), hash_value)
-			_:
-				hash_value = _hash_variant_into(row, hash_value)
-	return hash_value
+				_append_capability_flag_value(state, row, "has_strobe", "strobe_norm")
+	return state
 
-func _hash_bool_into(value: bool, hash_value: int) -> int:
-	return _hash_int_into(1 if value else 0, hash_value)
+func _append_capability_flag_value(state: PackedFloat32Array, row: Dictionary, flag_key: String, value_key: String) -> void:
+	state.append(1.0 if bool(row.get(flag_key, false)) else 0.0)
+	state.append(float(row.get(value_key, 0.0)))
 
-func _hash_float_into(value: float, hash_value: int) -> int:
-	return _hash_int_into(int(round(value * 1000000.0)), hash_value)
-
-func _hash_variant(value: Variant) -> int:
-	return _hash_variant_into(value, 2166136261)
-
-func _hash_variant_into(value: Variant, hash_value: int) -> int:
-	if value is Dictionary:
-		var keys: Array = (value as Dictionary).keys()
-		keys.sort()
-		for key in keys:
-			hash_value = _hash_string_into(str(key), hash_value)
-			hash_value = _hash_variant_into((value as Dictionary).get(key), hash_value)
-		return hash_value
-	if value is Array:
-		for item in value:
-			hash_value = _hash_variant_into(item, hash_value)
-		return hash_value
-	if value is PackedInt32Array:
-		for item in value:
-			hash_value = _hash_int_into(int(item), hash_value)
-		return hash_value
-	if value is PackedByteArray:
-		for item in value:
-			hash_value = _hash_int_into(int(item), hash_value)
-		return hash_value
-	return _hash_string_into(str(value), hash_value)
-
-func _hash_string_into(value: String, hash_value: int) -> int:
-	for index in range(value.length()):
-		hash_value = int((hash_value ^ value.unicode_at(index)) * 16777619)
-	return hash_value
-
-func _hash_int_into(value: int, hash_value: int) -> int:
-	return int((hash_value ^ value) * 16777619)
+func _capability_numeric_state_matches(previous_state: Variant, current_state: PackedFloat32Array) -> bool:
+	if previous_state is not PackedFloat32Array:
+		return false
+	var previous: PackedFloat32Array = previous_state
+	if previous.size() != current_state.size():
+		return false
+	for index in range(current_state.size()):
+		if not is_equal_approx(float(previous[index]), float(current_state[index])):
+			return false
+	return true
 
 func _append_capabilities(capabilities: Dictionary, capability_type: String, blocks: Array) -> void:
 	if blocks.is_empty():
