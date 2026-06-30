@@ -182,9 +182,9 @@ func refresh_fixture_bindings() -> Dictionary:
 	_dmx_pending_mutex.unlock()
 	_dmx_runtime_mutex.unlock()
 	_fixture_binding_summary = summary
+	_prewarm_bound_fixture_lighting()
 	if _owner != null and _owner.has_method("bridge_register_dmx_visual_fixtures"):
 		_owner.bridge_register_dmx_visual_fixtures(_dmx_fixture_runtime.get_visual_fixture_registry())
-	_prewarm_bound_fixture_lighting()
 	_refresh_dmx_unbound_details()
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
