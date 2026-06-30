@@ -42,7 +42,7 @@ int test_latest_wins_coalescing() {
     if (frame.values.size() != 1 + peraviz::runtime::kVisualFrameStride) {
         return fail("Unexpected visual frame stride");
     }
-    if (frame.values[3] < 0.99f) {
+    if (frame.values[4] < 0.99f) {
         return fail("Latest dimmer value was not used");
     }
     return 0;
@@ -137,6 +137,118 @@ int test_mass_dirty_fixture_count_and_empty_second_consume() {
     return 0;
 }
 
+// Verifies pan changes with dimmer already on only request transform application.
+int test_pan_tilt_only_mask_with_dimmer_on() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({
+        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 2, 2, -1, -1, 8, 0.0, 1.0},
+    });
+    std::vector<uint8_t> first(16, 0);
+    first[0] = 255;
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial pan fixture state did not emit");
+    }
+    std::vector<uint8_t> second = first;
+    second[1] = 128;
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("Pan-only change did not emit");
+    }
+    const uint32_t channel_mask = static_cast<uint32_t>(frame.values[2]);
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if (channel_mask != (1U << static_cast<uint32_t>(peraviz::runtime::VisualChannel::Pan))) {
+        return fail("Pan-only change emitted the wrong channel mask");
+    }
+    if (visual_mask != peraviz::runtime::VisualChangeTransform) {
+        return fail("Pan-only change emitted lighting work in the visual mask");
+    }
+    return 0;
+}
+
+// Verifies dimmer-only changes do not request transform work.
+int test_dimmer_only_mask() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({
+        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
+    });
+    auto first = make_frame(0, 64, 0);
+    auto second = make_frame(255, 64, 0);
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial dimmer fixture state did not emit");
+    }
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("Dimmer-only change did not emit");
+    }
+    const uint32_t channel_mask = static_cast<uint32_t>(frame.values[2]);
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if (channel_mask != (1U << static_cast<uint32_t>(peraviz::runtime::VisualChannel::Dimmer))) {
+        return fail("Dimmer-only change emitted the wrong channel mask");
+    }
+    if ((visual_mask & peraviz::runtime::VisualChangeDimmer) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U) {
+        return fail("Dimmer-only change emitted the wrong visual mask");
+    }
+    return 0;
+}
+
+// Verifies color-only changes request color/material work only.
+int test_color_only_mask() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({
+        {1, 10, 5, 4, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 6, 5, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 7, 6, -1, -1, 8, 0.0, 1.0},
+    });
+    std::vector<uint8_t> first(16, 0);
+    std::vector<uint8_t> second = first;
+    second[4] = 128;
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial color fixture state did not emit");
+    }
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("Color-only change did not emit");
+    }
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if ((visual_mask & peraviz::runtime::VisualChangeColor) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U || (visual_mask & peraviz::runtime::VisualChangeDimmer) != 0U) {
+        return fail("Color-only change emitted the wrong visual mask");
+    }
+    return 0;
+}
+
+// Verifies zoom-only changes request zoom work only.
+int test_zoom_only_mask() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({{1, 10, 4, 3, -1, -1, 8, 0.0, 1.0}});
+    runtime.set_fixture_render_params(1, {10000.0, 25.0, 4.0, 40.0, 5600.0, 1.0, 20.0, true, false});
+    std::vector<uint8_t> first(16, 0);
+    std::vector<uint8_t> second = first;
+    second[3] = 255;
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial zoom fixture state did not emit");
+    }
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("Zoom-only change did not emit");
+    }
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if ((visual_mask & peraviz::runtime::VisualChangeZoom) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U || (visual_mask & peraviz::runtime::VisualChangeDimmer) != 0U) {
+        return fail("Zoom-only change emitted the wrong visual mask");
+    }
+    return 0;
+}
+
 } // namespace
 
 // Runs visual runtime core regression tests.
@@ -154,6 +266,18 @@ int main() {
         return result;
     }
     if (int result = test_mass_dirty_fixture_count_and_empty_second_consume(); result != 0) {
+        return result;
+    }
+    if (int result = test_pan_tilt_only_mask_with_dimmer_on(); result != 0) {
+        return result;
+    }
+    if (int result = test_dimmer_only_mask(); result != 0) {
+        return result;
+    }
+    if (int result = test_color_only_mask(); result != 0) {
+        return result;
+    }
+    if (int result = test_zoom_only_mask(); result != 0) {
         return result;
     }
     return 0;

@@ -1,11 +1,31 @@
 extends RefCounted
 class_name FixtureLightApplyService
 
+const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
+const VISUAL_CHANGE_DIMMER: int = 1 << 1
+const VISUAL_CHANGE_COLOR: int = 1 << 2
+const VISUAL_CHANGE_ZOOM: int = 1 << 3
+const VISUAL_CHANGE_GOBO: int = 1 << 4
+const VISUAL_CHANGE_MATERIAL: int = 1 << 8
+const VISUAL_CHANGE_BEAM_TOPOLOGY: int = 1 << 9
+
+const VISUAL_FRAME_CHANNEL_MASK_OFFSET: int = 1
+const VISUAL_FRAME_VISUAL_MASK_OFFSET: int = 2
+const VISUAL_FRAME_VALUES_OFFSET: int = 3
+const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = 16
+
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
 	"fixture_apply": {"calls": 0, "total_usec": 0},
+	"light_apply": {"calls": 0, "total_usec": 0},
+	"material_apply": {"calls": 0, "total_usec": 0},
 	"beam_update": {"calls": 0, "total_usec": 0},
 	"gobo_update": {"calls": 0, "total_usec": 0},
+}
+var _visual_apply_counters: Dictionary = {
+	"light_rids_updated": 0,
+	"materials_updated": 0,
+	"beam_topology_rebuilds": 0,
 }
 
 func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls: Dictionary) -> void:
@@ -41,39 +61,43 @@ func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls:
 
 func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, frame_delta_sec: float) -> void:
 	var phase_start: int = Time.get_ticks_usec()
-	var channel_mask: int = int(visual_frame[base + 1])
-	var dimmer_norm: float = clamp(visual_frame[base + 2], 0.0, 1.0)
-	var pan_norm: float = clamp(visual_frame[base + 3], 0.0, 1.0)
-	var tilt_norm: float = clamp(visual_frame[base + 4], 0.0, 1.0)
-	var beam_energy: float = max(visual_frame[base + 15], 0.0)
-	var spot_energy: float = max(visual_frame[base + 16], 0.0)
-	var beam_half_angle: float = clamp(visual_frame[base + 17], 0.1, 90.0)
-	var beam_color := Color(clamp(visual_frame[base + 19], 0.0, 1.0), clamp(visual_frame[base + 20], 0.0, 1.0), clamp(visual_frame[base + 21], 0.0, 1.0), 1.0)
-	var material_energy: float = max(visual_frame[base + 23], 0.0)
-	if (channel_mask & ((1 << 1) | (1 << 2))) != 0:
-		_apply_visual_frame_pan_tilt(loader, fixture_uuid, (channel_mask & (1 << 1)) != 0, pan_norm, (channel_mask & (1 << 2)) != 0, tilt_norm)
-	if (channel_mask & ((1 << 0) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6))) != 0:
-		_apply_visual_frame_lighting(loader, fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_color, material_energy, frame_delta_sec)
+	var visual_mask: int = int(visual_frame[base + VISUAL_FRAME_VISUAL_MASK_OFFSET])
+	var dimmer_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET], 0.0, 1.0)
+	var pan_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 1], 0.0, 1.0)
+	var tilt_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 2], 0.0, 1.0)
+	var beam_energy: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET], 0.0)
+	var spot_energy: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 1], 0.0)
+	var beam_half_angle: float = clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 2], 0.1, 90.0)
+	var beam_angle: float = clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 3], 0.1, 90.0)
+	var beam_color := Color(clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 4], 0.0, 1.0), clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 5], 0.0, 1.0), clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 6], 0.0, 1.0), 1.0)
+	var beam_intensity: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 7], 0.0)
+	var material_energy: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 8], 0.0)
+	if (visual_mask & VISUAL_CHANGE_TRANSFORM) != 0:
+		_apply_visual_frame_pan_tilt(loader, fixture_uuid, pan_norm, tilt_norm)
+	if (visual_mask & (VISUAL_CHANGE_DIMMER | VISUAL_CHANGE_COLOR | VISUAL_CHANGE_ZOOM | VISUAL_CHANGE_MATERIAL | VISUAL_CHANGE_BEAM_TOPOLOGY)) != 0:
+		_apply_visual_frame_lighting(loader, fixture_uuid, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec)
 	_track_phase("fixture_apply", phase_start)
 
-func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, has_pan: bool, pan_norm: float, has_tilt: bool, tilt_norm: float) -> void:
+func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_norm: float, tilt_norm: float) -> void:
 	var pan_degrees: float = lerp(float(loader.pan_min_input.value), float(loader.pan_max_input.value), pan_norm)
 	var tilt_degrees: float = lerp(float(loader.tilt_min_input.value), float(loader.tilt_max_input.value), tilt_norm)
-	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, has_pan, pan_degrees, has_tilt, tilt_degrees)
+	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
-func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_color: Color, material_energy: float, _frame_delta_sec: float) -> void:
+func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, _frame_delta_sec: float) -> void:
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
 	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
 	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
 		return
-	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
+	if (visual_mask & (VISUAL_CHANGE_DIMMER | VISUAL_CHANGE_COLOR | VISUAL_CHANGE_MATERIAL)) != 0:
+		_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
 	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
 	for light in emitter_lights:
 		if light == null or not is_instance_valid(light):
 			continue
-		_apply_visual_frame_light(loader, light, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_color)
+		_apply_visual_frame_light(loader, light, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity)
 
 func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, material_energy: float) -> void:
+	var material_phase_start: int = Time.get_ticks_usec()
 	var emissive_materials: Array = _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
 	for material in emissive_materials:
 		if material is BaseMaterial3D:
@@ -81,16 +105,57 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 			if material_rid.is_valid():
 				RenderingServer.material_set_param(material_rid, "emission", beam_color)
 				RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", material_energy)
+				_visual_apply_counters["materials_updated"] = int(_visual_apply_counters.get("materials_updated", 0)) + 1
+	_track_phase("material_apply", material_phase_start)
 
-func _apply_visual_frame_light(loader: Node, light: SpotLight3D, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_color: Color) -> void:
-	light.visible = dimmer_norm > 0.0001
-	light.light_energy = spot_energy if spot_energy > 0.0 else beam_energy
-	light.spot_angle = beam_half_angle
+func _apply_visual_frame_light(loader: Node, light: SpotLight3D, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
+	var light_phase_start: int = Time.get_ticks_usec()
+	var light_rid: RID = light.get_rid() if light.has_method("get_rid") else RID()
+	var visible: bool = dimmer_norm > 0.0001
+	var light_energy: float = spot_energy if spot_energy > 0.0 else beam_energy
+	light.visible = visible
+	if light_rid.is_valid():
+		RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_ENERGY, light_energy)
+		RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_SPOT_ANGLE, beam_half_angle)
+	else:
+		light.light_energy = light_energy
+		light.spot_angle = beam_half_angle
 	light.light_color = beam_color
 	light.set_meta("peraviz_base_light_energy", beam_energy)
 	light.set_meta("peraviz_beam_base_intensity", dimmer_norm)
+	_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
+	_track_phase("light_apply", light_phase_start)
+	_apply_visual_frame_beam(loader, light, visual_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
+
+func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int, visible: bool, dimmer_norm: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
+	if not loader.has_method("_update_beam_for_light"):
+		return
+	var needs_topology: bool = (visual_mask & VISUAL_CHANGE_BEAM_TOPOLOGY) != 0 or not light.has_meta("peraviz_beam_last_params")
+	if needs_topology:
+		loader._ensure_beam_runtime_for_light(light)
+		var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
+		var beam_defaults: Dictionary = loader.get("_cached_beam_defaults") if loader.get("_cached_beam_defaults") is Dictionary else {}
+		var beam_params: Dictionary = loader._build_cached_beam_params(light, beam_angle, beam_color, dimmer_norm, beam_intensity, lens_radius, beam_defaults)
+		beam_params["is_visible"] = visible
+		beam_params["normalized_dimmer"] = dimmer_norm
+		beam_params["scaled_intensity"] = beam_intensity
+		beam_params["beam_intensity"] = beam_intensity
+		beam_params["intensity_max"] = float(loader.get("BEAM_INTENSITY_MAX")) if loader.get("BEAM_INTENSITY_MAX") != null else 50.0
+		var beam_phase_start: int = Time.get_ticks_usec()
+		loader._update_beam_for_light(light, beam_params)
+		_track_phase("beam_update", beam_phase_start)
+		_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1
+		return
 	if loader.has_method("_update_beam_intensity_for_light"):
+		var beam_phase_start: int = Time.get_ticks_usec()
+		var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
+		params["is_visible"] = visible
+		light.set_meta("peraviz_beam_last_params", params)
 		loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color)
+		_track_phase("beam_update", beam_phase_start)
+
+func get_visual_apply_counters() -> Dictionary:
+	return _visual_apply_counters.duplicate(false)
 
 func resolve_capability_bucket(controls: Dictionary, capability_type: String) -> Array:
 	var capabilities: Dictionary = controls.get("capabilities", {})

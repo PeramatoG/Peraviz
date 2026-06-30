@@ -8,7 +8,7 @@
 namespace peraviz::runtime {
 
 constexpr int kVisualChannelCount = 13;
-constexpr int kVisualFrameStride = 24;
+constexpr int kVisualFrameStride = 25;
 
 enum class VisualChannel : int {
     Dimmer = 0,
@@ -24,6 +24,20 @@ enum class VisualChannel : int {
     Prism = 10,
     PrismRotation = 11,
     Strobe = 12,
+};
+
+enum VisualChangeMask : uint32_t {
+    VisualChangeNone = 0,
+    VisualChangeTransform = 1U << 0,
+    VisualChangeDimmer = 1U << 1,
+    VisualChangeColor = 1U << 2,
+    VisualChangeZoom = 1U << 3,
+    VisualChangeGobo = 1U << 4,
+    VisualChangeGoboRotation = 1U << 5,
+    VisualChangePrism = 1U << 6,
+    VisualChangeStrobe = 1U << 7,
+    VisualChangeMaterial = 1U << 8,
+    VisualChangeBeamTopology = 1U << 9,
 };
 
 struct FixtureChannelBinding {
@@ -57,6 +71,11 @@ struct VisualFrameStats {
     uint64_t universes_considered = 0;
     uint64_t fixtures_dirty = 0;
     uint64_t fixtures_skipped = 0;
+    uint64_t changed_transform = 0;
+    uint64_t changed_dimmer = 0;
+    uint64_t changed_color = 0;
+    uint64_t changed_zoom = 0;
+    uint64_t changed_gobo = 0;
 };
 
 struct VisualFrame {

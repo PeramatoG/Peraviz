@@ -83,7 +83,6 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         universe.interest_hash = interest_hash;
 
         std::unordered_map<int, std::array<float, kVisualChannelCount>> fixture_channels;
-        std::unordered_map<int, int> fixture_masks;
         for (const FixtureChannelBinding &binding : universe.bindings) {
             const int compact_index = compact_index_for_channel_type(binding.channel_type);
             if (compact_index < 0) {
@@ -98,7 +97,6 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 }
             }
             channels[compact_index] = read_normalized_value(universe.latest_frame, binding);
-            fixture_masks[binding.fixture_id] = fixture_masks[binding.fixture_id] | (1 << compact_index);
         }
 
         for (const auto &[fixture_id, channels] : fixture_channels) {
@@ -108,14 +106,17 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             append_render_values(render_buffer, channels, params);
             std::array<float, 9> render_values {};
             std::copy(render_buffer.begin(), render_buffer.end(), render_values.begin());
-            if (!fixture_changed(fixture_id, channels, render_values)) {
+            const FixtureChangeResult change = fixture_changed(fixture_id, channels, render_values);
+            if (!change.changed) {
                 ++stats_.fixtures_skipped;
                 continue;
             }
+            add_visual_mask_stats(change.changed_visual_mask);
             ++stats_.fixtures_dirty;
             ++output_count;
             frame.values.push_back(static_cast<float>(fixture_id));
-            frame.values.push_back(static_cast<float>(fixture_masks[fixture_id]));
+            frame.values.push_back(static_cast<float>(change.changed_channel_mask));
+            frame.values.push_back(static_cast<float>(change.changed_visual_mask));
             for (float value : channels) {
                 frame.values.push_back(value);
             }
@@ -257,21 +258,110 @@ void PeravizVisualRuntimeCore::append_render_values(std::vector<float> &out, con
            static_cast<float>(dimmer * 4.0)};
 }
 
-// Updates cached fixture state and reports whether the cooked state is dirty.
-bool PeravizVisualRuntimeCore::fixture_changed(int fixture_id, const std::array<float, kVisualChannelCount> &channels, const std::array<float, 9> &render_values) {
-    constexpr float default_epsilon = 0.0001f;
-    FixtureState &state = fixture_state_by_id_[fixture_id];
-    bool changed = !state.initialized;
-    for (size_t index = 0; index < channels.size(); ++index) {
-        changed = changed || std::fabs(state.channels[index] - channels[index]) > default_epsilon;
+// Maps a changed channel index to semantic visual apply categories.
+uint32_t PeravizVisualRuntimeCore::visual_mask_for_channel_index(size_t channel_index) {
+    switch (static_cast<VisualChannel>(channel_index)) {
+        case VisualChannel::Dimmer:
+            return VisualChangeDimmer | VisualChangeMaterial;
+        case VisualChannel::Pan:
+        case VisualChannel::Tilt:
+            return VisualChangeTransform;
+        case VisualChannel::Zoom:
+            return VisualChangeZoom | VisualChangeBeamTopology;
+        case VisualChannel::Cyan:
+        case VisualChannel::Magenta:
+        case VisualChannel::Yellow:
+            return VisualChangeColor | VisualChangeMaterial;
+        case VisualChannel::Gobo:
+        case VisualChannel::GoboIndex:
+            return VisualChangeGobo | VisualChangeBeamTopology;
+        case VisualChannel::GoboRotation:
+            return VisualChangeGoboRotation;
+        case VisualChannel::Prism:
+        case VisualChannel::PrismRotation:
+            return VisualChangePrism;
+        case VisualChannel::Strobe:
+            return VisualChangeStrobe;
+        default:
+            return VisualChangeNone;
     }
-    for (size_t index = 0; index < render_values.size(); ++index) {
-        changed = changed || std::fabs(state.render_values[index] - render_values[index]) > default_epsilon;
+}
+
+// Maps changed cooked render indexes to semantic visual apply categories.
+uint32_t PeravizVisualRuntimeCore::visual_mask_for_render_index(size_t render_index) {
+    switch (render_index) {
+        case 0:
+        case 1:
+        case 7:
+        case 8:
+            return VisualChangeDimmer | VisualChangeMaterial;
+        case 2:
+        case 3:
+            return VisualChangeZoom | VisualChangeBeamTopology;
+        case 4:
+        case 5:
+        case 6:
+            return VisualChangeColor | VisualChangeMaterial;
+        default:
+            return VisualChangeNone;
+    }
+}
+
+// Adds cumulative per-category visual mask counters for diagnostics.
+void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
+    if ((visual_mask & VisualChangeTransform) != 0U) {
+        ++stats_.changed_transform;
+    }
+    if ((visual_mask & VisualChangeDimmer) != 0U) {
+        ++stats_.changed_dimmer;
+    }
+    if ((visual_mask & VisualChangeColor) != 0U) {
+        ++stats_.changed_color;
+    }
+    if ((visual_mask & VisualChangeZoom) != 0U) {
+        ++stats_.changed_zoom;
+    }
+    if ((visual_mask & VisualChangeGobo) != 0U) {
+        ++stats_.changed_gobo;
+    }
+}
+
+// Updates cached fixture state and returns real changed channel and visual masks.
+PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::fixture_changed(int fixture_id, const std::array<float, kVisualChannelCount> &channels, const std::array<float, 9> &render_values) {
+    constexpr float default_epsilon = 0.0001f;
+    constexpr float angle_epsilon = 0.01f;
+    FixtureState &state = fixture_state_by_id_[fixture_id];
+    FixtureChangeResult result;
+    result.changed = !state.initialized;
+    if (!state.initialized) {
+        for (size_t index = 0; index < channels.size(); ++index) {
+            result.changed_channel_mask |= 1U << index;
+            result.changed_visual_mask |= visual_mask_for_channel_index(index);
+        }
+        for (size_t index = 0; index < render_values.size(); ++index) {
+            result.changed_visual_mask |= visual_mask_for_render_index(index);
+        }
+    } else {
+        for (size_t index = 0; index < channels.size(); ++index) {
+            const float epsilon = (index == static_cast<size_t>(VisualChannel::Pan) || index == static_cast<size_t>(VisualChannel::Tilt) || index == static_cast<size_t>(VisualChannel::Zoom)) ? angle_epsilon : default_epsilon;
+            if (std::fabs(state.channels[index] - channels[index]) > epsilon) {
+                result.changed = true;
+                result.changed_channel_mask |= 1U << index;
+                result.changed_visual_mask |= visual_mask_for_channel_index(index);
+            }
+        }
+        for (size_t index = 0; index < render_values.size(); ++index) {
+            const float epsilon = (index == 2 || index == 3) ? angle_epsilon : default_epsilon;
+            if (std::fabs(state.render_values[index] - render_values[index]) > epsilon) {
+                result.changed = true;
+                result.changed_visual_mask |= visual_mask_for_render_index(index);
+            }
+        }
     }
     state.channels = channels;
     state.render_values = render_values;
     state.initialized = true;
-    return changed;
+    return result;
 }
 
 } // namespace peraviz::runtime

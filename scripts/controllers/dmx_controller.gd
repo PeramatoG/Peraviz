@@ -291,10 +291,11 @@ func _poll_and_apply_latest_dmx_controls(delta_sec: float) -> void:
 		return
 	var decode_phase_start: int = Time.get_ticks_usec()
 	var apply_stats: Dictionary = {}
-	if _owner != null and _owner.has_method("_apply_dmx_visual_frame"):
-		apply_stats = _owner._apply_dmx_visual_frame(_dmx_fixture_runtime, _dmx_receiver, delta_sec)
-	else:
-		apply_stats = _dmx_fixture_runtime.collect_pending_controls(_dmx_receiver)
+	if _owner == null or not _owner.has_method("_apply_dmx_visual_frame"):
+		push_error("PeravizVisualRuntime apply hook is required for live DMX visualization.")
+		_apply_fixture_time_tick(delta_sec)
+		return
+	apply_stats = _owner._apply_dmx_visual_frame(_dmx_fixture_runtime, _dmx_receiver, delta_sec)
 	var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
 	_apply_collected_dmx_controls(apply_stats, tick_usec, delta_sec)
 
