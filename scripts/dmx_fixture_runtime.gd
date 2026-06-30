@@ -510,6 +510,7 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var fixture_count: int = int(compact[0])
+	var stride: int = _compact_fixture_stride(compact)
 	var base: int = 1
 	for _i in range(fixture_count):
 		if base + NATIVE_COMPACT_STRIDE > compact.size():
@@ -518,16 +519,16 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 		var changed_mask: int = int(compact[base + 1])
 		var fixture_uuid: String = str(_native_fixture_uuids_by_id.get(fixture_id, ""))
 		if fixture_uuid.is_empty():
-			base += _compact_fixture_stride(compact)
+			base += stride
 			continue
 		_store_compact_fixture_channel_updates(fixture_uuid, compact, base, changed_mask)
-		_store_render_ready_fixture_values(fixture_uuid, compact, base)
+		_store_render_ready_fixture_values(fixture_uuid, compact, base, stride)
 		var result: Dictionary = _apply_native_fixture_updates(fixture_uuid, apply_fixture_callback, pending_controls)
 		if not result.is_empty():
 			fixtures_considered += 1
 			updated += int(result.get("updated", 0))
 			skipped += int(result.get("skipped", 0))
-		base += _compact_fixture_stride(compact)
+		base += stride
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
 func _compact_fixture_stride(compact: PackedFloat32Array) -> int:
@@ -553,8 +554,8 @@ func _store_compact_fixture_channel_updates(fixture_uuid: String, compact: Packe
 	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_STROBE, NATIVE_CHANNEL_STROBE, compact[base + 2 + NATIVE_COMPACT_STROBE])
 	_native_channel_values[fixture_uuid] = values
 
-func _store_render_ready_fixture_values(fixture_uuid: String, compact: PackedFloat32Array, base: int) -> void:
-	if _compact_fixture_stride(compact) < NATIVE_RENDER_READY_STRIDE:
+func _store_render_ready_fixture_values(fixture_uuid: String, compact: PackedFloat32Array, base: int, stride: int) -> void:
+	if stride < NATIVE_RENDER_READY_STRIDE:
 		_native_render_ready_values.erase(fixture_uuid)
 		return
 	_native_render_ready_values[fixture_uuid] = PackedFloat32Array([
@@ -574,6 +575,16 @@ func _store_compact_channel_value(values: Dictionary, changed_mask: int, compact
 		return
 	var clamped_value: float = clamp(normalized_value, 0.0, 1.0)
 	var raw_value: int = int(round(clamped_value * 255.0))
+	var existing: Variant = values.get(channel_type, null)
+	if existing is Dictionary:
+		existing["normalized_value"] = clamped_value
+		existing["raw_value"] = raw_value
+		var bytes: PackedInt32Array = existing.get("bytes", PackedInt32Array())
+		if bytes.size() == 1:
+			bytes[0] = raw_value
+		else:
+			existing["bytes"] = PackedInt32Array([raw_value])
+		return
 	values[channel_type] = {
 		"fixture_id": 0,
 		"channel_type": channel_type,

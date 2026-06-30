@@ -123,9 +123,7 @@ PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_compact(int univer
     }
 
     if (fixture_offsets.empty()) {
-        previous_frame = current_frame;
         compact_updates.clear();
-        return compact_updates;
     }
 
     for (const FixtureChannelBinding &binding : bindings_it->second) {
@@ -138,7 +136,9 @@ PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_compact(int univer
     }
 
     previous_frame = current_frame;
-    compact_updates.set(0, static_cast<float>(fixture_offsets.size()));
+    if (!compact_updates.is_empty()) {
+        compact_updates.set(0, static_cast<float>(fixture_offsets.size()));
+    }
     return compact_updates;
 }
 

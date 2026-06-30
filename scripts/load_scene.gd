@@ -202,6 +202,7 @@ const EMITTER_LIGHT_RANGE_BEAM_RADIUS_MULTIPLIER: float = 500.0
 const EMITTER_LIGHT_ENERGY_SCALE: float = 0.02
 const EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG: float = 180.0
 const BEAM_COLOR_TEMPERATURE_STRENGTH: float = 0.04
+const BEAM_PARAMS_TEMPLATE_CACHE_LIMIT: int = 256
 const EMITTER_ZOOM_DEFAULT_MIN_BEAM_ANGLE_DEG: float = 4.0
 const EMITTER_ZOOM_DEFAULT_MAX_BEAM_ANGLE_DEG: float = EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG
 const EMITTER_ZOOM_LENS_RANGE_REFERENCE_M: float = 12.0
@@ -1988,31 +1989,36 @@ func _render_ready_color(values: PackedFloat32Array) -> Color:
 	return Color(clamp(values[4], 0.0, 1.0), clamp(values[5], 0.0, 1.0), clamp(values[6], 0.0, 1.0), 1.0)
 
 func _build_cached_beam_params(light: SpotLight3D, beam_angle: float, beam_color: Color, normalized_dimmer: float, scaled_intensity: float, lens_radius: float, beam_defaults: Dictionary) -> Dictionary:
-	var cache_key: String = "%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%d" % [
+	var cache_key: String = "%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%d" % [
 		beam_angle,
 		beam_color.r,
 		beam_color.g,
 		beam_color.b,
-		normalized_dimmer,
-		scaled_intensity,
 		lens_radius,
 		light.spot_range,
 		1 if light.visible else 0,
 	]
+	var params: Dictionary
 	if _beam_params_template_cache.has(cache_key):
-		return (_beam_params_template_cache.get(cache_key, {}) as Dictionary).duplicate(false)
-	var params: Dictionary = BeamOpticsControllerScript.BuildBeamParams(
-		light,
-		beam_angle,
-		beam_color,
-		normalized_dimmer,
-		scaled_intensity,
-		lens_radius,
-		_visual_settings,
-		beam_defaults,
-		beam_defaults
-	)
-	_beam_params_template_cache[cache_key] = params.duplicate(false)
+		params = (_beam_params_template_cache.get(cache_key, {}) as Dictionary).duplicate(false)
+	else:
+		params = BeamOpticsControllerScript.BuildBeamParams(
+			light,
+			beam_angle,
+			beam_color,
+			0.0,
+			0.0,
+			lens_radius,
+			_visual_settings,
+			beam_defaults,
+			beam_defaults
+		)
+		if _beam_params_template_cache.size() >= BEAM_PARAMS_TEMPLATE_CACHE_LIMIT:
+			_beam_params_template_cache.clear()
+		_beam_params_template_cache[cache_key] = params.duplicate(false)
+	params["normalized_dimmer"] = clamp(normalized_dimmer, 0.0, 1.0)
+	params["scaled_intensity"] = scaled_intensity
+	params["beam_intensity"] = scaled_intensity
 	return params
 
 func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
