@@ -169,6 +169,58 @@ int test_pan_tilt_only_mask_with_dimmer_on() {
     return 0;
 }
 
+
+// Verifies tilt changes with dimmer already on only request transform application.
+int test_tilt_only_mask_with_dimmer_on() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({
+        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 2, 2, -1, -1, 8, 0.0, 1.0},
+    });
+    std::vector<uint8_t> first(16, 0);
+    first[0] = 255;
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial tilt fixture state did not emit");
+    }
+    std::vector<uint8_t> second = first;
+    second[2] = 128;
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("Tilt-only change did not emit");
+    }
+    const uint32_t channel_mask = static_cast<uint32_t>(frame.values[2]);
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if (channel_mask != (1U << static_cast<uint32_t>(peraviz::runtime::VisualChannel::Tilt))) {
+        return fail("Tilt-only change emitted the wrong channel mask");
+    }
+    if (visual_mask != peraviz::runtime::VisualChangeTransform) {
+        return fail("Tilt-only change emitted lighting work in the visual mask");
+    }
+    return 0;
+}
+
+// Verifies repeated identical DMX frames emit no fixtures after the initial state.
+int test_repeated_identical_dmx_frames_emit_no_fixtures() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({
+        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
+    });
+    auto frame = make_frame(255, 64, 0);
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial identical-frame fixture state did not emit");
+    }
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    if (!runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Repeated identical DMX frame emitted fixtures");
+    }
+    return 0;
+}
+
 // Verifies dimmer-only changes do not request transform work.
 int test_dimmer_only_mask() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
@@ -294,7 +346,13 @@ int main() {
     if (int result = test_pan_tilt_only_mask_with_dimmer_on(); result != 0) {
         return result;
     }
+    if (int result = test_tilt_only_mask_with_dimmer_on(); result != 0) {
+        return result;
+    }
     if (int result = test_single_step_pan_change_is_not_filtered(); result != 0) {
+        return result;
+    }
+    if (int result = test_repeated_identical_dmx_frames_emit_no_fixtures(); result != 0) {
         return result;
     }
     if (int result = test_dimmer_only_mask(); result != 0) {

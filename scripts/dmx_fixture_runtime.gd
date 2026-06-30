@@ -259,7 +259,12 @@ func get_fixture_rows() -> Array:
 func get_fixture_inspection_rows() -> Array:
 	return get_fixture_rows()
 
+func is_native_visual_runtime_available() -> bool:
+	return _native_visual_runtime_available and _native_visual_runtime != null
+
 func get_time_tick_fixture_ids() -> PackedStringArray:
+	if is_native_visual_runtime_available():
+		return PackedStringArray()
 	return _time_tick_fixture_ids
 
 func _binding_requires_time_tick(binding: Dictionary) -> bool:
@@ -379,6 +384,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable, loader: Node = nul
 		"native_bindings_count": _native_bindings_count,
 		"visual_frame_size": _last_visual_frame_size,
 		"visual_mask_counts": _last_visual_mask_counts.duplicate(false),
+		"visual_apply_counters": light_apply_service.get_visual_apply_counters() if light_apply_service != null else {},
 		"native_stats": _native_visual_runtime.get_stats() if _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
 	}
 
