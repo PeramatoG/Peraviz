@@ -259,7 +259,12 @@ func get_fixture_rows() -> Array:
 func get_fixture_inspection_rows() -> Array:
 	return get_fixture_rows()
 
+func is_native_visual_runtime_available() -> bool:
+	return _native_visual_runtime_available and _native_visual_runtime != null
+
 func get_time_tick_fixture_ids() -> PackedStringArray:
+	if is_native_visual_runtime_available():
+		return PackedStringArray()
 	return _time_tick_fixture_ids
 
 func _binding_requires_time_tick(binding: Dictionary) -> bool:

@@ -78,6 +78,7 @@ var _beam_params_template_cache: Dictionary = {}
 var _visual_settings := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
+	"enable_realtime_spotlights": false,
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
