@@ -83,6 +83,7 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         universe.interest_hash = interest_hash;
 
         std::unordered_map<int, std::array<float, kVisualChannelCount>> fixture_channels;
+        std::unordered_map<int, int> fixture_masks;
         for (const FixtureChannelBinding &binding : universe.bindings) {
             const int compact_index = compact_index_for_channel_type(binding.channel_type);
             if (compact_index < 0) {
@@ -97,6 +98,7 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 }
             }
             channels[compact_index] = read_normalized_value(universe.latest_frame, binding);
+            fixture_masks[binding.fixture_id] = fixture_masks[binding.fixture_id] | (1 << compact_index);
         }
 
         for (const auto &[fixture_id, channels] : fixture_channels) {
@@ -113,7 +115,7 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             ++stats_.fixtures_dirty;
             ++output_count;
             frame.values.push_back(static_cast<float>(fixture_id));
-            frame.values.push_back(0.0f);
+            frame.values.push_back(static_cast<float>(fixture_masks[fixture_id]));
             for (float value : channels) {
                 frame.values.push_back(value);
             }

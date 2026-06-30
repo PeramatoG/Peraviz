@@ -39,6 +39,59 @@ func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls:
 		apply_dimmer_feedback_to_fixture(loader, fixture_uuid, dimmer_percent, controls)
 	_track_phase("fixture_apply", phase_start)
 
+func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, frame_delta_sec: float) -> void:
+	var phase_start: int = Time.get_ticks_usec()
+	var channel_mask: int = int(visual_frame[base + 1])
+	var dimmer_norm: float = clamp(visual_frame[base + 2], 0.0, 1.0)
+	var pan_norm: float = clamp(visual_frame[base + 3], 0.0, 1.0)
+	var tilt_norm: float = clamp(visual_frame[base + 4], 0.0, 1.0)
+	var beam_energy: float = max(visual_frame[base + 15], 0.0)
+	var spot_energy: float = max(visual_frame[base + 16], 0.0)
+	var beam_half_angle: float = clamp(visual_frame[base + 17], 0.1, 90.0)
+	var beam_color := Color(clamp(visual_frame[base + 19], 0.0, 1.0), clamp(visual_frame[base + 20], 0.0, 1.0), clamp(visual_frame[base + 21], 0.0, 1.0), 1.0)
+	var material_energy: float = max(visual_frame[base + 23], 0.0)
+	if (channel_mask & ((1 << 1) | (1 << 2))) != 0:
+		_apply_visual_frame_pan_tilt(loader, fixture_uuid, (channel_mask & (1 << 1)) != 0, pan_norm, (channel_mask & (1 << 2)) != 0, tilt_norm)
+	if (channel_mask & ((1 << 0) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6))) != 0:
+		_apply_visual_frame_lighting(loader, fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_color, material_energy, frame_delta_sec)
+	_track_phase("fixture_apply", phase_start)
+
+func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, has_pan: bool, pan_norm: float, has_tilt: bool, tilt_norm: float) -> void:
+	var pan_degrees: float = lerp(float(loader.pan_min_input.value), float(loader.pan_max_input.value), pan_norm)
+	var tilt_degrees: float = lerp(float(loader.tilt_min_input.value), float(loader.tilt_max_input.value), tilt_norm)
+	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, has_pan, pan_degrees, has_tilt, tilt_degrees)
+
+func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_color: Color, material_energy: float, _frame_delta_sec: float) -> void:
+	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
+	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
+	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
+		return
+	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
+	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
+	for light in emitter_lights:
+		if light == null or not is_instance_valid(light):
+			continue
+		_apply_visual_frame_light(loader, light, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_color)
+
+func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, material_energy: float) -> void:
+	var emissive_materials: Array = _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
+	for material in emissive_materials:
+		if material is BaseMaterial3D:
+			var material_rid: RID = _get_cached_material_rid(material)
+			if material_rid.is_valid():
+				RenderingServer.material_set_param(material_rid, "emission", beam_color)
+				RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", material_energy)
+
+func _apply_visual_frame_light(loader: Node, light: SpotLight3D, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_color: Color) -> void:
+	light.visible = dimmer_norm > 0.0001
+	light.light_energy = spot_energy if spot_energy > 0.0 else beam_energy
+	light.spot_angle = beam_half_angle
+	light.light_color = beam_color
+	light.set_meta("peraviz_base_light_energy", beam_energy)
+	light.set_meta("peraviz_beam_base_intensity", dimmer_norm)
+	if loader.has_method("_update_beam_intensity_for_light"):
+		loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color)
+
 func resolve_capability_bucket(controls: Dictionary, capability_type: String) -> Array:
 	var capabilities: Dictionary = controls.get("capabilities", {})
 	if capabilities is Dictionary:

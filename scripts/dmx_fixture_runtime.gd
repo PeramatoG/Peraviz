@@ -275,7 +275,10 @@ func collect_pending_controls(receiver) -> Dictionary:
 func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	return _collect_dmx(receiver, apply_fixture_callback)
 
-func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
+func apply_visual_frame(receiver, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float) -> Dictionary:
+	return _collect_dmx(receiver, Callable(), loader, light_apply_service, frame_delta_sec)
+
+func _collect_dmx(receiver, apply_fixture_callback: Callable, loader: Node = null, light_apply_service: FixtureLightApplyService = null, frame_delta_sec: float = 0.0) -> Dictionary:
 	if receiver == null or not receiver.is_running():
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
@@ -317,7 +320,11 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 
 	var visual_frame: PackedFloat32Array = _native_visual_runtime.consume_latest_visual_frame()
 	if not visual_frame.is_empty():
-		var compact_result: Dictionary = _apply_compact_universe_updates(visual_frame, apply_fixture_callback, pending_controls)
+		var compact_result: Dictionary = {}
+		if loader != null and light_apply_service != null:
+			compact_result = _apply_visual_frame_updates(visual_frame, loader, light_apply_service, frame_delta_sec)
+		else:
+			compact_result = _apply_compact_universe_updates(visual_frame, apply_fixture_callback, pending_controls)
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
@@ -506,6 +513,27 @@ func _append_native_channel_binding(native_bindings: Array, binding: Dictionary,
 		"ultra_fine_address": resolved_ultra_fine_address,
 		"bit_depth": 8 + (8 if resolved_fine_address >= 0 else 0) + (8 if resolved_ultra_fine_address >= 0 else 0),
 	})
+
+func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float) -> Dictionary:
+	var updated: int = 0
+	var skipped: int = 0
+	var fixtures_considered: int = 0
+	var fixture_count: int = int(visual_frame[0])
+	var base: int = 1
+	for _i in range(fixture_count):
+		if base + NATIVE_RENDER_READY_STRIDE > visual_frame.size():
+			break
+		var fixture_id: int = int(visual_frame[base])
+		var fixture_uuid: String = str(_native_fixture_uuids_by_id.get(fixture_id, ""))
+		if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
+			skipped += 1
+			base += NATIVE_RENDER_READY_STRIDE
+			continue
+		light_apply_service.apply_visual_frame_to_fixture(loader, fixture_uuid, visual_frame, base, frame_delta_sec)
+		fixtures_considered += 1
+		updated += 1
+		base += NATIVE_RENDER_READY_STRIDE
+	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
 func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var updated: int = 0
