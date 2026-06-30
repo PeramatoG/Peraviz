@@ -138,3 +138,21 @@ Recommended sequence for future work:
 5. Add a `.pvz` project save/load foundation. Implemented initially as format version 1 with copied MVR content and JSON metadata/settings files.
 6. Add MVR writing for patch, position, rotation, fixture name, and fixture ID / fixture number.
 7. Only later consider GDTF mutation with a formal mutation policy.
+
+
+### Realtime DMX visual apply path
+
+The live DMX path uses a visual attribute-mask batch route for render-ready native rows. `DmxFixtureRuntime` converts changed DMX channel masks into visual masks such as dimmer, pan/tilt, color, zoom, beam shape/intensity, gobo, prism, strobe, light, emissive, and material. The compact row stays flat, but the row mask now describes the visual attributes to touch instead of relying on capability presence or a dimmer-only special case.
+
+`DmxController` keeps pending visual batches latest-state-wins. If a newer batch arrives before the previous one is applied, rows are coalesced by integer fixture ID, visual masks are merged, and the newest state values are kept. This prevents the renderer from accumulating stale visual states while preserving independent attributes such as pan/tilt and dimmer when they arrive in separate worker iterations.
+
+At scene binding time, Peraviz registers fixture render handles once by integer fixture ID. The main-thread batch apply uses pre-resolved pan/tilt axes, lights, and emissive materials. Pan/tilt rows only write axis transforms, dimmer rows only update visibility/energy/beam intensity/emissive energy, color rows only update light/beam/material color, and zoom rows update spotlight angle without forcing unrelated color, dimmer, or gobo work. Complex gobo/prism topology remains isolated and reported separately while the legacy per-fixture Dictionary callback path stays available for debug/manual compatibility and unsupported migration gaps.
+
+The Technical Monitor includes a dedicated Realtime DMX Metrics panel with copyable JSON and optional JSONL logging. It separates receiver packet age from main-thread status refresh gap, worker loop gap, visual apply duration, monitor refresh duration, batch rows, coalescing counters, per-attribute apply counters, and legacy fallback counters so `last_packet_ms_ago` is not mistaken for visual latency.
+
+
+The batch bridge keeps a persistent per-fixture visual state table on the Godot side while the native decoder migration continues. The first valid DMX row for a fixture initializes dimmer, pan, tilt, zoom, beam angle, render-ready color, light energy, beam energy, and emissive energy, then forces one full visual apply so dimmer-only first packets still have valid color/material/beam state. Later rows update only the attributes indicated by the visual mask and reuse cached state for dependencies. Metrics distinguish attempted writes from applied writes and report first-DMX initialization plus missing/rebuilt handles against the 16.6 ms frame budget. No interpolation or smoothing is used.
+
+#### Realtime DMX stress-test metric capture
+
+For all-on/off, pan-only, tilt-only, pan+tilt, CMY color-only, zoom-only, gobo-only, prism-only, strobe-only, and mixed fixture-group tests, open **DMX > Technical Monitor > Realtime DMX Metrics** and press **Copy metrics JSON** after each run. Repeat the same sequence with the Technical Monitor closed and compare `apply.visual_apply_block_ms`, `apply.ui_monitor_refresh_usec`, `receiver.main_thread_status_refresh_gap_ms`, `worker.dmx_worker_loop_gap_ms`, `apply.coalesced_rows`, and the per-attribute counters. If the receiver packet age grows while the main-thread gap and apply duration stay low, investigate native receiver/socket pressure; if the main-thread gap or monitor refresh duration grows, the stall is on the Godot/UI side.
