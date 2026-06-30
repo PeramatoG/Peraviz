@@ -313,7 +313,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
-		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_render_ready(universe_id, frame)
+		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_visual_render_ready(universe_id, frame)
 		if compact.is_empty():
 			continue
 		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls)
@@ -530,6 +530,7 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 			skipped += int(result.get("skipped", 0))
 		base += stride
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
+
 
 func _compact_fixture_stride(compact: PackedFloat32Array) -> int:
 	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0

@@ -12,6 +12,7 @@ void PeravizDmxUniverseDecoder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("decode_universe_compact", "universe_id", "current_frame"), &PeravizDmxUniverseDecoder::decode_universe_compact);
     ClassDB::bind_method(D_METHOD("set_fixture_render_params", "fixture_id", "render_params"), &PeravizDmxUniverseDecoder::set_fixture_render_params);
     ClassDB::bind_method(D_METHOD("decode_universe_render_ready", "universe_id", "current_frame"), &PeravizDmxUniverseDecoder::decode_universe_render_ready);
+    ClassDB::bind_method(D_METHOD("decode_universe_visual_render_ready", "universe_id", "current_frame"), &PeravizDmxUniverseDecoder::decode_universe_visual_render_ready);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizDmxUniverseDecoder::clear);
 }
 
@@ -186,11 +187,56 @@ PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_render_ready(int u
     return out;
 }
 
+
+// Decodes a universe into render-ready fixture rows whose visible state changed.
+PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_visual_render_ready(int universe_id, const PackedByteArray &current_frame) {
+    constexpr int render_ready_stride = 24;
+
+    const PackedFloat32Array compact = decode_universe_render_ready(universe_id, current_frame);
+    if (compact.is_empty()) {
+        return compact;
+    }
+
+    const int fixture_count = static_cast<int>(compact[0]);
+    PackedFloat32Array out;
+    out.resize(1 + (fixture_count * render_ready_stride));
+    out.set(0, 0.0f);
+
+    int output_count = 0;
+    int base = 1;
+    for (int i = 0; i < fixture_count; ++i) {
+        if (base + render_ready_stride > compact.size()) {
+            break;
+        }
+
+        const int fixture_id = static_cast<int>(compact[base]);
+        FixtureVisualState &state = visual_state_by_fixture_[fixture_id];
+        if (fixture_visual_state_changed(state, compact, base)) {
+            const int output_base = 1 + (output_count * render_ready_stride);
+            for (int value_index = 0; value_index < render_ready_stride; ++value_index) {
+                out.set(output_base + value_index, compact[base + value_index]);
+            }
+            ++output_count;
+        }
+        base += render_ready_stride;
+    }
+
+    if (output_count <= 0) {
+        out.clear();
+        return out;
+    }
+
+    out.resize(1 + (output_count * render_ready_stride));
+    out.set(0, static_cast<float>(output_count));
+    return out;
+}
+
 // Clears all registered bindings and frame history.
 void PeravizDmxUniverseDecoder::clear() {
     bindings_by_universe_.clear();
     previous_frames_by_universe_.clear();
     render_params_by_fixture_.clear();
+    visual_state_by_fixture_.clear();
 }
 
 // Converts a Godot dictionary into a native channel binding.
@@ -304,6 +350,38 @@ int PeravizDmxUniverseDecoder::compact_index_for_channel_type(int channel_type) 
 // Reads a compact normalized value from a fixture payload.
 double PeravizDmxUniverseDecoder::compact_value_at(const PackedFloat32Array &compact, int base, int compact_index) {
     return static_cast<double>(compact[base + 2 + compact_index]);
+}
+
+
+// Checks whether a visual float value changed beyond its render epsilon.
+bool PeravizDmxUniverseDecoder::visual_value_changed(float previous_value, float current_value, float epsilon) {
+    return std::fabs(previous_value - current_value) > epsilon;
+}
+
+// Updates persistent fixture visual state and reports whether anything visible changed.
+bool PeravizDmxUniverseDecoder::fixture_visual_state_changed(FixtureVisualState &state, const PackedFloat32Array &compact, int base) {
+    constexpr int compact_value_count = 13;
+    constexpr int render_value_count = 9;
+    constexpr float default_epsilon = 0.0001f;
+    constexpr float angle_epsilon = 0.01f;
+
+    bool changed = !state.initialized;
+    for (int value_index = 0; value_index < compact_value_count; ++value_index) {
+        const float current_value = compact[base + 2 + value_index];
+        const float epsilon = value_index == 3 ? angle_epsilon : default_epsilon;
+        changed = changed || visual_value_changed(state.compact_values[value_index], current_value, epsilon);
+        state.compact_values[value_index] = current_value;
+    }
+
+    for (int value_index = 0; value_index < render_value_count; ++value_index) {
+        const float current_value = compact[base + 15 + value_index];
+        const float epsilon = value_index == 2 || value_index == 3 ? angle_epsilon : default_epsilon;
+        changed = changed || visual_value_changed(state.render_values[value_index], current_value, epsilon);
+        state.render_values[value_index] = current_value;
+    }
+
+    state.initialized = true;
+    return changed;
 }
 
 // Appends render-ready light parameters derived from compact DMX values.
