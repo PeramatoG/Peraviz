@@ -7,6 +7,8 @@ While Perastage focuses on project management and editing workflows, Peraviz is 
 
 Peraviz is designed to work independently, but it may later become a partially integrated module inside Perastage (for example, to reuse project assets and scene organization) while still remaining usable as a standalone viewer.
 
+<img width="1919" height="1079" alt="Peraviz" src="https://github.com/user-attachments/assets/19e536f2-e6df-4b70-9d41-14c48f55143b" />
+
 ### Key principles
 
 - **MVR/GDTF as source of truth**  
