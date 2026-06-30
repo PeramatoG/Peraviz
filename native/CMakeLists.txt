@@ -128,6 +128,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/peraviz_visual_runtime_godot.cpp
     )
     target_compile_definitions(peraviz_native PRIVATE PERAVIZ_ENABLE_DMX=1)
     if(WIN32)

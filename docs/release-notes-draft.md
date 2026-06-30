@@ -65,6 +65,7 @@ Changes since the initial Peraviz repository split.
 - Clarified the separation between `.pvz` project data and global user preferences, including how remembered last-file paths are treated as session preferences rather than project source content.
 
 ## Internal changes
+- Reworked the DMX visual apply path to use the native cooked visual runtime as the single frame source, reducing duplicated decode work and preparing the renderer path for flat dirty-fixture updates.
 
 - Added the first modular native visual runtime core for DMX playback, with patched-universe filtering, native interest-offset hashing, latest-frame coalescing, cooked fixed-stride visual output, and regression tests for coalescing, unused universes, irrelevant channel changes, and binding rebuilds.
 - Fixed the native Art-Net flow test helper so it builds consistently with Windows toolchains.

@@ -102,6 +102,41 @@ int test_rebuild_clears_old_state() {
     return 0;
 }
 
+// Verifies a mass fixture update emits exactly the dirty fixture count once.
+int test_mass_dirty_fixture_count_and_empty_second_consume() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    std::vector<peraviz::runtime::FixtureChannelBinding> bindings;
+    bindings.reserve(80);
+    for (int fixture_id = 1; fixture_id <= 80; ++fixture_id) {
+        bindings.push_back({fixture_id, 10, 3, fixture_id - 1, -1, -1, 8, 0.0, 1.0});
+    }
+    runtime.set_fixture_bindings(bindings);
+    std::vector<uint8_t> off_frame(128, 0);
+    std::vector<uint8_t> on_frame(128, 255);
+
+    runtime.submit_universe_frame(10, off_frame.data(), static_cast<int>(off_frame.size()));
+    peraviz::runtime::VisualFrame first_frame = runtime.consume_latest_visual_frame();
+    if (first_frame.values.empty() || static_cast<int>(first_frame.values[0]) != 80) {
+        return fail("Expected the initial 80-fixture frame to emit exactly 80 dirty fixtures");
+    }
+    if (!runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Second consume without a submitted frame should be empty");
+    }
+
+    runtime.submit_universe_frame(10, on_frame.data(), static_cast<int>(on_frame.size()));
+    peraviz::runtime::VisualFrame second_frame = runtime.consume_latest_visual_frame();
+    if (second_frame.values.empty() || static_cast<int>(second_frame.values[0]) != 80) {
+        return fail("Expected the 80-fixture mass toggle to emit exactly 80 dirty fixtures");
+    }
+    if (second_frame.values.size() != 1 + (80 * peraviz::runtime::kVisualFrameStride)) {
+        return fail("Mass toggle output buffer size did not match the dirty fixture count");
+    }
+    if (!runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Repeated consume after mass toggle should be empty");
+    }
+    return 0;
+}
+
 } // namespace
 
 // Runs visual runtime core regression tests.
@@ -116,6 +151,9 @@ int main() {
         return result;
     }
     if (int result = test_rebuild_clears_old_state(); result != 0) {
+        return result;
+    }
+    if (int result = test_mass_dirty_fixture_count_and_empty_second_consume(); result != 0) {
         return result;
     }
     return 0;

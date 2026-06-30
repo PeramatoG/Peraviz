@@ -77,7 +77,7 @@ var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_capability_state_cache: Dictionary = {}
-var _native_dmx_decoder: PeravizDmxUniverseDecoder = PeravizDmxUniverseDecoder.new()
+var _native_visual_runtime: PeravizVisualRuntime = PeravizVisualRuntime.new()
 var _native_fixture_ids_by_uuid: Dictionary = {}
 var _native_fixture_uuids_by_id: Dictionary = {}
 var _native_channel_values: Dictionary = {}
@@ -111,7 +111,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
 	_fixture_capability_state_cache.clear()
-	_native_dmx_decoder.clear()
+	_native_visual_runtime.clear()
 	_native_fixture_ids_by_uuid.clear()
 	_native_fixture_uuids_by_id.clear()
 	_native_channel_values.clear()
@@ -176,7 +176,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			_bindings_by_universe[universe_id].append(binding)
 			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
 
-	_register_native_universe_bindings()
+	_register_native_visual_runtime_bindings()
 	_finalize_universe_interest_offsets()
 
 	for universe_key in _used_universes.keys():
@@ -313,10 +313,11 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
-		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_visual_render_ready(universe_id, frame)
-		if compact.is_empty():
-			continue
-		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls)
+		_native_visual_runtime.submit_universe_frame(universe_id, frame)
+
+	var visual_frame: PackedFloat32Array = _native_visual_runtime.consume_latest_visual_frame()
+	if not visual_frame.is_empty():
+		var compact_result: Dictionary = _apply_compact_universe_updates(visual_frame, apply_fixture_callback, pending_controls)
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
@@ -420,13 +421,13 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
 	_native_channel_values[fixture_uuid] = {}
 
-func _register_native_universe_bindings() -> void:
+func _register_native_visual_runtime_bindings() -> void:
+	var native_bindings: Array = []
 	for universe_key in _bindings_by_universe.keys():
-		var native_bindings: Array = []
 		for binding in _bindings_by_universe.get(universe_key, []):
 			if binding is Dictionary:
 				_append_native_bindings_for_fixture(native_bindings, binding)
-		_native_dmx_decoder.set_fixture_bindings(int(universe_key), native_bindings)
+	_native_visual_runtime.set_fixture_bindings(native_bindings)
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -471,7 +472,7 @@ func _binding_has_color_temperature(fixture_uuid: String) -> bool:
 func _register_native_fixture_render_params(fixture_id: int, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
 	var photometric: Dictionary = _first_fixture_photometric(fixture_id, binding)
-	_native_dmx_decoder.set_fixture_render_params(fixture_id, {
+	_native_visual_runtime.set_fixture_render_params(fixture_id, {
 		"luminous_flux": float(photometric.get("luminous_flux", 10000.0)),
 		"beam_angle_default": float(photometric.get("beam_angle", 25.0)),
 		"zoom_min_deg": float(binding.get("zoom_physical_min_degrees", -1.0)),
@@ -498,6 +499,7 @@ func _append_native_channel_binding(native_bindings: Array, binding: Dictionary,
 		resolved_ultra_fine_address = -1
 	native_bindings.append({
 		"fixture_id": fixture_id,
+		"universe_id": int(binding.get("artnet_universe_id", -1)),
 		"channel_type": channel_type,
 		"start_address": start_address,
 		"fine_address": resolved_fine_address,
