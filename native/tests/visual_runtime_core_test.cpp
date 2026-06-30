@@ -249,6 +249,29 @@ int test_zoom_only_mask() {
     return 0;
 }
 
+// Verifies one DMX step of pan still emits a transform update.
+int test_single_step_pan_change_is_not_filtered() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({{1, 10, 1, 1, -1, -1, 8, 0.0, 1.0}});
+    std::vector<uint8_t> first(16, 0);
+    std::vector<uint8_t> second = first;
+    second[1] = 1;
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial single-step pan fixture state did not emit");
+    }
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("One-step pan change was incorrectly filtered");
+    }
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if (visual_mask != peraviz::runtime::VisualChangeTransform) {
+        return fail("One-step pan change emitted the wrong visual mask");
+    }
+    return 0;
+}
+
 } // namespace
 
 // Runs visual runtime core regression tests.
@@ -269,6 +292,9 @@ int main() {
         return result;
     }
     if (int result = test_pan_tilt_only_mask_with_dimmer_on(); result != 0) {
+        return result;
+    }
+    if (int result = test_single_step_pan_change_is_not_filtered(); result != 0) {
         return result;
     }
     if (int result = test_dimmer_only_mask(); result != 0) {

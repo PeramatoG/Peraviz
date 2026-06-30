@@ -343,8 +343,7 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::fixture_
         }
     } else {
         for (size_t index = 0; index < channels.size(); ++index) {
-            const float epsilon = (index == static_cast<size_t>(VisualChannel::Pan) || index == static_cast<size_t>(VisualChannel::Tilt) || index == static_cast<size_t>(VisualChannel::Zoom)) ? angle_epsilon : default_epsilon;
-            if (std::fabs(state.channels[index] - channels[index]) > epsilon) {
+            if (std::fabs(state.channels[index] - channels[index]) > default_epsilon) {
                 result.changed = true;
                 result.changed_channel_mask |= 1U << index;
                 result.changed_visual_mask |= visual_mask_for_channel_index(index);
