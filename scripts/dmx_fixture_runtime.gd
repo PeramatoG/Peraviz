@@ -95,6 +95,8 @@ var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
 var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
+var _last_visual_filter_usec: int = 0
+
 
 func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_loader = loader
@@ -226,6 +228,18 @@ func get_fixture_inspection_rows() -> Array:
 func get_time_tick_fixture_ids() -> PackedStringArray:
 	return _time_tick_fixture_ids
 
+func get_visual_fixture_registry() -> Array:
+	var rows: Array = []
+	for fixture_uuid in _native_fixture_ids_by_uuid.keys():
+		rows.append({
+			"fixture_id": int(_native_fixture_ids_by_uuid.get(fixture_uuid, 0)),
+			"fixture_uuid": str(fixture_uuid),
+		})
+	return rows
+
+func get_last_visual_filter_usec() -> int:
+	return _last_visual_filter_usec
+
 func _binding_requires_time_tick(binding: Dictionary) -> bool:
 	var channel_bindings: Array = binding.get("channel_bindings", [])
 	for channel_binding in channel_bindings:
@@ -288,12 +302,15 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		changed_frames = _collect_changed_universe_frames_compat(receiver)
 
 	if changed_frames.is_empty() and not _debug_force_full_apply:
+		_last_visual_filter_usec = 0
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var updated: int = 0
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var pending_controls: Array = []
+	var visual_batches: Array = []
+	var native_visual_filter_usec: int = 0
 	for universe_key in changed_frames.keys():
 		var universe_id: int = int(universe_key)
 		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
@@ -313,20 +330,25 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
+		var visual_filter_start: int = Time.get_ticks_usec()
 		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_visual_render_ready(universe_id, frame)
+		native_visual_filter_usec += max(Time.get_ticks_usec() - visual_filter_start, 0)
 		if compact.is_empty():
 			continue
-		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls)
+		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls, visual_batches)
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
 
+	_last_visual_filter_usec = native_visual_filter_usec
 	return {
 		"updated": updated,
 		"skipped": skipped,
 		"universes_changed": changed_frames.size(),
 		"fixtures_considered": fixtures_considered,
 		"controls": pending_controls,
+		"visual_batches": visual_batches,
+		"native_visual_filter_usec": native_visual_filter_usec,
 	}
 
 
@@ -505,12 +527,15 @@ func _append_native_channel_binding(native_bindings: Array, binding: Dictionary,
 		"bit_depth": 8 + (8 if resolved_fine_address >= 0 else 0) + (8 if resolved_ultra_fine_address >= 0 else 0),
 	})
 
-func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
+func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = [], visual_batches: Array = []) -> Dictionary:
 	var updated: int = 0
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var fixture_count: int = int(compact[0])
 	var stride: int = _compact_fixture_stride(compact)
+	if _can_route_dimmer_only_visual_batch(compact):
+		visual_batches.append(compact)
+		return {"updated": fixture_count, "skipped": 0, "fixtures_considered": fixture_count}
 	var base: int = 1
 	for _i in range(fixture_count):
 		if base + NATIVE_COMPACT_STRIDE > compact.size():
@@ -531,6 +556,22 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 		base += stride
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
+
+func _can_route_dimmer_only_visual_batch(compact: PackedFloat32Array) -> bool:
+	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0
+	if fixture_count <= 0:
+		return false
+	var stride: int = _compact_fixture_stride(compact)
+	if stride < NATIVE_RENDER_READY_STRIDE:
+		return false
+	var base: int = 1
+	for _i in range(fixture_count):
+		if base + stride > compact.size():
+			return false
+		if int(compact[base + 1]) != (1 << NATIVE_COMPACT_DIMMER):
+			return false
+		base += stride
+	return true
 
 func _compact_fixture_stride(compact: PackedFloat32Array) -> int:
 	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0
@@ -571,9 +612,7 @@ func _store_render_ready_fixture_values(fixture_uuid: String, compact: PackedFlo
 		compact[base + 23],
 	])
 
-func _store_compact_channel_value(values: Dictionary, changed_mask: int, compact_index: int, channel_type: int, normalized_value: float) -> void:
-	if (changed_mask & (1 << compact_index)) == 0:
-		return
+func _store_compact_channel_value(values: Dictionary, _changed_mask: int, _compact_index: int, channel_type: int, normalized_value: float) -> void:
 	var clamped_value: float = clamp(normalized_value, 0.0, 1.0)
 	var raw_value: int = int(round(clamped_value * 255.0))
 	var existing: Variant = values.get(channel_type, null)

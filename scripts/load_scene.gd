@@ -56,6 +56,8 @@ var _fixture_emitter_nodes_cache: Dictionary = {}
 var _fixture_axis_nodes_cache: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
+var _dmx_visual_handles_by_id: Dictionary = {}
+var _dmx_visual_apply_metrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
 var _ui_controller: UiController
 var _dmx_controller: DmxController
@@ -1684,6 +1686,83 @@ func _find_axis_for_role(axis_nodes: Array, role: String) -> Node3D:
 		return axis_nodes[1]
 	return axis_nodes[0]
 
+
+func bridge_register_dmx_visual_fixtures(fixtures: Array) -> void:
+	_dmx_visual_handles_by_id.clear()
+	for fixture in fixtures:
+		if fixture is not Dictionary:
+			continue
+		var fixture_id: int = int(fixture.get("fixture_id", 0))
+		var fixture_uuid: String = str(fixture.get("fixture_uuid", ""))
+		if fixture_id <= 0 or fixture_uuid.is_empty():
+			continue
+		var geometry_nodes: Array = _get_fixture_geometry_nodes(fixture_uuid)
+		var emitter_nodes: Array = _get_fixture_emitter_nodes(fixture_uuid)
+		_dmx_visual_handles_by_id[fixture_id] = {
+			"lights": _collect_fixture_emitter_lights(fixture_uuid, emitter_nodes),
+			"materials": _collect_fixture_emissive_materials(fixture_uuid, geometry_nodes),
+		}
+
+func bridge_apply_dmx_visual_batches(visual_batches: Array) -> Dictionary:
+	var metrics: Dictionary = {
+		"fixtures_applied": 0,
+		"lights_updated": 0,
+		"beams_updated": 0,
+		"materials_updated": 0,
+		"render_server_calls": 0,
+		"fixtures_in_batch": 0,
+	}
+	for batch in visual_batches:
+		if batch is PackedFloat32Array:
+			_apply_dmx_visual_batch(batch, metrics)
+	_dmx_visual_apply_metrics = metrics
+	return metrics
+
+func _apply_dmx_visual_batch(batch: PackedFloat32Array, metrics: Dictionary) -> void:
+	var fixture_count: int = int(batch[0]) if not batch.is_empty() else 0
+	metrics["fixtures_in_batch"] = int(metrics.get("fixtures_in_batch", 0)) + fixture_count
+	var stride: int = 24
+	var base: int = 1
+	for _i in range(fixture_count):
+		if base + stride > batch.size():
+			break
+		var fixture_id: int = int(batch[base])
+		var handles: Dictionary = _dmx_visual_handles_by_id.get(fixture_id, {})
+		if not handles.is_empty():
+			_apply_dmx_dimmer_only_handles(handles, batch, base, metrics)
+		base += stride
+
+func _apply_dmx_dimmer_only_handles(handles: Dictionary, batch: PackedFloat32Array, base: int, metrics: Dictionary) -> void:
+	var dimmer: float = clamp(batch[base + 2], 0.0, 1.0)
+	var light_energy: float = max(batch[base + 16], 0.0)
+	var beam_intensity: float = clamp(batch[base + 22], 0.0, BEAM_INTENSITY_MAX)
+	var emissive_energy: float = max(batch[base + 23], 0.0)
+	var beam_color: Color = Color(batch[base + 19], batch[base + 20], batch[base + 21], 1.0)
+	var visible: bool = dimmer > 0.0001
+	for light in handles.get("lights", []):
+		if light is not SpotLight3D or not is_instance_valid(light):
+			continue
+		var last_state: Dictionary = _get_or_create_emitter_last_state(light)
+		_set_light_property_bool(light, "visible", visible, last_state)
+		_set_light_property_float(light, "light_energy", light_energy, last_state)
+		_set_light_property_color(light, "light_color", beam_color, last_state)
+		_set_light_meta_float(light, "peraviz_beam_base_intensity", dimmer, last_state)
+		if _update_beam_intensity_for_light(light, dimmer, beam_color):
+			metrics["beams_updated"] = int(metrics.get("beams_updated", 0)) + 1
+		metrics["lights_updated"] = int(metrics.get("lights_updated", 0)) + 1
+		metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 3
+	for material in handles.get("materials", []):
+		if material is not BaseMaterial3D:
+			continue
+		var material_rid: RID = material.get_rid()
+		if not material_rid.is_valid():
+			continue
+		RenderingServer.material_set_param(material_rid, "emission", beam_color)
+		RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", emissive_energy)
+		metrics["materials_updated"] = int(metrics.get("materials_updated", 0)) + 1
+		metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 2
+	metrics["fixtures_applied"] = int(metrics.get("fixtures_applied", 0)) + 1
+
 func _apply_dmx_controls_to_fixture(fixture_uuid: String, controls: Dictionary) -> void:
 	if _fixture_light_apply_service == null:
 		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
@@ -2787,7 +2866,12 @@ func bridge_get_fixture_light_phase_metrics() -> Dictionary:
 		return {}
 	return _fixture_light_apply_service.get_phase_metrics()
 
-func bridge_record_dmx_decode_phase(elapsed_usec: int) -> void:
+func bridge_get_dmx_realtime_metrics() -> Dictionary:
+	return _dmx_visual_apply_metrics.duplicate(true)
+
+func bridge_record_dmx_decode_phase(elapsed_usec: int, realtime_metrics: Dictionary = {}) -> void:
 	if _fixture_light_apply_service == null:
 		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
 	_fixture_light_apply_service.record_dmx_decode_elapsed(elapsed_usec)
+	if not realtime_metrics.is_empty():
+		_dmx_visual_apply_metrics = realtime_metrics

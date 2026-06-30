@@ -11,6 +11,7 @@ var _channel_panels: Array[PanelContainer] = []
 var _channel_labels: Array[Label] = []
 var _channel_values: PackedInt32Array = PackedInt32Array()
 var _show_only_active_channels: bool = false
+var _realtime_metrics: Dictionary = {}
 
 var _state_label: Label
 var _universes_flow: FlowContainer
@@ -88,6 +89,9 @@ func _ready() -> void:
 func configure(receiver) -> void:
 	_receiver = receiver
 
+func set_realtime_metrics(metrics: Dictionary) -> void:
+	_realtime_metrics = metrics
+
 func refresh(running: bool) -> void:
 	if _receiver == null:
 		_state_label.text = "DMX unavailable"
@@ -109,7 +113,7 @@ func refresh(running: bool) -> void:
 	var selected_text: String = "none"
 	if _selected_universe >= 0:
 		selected_text = str(_selected_universe)
-	_state_label.text = "Active universes: %d | Selected universe: %s" % [active_universes.size(), selected_text]
+	_state_label.text = "Active universes: %d | Selected universe: %s%s" % [active_universes.size(), selected_text, _format_realtime_metrics()]
 
 	var data: PackedByteArray = PackedByteArray()
 	if _selected_universe >= 0:
@@ -120,6 +124,25 @@ func refresh(running: bool) -> void:
 		if channel_idx < data.size():
 			channel_value = int(data[channel_idx])
 		_update_channel_cell(channel_idx, channel_value)
+
+func _format_realtime_metrics() -> String:
+	if _realtime_metrics.is_empty():
+		return ""
+	return " | decode %dus | visual filter %dus | apply %dus | fixtures %d/%d | lights %d | beams %d | materials %d | RS calls %d | queue %dus | max %dus | avg %dus | coalesced %d" % [
+		int(_realtime_metrics.get("decode_usec", 0)),
+		int(_realtime_metrics.get("native_visual_filter_usec", 0)),
+		int(_realtime_metrics.get("apply_batch_usec", 0)),
+		int(_realtime_metrics.get("fixtures_applied", 0)),
+		int(_realtime_metrics.get("fixtures_in_batch", _realtime_metrics.get("updated", 0))),
+		int(_realtime_metrics.get("lights_updated", 0)),
+		int(_realtime_metrics.get("beams_updated", 0)),
+		int(_realtime_metrics.get("materials_updated", 0)),
+		int(_realtime_metrics.get("render_server_calls", 0)),
+		int(_realtime_metrics.get("pending_queue_age_usec", 0)),
+		int(_realtime_metrics.get("max_apply_spike_usec", 0)),
+		int(_realtime_metrics.get("moving_average_apply_usec", 0)),
+		int(_realtime_metrics.get("dropped_or_coalesced_batches", 0)),
+	]
 
 func _update_universe_buttons(active_universes: PackedInt32Array) -> void:
 	var active_map: Dictionary = {}

@@ -138,3 +138,12 @@ Recommended sequence for future work:
 5. Add a `.pvz` project save/load foundation. Implemented initially as format version 1 with copied MVR content and JSON metadata/settings files.
 6. Add MVR writing for patch, position, rotation, fixture name, and fixture ID / fixture number.
 7. Only later consider GDTF mutation with a formal mutation policy.
+
+
+### Realtime DMX visual apply path
+
+The live DMX path now has a dedicated batched dimmer-only route for the mass all-on/all-off case. The native decoder still owns render-ready visual state and emits changed compact rows, but `DmxFixtureRuntime` detects batches where every changed fixture only changed the dimmer channel and forwards the flat `PackedFloat32Array` directly to the render side instead of rebuilding one Dictionary per fixture. `DmxController` keeps only the latest pending visual batch, coalescing older unapplied batches so the viewer favors the most recent DMX state instead of accumulating visible backlog.
+
+At scene binding time, Peraviz registers fixture render handles once by integer fixture ID. The main-thread batch apply uses those pre-resolved light and emissive-material handles, applies light energy/color/visibility with RenderingServer-backed helpers, updates existing beam intensity without geometry rebuilds, and leaves the legacy per-fixture Dictionary callback path as fallback for pan/tilt, color, gobo, prism, strobe, zoom, and debug/manual compatibility.
+
+The Technical Monitor can show realtime apply counters for the batched path, including apply time, fixtures in/applied, lights, beams, materials, RenderingServer calls, pending queue age, and coalesced batches. These metrics measure processing latency and should not be confused with packet-age status such as `last_packet_ms_ago`.
