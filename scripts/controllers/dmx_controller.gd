@@ -359,7 +359,6 @@ func _drain_pending_dmx_controls(delta_sec: float) -> void:
 	if apply_stats.is_empty():
 		_apply_fixture_time_tick(delta_sec)
 		return
-	_dmx_runtime_mutex.lock()
 	for item in controls_batch:
 		if item is not Dictionary:
 			continue
@@ -369,7 +368,6 @@ func _drain_pending_dmx_controls(delta_sec: float) -> void:
 			continue
 		controls["frame_delta_sec"] = delta_sec
 		_apply_dmx_controls_callback.call(fixture_uuid, controls)
-	_dmx_runtime_mutex.unlock()
 	_last_updated_fixtures = int(apply_stats.get("updated", 0))
 	_last_skipped_fixtures = int(apply_stats.get("skipped", 0))
 	_last_considered_fixtures = int(apply_stats.get("fixtures_considered", 0))

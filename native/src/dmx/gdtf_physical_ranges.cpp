@@ -29,6 +29,7 @@ bool parse_float_attr_ci(tinyxml2::XMLElement *node,
 
 } // namespace
 
+// Infers default rotation speed ranges from descriptive channel-set names.
 bool infer_rotation_physical_from_name(const std::string &range_name,
                                        float &out_physical_from,
                                        float &out_physical_to) {
@@ -52,9 +53,9 @@ bool infer_rotation_physical_from_name(const std::string &range_name,
         lower_name.find("counter clockwise") != std::string::npos ||
         lower_name.find("anticlockwise") != std::string::npos ||
         lower_name.find("anti clockwise") != std::string::npos;
-    const bool is_cw =
-        lower_name.find("cw") != std::string::npos ||
-        lower_name.find("clockwise") != std::string::npos;
+    const bool is_cw = !is_ccw &&
+        (lower_name.find("cw") != std::string::npos ||
+         lower_name.find("clockwise") != std::string::npos);
 
     int direction_sign = 0;
     if (is_ccw && !is_cw) {

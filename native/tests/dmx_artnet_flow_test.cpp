@@ -40,7 +40,7 @@ std::vector<uint8_t> make_artdmx_packet(uint8_t sequence, uint8_t subuni, uint8_
     packet[16] = static_cast<uint8_t>((declared_length >> 8) & 0xff);
     packet[17] = static_cast<uint8_t>(declared_length & 0xff);
     for (uint16_t index = 0; index < declared_length; ++index) {
-        packet[18 + index] = static_cast<uint8_t>(index & 0xff);
+        packet[18 + index] = static_cast<uint8_t>((index + sequence) & 0xff);
     }
     return packet;
 }
@@ -82,6 +82,7 @@ bool send_udp_packets(uint16_t port, const std::vector<std::vector<uint8_t>> &pa
 #endif
             return false;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 #ifdef _WIN32
     closesocket(socket_handle);
@@ -112,7 +113,7 @@ int test_parser() {
     if (!parser.parse(packet.data(), packet.size(), frame)) {
         return fail("Expected valid ArtDmx packet to parse");
     }
-    if (frame.universe_id != 0x1234 || frame.sequence != 7 || frame.length != 4 || frame.data[3] != 3) {
+    if (frame.universe_id != 0x1234 || frame.sequence != 7 || frame.length != 4 || frame.data[3] != 10) {
         return fail("Parsed ArtDmx fields do not match expected values");
     }
 
@@ -204,13 +205,15 @@ int test_universe_cache() {
     return 0;
 }
 
-// Verifies receiver burst draining, sequence filtering, and source-change metrics through UDP.
+// Verifies receiver burst draining and latest-wins sequence handling through UDP.
 int test_receiver_sequence() {
     peraviz::dmx::ArtNetReceiver receiver;
     constexpr uint16_t kPort = 46454;
     if (!receiver.start("127.0.0.1", kPort)) {
         return fail("Failed to start Art-Net receiver test socket");
     }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     std::vector<uint8_t> seq_1 = make_artdmx_packet(1, 3, 0, 4);
     std::vector<uint8_t> seq_2 = make_artdmx_packet(2, 3, 0, 4);
@@ -221,16 +224,16 @@ int test_receiver_sequence() {
         return fail("Failed to send UDP ArtDmx test packets");
     }
 
-    if (!wait_for_counter(receiver, 3, 3)) {
+    if (!wait_for_counter(receiver, 3, 4)) {
         receiver.stop();
-        return fail("Receiver did not accept expected sequence-filtered packets");
+        return fail("Receiver did not accept expected latest-wins packets");
     }
 
     const peraviz::dmx::ArtNetReceiverStats stats = receiver.get_stats(10000000, 10000000);
     receiver.stop();
-    if (stats.packets_received < 4 || stats.packets_parsed < 4 || stats.frames_written != 3 ||
-        stats.packets_dropped_out_of_order == 0) {
-        return fail("Receiver sequence or burst counters did not match expectations");
+    if (stats.packets_received < 4 || stats.packets_parsed < 4 || stats.frames_written != 4 ||
+        stats.packets_dropped_out_of_order != 0) {
+        return fail("Receiver latest-wins sequence or burst counters did not match expectations");
     }
     return 0;
 }
