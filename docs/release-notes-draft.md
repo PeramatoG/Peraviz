@@ -51,7 +51,7 @@ Changes since the initial Peraviz repository split.
 - Reduced DMX runtime overhead by keeping fixture controls in compact numeric buffers for change detection and apply routing instead of rebuilding per-capability dictionary buckets, avoiding deep control copies in the gobo path, and removed unused high-resolution volumetric fog constants.
 - Reduced threaded DMX apply pressure by sharing decoded fixture control buffers with the main-thread drain under runtime locking instead of deep-copying capability dictionaries for every updated fixture.
 - Reduced live DMX apply work by moving render-ready fixture state comparison into the native decoder, preserving compact numeric batches, and skipping main-thread fixture application when incoming DMX does not produce visible changes.
-- Improved all-on/all-off DMX responsiveness with a batched dimmer-only visual apply path that uses latest-state coalescing, pre-registered render handles, RenderingServer-backed light/material updates, and Technical Monitor latency counters instead of per-fixture Dictionary callbacks.
+- Improved live DMX responsiveness with a general visual attribute-mask batch path that applies dimmer, pan/tilt, color, zoom, strobe, beam, light, emissive, and material updates only to their dependent render state, coalesces pending rows by fixture with latest-state-wins, and exposes copyable Technical Monitor JSON metrics for receiver, worker, apply, backlog, and per-attribute counters.
 - Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
 - PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
 

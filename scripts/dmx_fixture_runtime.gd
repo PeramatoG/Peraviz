@@ -36,6 +36,20 @@ const NATIVE_COMPACT_PRISM: int = 10
 const NATIVE_COMPACT_PRISM_ROTATION: int = 11
 const NATIVE_COMPACT_STROBE: int = 12
 
+const VISUAL_DIMMER: int = 1 << 0
+const VISUAL_PAN_TILT: int = 1 << 1
+const VISUAL_COLOR: int = 1 << 2
+const VISUAL_ZOOM: int = 1 << 3
+const VISUAL_BEAM_SHAPE: int = 1 << 4
+const VISUAL_BEAM_INTENSITY: int = 1 << 5
+const VISUAL_GOBO: int = 1 << 6
+const VISUAL_PRISM: int = 1 << 7
+const VISUAL_STROBE: int = 1 << 8
+const VISUAL_SHUTTER: int = 1 << 9
+const VISUAL_EMISSIVE: int = 1 << 10
+const VISUAL_LIGHT: int = 1 << 11
+const VISUAL_MATERIAL: int = 1 << 12
+
 const COMPACT_CONTROL_SIZE: int = 29
 const COMPACT_HAS_PAN: int = 0
 const COMPACT_PAN_NORM: int = 1
@@ -311,6 +325,8 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	var pending_controls: Array = []
 	var visual_batches: Array = []
 	var native_visual_filter_usec: int = 0
+	var native_rows_visible_changed: int = 0
+	var interest_hash_skipped_universes: int = 0
 	for universe_key in changed_frames.keys():
 		var universe_id: int = int(universe_key)
 		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
@@ -328,6 +344,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 			"interest_offsets": _get_universe_interest_offsets_array(universe_id),
 		}
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
+			interest_hash_skipped_universes += 1
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
 		var visual_filter_start: int = Time.get_ticks_usec()
@@ -335,6 +352,7 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		native_visual_filter_usec += max(Time.get_ticks_usec() - visual_filter_start, 0)
 		if compact.is_empty():
 			continue
+		native_rows_visible_changed += int(compact[0])
 		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls, visual_batches)
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
@@ -349,6 +367,12 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		"controls": pending_controls,
 		"visual_batches": visual_batches,
 		"native_visual_filter_usec": native_visual_filter_usec,
+		"dirty_universes": changed_frames.size(),
+		"interest_hash_skipped_universes": interest_hash_skipped_universes,
+		"native_rows_decoded": native_rows_visible_changed,
+		"native_rows_visible_changed": native_rows_visible_changed,
+		"native_rows_skipped_no_visible_change": 0,
+		"legacy_controls_generated": pending_controls.size(),
 	}
 
 
@@ -533,8 +557,8 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 	var fixtures_considered: int = 0
 	var fixture_count: int = int(compact[0])
 	var stride: int = _compact_fixture_stride(compact)
-	if _can_route_dimmer_only_visual_batch(compact):
-		visual_batches.append(compact)
+	if _can_route_visual_batch(compact):
+		visual_batches.append(_build_visual_attribute_batch(compact))
 		return {"updated": fixture_count, "skipped": 0, "fixtures_considered": fixture_count}
 	var base: int = 1
 	for _i in range(fixture_count):
@@ -557,7 +581,7 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
 
-func _can_route_dimmer_only_visual_batch(compact: PackedFloat32Array) -> bool:
+func _can_route_visual_batch(compact: PackedFloat32Array) -> bool:
 	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0
 	if fixture_count <= 0:
 		return false
@@ -568,10 +592,44 @@ func _can_route_dimmer_only_visual_batch(compact: PackedFloat32Array) -> bool:
 	for _i in range(fixture_count):
 		if base + stride > compact.size():
 			return false
-		if int(compact[base + 1]) != (1 << NATIVE_COMPACT_DIMMER):
+		if _visual_mask_from_dmx_mask(int(compact[base + 1])) == 0:
 			return false
 		base += stride
 	return true
+
+func _build_visual_attribute_batch(compact: PackedFloat32Array) -> PackedFloat32Array:
+	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0
+	var stride: int = _compact_fixture_stride(compact)
+	var out := PackedFloat32Array()
+	out.resize(1 + (fixture_count * NATIVE_RENDER_READY_STRIDE))
+	out[0] = fixture_count
+	var source_base: int = 1
+	var output_base: int = 1
+	for _i in range(fixture_count):
+		for value_index in range(NATIVE_RENDER_READY_STRIDE):
+			out[output_base + value_index] = compact[source_base + value_index]
+		out[output_base + 1] = float(_visual_mask_from_dmx_mask(int(compact[source_base + 1])))
+		source_base += stride
+		output_base += NATIVE_RENDER_READY_STRIDE
+	return out
+
+func _visual_mask_from_dmx_mask(dmx_mask: int) -> int:
+	var visual_mask: int = 0
+	if (dmx_mask & (1 << NATIVE_COMPACT_DIMMER)) != 0:
+		visual_mask |= VISUAL_DIMMER | VISUAL_BEAM_INTENSITY | VISUAL_EMISSIVE | VISUAL_LIGHT | VISUAL_MATERIAL
+	if (dmx_mask & ((1 << NATIVE_COMPACT_PAN) | (1 << NATIVE_COMPACT_TILT))) != 0:
+		visual_mask |= VISUAL_PAN_TILT
+	if (dmx_mask & ((1 << NATIVE_COMPACT_CYAN) | (1 << NATIVE_COMPACT_MAGENTA) | (1 << NATIVE_COMPACT_YELLOW))) != 0:
+		visual_mask |= VISUAL_COLOR | VISUAL_LIGHT | VISUAL_MATERIAL
+	if (dmx_mask & (1 << NATIVE_COMPACT_ZOOM)) != 0:
+		visual_mask |= VISUAL_ZOOM | VISUAL_BEAM_SHAPE | VISUAL_LIGHT
+	if (dmx_mask & ((1 << NATIVE_COMPACT_GOBO) | (1 << NATIVE_COMPACT_GOBO_INDEX) | (1 << NATIVE_COMPACT_GOBO_ROTATION))) != 0:
+		visual_mask |= VISUAL_GOBO | VISUAL_BEAM_SHAPE
+	if (dmx_mask & ((1 << NATIVE_COMPACT_PRISM) | (1 << NATIVE_COMPACT_PRISM_ROTATION))) != 0:
+		visual_mask |= VISUAL_PRISM | VISUAL_BEAM_SHAPE
+	if (dmx_mask & (1 << NATIVE_COMPACT_STROBE)) != 0:
+		visual_mask |= VISUAL_STROBE | VISUAL_SHUTTER | VISUAL_LIGHT
+	return visual_mask
 
 func _compact_fixture_stride(compact: PackedFloat32Array) -> int:
 	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0

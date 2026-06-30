@@ -45,6 +45,8 @@ var _pending_decode_usec: int = 0
 var _pending_drain_requested: bool = false
 var _moving_average_apply_usec: float = 0.0
 var _max_apply_spike_usec: int = 0
+var _last_worker_loop_usec: int = 0
+var _last_status_refresh_msec: int = 0
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
@@ -321,12 +323,18 @@ func _stop_dmx_thread() -> void:
 
 func _dmx_worker() -> void:
 	while _dmx_thread_running:
+		var worker_loop_now_usec: int = Time.get_ticks_usec()
+		var worker_loop_gap_ms: int = 0
+		if _last_worker_loop_usec > 0:
+			worker_loop_gap_ms = int(max(worker_loop_now_usec - _last_worker_loop_usec, 0) / 1000)
+		_last_worker_loop_usec = worker_loop_now_usec
 		if _dmx_receiver == null or not _dmx_receiver.is_running() or _dmx_fixture_runtime == null:
 			OS.delay_msec(2)
 			continue
 		var decode_phase_start: int = Time.get_ticks_usec()
 		_dmx_runtime_mutex.lock()
 		var collect_stats: Dictionary = _dmx_fixture_runtime.collect_pending_controls(_dmx_receiver)
+		collect_stats["dmx_worker_loop_gap_ms"] = worker_loop_gap_ms
 		_dmx_runtime_mutex.unlock()
 		var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
 		if int(collect_stats.get("updated", 0)) > 0 or int(collect_stats.get("skipped", 0)) > 0 or int(collect_stats.get("universes_changed", 0)) > 0:
@@ -334,8 +342,12 @@ func _dmx_worker() -> void:
 			_pending_controls = collect_stats.get("controls", [])
 			var incoming_visual_batches: Array = collect_stats.get("visual_batches", [])
 			if not incoming_visual_batches.is_empty():
-				collect_stats["dropped_or_coalesced_batches"] = int(_pending_stats.get("dropped_or_coalesced_batches", 0)) + int(_pending_visual_batches.size())
-				_pending_visual_batches = incoming_visual_batches
+				var coalesce_result: Dictionary = _coalesce_visual_batches(_pending_visual_batches, incoming_visual_batches)
+				_pending_visual_batches = coalesce_result.get("batches", [])
+				collect_stats["coalesced_batches"] = int(_pending_stats.get("coalesced_batches", 0)) + int(coalesce_result.get("coalesced_batches", 0))
+				collect_stats["coalesced_rows"] = int(_pending_stats.get("coalesced_rows", 0)) + int(coalesce_result.get("coalesced_rows", 0))
+				collect_stats["latest_state_replacements"] = int(_pending_stats.get("latest_state_replacements", 0)) + int(coalesce_result.get("latest_state_replacements", 0))
+				collect_stats["dropped_or_coalesced_batches"] = int(collect_stats.get("coalesced_batches", 0))
 			_pending_stats = collect_stats
 			_pending_decode_usec = tick_usec
 			if not _pending_drain_requested:
@@ -343,6 +355,59 @@ func _dmx_worker() -> void:
 				call_deferred("_drain_pending_dmx_controls_deferred")
 			_dmx_pending_mutex.unlock()
 		OS.delay_msec(2)
+
+func _coalesce_visual_batches(existing_batches: Array, incoming_batches: Array) -> Dictionary:
+	if existing_batches.is_empty() and incoming_batches.size() <= 1:
+		return {"batches": incoming_batches, "coalesced_batches": 0, "coalesced_rows": 0, "latest_state_replacements": 0}
+	var rows_by_fixture: Dictionary = {}
+	var replacements: int = 0
+	var coalesced_rows: int = 0
+	for batch in existing_batches:
+		if batch is PackedFloat32Array:
+			_store_visual_batch_rows(rows_by_fixture, batch, false)
+	for batch in incoming_batches:
+		if batch is PackedFloat32Array:
+			var result: Dictionary = _store_visual_batch_rows(rows_by_fixture, batch, true)
+			replacements += int(result.get("latest_state_replacements", 0))
+			coalesced_rows += int(result.get("coalesced_rows", 0))
+	return {"batches": [_build_coalesced_visual_batch(rows_by_fixture)], "coalesced_batches": existing_batches.size() + max(incoming_batches.size() - 1, 0), "coalesced_rows": coalesced_rows, "latest_state_replacements": replacements}
+
+func _store_visual_batch_rows(rows_by_fixture: Dictionary, batch: PackedFloat32Array, count_replacements: bool) -> Dictionary:
+	var fixture_count: int = int(batch[0]) if not batch.is_empty() else 0
+	var stride: int = 24
+	var base: int = 1
+	var replacements: int = 0
+	var coalesced_rows: int = 0
+	for _i in range(fixture_count):
+		if base + stride > batch.size():
+			break
+		var fixture_id: int = int(batch[base])
+		var row := PackedFloat32Array()
+		row.resize(stride)
+		for value_index in range(stride):
+			row[value_index] = batch[base + value_index]
+		if rows_by_fixture.has(fixture_id):
+			var previous: PackedFloat32Array = rows_by_fixture[fixture_id]
+			row[1] = float(int(previous[1]) | int(row[1]))
+			if count_replacements:
+				replacements += 1
+				coalesced_rows += 1
+		rows_by_fixture[fixture_id] = row
+		base += stride
+	return {"latest_state_replacements": replacements, "coalesced_rows": coalesced_rows}
+
+func _build_coalesced_visual_batch(rows_by_fixture: Dictionary) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var keys: Array = rows_by_fixture.keys()
+	out.resize(1 + (keys.size() * 24))
+	out[0] = keys.size()
+	var base: int = 1
+	for fixture_id in keys:
+		var row: PackedFloat32Array = rows_by_fixture[fixture_id]
+		for value_index in range(24):
+			out[base + value_index] = row[value_index]
+		base += 24
+	return out
 
 func _drain_pending_dmx_controls_deferred() -> void:
 	_drain_pending_dmx_controls(_consume_dmx_delta_sec())
@@ -376,6 +441,7 @@ func _drain_pending_dmx_controls(delta_sec: float) -> void:
 	var batch_metrics: Dictionary = {}
 	if not visual_batches.is_empty() and _owner != null and _owner.has_method("bridge_apply_dmx_visual_batches"):
 		batch_metrics = _owner.bridge_apply_dmx_visual_batches(visual_batches)
+	var legacy_controls_applied: int = 0
 	for item in controls_batch:
 		if item is not Dictionary:
 			continue
@@ -385,6 +451,7 @@ func _drain_pending_dmx_controls(delta_sec: float) -> void:
 			continue
 		controls["frame_delta_sec"] = delta_sec
 		_apply_dmx_controls_callback.call(fixture_uuid, controls)
+		legacy_controls_applied += 1
 	_last_updated_fixtures = int(apply_stats.get("updated", 0))
 	_last_skipped_fixtures = int(apply_stats.get("skipped", 0))
 	_last_considered_fixtures = int(apply_stats.get("fixtures_considered", 0))
@@ -393,6 +460,7 @@ func _drain_pending_dmx_controls(delta_sec: float) -> void:
 	apply_stats["apply_batch_usec"] = apply_elapsed_usec
 	apply_stats["pending_queue_age_usec"] = apply_elapsed_usec + tick_usec
 	apply_stats["decode_usec"] = tick_usec
+	apply_stats["legacy_controls_applied"] = legacy_controls_applied
 	_max_apply_spike_usec = max(_max_apply_spike_usec, apply_elapsed_usec)
 	_moving_average_apply_usec = float(apply_elapsed_usec) if _moving_average_apply_usec <= 0.0 else lerp(_moving_average_apply_usec, float(apply_elapsed_usec), 0.15)
 	apply_stats["max_apply_spike_usec"] = _max_apply_spike_usec
@@ -408,11 +476,17 @@ func _refresh_dmx_status_if_needed(now_msec: int) -> void:
 	if now_msec - _last_monitor_refresh_msec < 125:
 		return
 	_last_monitor_refresh_msec = now_msec
+	var status_gap_ms: int = 0
+	if _last_status_refresh_msec > 0:
+		status_gap_ms = int(max(now_msec - _last_status_refresh_msec, 0))
+	_last_status_refresh_msec = now_msec
 	var stats: Dictionary = _dmx_receiver.get_stats()
 	var stats_active_universes: Variant = stats.get("active_universes", PackedInt32Array())
 	_last_active_universes = stats_active_universes if stats_active_universes is PackedInt32Array else PackedInt32Array()
 	_last_packet_ms = int(stats.get("last_packet_ms_ago", -1))
 	_last_receiving_signal = _last_active_universes.size() > 0 and _last_packet_ms >= 0 and _last_packet_ms <= 2000
+	if _owner != null and _owner.has_method("bridge_update_dmx_receiver_metrics"):
+		_owner.bridge_update_dmx_receiver_metrics(stats, status_gap_ms)
 	_update_dmx_toggle_color(true, _last_receiving_signal)
 	_refresh_dmx_monitor_window(true)
 	_refresh_dmx_quick_panel(true, _last_receiving_signal, _last_active_universes, _last_packet_ms)

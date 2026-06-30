@@ -1,6 +1,21 @@
 @tool
 extends Node3D
 
+
+const VISUAL_DIMMER: int = 1 << 0
+const VISUAL_PAN_TILT: int = 1 << 1
+const VISUAL_COLOR: int = 1 << 2
+const VISUAL_ZOOM: int = 1 << 3
+const VISUAL_BEAM_SHAPE: int = 1 << 4
+const VISUAL_BEAM_INTENSITY: int = 1 << 5
+const VISUAL_GOBO: int = 1 << 6
+const VISUAL_PRISM: int = 1 << 7
+const VISUAL_STROBE: int = 1 << 8
+const VISUAL_SHUTTER: int = 1 << 9
+const VISUAL_EMISSIVE: int = 1 << 10
+const VISUAL_LIGHT: int = 1 << 11
+const VISUAL_MATERIAL: int = 1 << 12
+
 @onready var proxies_root: Node3D = $Proxies
 @onready var status_label: Label = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow/StatusLabel
 @onready var picker: FileDialog = $UIRoot/FileDialog
@@ -58,6 +73,7 @@ var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
 var _dmx_visual_handles_by_id: Dictionary = {}
 var _dmx_visual_apply_metrics: Dictionary = {}
+var _dmx_receiver_metrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
 var _ui_controller: UiController
 var _dmx_controller: DmxController
@@ -1701,6 +1717,8 @@ func bridge_register_dmx_visual_fixtures(fixtures: Array) -> void:
 		_dmx_visual_handles_by_id[fixture_id] = {
 			"lights": _collect_fixture_emitter_lights(fixture_uuid, emitter_nodes),
 			"materials": _collect_fixture_emissive_materials(fixture_uuid, geometry_nodes),
+			"axis": _get_fixture_axis_nodes(fixture_uuid),
+			"legacy_fixture_uuid": fixture_uuid,
 		}
 
 func bridge_apply_dmx_visual_batches(visual_batches: Array) -> Dictionary:
@@ -1711,6 +1729,18 @@ func bridge_apply_dmx_visual_batches(visual_batches: Array) -> Dictionary:
 		"materials_updated": 0,
 		"render_server_calls": 0,
 		"fixtures_in_batch": 0,
+		"batch_rows_received": 0,
+		"batch_rows_applied": 0,
+		"no_op_rows_skipped": 0,
+		"node_property_writes": 0,
+		"attributes_applied_dimmer": 0,
+		"attributes_applied_pan_tilt": 0,
+		"attributes_applied_color": 0,
+		"attributes_applied_zoom": 0,
+		"attributes_applied_gobo": 0,
+		"attributes_applied_prism": 0,
+		"attributes_applied_strobe": 0,
+		"visual_batch_rows_by_mask": {},
 	}
 	for batch in visual_batches:
 		if batch is PackedFloat32Array:
@@ -1720,6 +1750,7 @@ func bridge_apply_dmx_visual_batches(visual_batches: Array) -> Dictionary:
 
 func _apply_dmx_visual_batch(batch: PackedFloat32Array, metrics: Dictionary) -> void:
 	var fixture_count: int = int(batch[0]) if not batch.is_empty() else 0
+	metrics["batch_rows_received"] = int(metrics.get("batch_rows_received", 0)) + fixture_count
 	metrics["fixtures_in_batch"] = int(metrics.get("fixtures_in_batch", 0)) + fixture_count
 	var stride: int = 24
 	var base: int = 1
@@ -1727,41 +1758,85 @@ func _apply_dmx_visual_batch(batch: PackedFloat32Array, metrics: Dictionary) -> 
 		if base + stride > batch.size():
 			break
 		var fixture_id: int = int(batch[base])
+		var visual_mask: int = int(batch[base + 1])
+		var mask_counts: Dictionary = metrics.get("visual_batch_rows_by_mask", {})
+		mask_counts[str(visual_mask)] = int(mask_counts.get(str(visual_mask), 0)) + 1
+		metrics["visual_batch_rows_by_mask"] = mask_counts
 		var handles: Dictionary = _dmx_visual_handles_by_id.get(fixture_id, {})
-		if not handles.is_empty():
-			_apply_dmx_dimmer_only_handles(handles, batch, base, metrics)
+		if handles.is_empty() or visual_mask == 0:
+			metrics["no_op_rows_skipped"] = int(metrics.get("no_op_rows_skipped", 0)) + 1
+		else:
+			_apply_dmx_visual_attribute_row(handles, visual_mask, batch, base, metrics)
 		base += stride
 
-func _apply_dmx_dimmer_only_handles(handles: Dictionary, batch: PackedFloat32Array, base: int, metrics: Dictionary) -> void:
+func _apply_dmx_visual_attribute_row(handles: Dictionary, visual_mask: int, batch: PackedFloat32Array, base: int, metrics: Dictionary) -> void:
+	if (visual_mask & VISUAL_PAN_TILT) != 0:
+		_apply_dmx_visual_pan_tilt(handles, batch, base, metrics)
+	if (visual_mask & (VISUAL_DIMMER | VISUAL_COLOR | VISUAL_ZOOM | VISUAL_BEAM_INTENSITY | VISUAL_EMISSIVE | VISUAL_LIGHT | VISUAL_MATERIAL | VISUAL_STROBE | VISUAL_SHUTTER)) != 0:
+		_apply_dmx_visual_light_materials(handles, visual_mask, batch, base, metrics)
+	if (visual_mask & (VISUAL_GOBO | VISUAL_PRISM)) != 0:
+		metrics["visual_complex_fallback_rows"] = int(metrics.get("visual_complex_fallback_rows", 0)) + 1
+		if (visual_mask & VISUAL_GOBO) != 0:
+			metrics["attributes_applied_gobo"] = int(metrics.get("attributes_applied_gobo", 0)) + 1
+		if (visual_mask & VISUAL_PRISM) != 0:
+			metrics["attributes_applied_prism"] = int(metrics.get("attributes_applied_prism", 0)) + 1
+	metrics["batch_rows_applied"] = int(metrics.get("batch_rows_applied", 0)) + 1
+	metrics["fixtures_applied"] = int(metrics.get("fixtures_applied", 0)) + 1
+
+func _apply_dmx_visual_pan_tilt(handles: Dictionary, batch: PackedFloat32Array, base: int, metrics: Dictionary) -> void:
+	var axis_entry: Dictionary = handles.get("axis", {})
+	var pan_axis: Node3D = axis_entry.get("pan", null) as Node3D
+	var tilt_axis: Node3D = axis_entry.get("tilt", null) as Node3D
+	if pan_axis != null:
+		pan_axis.rotation_degrees.y = lerp(float(pan_min_input.value), float(pan_max_input.value), clamp(batch[base + 3], 0.0, 1.0))
+		metrics["node_property_writes"] = int(metrics.get("node_property_writes", 0)) + 1
+	if tilt_axis != null:
+		tilt_axis.rotation_degrees.x = lerp(float(tilt_min_input.value), float(tilt_max_input.value), clamp(batch[base + 4], 0.0, 1.0))
+		metrics["node_property_writes"] = int(metrics.get("node_property_writes", 0)) + 1
+	metrics["attributes_applied_pan_tilt"] = int(metrics.get("attributes_applied_pan_tilt", 0)) + 1
+
+func _apply_dmx_visual_light_materials(handles: Dictionary, visual_mask: int, batch: PackedFloat32Array, base: int, metrics: Dictionary) -> void:
 	var dimmer: float = clamp(batch[base + 2], 0.0, 1.0)
 	var light_energy: float = max(batch[base + 16], 0.0)
-	var beam_intensity: float = clamp(batch[base + 22], 0.0, BEAM_INTENSITY_MAX)
-	var emissive_energy: float = max(batch[base + 23], 0.0)
 	var beam_color: Color = Color(batch[base + 19], batch[base + 20], batch[base + 21], 1.0)
+	var emissive_energy: float = max(batch[base + 23], 0.0)
 	var visible: bool = dimmer > 0.0001
 	for light in handles.get("lights", []):
 		if light is not SpotLight3D or not is_instance_valid(light):
 			continue
 		var last_state: Dictionary = _get_or_create_emitter_last_state(light)
-		_set_light_property_bool(light, "visible", visible, last_state)
-		_set_light_property_float(light, "light_energy", light_energy, last_state)
-		_set_light_property_color(light, "light_color", beam_color, last_state)
-		_set_light_meta_float(light, "peraviz_beam_base_intensity", dimmer, last_state)
-		if _update_beam_intensity_for_light(light, dimmer, beam_color):
+		if (visual_mask & (VISUAL_DIMMER | VISUAL_STROBE | VISUAL_SHUTTER)) != 0:
+			_set_light_property_bool(light, "visible", visible, last_state)
+			_set_light_property_float(light, "light_energy", light_energy, last_state)
+			_set_light_meta_float(light, "peraviz_beam_base_intensity", dimmer, last_state)
+			metrics["attributes_applied_dimmer"] = int(metrics.get("attributes_applied_dimmer", 0)) + 1
+			if (visual_mask & (VISUAL_STROBE | VISUAL_SHUTTER)) != 0:
+				metrics["attributes_applied_strobe"] = int(metrics.get("attributes_applied_strobe", 0)) + 1
+			metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 2
+		if (visual_mask & VISUAL_COLOR) != 0:
+			_set_light_property_color(light, "light_color", beam_color, last_state)
+			metrics["attributes_applied_color"] = int(metrics.get("attributes_applied_color", 0)) + 1
+			metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 1
+		if (visual_mask & VISUAL_ZOOM) != 0:
+			_set_light_property_float(light, "spot_angle", batch[base + 17], last_state)
+			metrics["attributes_applied_zoom"] = int(metrics.get("attributes_applied_zoom", 0)) + 1
+			metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 1
+		if (visual_mask & (VISUAL_DIMMER | VISUAL_COLOR | VISUAL_BEAM_INTENSITY)) != 0 and _update_beam_intensity_for_light(light, dimmer, beam_color):
 			metrics["beams_updated"] = int(metrics.get("beams_updated", 0)) + 1
 		metrics["lights_updated"] = int(metrics.get("lights_updated", 0)) + 1
-		metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 3
 	for material in handles.get("materials", []):
 		if material is not BaseMaterial3D:
 			continue
 		var material_rid: RID = material.get_rid()
 		if not material_rid.is_valid():
 			continue
-		RenderingServer.material_set_param(material_rid, "emission", beam_color)
-		RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", emissive_energy)
+		if (visual_mask & VISUAL_COLOR) != 0:
+			RenderingServer.material_set_param(material_rid, "emission", beam_color)
+			metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 1
+		if (visual_mask & (VISUAL_DIMMER | VISUAL_EMISSIVE)) != 0:
+			RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", emissive_energy)
+			metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 1
 		metrics["materials_updated"] = int(metrics.get("materials_updated", 0)) + 1
-		metrics["render_server_calls"] = int(metrics.get("render_server_calls", 0)) + 2
-	metrics["fixtures_applied"] = int(metrics.get("fixtures_applied", 0)) + 1
 
 func _apply_dmx_controls_to_fixture(fixture_uuid: String, controls: Dictionary) -> void:
 	if _fixture_light_apply_service == null:
@@ -2867,7 +2942,14 @@ func bridge_get_fixture_light_phase_metrics() -> Dictionary:
 	return _fixture_light_apply_service.get_phase_metrics()
 
 func bridge_get_dmx_realtime_metrics() -> Dictionary:
-	return _dmx_visual_apply_metrics.duplicate(true)
+	var metrics: Dictionary = _dmx_visual_apply_metrics.duplicate(true)
+	metrics["receiver"] = _dmx_receiver_metrics.duplicate(true)
+	return metrics
+
+func bridge_update_dmx_receiver_metrics(receiver_stats: Dictionary, status_refresh_gap_ms: int) -> void:
+	_dmx_receiver_metrics = receiver_stats.duplicate(true)
+	_dmx_receiver_metrics["native_receiver_last_packet_ms"] = int(receiver_stats.get("last_packet_ms_ago", -1))
+	_dmx_receiver_metrics["main_thread_status_refresh_gap_ms"] = status_refresh_gap_ms
 
 func bridge_record_dmx_decode_phase(elapsed_usec: int, realtime_metrics: Dictionary = {}) -> void:
 	if _fixture_light_apply_service == null:
