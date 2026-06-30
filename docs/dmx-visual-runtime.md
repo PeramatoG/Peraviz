@@ -14,12 +14,15 @@ Peraviz treats live DMX playback as a latest-state visual simulation instead of 
 
 ## Current native frame schema
 
-The visual runtime core emits a fixed stride of 24 floats per dirty fixture:
+The visual runtime core emits a fixed stride of 25 floats per dirty fixture:
 
 - fixture id
-- dirty mask placeholder
+- dirty channel mask
+- semantic visual change mask
 - 13 normalized visual channel values
 - 9 cooked render values: base energy, spot energy, inner angle, outer angle, RGB color, beam intensity, and material emission energy
+
+Dimmer changes that cross the off/on visibility threshold are flagged as beam-topology changes. That keeps the native diff efficient for normal dimmer fades while ensuring Godot rebuilds or revalidates the reusable beam target when a prewarmed hidden beam becomes visible again.
 
 This format is intentionally narrow and typed so it can later be applied directly by a native main-thread applier using cached ObjectIDs or RenderingServer RIDs.
 

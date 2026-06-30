@@ -102,7 +102,7 @@ The live DMX path should keep expensive state work outside the Godot scene tree 
 
 1. The native Art-Net receiver owns packet reception and latest-frame universe caching.
 2. The native DMX decoder consumes only dirty patched universes and normalizes registered fixture channels into fixed-stride numeric rows.
-3. The native visual runtime layer keeps persistent render-ready fixture state, compares incoming values with small numeric tolerances, and emits only fixtures whose visual state changed.
+3. The native visual runtime layer keeps persistent render-ready fixture state, compares incoming values with small numeric tolerances, and emits only fixtures whose visual state changed. Dimmer visibility crossings are also marked as beam-topology work so hidden prewarmed beams can be revalidated when a console raises intensity.
 4. GDScript receives one compact `PackedFloat32Array` batch per changed universe and applies the existing node, light, material, gobo, prism, and beam updates only for the filtered fixture rows.
 
 This keeps dictionaries, fixture lookup, and SceneTree work out of the decode/filter stage. Godot-side code may still own scene creation, fixture registration, UI, debug tools, and the final render object updates, but it should not rebuild controls or call fixture callbacks for DMX packets that do not produce visible fixture changes.

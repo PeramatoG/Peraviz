@@ -357,6 +357,12 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::fixture_
             }
         }
     }
+    const bool previous_visible = state.initialized && state.channels[static_cast<size_t>(VisualChannel::Dimmer)] > default_epsilon;
+    const bool current_visible = channels[static_cast<size_t>(VisualChannel::Dimmer)] > default_epsilon;
+    if (state.initialized && previous_visible != current_visible) {
+        result.changed_visual_mask |= VisualChangeBeamTopology;
+    }
+
     state.channels = channels;
     state.render_values = render_values;
     state.initialized = true;
