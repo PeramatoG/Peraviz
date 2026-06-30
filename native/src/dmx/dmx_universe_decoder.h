@@ -26,7 +26,7 @@ public:
     PackedFloat32Array decode_universe_compact(int universe_id, const PackedByteArray &current_frame);
     void set_fixture_render_params(int fixture_id, const Dictionary &render_params);
     PackedFloat32Array decode_universe_render_ready(int universe_id, const PackedByteArray &current_frame);
-    Dictionary decode_universe_visual_batch(int universe_id, const PackedByteArray &current_frame);
+    PackedFloat32Array decode_universe_visual_render_ready(int universe_id, const PackedByteArray &current_frame);
     void clear();
 
 private:
@@ -44,7 +44,8 @@ private:
 
     struct FixtureVisualState {
         bool initialized = false;
-        float values[22] = {};
+        float compact_values[13] = {};
+        float render_values[9] = {};
     };
 
     struct FixtureChannelBinding {
@@ -68,7 +69,7 @@ private:
     static double compact_value_at(const PackedFloat32Array &compact, int base, int compact_index);
     static void append_render_ready_values(PackedFloat32Array &out, const PackedFloat32Array &compact, int base, const FixtureRenderParams &params);
     static bool visual_value_changed(float previous_value, float current_value, float epsilon);
-    static int visual_mask_for_changed_value(int value_index);
+    static bool fixture_visual_state_changed(FixtureVisualState &state, const PackedFloat32Array &compact, int base);
 
     std::unordered_map<int, std::vector<FixtureChannelBinding>> bindings_by_universe_;
     std::unordered_map<int, PackedByteArray> previous_frames_by_universe_;

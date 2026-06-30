@@ -96,6 +96,19 @@ Editing features must preserve data ownership across MVR, GDTF, `.pvz`, and runt
 
 When an edit is added, the UI and persistence path should first identify the owning layer. If the owning layer is not writable yet, the feature should remain read-only or be saved only in an appropriate Peraviz project override.
 
+## Live DMX runtime direction
+
+The live DMX path should keep expensive state work outside the Godot scene tree whenever possible. The intended hot path is:
+
+1. The native Art-Net receiver owns packet reception and latest-frame universe caching.
+2. The native DMX decoder consumes only dirty patched universes and normalizes registered fixture channels into fixed-stride numeric rows.
+3. The native visual runtime layer keeps persistent render-ready fixture state, compares incoming values with small numeric tolerances, and emits only fixtures whose visual state changed.
+4. GDScript receives one compact `PackedFloat32Array` batch per changed universe and applies the existing node, light, material, gobo, prism, and beam updates only for the filtered fixture rows.
+
+This keeps dictionaries, fixture lookup, and SceneTree work out of the decode/filter stage. Godot-side code may still own scene creation, fixture registration, UI, debug tools, and the final render object updates, but it should not rebuild controls or call fixture callbacks for DMX packets that do not produce visible fixture changes.
+
+The current incremental native path preserves the existing compact row layout so legacy fixture apply code continues to work while the renderer can be moved further toward RenderingServer, MultiMesh, instance uniforms, and shader-driven beam updates in smaller focused steps.
+
 ## UI direction
 
 Future UI should expose fixture data using user-facing fields that map to lighting workflows:
