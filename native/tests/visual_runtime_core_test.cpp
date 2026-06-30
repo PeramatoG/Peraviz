@@ -250,6 +250,39 @@ int test_dimmer_only_mask() {
     return 0;
 }
 
+
+// Verifies dimmer visibility crossings rebuild beam topology so hidden prewarmed beams can turn on.
+int test_dimmer_visibility_crossing_requests_beam_topology() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({{1, 10, 3, 0, -1, -1, 8, 0.0, 1.0}});
+    auto first = make_frame(0, 0, 0);
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial dimmer-off fixture state did not emit");
+    }
+    auto second = make_frame(255, 0, 0);
+    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
+    peraviz::runtime::VisualFrame frame = runtime.consume_latest_visual_frame();
+    if (frame.values.empty()) {
+        return fail("Dimmer visibility crossing did not emit");
+    }
+    const uint32_t visual_mask = static_cast<uint32_t>(frame.values[3]);
+    if ((visual_mask & peraviz::runtime::VisualChangeDimmer) == 0U || (visual_mask & peraviz::runtime::VisualChangeBeamTopology) == 0U) {
+        return fail("Dimmer visibility crossing did not request dimmer and beam topology work");
+    }
+    auto third = make_frame(200, 0, 0);
+    runtime.submit_universe_frame(10, third.data(), static_cast<int>(third.size()));
+    peraviz::runtime::VisualFrame dimmed_frame = runtime.consume_latest_visual_frame();
+    if (dimmed_frame.values.empty()) {
+        return fail("Visible dimmer level change did not emit");
+    }
+    const uint32_t visible_dimmer_mask = static_cast<uint32_t>(dimmed_frame.values[3]);
+    if ((visible_dimmer_mask & peraviz::runtime::VisualChangeBeamTopology) != 0U) {
+        return fail("Visible dimmer level change requested unnecessary beam topology work");
+    }
+    return 0;
+}
+
 // Verifies color-only changes request color/material work only.
 int test_color_only_mask() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
@@ -356,6 +389,9 @@ int main() {
         return result;
     }
     if (int result = test_dimmer_only_mask(); result != 0) {
+        return result;
+    }
+    if (int result = test_dimmer_visibility_crossing_requests_beam_topology(); result != 0) {
         return result;
     }
     if (int result = test_color_only_mask(); result != 0) {
