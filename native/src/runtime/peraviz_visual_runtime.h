@@ -1,0 +1,52 @@
+#pragma once
+
+#include "runtime/visual_frame_buffers.h"
+
+#include <array>
+#include <cstdint>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace peraviz::runtime {
+
+class PeravizVisualRuntimeCore {
+public:
+    void clear();
+    void set_fixture_bindings(const std::vector<FixtureChannelBinding> &bindings);
+    void set_fixture_render_params(int fixture_id, const FixtureRenderParams &params);
+    void submit_universe_frame(int universe_id, const uint8_t *data, int length);
+    VisualFrame consume_latest_visual_frame();
+    const VisualFrameStats &stats() const;
+
+private:
+    struct UniverseState {
+        std::vector<FixtureChannelBinding> bindings;
+        std::vector<int> interest_offsets;
+        std::vector<uint8_t> latest_frame;
+        uint64_t interest_hash = 0;
+        bool has_pending_frame = false;
+        bool has_hash = false;
+    };
+
+    struct FixtureState {
+        std::array<float, kVisualChannelCount> channels {};
+        std::array<float, 9> render_values {};
+        bool initialized = false;
+    };
+
+    static int compact_index_for_channel_type(int channel_type);
+    static int bytes_for_bit_depth(int bit_depth);
+    static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
+    static float read_normalized_value(const std::vector<uint8_t> &frame, const FixtureChannelBinding &binding);
+    static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
+    static void append_render_values(std::vector<float> &out, const std::array<float, kVisualChannelCount> &channels, const FixtureRenderParams &params);
+    bool fixture_changed(int fixture_id, const std::array<float, kVisualChannelCount> &channels, const std::array<float, 9> &render_values);
+
+    std::unordered_map<int, UniverseState> universes_;
+    std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
+    std::unordered_map<int, FixtureState> fixture_state_by_id_;
+    VisualFrameStats stats_;
+};
+
+} // namespace peraviz::runtime
