@@ -26,6 +26,7 @@ public:
     PackedFloat32Array decode_universe_compact(int universe_id, const PackedByteArray &current_frame);
     void set_fixture_render_params(int fixture_id, const Dictionary &render_params);
     PackedFloat32Array decode_universe_render_ready(int universe_id, const PackedByteArray &current_frame);
+    Dictionary decode_universe_visual_batch(int universe_id, const PackedByteArray &current_frame);
     void clear();
 
 private:
@@ -39,6 +40,11 @@ private:
         double color_temp_k = 5600.0;
         double spot_multiplier = 1.0;
         double beam_multiplier = 20.0;
+    };
+
+    struct FixtureVisualState {
+        bool initialized = false;
+        float values[22] = {};
     };
 
     struct FixtureChannelBinding {
@@ -61,10 +67,13 @@ private:
     static int compact_index_for_channel_type(int channel_type);
     static double compact_value_at(const PackedFloat32Array &compact, int base, int compact_index);
     static void append_render_ready_values(PackedFloat32Array &out, const PackedFloat32Array &compact, int base, const FixtureRenderParams &params);
+    static bool visual_value_changed(float previous_value, float current_value, float epsilon);
+    static int visual_mask_for_changed_value(int value_index);
 
     std::unordered_map<int, std::vector<FixtureChannelBinding>> bindings_by_universe_;
     std::unordered_map<int, PackedByteArray> previous_frames_by_universe_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
+    std::unordered_map<int, FixtureVisualState> visual_state_by_fixture_;
 };
 
 } // namespace godot

@@ -95,6 +95,7 @@ var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
 var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
+var _last_native_visual_batch_masks := PackedInt32Array()
 
 func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_loader = loader
@@ -124,6 +125,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_cached_universe_frames.clear()
 	_universe_interest_offsets.clear()
 	_last_universe_interest_hashes.clear()
+	_last_native_visual_batch_masks = PackedInt32Array()
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -313,7 +315,14 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
-		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_render_ready(universe_id, frame)
+		var visual_batch: Dictionary = _native_dmx_decoder.decode_universe_visual_batch(universe_id, frame)
+		_last_native_visual_batch_masks = visual_batch.get("ids_masks", PackedInt32Array())
+		if int(visual_batch.get("count", 0)) <= 0:
+			continue
+		var compact: PackedFloat32Array = visual_batch.get("compact", PackedFloat32Array())
+		if compact.is_empty():
+			continue
+		compact = _filter_compact_by_native_visual_mask(compact, _last_native_visual_batch_masks)
 		if compact.is_empty():
 			continue
 		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls)
@@ -530,6 +539,35 @@ func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_
 			skipped += int(result.get("skipped", 0))
 		base += stride
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
+
+
+func _filter_compact_by_native_visual_mask(compact: PackedFloat32Array, ids_masks: PackedInt32Array) -> PackedFloat32Array:
+	if ids_masks.is_empty():
+		return PackedFloat32Array()
+	var source_stride: int = _compact_fixture_stride(compact)
+	var source_fixture_count: int = int(compact[0]) if not compact.is_empty() else 0
+	var changed_fixture_ids: Dictionary = {}
+	for index in range(0, ids_masks.size(), 2):
+		changed_fixture_ids[int(ids_masks[index])] = true
+	var filtered := PackedFloat32Array()
+	filtered.resize(1 + (changed_fixture_ids.size() * source_stride))
+	var output_count: int = 0
+	var source_base: int = 1
+	for _i in range(source_fixture_count):
+		if source_base + source_stride > compact.size():
+			break
+		var fixture_id: int = int(compact[source_base])
+		if changed_fixture_ids.has(fixture_id):
+			var output_base: int = 1 + (output_count * source_stride)
+			for value_index in range(source_stride):
+				filtered[output_base + value_index] = compact[source_base + value_index]
+			output_count += 1
+		source_base += source_stride
+	if output_count <= 0:
+		return PackedFloat32Array()
+	filtered.resize(1 + (output_count * source_stride))
+	filtered[0] = float(output_count)
+	return filtered
 
 func _compact_fixture_stride(compact: PackedFloat32Array) -> int:
 	var fixture_count: int = int(compact[0]) if not compact.is_empty() else 0

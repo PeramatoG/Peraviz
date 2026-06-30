@@ -12,6 +12,7 @@ void PeravizDmxUniverseDecoder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("decode_universe_compact", "universe_id", "current_frame"), &PeravizDmxUniverseDecoder::decode_universe_compact);
     ClassDB::bind_method(D_METHOD("set_fixture_render_params", "fixture_id", "render_params"), &PeravizDmxUniverseDecoder::set_fixture_render_params);
     ClassDB::bind_method(D_METHOD("decode_universe_render_ready", "universe_id", "current_frame"), &PeravizDmxUniverseDecoder::decode_universe_render_ready);
+    ClassDB::bind_method(D_METHOD("decode_universe_visual_batch", "universe_id", "current_frame"), &PeravizDmxUniverseDecoder::decode_universe_visual_batch);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizDmxUniverseDecoder::clear);
 }
 
@@ -186,11 +187,97 @@ PackedFloat32Array PeravizDmxUniverseDecoder::decode_universe_render_ready(int u
     return out;
 }
 
+
+// Decodes a universe into a render-ready fixture batch with persistent visual changed masks.
+Dictionary PeravizDmxUniverseDecoder::decode_universe_visual_batch(int universe_id, const PackedByteArray &current_frame) {
+    constexpr int render_ready_stride = 24;
+    constexpr int visual_value_count = 22;
+    constexpr float default_epsilon = 0.0001f;
+    constexpr float angle_epsilon = 0.01f;
+
+    Dictionary batch;
+    PackedInt32Array ids_masks;
+    PackedFloat32Array states;
+
+    const PackedFloat32Array compact = decode_universe_render_ready(universe_id, current_frame);
+    if (compact.is_empty()) {
+        batch["ids_masks"] = ids_masks;
+        batch["states"] = states;
+        batch["count"] = 0;
+        return batch;
+    }
+
+    const int fixture_count = static_cast<int>(compact[0]);
+    ids_masks.resize(fixture_count * 2);
+    states.resize(fixture_count * visual_value_count);
+
+    int output_count = 0;
+    int base = 1;
+    for (int i = 0; i < fixture_count; ++i) {
+        if (base + render_ready_stride > compact.size()) {
+            break;
+        }
+        const int fixture_id = static_cast<int>(compact[base]);
+        const float values[visual_value_count] = {
+            compact[base + 2],
+            compact[base + 3],
+            compact[base + 4],
+            compact[base + 5],
+            compact[base + 6],
+            compact[base + 7],
+            compact[base + 8],
+            compact[base + 9],
+            compact[base + 10],
+            compact[base + 11],
+            compact[base + 12],
+            compact[base + 13],
+            compact[base + 14],
+            compact[base + 15],
+            compact[base + 16],
+            compact[base + 17],
+            compact[base + 18],
+            compact[base + 19],
+            compact[base + 20],
+            compact[base + 21],
+            compact[base + 22],
+            compact[base + 23],
+        };
+
+        FixtureVisualState &previous_state = visual_state_by_fixture_[fixture_id];
+        int visual_mask = 0;
+        for (int value_index = 0; value_index < visual_value_count; ++value_index) {
+            const float epsilon = value_index == 16 || value_index == 15 ? angle_epsilon : default_epsilon;
+            if (!previous_state.initialized || visual_value_changed(previous_state.values[value_index], values[value_index], epsilon)) {
+                visual_mask |= visual_mask_for_changed_value(value_index);
+            }
+            previous_state.values[value_index] = values[value_index];
+            states.set((output_count * visual_value_count) + value_index, values[value_index]);
+        }
+        previous_state.initialized = true;
+
+        if (visual_mask != 0) {
+            ids_masks.set(output_count * 2, fixture_id);
+            ids_masks.set((output_count * 2) + 1, visual_mask);
+            ++output_count;
+        }
+        base += render_ready_stride;
+    }
+
+    ids_masks.resize(output_count * 2);
+    states.resize(output_count * visual_value_count);
+    batch["ids_masks"] = ids_masks;
+    batch["states"] = states;
+    batch["compact"] = compact;
+    batch["count"] = output_count;
+    return batch;
+}
+
 // Clears all registered bindings and frame history.
 void PeravizDmxUniverseDecoder::clear() {
     bindings_by_universe_.clear();
     previous_frames_by_universe_.clear();
     render_params_by_fixture_.clear();
+    visual_state_by_fixture_.clear();
 }
 
 // Converts a Godot dictionary into a native channel binding.
@@ -304,6 +391,41 @@ int PeravizDmxUniverseDecoder::compact_index_for_channel_type(int channel_type) 
 // Reads a compact normalized value from a fixture payload.
 double PeravizDmxUniverseDecoder::compact_value_at(const PackedFloat32Array &compact, int base, int compact_index) {
     return static_cast<double>(compact[base + 2 + compact_index]);
+}
+
+
+// Checks whether a visual float value changed beyond its render epsilon.
+bool PeravizDmxUniverseDecoder::visual_value_changed(float previous_value, float current_value, float epsilon) {
+    return std::fabs(previous_value - current_value) > epsilon;
+}
+
+// Maps visual batch value indexes to high-level apply changed masks.
+int PeravizDmxUniverseDecoder::visual_mask_for_changed_value(int value_index) {
+    switch (value_index) {
+        case 0: return 1 << 0;
+        case 1: return 1 << 1;
+        case 2: return 1 << 1;
+        case 3: return 1 << 3;
+        case 4: return 1 << 2;
+        case 5: return 1 << 2;
+        case 6: return 1 << 2;
+        case 7: return 1 << 4;
+        case 8: return 1 << 4;
+        case 9: return 1 << 4;
+        case 10: return 1 << 5;
+        case 11: return 1 << 5;
+        case 12: return 1 << 7;
+        case 13: return 1 << 0;
+        case 14: return 1 << 0;
+        case 15: return 1 << 3;
+        case 16: return 1 << 3;
+        case 17: return 1 << 2;
+        case 18: return 1 << 2;
+        case 19: return 1 << 2;
+        case 20: return 1 << 0;
+        case 21: return 1 << 0;
+        default: return 0;
+    }
 }
 
 // Appends render-ready light parameters derived from compact DMX values.
