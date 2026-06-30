@@ -34,6 +34,7 @@ Changes since the initial Peraviz repository split.
 
 ## Stability and reliability
 
+- Improved live DMX visual correctness and responsiveness by making native visual-frame beam visibility cache-coherent, keeping transform-only pan/tilt updates out of the lighting path, and exposing additional light/beam apply counters for diagnostics.
 - Improved Art-Net responsiveness by treating received DMX frames as latest-wins even when a controller sends irregular sequence values, avoiding visible stalls from sequence filtering during rapid cues.
 - Hardened live Art-Net frame caching so shorter packets update transmitted slots without forcing untransmitted fixture channels to zero, preventing intermittent pan/tilt snaps during DMX stream changes.
 - Improved live DMX performance by keeping beam geometry caches warm during per-light cleanup, caching resolved pan/tilt axes per fixture, and prioritizing light/beam updates for dimmer-only changes so rapid intensity cues stay more responsive.
@@ -65,6 +66,7 @@ Changes since the initial Peraviz repository split.
 - Clarified the separation between `.pvz` project data and global user preferences, including how remembered last-file paths are treated as session preferences rather than project source content.
 
 ## Internal changes
+- Extended native visual runtime regression coverage for tilt-only changes and repeated identical DMX frames, and added focused warning-once diagnostics for missing runtime light or beam targets when dimmers are active.
 - Reworked the DMX visual apply path to require the native cooked visual runtime, apply real semantic change masks, preserve fine pan/tilt movement and update lights and beams from cooked fixture rows, and avoid the previous per-fixture capability dictionary rebuild during live playback.
 
 - Added the first modular native visual runtime core for DMX playback, with patched-universe filtering, native interest-offset hashing, latest-frame coalescing, cooked fixed-stride visual output, and regression tests for coalescing, unused universes, irrelevant channel changes, and binding rebuilds.
