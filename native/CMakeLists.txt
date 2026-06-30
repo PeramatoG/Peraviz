@@ -127,6 +127,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/gdtf_control_offsets_resolver.cpp
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
+        src/runtime/peraviz_visual_runtime.cpp
     )
     target_compile_definitions(peraviz_native PRIVATE PERAVIZ_ENABLE_DMX=1)
     if(WIN32)
@@ -244,6 +245,15 @@ if(BUILD_TESTING)
         libzip::zip
     )
     add_test(NAME peraviz_native_dmx_e2e_tests COMMAND peraviz_native_dmx_e2e_tests)
+    add_executable(peraviz_native_visual_runtime_tests
+        tests/visual_runtime_core_test.cpp
+        src/runtime/peraviz_visual_runtime.cpp
+    )
+    target_include_directories(peraviz_native_visual_runtime_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    add_test(NAME peraviz_native_visual_runtime_tests COMMAND peraviz_native_visual_runtime_tests)
+
     add_executable(peraviz_native_runtime_table_tests
         tests/runtime_table_model_test.cpp
         src/table_model/runtime_table_schema.cpp
