@@ -1,0 +1,87 @@
+name: Bug report
+description: Report a reproducible Peraviz bug or crash.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Peraviz. Please avoid uploading private, confidential, copyrighted, or client-owned show files unless you have permission to share them publicly.
+  - type: input
+    id: version
+    attributes:
+      label: Peraviz version or commit
+      description: Use the release version, commit SHA, or branch name if known.
+      placeholder: "Example: v0.1.0, main, 1a2b3c4"
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: godot
+    attributes:
+      label: Godot version
+      description: Required only if you are running from source or using a custom build.
+      placeholder: "Example: Godot 4.2.2"
+    validations:
+      required: false
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver
+      description: Useful for rendering, crash, and performance issues.
+      placeholder: "Example: NVIDIA RTX 3070, driver 555.xx"
+    validations:
+      required: false
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+      placeholder: "Peraviz crashes when loading this MVR..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: "The scene should load and display the fixtures..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Please list the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Open Peraviz
+        2. Load this MVR
+        3. Enable...
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Test files
+      description: Attach a simplified MVR/GDTF/project file if you are allowed to share it, or describe why it cannot be shared.
+      placeholder: "I cannot share the production file, but I attached a simplified file that reproduces the issue."
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or videos
+      description: Paste console output or attach screenshots/screen recordings when useful.
+      render: shell
+    validations:
+      required: false

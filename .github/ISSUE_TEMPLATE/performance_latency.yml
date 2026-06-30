@@ -1,0 +1,75 @@
+name: Performance or latency report
+description: Report FPS, latency, frame-time, import, CPU, GPU, or live-input performance problems.
+title: "[Performance]: "
+labels: ["performance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Peraviz aims to work as a real-time visualizer, so performance reports are very useful. Rough measurements are better than no measurements.
+  - type: dropdown
+    id: problem_type
+    attributes:
+      label: Main problem type
+      options:
+        - Low FPS
+        - Live input latency
+        - Slow MVR/GDTF import
+        - High CPU usage
+        - High GPU usage
+        - Memory usage
+        - Stutter / frame spikes
+        - Rendering quality vs performance
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: scene_complexity
+    attributes:
+      label: Scene complexity
+      description: Include approximate number of fixtures, meshes, universes, patched addresses, gobos, beams, or other relevant details.
+      placeholder: "Example: 120 fixtures, 8 universes, 40 moving heads, volumetric beams enabled..."
+    validations:
+      required: true
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: Include FPS, frame time, latency, CPU/GPU usage, profiler notes, or before/after data if available.
+      placeholder: "Example: 18 FPS with Art-Net enabled, 60 FPS when disabled..."
+    validations:
+      required: false
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: Describe the exact workflow that triggers the performance problem.
+      placeholder: |
+        1. Load scene...
+        2. Enable Art-Net...
+        3. Start playback...
+        4. Observe latency...
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      placeholder: "CPU, GPU, RAM, OS, graphics driver"
+    validations:
+      required: true
+  - type: textarea
+    id: live_input
+    attributes:
+      label: Live input details
+      description: Include protocol, number of active universes, sender/console/software, network setup, and whether unpatched universes are being sent.
+      placeholder: "Example: Art-Net from grandMA3 on 12 universes, only 4 universes patched in the scene..."
+    validations:
+      required: false
+  - type: textarea
+    id: files
+    attributes:
+      label: Test files or screenshots
+      description: Attach simplified files/screenshots if you are allowed to share them.
+    validations:
+      required: false

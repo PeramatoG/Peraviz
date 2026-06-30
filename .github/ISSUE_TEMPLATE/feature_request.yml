@@ -1,0 +1,56 @@
+name: Feature request
+description: Suggest an improvement or new feature for Peraviz.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem would this solve?
+      placeholder: "I need to visualize..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe how you imagine this working.
+      placeholder: "Add an option to..."
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - MVR import
+        - GDTF parsing
+        - Live DMX / Art-Net / sACN
+        - Fixture attributes
+        - Beam rendering
+        - Gobos
+        - Color / dimmer / strobe / prism
+        - Pan / tilt / movement
+        - Camera / viewer workflow
+        - UI / settings
+        - Performance
+        - Build / packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention any workaround, alternative workflow, or other application that solves this well.
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Add screenshots, diagrams, files, videos, or extra context if useful.
+    validations:
+      required: false
