@@ -1684,6 +1684,11 @@ func _find_axis_for_role(axis_nodes: Array, role: String) -> Node3D:
 		return axis_nodes[1]
 	return axis_nodes[0]
 
+func _apply_dmx_visual_frame(dmx_fixture_runtime: DmxFixtureRuntime, receiver, delta_sec: float) -> Dictionary:
+	if _fixture_light_apply_service == null:
+		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
+	return dmx_fixture_runtime.apply_visual_frame(receiver, self, _fixture_light_apply_service, delta_sec)
+
 func _apply_dmx_controls_to_fixture(fixture_uuid: String, controls: Dictionary) -> void:
 	if _fixture_light_apply_service == null:
 		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()

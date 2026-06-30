@@ -290,17 +290,22 @@ func _poll_and_apply_latest_dmx_controls(delta_sec: float) -> void:
 		_apply_fixture_time_tick(delta_sec)
 		return
 	var decode_phase_start: int = Time.get_ticks_usec()
-	var collect_stats: Dictionary = _dmx_fixture_runtime.collect_pending_controls(_dmx_receiver)
+	var apply_stats: Dictionary = {}
+	if _owner == null or not _owner.has_method("_apply_dmx_visual_frame"):
+		push_error("PeravizVisualRuntime apply hook is required for live DMX visualization.")
+		_apply_fixture_time_tick(delta_sec)
+		return
+	apply_stats = _owner._apply_dmx_visual_frame(_dmx_fixture_runtime, _dmx_receiver, delta_sec)
 	var tick_usec: int = max(Time.get_ticks_usec() - decode_phase_start, 0)
-	_apply_collected_dmx_controls(collect_stats, tick_usec, delta_sec)
+	_apply_collected_dmx_controls(apply_stats, tick_usec, delta_sec)
 
 func _apply_collected_dmx_controls(apply_stats: Dictionary, tick_usec: int, delta_sec: float) -> void:
-	if not _apply_dmx_controls_callback.is_valid():
-		return
 	if apply_stats.is_empty():
 		_apply_fixture_time_tick(delta_sec)
 		return
 	var controls_batch: Array = apply_stats.get("controls", [])
+	if not controls_batch.is_empty() and not _apply_dmx_controls_callback.is_valid():
+		return
 	for item in controls_batch:
 		if item is not Dictionary:
 			continue

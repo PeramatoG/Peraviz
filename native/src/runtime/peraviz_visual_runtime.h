@@ -35,13 +35,22 @@ private:
         bool initialized = false;
     };
 
+    struct FixtureChangeResult {
+        bool changed = false;
+        uint32_t changed_channel_mask = 0;
+        uint32_t changed_visual_mask = 0;
+    };
+
     static int compact_index_for_channel_type(int channel_type);
     static int bytes_for_bit_depth(int bit_depth);
     static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
     static float read_normalized_value(const std::vector<uint8_t> &frame, const FixtureChannelBinding &binding);
     static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
     static void append_render_values(std::vector<float> &out, const std::array<float, kVisualChannelCount> &channels, const FixtureRenderParams &params);
-    bool fixture_changed(int fixture_id, const std::array<float, kVisualChannelCount> &channels, const std::array<float, 9> &render_values);
+    static uint32_t visual_mask_for_channel_index(size_t channel_index);
+    static uint32_t visual_mask_for_render_index(size_t render_index);
+    void add_visual_mask_stats(uint32_t visual_mask);
+    FixtureChangeResult fixture_changed(int fixture_id, const std::array<float, kVisualChannelCount> &channels, const std::array<float, 9> &render_values);
 
     std::unordered_map<int, UniverseState> universes_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;

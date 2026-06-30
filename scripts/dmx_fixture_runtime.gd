@@ -21,7 +21,19 @@ const NATIVE_CHANNEL_PRISM_ROTATION: int = 12
 const NATIVE_CHANNEL_STROBE: int = 13
 
 const NATIVE_COMPACT_STRIDE: int = 15
-const NATIVE_RENDER_READY_STRIDE: int = 24
+const NATIVE_RENDER_READY_STRIDE: int = 25
+const NATIVE_VISUAL_MASK_OFFSET: int = 2
+const NATIVE_VALUES_OFFSET: int = 3
+const NATIVE_RENDER_VALUES_OFFSET: int = 16
+
+const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
+const VISUAL_CHANGE_DIMMER: int = 1 << 1
+const VISUAL_CHANGE_COLOR: int = 1 << 2
+const VISUAL_CHANGE_ZOOM: int = 1 << 3
+const VISUAL_CHANGE_GOBO: int = 1 << 4
+const VISUAL_CHANGE_MATERIAL: int = 1 << 8
+const VISUAL_CHANGE_BEAM_TOPOLOGY: int = 1 << 9
+
 const NATIVE_COMPACT_DIMMER: int = 0
 const NATIVE_COMPACT_PAN: int = 1
 const NATIVE_COMPACT_TILT: int = 2
@@ -77,7 +89,11 @@ var _bound_fixture_ids: Dictionary = {}
 var _fixture_channel_offsets: Dictionary = {}
 var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_capability_state_cache: Dictionary = {}
-var _native_dmx_decoder: PeravizDmxUniverseDecoder = PeravizDmxUniverseDecoder.new()
+var _native_visual_runtime = null
+var _native_visual_runtime_available: bool = false
+var _native_bindings_count: int = 0
+var _last_visual_frame_size: int = 0
+var _last_visual_mask_counts: Dictionary = {}
 var _native_fixture_ids_by_uuid: Dictionary = {}
 var _native_fixture_uuids_by_id: Dictionary = {}
 var _native_channel_values: Dictionary = {}
@@ -101,6 +117,7 @@ func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: Fixt
 	_scene_registry = scene_registry
 	_fixture_row_provider = fixture_row_provider
 	_gobo_vectorization_cache = GoboVectorizationCacheScript.new()
+	_initialize_native_visual_runtime()
 
 func rebuild(universe_offset: int) -> Dictionary:
 	_bindings.clear()
@@ -111,7 +128,10 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_fixture_channel_offsets.clear()
 	_fixture_snapshot_cache.clear()
 	_fixture_capability_state_cache.clear()
-	_native_dmx_decoder.clear()
+	_last_visual_frame_size = 0
+	_last_visual_mask_counts.clear()
+	if _native_visual_runtime != null:
+		_native_visual_runtime.clear()
 	_native_fixture_ids_by_uuid.clear()
 	_native_fixture_uuids_by_id.clear()
 	_native_channel_values.clear()
@@ -126,6 +146,14 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_last_universe_interest_hashes.clear()
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
+
+	if not _native_visual_runtime_available:
+		push_error("PeravizVisualRuntime is required for live DMX visualization but is not available.")
+		return {
+			"bound": 0,
+			"unbound": 0,
+			"unbound_preview": PackedStringArray(),
+		}
 
 	if _loader == null or _scene_registry == null:
 		return {
@@ -176,7 +204,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			_bindings_by_universe[universe_id].append(binding)
 			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
 
-	_register_native_universe_bindings()
+	_register_native_visual_runtime_bindings()
 	_finalize_universe_interest_offsets()
 
 	for universe_key in _used_universes.keys():
@@ -192,6 +220,14 @@ func rebuild(universe_offset: int) -> Dictionary:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
 
 	return _build_summary(universe_offset)
+
+func _initialize_native_visual_runtime() -> void:
+	_native_visual_runtime_available = ClassDB.class_exists("PeravizVisualRuntime")
+	if not _native_visual_runtime_available:
+		_native_visual_runtime = null
+		return
+	_native_visual_runtime = ClassDB.instantiate("PeravizVisualRuntime")
+	_native_visual_runtime_available = _native_visual_runtime != null
 
 func set_debug_force_full_apply(enabled: bool) -> void:
 	_debug_force_full_apply = enabled
@@ -275,7 +311,13 @@ func collect_pending_controls(receiver) -> Dictionary:
 func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 	return _collect_dmx(receiver, apply_fixture_callback)
 
-func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
+func apply_visual_frame(receiver, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float) -> Dictionary:
+	return _collect_dmx(receiver, Callable(), loader, light_apply_service, frame_delta_sec)
+
+func _collect_dmx(receiver, apply_fixture_callback: Callable, loader: Node = null, light_apply_service: FixtureLightApplyService = null, frame_delta_sec: float = 0.0) -> Dictionary:
+	if not _native_visual_runtime_available or _native_visual_runtime == null:
+		push_error("PeravizVisualRuntime is required for live DMX visualization but is not available.")
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": [], "native_visual_runtime_available": false}
 	if receiver == null or not receiver.is_running():
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
@@ -313,10 +355,16 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
 			continue
 		_last_universe_interest_hashes[universe_id] = interest_hash
-		var compact: PackedFloat32Array = _native_dmx_decoder.decode_universe_visual_render_ready(universe_id, frame)
-		if compact.is_empty():
-			continue
-		var compact_result: Dictionary = _apply_compact_universe_updates(compact, apply_fixture_callback, pending_controls)
+		_native_visual_runtime.submit_universe_frame(universe_id, frame)
+
+	var visual_frame: PackedFloat32Array = _native_visual_runtime.consume_latest_visual_frame()
+	_last_visual_frame_size = visual_frame.size()
+	if not visual_frame.is_empty():
+		var compact_result: Dictionary = {}
+		if loader != null and light_apply_service != null:
+			compact_result = _apply_visual_frame_updates(visual_frame, loader, light_apply_service, frame_delta_sec)
+		else:
+			compact_result = _apply_compact_universe_updates(visual_frame, apply_fixture_callback, pending_controls)
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
@@ -327,6 +375,11 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 		"universes_changed": changed_frames.size(),
 		"fixtures_considered": fixtures_considered,
 		"controls": pending_controls,
+		"native_visual_runtime_available": _native_visual_runtime_available,
+		"native_bindings_count": _native_bindings_count,
+		"visual_frame_size": _last_visual_frame_size,
+		"visual_mask_counts": _last_visual_mask_counts.duplicate(false),
+		"native_stats": _native_visual_runtime.get_stats() if _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
 	}
 
 
@@ -420,13 +473,14 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
 	_native_channel_values[fixture_uuid] = {}
 
-func _register_native_universe_bindings() -> void:
+func _register_native_visual_runtime_bindings() -> void:
+	var native_bindings: Array = []
 	for universe_key in _bindings_by_universe.keys():
-		var native_bindings: Array = []
 		for binding in _bindings_by_universe.get(universe_key, []):
 			if binding is Dictionary:
 				_append_native_bindings_for_fixture(native_bindings, binding)
-		_native_dmx_decoder.set_fixture_bindings(int(universe_key), native_bindings)
+	_native_bindings_count = native_bindings.size()
+	_native_visual_runtime.set_fixture_bindings(native_bindings)
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -471,7 +525,7 @@ func _binding_has_color_temperature(fixture_uuid: String) -> bool:
 func _register_native_fixture_render_params(fixture_id: int, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
 	var photometric: Dictionary = _first_fixture_photometric(fixture_id, binding)
-	_native_dmx_decoder.set_fixture_render_params(fixture_id, {
+	_native_visual_runtime.set_fixture_render_params(fixture_id, {
 		"luminous_flux": float(photometric.get("luminous_flux", 10000.0)),
 		"beam_angle_default": float(photometric.get("beam_angle", 25.0)),
 		"zoom_min_deg": float(binding.get("zoom_physical_min_degrees", -1.0)),
@@ -498,12 +552,57 @@ func _append_native_channel_binding(native_bindings: Array, binding: Dictionary,
 		resolved_ultra_fine_address = -1
 	native_bindings.append({
 		"fixture_id": fixture_id,
+		"universe_id": int(binding.get("artnet_universe_id", -1)),
 		"channel_type": channel_type,
 		"start_address": start_address,
 		"fine_address": resolved_fine_address,
 		"ultra_fine_address": resolved_ultra_fine_address,
 		"bit_depth": 8 + (8 if resolved_fine_address >= 0 else 0) + (8 if resolved_ultra_fine_address >= 0 else 0),
 	})
+
+func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float) -> Dictionary:
+	var updated: int = 0
+	var skipped: int = 0
+	var fixtures_considered: int = 0
+	var fixture_count: int = int(visual_frame[0])
+	var transform_count: int = 0
+	var dimmer_count: int = 0
+	var color_count: int = 0
+	var zoom_count: int = 0
+	var gobo_count: int = 0
+	var base: int = 1
+	for _i in range(fixture_count):
+		if base + NATIVE_RENDER_READY_STRIDE > visual_frame.size():
+			break
+		var fixture_id: int = int(visual_frame[base])
+		var fixture_uuid: String = str(_native_fixture_uuids_by_id.get(fixture_id, ""))
+		var visual_mask: int = int(visual_frame[base + NATIVE_VISUAL_MASK_OFFSET])
+		if (visual_mask & VISUAL_CHANGE_TRANSFORM) != 0:
+			transform_count += 1
+		if (visual_mask & VISUAL_CHANGE_DIMMER) != 0:
+			dimmer_count += 1
+		if (visual_mask & VISUAL_CHANGE_COLOR) != 0:
+			color_count += 1
+		if (visual_mask & VISUAL_CHANGE_ZOOM) != 0:
+			zoom_count += 1
+		if (visual_mask & VISUAL_CHANGE_GOBO) != 0:
+			gobo_count += 1
+		if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
+			skipped += 1
+			base += NATIVE_RENDER_READY_STRIDE
+			continue
+		light_apply_service.apply_visual_frame_to_fixture(loader, fixture_uuid, visual_frame, base, frame_delta_sec)
+		fixtures_considered += 1
+		updated += 1
+		base += NATIVE_RENDER_READY_STRIDE
+	_last_visual_mask_counts = {
+		"changed_transform_count": transform_count,
+		"changed_dimmer_count": dimmer_count,
+		"changed_color_count": color_count,
+		"changed_zoom_count": zoom_count,
+		"changed_gobo_count": gobo_count,
+	}
+	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
 func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var updated: int = 0
@@ -540,19 +639,19 @@ func _compact_fixture_stride(compact: PackedFloat32Array) -> int:
 
 func _store_compact_fixture_channel_updates(fixture_uuid: String, compact: PackedFloat32Array, base: int, changed_mask: int) -> void:
 	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_DIMMER, NATIVE_CHANNEL_DIMMER, compact[base + 2 + NATIVE_COMPACT_DIMMER])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PAN, NATIVE_CHANNEL_PAN, compact[base + 2 + NATIVE_COMPACT_PAN])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_TILT, NATIVE_CHANNEL_TILT, compact[base + 2 + NATIVE_COMPACT_TILT])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_ZOOM, NATIVE_CHANNEL_ZOOM, compact[base + 2 + NATIVE_COMPACT_ZOOM])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_CYAN, NATIVE_CHANNEL_CYAN, compact[base + 2 + NATIVE_COMPACT_CYAN])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_MAGENTA, NATIVE_CHANNEL_MAGENTA, compact[base + 2 + NATIVE_COMPACT_MAGENTA])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_YELLOW, NATIVE_CHANNEL_YELLOW, compact[base + 2 + NATIVE_COMPACT_YELLOW])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO, NATIVE_CHANNEL_GOBO, compact[base + 2 + NATIVE_COMPACT_GOBO])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_INDEX, NATIVE_CHANNEL_GOBO_INDEX, compact[base + 2 + NATIVE_COMPACT_GOBO_INDEX])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_ROTATION, NATIVE_CHANNEL_GOBO_ROTATION, compact[base + 2 + NATIVE_COMPACT_GOBO_ROTATION])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PRISM, NATIVE_CHANNEL_PRISM, compact[base + 2 + NATIVE_COMPACT_PRISM])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PRISM_ROTATION, NATIVE_CHANNEL_PRISM_ROTATION, compact[base + 2 + NATIVE_COMPACT_PRISM_ROTATION])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_STROBE, NATIVE_CHANNEL_STROBE, compact[base + 2 + NATIVE_COMPACT_STROBE])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_DIMMER, NATIVE_CHANNEL_DIMMER, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_DIMMER])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PAN, NATIVE_CHANNEL_PAN, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_PAN])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_TILT, NATIVE_CHANNEL_TILT, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_TILT])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_ZOOM, NATIVE_CHANNEL_ZOOM, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_ZOOM])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_CYAN, NATIVE_CHANNEL_CYAN, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_CYAN])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_MAGENTA, NATIVE_CHANNEL_MAGENTA, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_MAGENTA])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_YELLOW, NATIVE_CHANNEL_YELLOW, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_YELLOW])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO, NATIVE_CHANNEL_GOBO, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_INDEX, NATIVE_CHANNEL_GOBO_INDEX, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_INDEX])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_ROTATION, NATIVE_CHANNEL_GOBO_ROTATION, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_ROTATION])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PRISM, NATIVE_CHANNEL_PRISM, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_PRISM])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_PRISM_ROTATION, NATIVE_CHANNEL_PRISM_ROTATION, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_PRISM_ROTATION])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_STROBE, NATIVE_CHANNEL_STROBE, compact[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_STROBE])
 	_native_channel_values[fixture_uuid] = values
 
 func _store_render_ready_fixture_values(fixture_uuid: String, compact: PackedFloat32Array, base: int, stride: int) -> void:
@@ -560,15 +659,15 @@ func _store_render_ready_fixture_values(fixture_uuid: String, compact: PackedFlo
 		_native_render_ready_values.erase(fixture_uuid)
 		return
 	_native_render_ready_values[fixture_uuid] = PackedFloat32Array([
-		compact[base + 15],
-		compact[base + 16],
-		compact[base + 17],
-		compact[base + 18],
-		compact[base + 19],
-		compact[base + 20],
-		compact[base + 21],
-		compact[base + 22],
-		compact[base + 23],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 1],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 2],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 3],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 4],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 5],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 6],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 7],
+		compact[base + NATIVE_RENDER_VALUES_OFFSET + 8],
 	])
 
 func _store_compact_channel_value(values: Dictionary, changed_mask: int, compact_index: int, channel_type: int, normalized_value: float) -> void:
