@@ -897,16 +897,35 @@ func _build_live_visual_gobo_runtime_bindings(controls: Dictionary) -> Array:
 	if not existing.is_empty():
 		return existing
 	var wheels: Array = controls.get("gobo_wheels", [])
-	if wheels.is_empty():
-		return []
 	var raw_8bit: int = int(controls.get("gobo_raw_value", round(clamp(float(controls.get("gobo_norm", 0.0)), 0.0, 1.0) * 255.0)))
+	if wheels.is_empty():
+		var primary_ranges: Array = controls.get("gobo_ranges", [])
+		var primary_slots: Array = controls.get("gobo_slots", [])
+		var primary_range: Dictionary = DmxGoboRangeResolverScript.resolve_active_range(raw_8bit, primary_ranges) if not primary_ranges.is_empty() else {}
+		var primary_slot_index: int = int(primary_range.get("slot_index", -1))
+		if primary_slot_index <= 0:
+			return []
+		return [{
+			"raw_8bit": raw_8bit,
+			"slot_index": primary_slot_index,
+			"slots": primary_slots,
+			"ranges": primary_ranges,
+			"wheel_number": int(controls.get("gobo_wheel_number", 0)),
+			"wheel_name": str(controls.get("gobo_wheel_name", "")),
+			"behavior": int(primary_range.get("behavior", 0)),
+		}]
 	var index_norm: float = clamp(float(controls.get("gobo_index_norm", -1.0)), 0.0, 1.0) if bool(controls.get("has_gobo_index", false)) else -1.0
 	var out: Array = []
 	for item in wheels:
 		if item is not Dictionary:
 			continue
 		var wheel: Dictionary = item
+		var slots: Array = wheel.get("slots", [])
+		if slots.is_empty():
+			slots = controls.get("gobo_slots", [])
 		var ranges: Array = wheel.get("ranges", [])
+		if ranges.is_empty():
+			ranges = controls.get("gobo_ranges", [])
 		var active_range: Dictionary = DmxGoboRangeResolverScript.resolve_active_range(raw_8bit, ranges) if not ranges.is_empty() else {}
 		var slot_index: int = int(active_range.get("slot_index", -1))
 		if slot_index <= 0:
@@ -914,7 +933,7 @@ func _build_live_visual_gobo_runtime_bindings(controls: Dictionary) -> Array:
 		out.append({
 			"raw_8bit": raw_8bit,
 			"slot_index": slot_index,
-			"slots": wheel.get("slots", controls.get("gobo_slots", [])),
+			"slots": slots,
 			"ranges": ranges,
 			"wheel_number": int(wheel.get("wheel_number", controls.get("gobo_wheel_number", 0))),
 			"wheel_name": str(wheel.get("wheel_name", controls.get("gobo_wheel_name", ""))),

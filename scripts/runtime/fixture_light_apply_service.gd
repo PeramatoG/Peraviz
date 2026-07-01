@@ -197,7 +197,7 @@ func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	var beam_visible: bool = scaled_intensity > threshold
-	_log_visual_once("beam_parent_visible_spot_rid_hidden", "[PeravizVisualRuntime] Beam intensity is visible while realtime SpotLight rendering is disabled; the SpotLight node stays visible as the beam parent and its RenderingServer instance remains hidden.", dimmer_norm > 0.0001 and beam_visible and not real_spot_visible)
+	_log_visual_once("beam_parent_visible_spot_rid_hidden", "[PeravizVisualRuntime] Beam intensity is visible while realtime SpotLight rendering is disabled; the SpotLight node stays visible as the beam parent and its RenderingServer instance remains hidden.", dimmer_norm > 0.0001 and beam_visible and not real_spot_visible and _is_visual_debug_logging_enabled(loader))
 	_warn_visual_once(str(light.get_instance_id()) + ":beam_params_not_visible", "Light %s has dimmer %.3f but beam params are not visible." % [str(light.get_instance_id()), dimmer_norm], dimmer_norm > 0.0001 and not beam_visible)
 	return {"light_visible": real_spot_visible, "beam_visible": beam_visible}
 
@@ -271,6 +271,12 @@ func _should_enable_realtime_spotlight(loader: Node, visible: bool) -> bool:
 	return false
 
 # Emits a one-time diagnostic message for live visual-frame state transitions.
+func _is_visual_debug_logging_enabled(loader: Node) -> bool:
+	var settings: Variant = loader.get("_visual_settings") if loader != null else null
+	if settings is Dictionary:
+		return bool((settings as Dictionary).get("beam_debug_optics", false))
+	return false
+
 func _log_visual_once(key: String, message: String, condition: bool = true) -> void:
 	if not condition or _diagnostic_info_keys.has(key):
 		return
