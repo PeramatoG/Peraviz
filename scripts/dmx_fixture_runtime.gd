@@ -31,6 +31,7 @@ const VISUAL_CHANGE_DIMMER: int = 1 << 1
 const VISUAL_CHANGE_COLOR: int = 1 << 2
 const VISUAL_CHANGE_ZOOM: int = 1 << 3
 const VISUAL_CHANGE_GOBO: int = 1 << 4
+const VISUAL_CHANGE_GOBO_ROTATION: int = 1 << 5
 const VISUAL_CHANGE_MATERIAL: int = 1 << 8
 const VISUAL_CHANGE_BEAM_TOPOLOGY: int = 1 << 9
 
@@ -576,6 +577,7 @@ func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node,
 	var color_count: int = 0
 	var zoom_count: int = 0
 	var gobo_count: int = 0
+	var gobo_rotation_count: int = 0
 	var base: int = 1
 	for _i in range(fixture_count):
 		if base + NATIVE_RENDER_READY_STRIDE > visual_frame.size():
@@ -593,10 +595,14 @@ func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node,
 			zoom_count += 1
 		if (visual_mask & VISUAL_CHANGE_GOBO) != 0:
 			gobo_count += 1
+		if (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0:
+			gobo_rotation_count += 1
 		if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
 			skipped += 1
 			base += NATIVE_RENDER_READY_STRIDE
 			continue
+		if (visual_mask & (VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION)) != 0:
+			_store_visual_frame_gobo_controls(loader, fixture_uuid, visual_frame, base, visual_mask)
 		light_apply_service.apply_visual_frame_to_fixture(loader, fixture_uuid, visual_frame, base, frame_delta_sec)
 		fixtures_considered += 1
 		updated += 1
@@ -607,8 +613,26 @@ func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node,
 		"changed_color_count": color_count,
 		"changed_zoom_count": zoom_count,
 		"changed_gobo_count": gobo_count,
+		"changed_gobo_rotation_count": gobo_rotation_count,
 	}
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
+
+func _store_visual_frame_gobo_controls(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, visual_mask: int) -> void:
+	var changed_mask: int = int(visual_frame[base + 1])
+	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO, NATIVE_CHANNEL_GOBO, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_INDEX, NATIVE_CHANNEL_GOBO_INDEX, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_INDEX])
+	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_ROTATION, NATIVE_CHANNEL_GOBO_ROTATION, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_ROTATION])
+	_native_channel_values[fixture_uuid] = values
+	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
+	var controls: Dictionary = _build_controls_from_native_values(fixture_plan, fixture_uuid)
+	controls["changed_capability_types"] = {"gobo": true}
+	controls["visual_change_gobo"] = (visual_mask & VISUAL_CHANGE_GOBO) != 0
+	controls["visual_change_gobo_rotation"] = (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0
+	if loader != null:
+		var cache: Dictionary = loader.get_meta("peraviz_live_visual_gobo_controls", {}) if loader.has_meta("peraviz_live_visual_gobo_controls") else {}
+		cache[fixture_uuid] = controls
+		loader.set_meta("peraviz_live_visual_gobo_controls", cache)
 
 func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var updated: int = 0

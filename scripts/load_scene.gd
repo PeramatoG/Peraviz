@@ -1692,6 +1692,50 @@ func _apply_dmx_visual_frame(dmx_fixture_runtime: DmxFixtureRuntime, receiver, d
 		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
 	return dmx_fixture_runtime.apply_visual_frame(receiver, self, _fixture_light_apply_service, delta_sec)
 
+func _apply_live_visual_gobo_to_light(fixture_uuid: String, light: SpotLight3D, visual_gobo_state: Dictionary) -> Dictionary:
+	if _fixture_gobo_projector == null or light == null or not is_instance_valid(light):
+		return {"applied": false, "topology_changed": false}
+	var cache: Dictionary = get_meta("peraviz_live_visual_gobo_controls", {}) if has_meta("peraviz_live_visual_gobo_controls") else {}
+	var controls: Dictionary = cache.get(fixture_uuid, {})
+	if controls.is_empty():
+		return {"applied": false, "topology_changed": false}
+	var resolved_gobo_controls: Dictionary = _resolve_gobo_controls(controls)
+	var gobo_source_controls: Dictionary = {
+		"capabilities": controls.get("capabilities", {}),
+		"gobo_norm": visual_gobo_state.get("gobo_norm", controls.get("gobo_norm", 0.0)),
+		"gobo_raw_value": controls.get("gobo_raw_value", 0),
+		"gobo_resolution_bits": controls.get("gobo_resolution_bits", 8),
+		"gobo_index_norm": visual_gobo_state.get("gobo_index_norm", controls.get("gobo_index_norm", 0.0)),
+		"has_gobo_index": controls.get("has_gobo_index", false),
+		"gobo_rotation_norm": visual_gobo_state.get("gobo_rotation_norm", controls.get("gobo_rotation_norm", 0.0)),
+		"has_gobo_rotation": controls.get("has_gobo_rotation", false),
+		"gobo_rotation_deg": controls.get("gobo_rotation_deg", float(_visual_settings.get("gobo_rotation_deg", 0.0))),
+		"gobo_debug_override_enabled": controls.get("gobo_debug_override_enabled", false),
+		"gobo_debug_comparison_mode": controls.get("gobo_debug_comparison_mode", 0),
+		"gobo_debug_shake_enabled": controls.get("gobo_debug_shake_enabled", false),
+		"gobo_debug_shake_amplitude_deg": controls.get("gobo_debug_shake_amplitude_deg", 0.0),
+		"gobo_debug_shake_frequency_hz": controls.get("gobo_debug_shake_frequency_hz", 0.0),
+		"gobo_debug_shake_waveform": controls.get("gobo_debug_shake_waveform", 0),
+		"frame_delta_sec": visual_gobo_state.get("frame_delta_sec", controls.get("frame_delta_sec", 0.0)),
+		"prefer_native_fog_projector": controls.get("prefer_native_fog_projector", true),
+		"gobo_scale": controls.get("gobo_scale", 1.0),
+		"gobo_slots": resolved_gobo_controls.get("gobo_slots", []),
+		"gobo_runtime_bindings": resolved_gobo_controls.get("gobo_runtime_bindings", []),
+		"has_gobo": resolved_gobo_controls.get("has_gobo", false),
+		"gobo_ranges": resolved_gobo_controls.get("gobo_ranges", controls.get("gobo_ranges", [])),
+	}
+	var before_compositions: int = int(_fixture_gobo_projector.get_debug_counters().get("texture_compositions", 0))
+	var gobo_controls: Dictionary = BeamOpticsControllerScript.BuildGoboControls(gobo_source_controls, _visual_settings, _cached_beam_defaults)
+	var topology_changed: bool = _fixture_gobo_projector.apply_gobo_projection(light, gobo_controls)
+	var debug_counters: Dictionary = _fixture_gobo_projector.get_debug_counters()
+	light.set_meta("peraviz_gobo_debug_counters", debug_counters)
+	return {
+		"applied": true,
+		"topology_changed": topology_changed,
+		"motion_state_updated": bool(visual_gobo_state.get("parametric_changed", false)),
+		"texture_compositions": int(debug_counters.get("texture_compositions", before_compositions)),
+	}
+
 func _apply_dmx_controls_to_fixture(fixture_uuid: String, controls: Dictionary) -> void:
 	if _fixture_light_apply_service == null:
 		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()

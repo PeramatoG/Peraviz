@@ -99,3 +99,11 @@ Peraviz enforces the following shake safety limits at runtime:
 
 Any resolved or debug-provided shake values are clamped to these limits before
 being applied.
+
+## Live visual-frame path
+
+The native visual frame carries normalized gobo slot, gobo index, and gobo rotation channels alongside the cooked light and beam values. The Godot apply layer now treats `VisualChangeGobo` as a topology-affecting update and `VisualChangeGoboRotation` as a parametric update. Slot or texture changes are applied before a beam topology rebuild so `peraviz_gobo_texture` is available when fog-beam materials are rebuilt. Rotation and shake updates are applied without forcing texture recomposition unless the active slot or composed texture changes.
+
+This is a transitional bridge: static wheel slot data and cached GDTF texture metadata are reused from the fixture binding cache, while the live numeric channel state comes from the native fixed-stride frame. The intended next step is to move the remaining slot/range and motion-mode resolution into a compact native gobo runtime resolver so Godot receives a render-ready gobo state instead of consulting cached capability dictionaries.
+
+Diagnostics now distinguish gobo topology updates, gobo parametric updates, texture compositions, and rotation/shake render-state updates. Continuous rotation or shake should update render state from persistent motion parameters and must not require full fixture capability re-application every frame.
