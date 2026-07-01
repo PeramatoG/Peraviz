@@ -21,11 +21,15 @@ const NATIVE_CHANNEL_PRISM: int = 11
 const NATIVE_CHANNEL_PRISM_ROTATION: int = 12
 const NATIVE_CHANNEL_STROBE: int = 13
 
+# Canonical PeravizVisualRuntime row after the leading fixture count: fixture id, channel mask, visual mask, 13 compact controls, then 9 render-ready values.
+const NATIVE_VISUAL_FRAME_HEADER_COUNT: int = 3
+const NATIVE_VISUAL_CHANNEL_COUNT: int = 13
+const NATIVE_VISUAL_RENDER_VALUE_COUNT: int = 9
 const NATIVE_COMPACT_STRIDE: int = 15
-const NATIVE_RENDER_READY_STRIDE: int = 25
+const NATIVE_RENDER_READY_STRIDE: int = NATIVE_VISUAL_FRAME_HEADER_COUNT + NATIVE_VISUAL_CHANNEL_COUNT + NATIVE_VISUAL_RENDER_VALUE_COUNT
 const NATIVE_VISUAL_MASK_OFFSET: int = 2
-const NATIVE_VALUES_OFFSET: int = 3
-const NATIVE_RENDER_VALUES_OFFSET: int = 16
+const NATIVE_VALUES_OFFSET: int = NATIVE_VISUAL_FRAME_HEADER_COUNT
+const NATIVE_RENDER_VALUES_OFFSET: int = NATIVE_VISUAL_FRAME_HEADER_COUNT + NATIVE_VISUAL_CHANNEL_COUNT
 
 const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
 const VISUAL_CHANGE_DIMMER: int = 1 << 1
@@ -200,6 +204,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 		_static_gobo_controls_by_fixture[fixture_uuid] = _build_static_gobo_controls(binding)
+		_live_visual_gobo_controls_by_fixture[fixture_uuid] = _build_cached_live_gobo_controls(_static_gobo_controls_by_fixture[fixture_uuid])
 		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
 		var requires_time_tick: bool = _binding_requires_time_tick(binding)
 		_fixture_time_tick_flags[fixture_uuid] = requires_time_tick
@@ -375,10 +380,10 @@ func _collect_dmx(receiver, apply_fixture_callback: Callable, loader: Node = nul
 	_last_visual_frame_size = visual_frame.size()
 	if not visual_frame.is_empty():
 		var compact_result: Dictionary = {}
-		if loader != null and light_apply_service != null:
-			compact_result = _apply_visual_frame_updates(visual_frame, loader, light_apply_service, frame_delta_sec)
-		else:
-			compact_result = _apply_compact_universe_updates(visual_frame, apply_fixture_callback, pending_controls)
+		if loader == null or light_apply_service == null:
+			push_error("PeravizVisualRuntime requires the visual-frame light applier for live DMX playback.")
+			return {"updated": updated, "skipped": skipped + int(visual_frame[0]), "universes_changed": changed_frames.size(), "fixtures_considered": fixtures_considered, "controls": pending_controls}
+		compact_result = _apply_visual_frame_updates(visual_frame, loader, light_apply_service, frame_delta_sec)
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
@@ -702,10 +707,11 @@ func _store_visual_frame_gobo_controls(fixture_uuid: String, visual_frame: Packe
 	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_INDEX, NATIVE_CHANNEL_GOBO_INDEX, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_INDEX])
 	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_ROTATION, NATIVE_CHANNEL_GOBO_ROTATION, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_ROTATION])
 	_native_channel_values[fixture_uuid] = values
-	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
-	var controls: Dictionary = _build_controls_from_native_values(fixture_plan, fixture_uuid)
-	var static_controls: Dictionary = get_static_gobo_controls_for_fixture(fixture_uuid)
-	_merge_static_gobo_controls(controls, static_controls)
+	var static_controls: Dictionary = _static_gobo_controls_by_fixture.get(fixture_uuid, {})
+	var controls: Dictionary = _live_visual_gobo_controls_by_fixture.get(fixture_uuid, {})
+	if controls.is_empty():
+		controls = _build_cached_live_gobo_controls(static_controls)
+	_update_cached_live_gobo_controls(controls, values)
 	controls["gobo_runtime_bindings"] = _build_live_visual_gobo_runtime_bindings(controls)
 	controls["changed_capability_types"] = {"gobo": true}
 	controls["visual_change_gobo"] = (visual_mask & VISUAL_CHANGE_GOBO) != 0
@@ -936,6 +942,28 @@ func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 		"binding": binding,
 		"metadata": binding.get("metadata", {}),
 	}
+
+# Builds the setup-time live gobo bridge shell from cached static wheel metadata.
+func _build_cached_live_gobo_controls(static_controls: Dictionary) -> Dictionary:
+	var controls: Dictionary = {
+		"capabilities": {},
+		"changed_capability_types": {"gobo": true},
+	}
+	_merge_static_gobo_controls(controls, static_controls)
+	return controls
+
+# Updates only numeric live gobo values on the cached bridge dictionary.
+func _update_cached_live_gobo_controls(controls: Dictionary, values: Dictionary) -> void:
+	var gobo_value: Dictionary = values.get(NATIVE_CHANNEL_GOBO, {})
+	var gobo_index_value: Dictionary = values.get(NATIVE_CHANNEL_GOBO_INDEX, {})
+	var gobo_rotation_value: Dictionary = values.get(NATIVE_CHANNEL_GOBO_ROTATION, {})
+	controls["has_gobo"] = bool(controls.get("has_gobo", false)) or not gobo_value.is_empty()
+	controls["gobo_norm"] = float(gobo_value.get("norm", controls.get("gobo_norm", 0.0)))
+	controls["gobo_raw_value"] = int(gobo_value.get("raw", round(clamp(float(controls.get("gobo_norm", 0.0)), 0.0, 1.0) * 255.0)))
+	controls["has_gobo_index"] = bool(controls.get("has_gobo_index", false)) or not gobo_index_value.is_empty()
+	controls["gobo_index_norm"] = float(gobo_index_value.get("norm", controls.get("gobo_index_norm", -1.0)))
+	controls["has_gobo_rotation"] = bool(controls.get("has_gobo_rotation", false)) or not gobo_rotation_value.is_empty()
+	controls["gobo_rotation_norm"] = float(gobo_rotation_value.get("norm", controls.get("gobo_rotation_norm", 0.0)))
 
 # Caches static gobo wheel and slot metadata used by the live visual bridge.
 func _build_static_gobo_controls(binding: Dictionary) -> Dictionary:
