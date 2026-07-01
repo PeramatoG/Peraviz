@@ -9,6 +9,7 @@ func _init() -> void:
 	_test_live_controls_preserve_top_level_bindings(failures)
 	_test_legacy_capability_blocks_still_aggregate(failures)
 	_test_live_runtime_uses_single_native_gobo_wheel(failures)
+	_test_zoom_binding_ignores_gobo_wheel_fine_offset(failures)
 	if not failures.is_empty():
 		for failure in failures:
 			push_error(failure)
@@ -105,3 +106,33 @@ func _test_live_runtime_uses_single_native_gobo_wheel(failures: Array[String]) -
 	var resolved_wheel: Dictionary = runtime_bindings[0] as Dictionary
 	if int(resolved_wheel.get("wheel_number", 0)) != 1:
 		failures.append("Live native gobo selector resolved wheel %d instead of the packed source wheel 1." % int(resolved_wheel.get("wheel_number", 0)))
+
+# Verifies gobo wheel channels cannot be packed as zoom fine bytes and collapse the beam angle.
+func _test_zoom_binding_ignores_gobo_wheel_fine_offset(failures: Array[String]) -> void:
+	var runtime = RuntimeScript.new()
+	var native_bindings: Array = []
+	var binding: Dictionary = {
+		"artnet_universe_id": 0,
+		"zoom_channel_index_0": 30,
+		"zoom_fine_channel_index_0": 40,
+		"gobo_wheels": [
+			{
+				"wheel_number": 2,
+				"wheel_name": "Gobo 2",
+				"channel_index_0": 40,
+			},
+		],
+	}
+	runtime._append_native_zoom_binding(native_bindings, binding, 7)
+	if native_bindings.size() != 1:
+		failures.append("Zoom binding with a valid coarse channel should still be registered when only its fine byte overlaps a gobo wheel.")
+		return
+	var zoom_binding: Dictionary = native_bindings[0] as Dictionary
+	if int(zoom_binding.get("channel_type", -1)) != 4:
+		failures.append("Sanitized zoom binding used the wrong native channel type.")
+	if int(zoom_binding.get("start_address", -1)) != 30:
+		failures.append("Sanitized zoom binding did not keep the zoom coarse address.")
+	if int(zoom_binding.get("fine_address", -1)) != -1:
+		failures.append("Sanitized zoom binding kept a gobo wheel offset as zoom fine address.")
+	if int(zoom_binding.get("bit_depth", 0)) != 8:
+		failures.append("Sanitized zoom binding should fall back to 8-bit zoom after removing the gobo overlap.")

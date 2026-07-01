@@ -506,7 +506,7 @@ func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictio
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PAN, "pan_channel_index_0", "pan_fine_channel_index_0", "pan_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_TILT, "tilt_channel_index_0", "tilt_fine_channel_index_0", "tilt_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_DIMMER, "dimmer_channel_index_0", "dimmer_fine_channel_index_0", "dimmer_ultra_fine_channel_index_0")
-	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_ZOOM, "zoom_channel_index_0", "zoom_fine_channel_index_0", "zoom_ultra_fine_channel_index_0")
+	_append_native_zoom_binding(native_bindings, binding, fixture_id)
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_CYAN, "cyan_channel_index_0", "cyan_fine_channel_index_0", "cyan_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_MAGENTA, "magenta_channel_index_0", "magenta_fine_channel_index_0", "magenta_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_YELLOW, "yellow_channel_index_0", "yellow_fine_channel_index_0", "yellow_ultra_fine_channel_index_0")
@@ -514,6 +514,33 @@ func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictio
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM, "prism_channel_index_0", "prism_fine_channel_index_0", "prism_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_STROBE, "strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0")
+
+# Registers zoom while excluding gobo wheel offsets that can be misreported as zoom bytes.
+func _append_native_zoom_binding(native_bindings: Array, binding: Dictionary, fixture_id: int) -> void:
+	var reserved_gobo_offsets: Dictionary = _gobo_wheel_channel_indices(binding)
+	var coarse_index: int = int(binding.get("zoom_channel_index_0", -1))
+	var fine_index: int = int(binding.get("zoom_fine_channel_index_0", -1))
+	var ultra_fine_index: int = int(binding.get("zoom_ultra_fine_channel_index_0", -1))
+	if reserved_gobo_offsets.has(coarse_index):
+		return
+	if reserved_gobo_offsets.has(fine_index):
+		fine_index = -1
+	if reserved_gobo_offsets.has(ultra_fine_index):
+		ultra_fine_index = -1
+	_append_native_channel_binding_indices(native_bindings, binding, fixture_id, NATIVE_CHANNEL_ZOOM, coarse_index, fine_index, ultra_fine_index)
+
+# Collects gobo wheel selector, index, and rotation offsets that must not drive non-gobo attributes.
+func _gobo_wheel_channel_indices(binding: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for item in binding.get("gobo_wheels", []):
+		if item is not Dictionary:
+			continue
+		var wheel: Dictionary = item
+		for key in ["channel_index_0", "fine_channel_index_0", "ultra_fine_channel_index_0", "index_channel_index_0", "index_fine_channel_index_0", "index_ultra_fine_channel_index_0", "rotation_channel_index_0", "rotation_fine_channel_index_0", "rotation_ultra_fine_channel_index_0"]:
+			var offset: int = int(wheel.get(key, -1))
+			if offset >= 0:
+				out[offset] = true
+	return out
 
 # Registers the single gobo selector/index/rotation wheel currently carried by the native frame.
 func _append_native_gobo_bindings(native_bindings: Array, binding: Dictionary, fixture_id: int) -> void:

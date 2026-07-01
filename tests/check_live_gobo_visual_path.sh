@@ -28,8 +28,10 @@ require_pattern "build_beam_mesh\(gobo_texture" scripts/beam_renderers/volumetri
 require_pattern "DmxGoboControlsResolverScript" scripts/fixture_gobo_projector.gd
 require_pattern "DmxGoboControlsResolverScript" scripts/runtime/fixture_light_apply_service.gd
 require_pattern "_live_visual_gobo_source_wheels" scripts/dmx_fixture_runtime.gd
+require_pattern "_append_native_zoom_binding" scripts/dmx_fixture_runtime.gd
 require_pattern "capabilities" tests/gdscript/test_dmx_gobo_controls_resolver.gd
 require_pattern "gobo_runtime_bindings" tests/gdscript/test_dmx_gobo_controls_resolver.gd
 require_pattern "should resolve exactly one source wheel" tests/gdscript/test_dmx_gobo_controls_resolver.gd
+require_pattern "should fall back to 8-bit zoom" tests/gdscript/test_dmx_gobo_controls_resolver.gd
 
 echo "Live visual-frame gobo bridge invariants are present."
