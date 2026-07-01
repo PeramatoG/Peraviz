@@ -13,6 +13,9 @@ require_pattern() {
 require_pattern "get_live_visual_gobo_controls_for_fixture" scripts/dmx_fixture_runtime.gd
 require_pattern "_build_static_gobo_controls" scripts/dmx_fixture_runtime.gd
 require_pattern "_build_live_visual_gobo_runtime_bindings" scripts/dmx_fixture_runtime.gd
+require_pattern "_append_native_gobo_bindings" scripts/dmx_fixture_runtime.gd
+require_pattern "_first_selectable_gobo_wheel" scripts/dmx_fixture_runtime.gd
+require_pattern "NATIVE_CHANNEL_GOBO.*channel_index_0" scripts/dmx_fixture_runtime.gd
 require_pattern "primary_slot_index" scripts/dmx_fixture_runtime.gd
 require_pattern "slots.is_empty" scripts/dmx_fixture_runtime.gd
 require_pattern "skip_gobo_projection" scripts/runtime/fixture_light_apply_service.gd

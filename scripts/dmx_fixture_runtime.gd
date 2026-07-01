@@ -510,15 +510,40 @@ func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictio
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_CYAN, "cyan_channel_index_0", "cyan_fine_channel_index_0", "cyan_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_MAGENTA, "magenta_channel_index_0", "magenta_fine_channel_index_0", "magenta_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_YELLOW, "yellow_channel_index_0", "yellow_fine_channel_index_0", "yellow_ultra_fine_channel_index_0")
-	if int(binding.get("gobo1_channel_index_0", -1)) >= 0:
-		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0")
-	else:
-		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo_channel_index_0", "gobo_fine_channel_index_0", "gobo_ultra_fine_channel_index_0")
-	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_INDEX, "gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0")
-	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_ROTATION, "gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0")
+	_append_native_gobo_bindings(native_bindings, binding, fixture_id)
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM, "prism_channel_index_0", "prism_fine_channel_index_0", "prism_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_STROBE, "strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0")
+
+func _append_native_gobo_bindings(native_bindings: Array, binding: Dictionary, fixture_id: int) -> void:
+	var gobo_wheel: Dictionary = _first_selectable_gobo_wheel(binding)
+	if int(binding.get("gobo1_channel_index_0", -1)) >= 0:
+		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0")
+	elif int(binding.get("gobo_channel_index_0", -1)) >= 0:
+		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo_channel_index_0", "gobo_fine_channel_index_0", "gobo_ultra_fine_channel_index_0")
+	elif not gobo_wheel.is_empty():
+		_append_native_channel_binding_indices(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, int(gobo_wheel.get("channel_index_0", -1)), int(gobo_wheel.get("fine_channel_index_0", -1)), int(gobo_wheel.get("ultra_fine_channel_index_0", -1)))
+
+	if int(binding.get("gobo_index_channel_index_0", -1)) >= 0:
+		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_INDEX, "gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0")
+	elif not gobo_wheel.is_empty():
+		_append_native_channel_binding_indices(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_INDEX, int(gobo_wheel.get("index_channel_index_0", -1)), int(gobo_wheel.get("index_fine_channel_index_0", -1)), int(gobo_wheel.get("index_ultra_fine_channel_index_0", -1)))
+
+	if int(binding.get("gobo_rotation_channel_index_0", -1)) >= 0:
+		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_ROTATION, "gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0")
+	elif not gobo_wheel.is_empty():
+		_append_native_channel_binding_indices(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_ROTATION, int(gobo_wheel.get("rotation_channel_index_0", -1)), int(gobo_wheel.get("rotation_fine_channel_index_0", -1)), int(gobo_wheel.get("rotation_ultra_fine_channel_index_0", -1)))
+
+func _first_selectable_gobo_wheel(binding: Dictionary) -> Dictionary:
+	var wheels: Array = binding.get("gobo_wheels", [])
+	for item in wheels:
+		if item is not Dictionary:
+			continue
+		var wheel: Dictionary = item
+		if int(wheel.get("channel_index_0", -1)) >= 0 or int(wheel.get("fine_channel_index_0", -1)) >= 0 or int(wheel.get("ultra_fine_channel_index_0", -1)) >= 0:
+			return wheel
+	return {}
+
 
 func _first_fixture_photometric(_fixture_id: int, binding: Dictionary) -> Dictionary:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -553,9 +578,9 @@ func _register_native_fixture_render_params(fixture_id: int, binding: Dictionary
 	})
 
 func _append_native_channel_binding(native_bindings: Array, binding: Dictionary, fixture_id: int, channel_type: int, coarse_key: String, fine_key: String, ultra_fine_key: String) -> void:
-	var coarse_index: int = int(binding.get(coarse_key, -1))
-	var fine_index: int = int(binding.get(fine_key, -1))
-	var ultra_fine_index: int = int(binding.get(ultra_fine_key, -1))
+	_append_native_channel_binding_indices(native_bindings, binding, fixture_id, channel_type, int(binding.get(coarse_key, -1)), int(binding.get(fine_key, -1)), int(binding.get(ultra_fine_key, -1)))
+
+func _append_native_channel_binding_indices(native_bindings: Array, binding: Dictionary, fixture_id: int, channel_type: int, coarse_index: int, fine_index: int, ultra_fine_index: int) -> void:
 	if coarse_index < 0 and fine_index < 0 and ultra_fine_index < 0:
 		return
 	var start_address: int = coarse_index
