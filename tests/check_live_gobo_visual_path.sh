@@ -29,6 +29,7 @@ require_pattern "DmxGoboControlsResolverScript" scripts/fixture_gobo_projector.g
 require_pattern "DmxGoboControlsResolverScript" scripts/runtime/fixture_light_apply_service.gd
 require_pattern "_live_visual_gobo_source_wheels" scripts/dmx_fixture_runtime.gd
 require_pattern "_append_native_zoom_binding" scripts/dmx_fixture_runtime.gd
+require_pattern "reserve_gobo_wheel_channels_from_zoom" native/src/dmx/fixture_dmx_binding.cpp
 require_pattern "capabilities" tests/gdscript/test_dmx_gobo_controls_resolver.gd
 require_pattern "gobo_runtime_bindings" tests/gdscript/test_dmx_gobo_controls_resolver.gd
 require_pattern "should resolve exactly one source wheel" tests/gdscript/test_dmx_gobo_controls_resolver.gd
