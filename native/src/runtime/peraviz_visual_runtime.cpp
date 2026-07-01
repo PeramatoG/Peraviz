@@ -323,6 +323,11 @@ void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
     }
     if ((visual_mask & VisualChangeGobo) != 0U) {
         ++stats_.changed_gobo;
+        ++stats_.gobo_topology_updates;
+    }
+    if ((visual_mask & VisualChangeGoboRotation) != 0U) {
+        ++stats_.changed_gobo_rotation;
+        ++stats_.gobo_parametric_updates;
     }
 }
 

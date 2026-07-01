@@ -76,6 +76,9 @@ struct VisualFrameStats {
     uint64_t changed_color = 0;
     uint64_t changed_zoom = 0;
     uint64_t changed_gobo = 0;
+    uint64_t changed_gobo_rotation = 0;
+    uint64_t gobo_topology_updates = 0;
+    uint64_t gobo_parametric_updates = 0;
 };
 
 struct VisualFrame {

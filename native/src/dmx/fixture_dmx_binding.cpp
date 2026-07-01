@@ -1,5 +1,6 @@
 #include "dmx/fixture_dmx_binding.h"
 
+#include <unordered_set>
 #include <utility>
 
 namespace peraviz::dmx {
@@ -39,6 +40,42 @@ void sanitize_channel_binding(FixtureAttributeChannel &channel) {
     if (channel.ultra_fine_dmx_channel_index_0 >= 0 &&
         !is_valid_channel_index(channel.ultra_fine_dmx_channel_index_0)) {
         channel.ultra_fine_dmx_channel_index_0 = -1;
+    }
+}
+
+// Adds valid channel indices to the provided overlap set.
+void collect_channel_indices(const FixtureAttributeChannel &channel, std::unordered_set<int> &out_indices) {
+    if (is_valid_channel_index(channel.coarse_dmx_channel_index_0)) {
+        out_indices.insert(channel.coarse_dmx_channel_index_0);
+    }
+    if (is_valid_channel_index(channel.fine_dmx_channel_index_0)) {
+        out_indices.insert(channel.fine_dmx_channel_index_0);
+    }
+    if (is_valid_channel_index(channel.ultra_fine_dmx_channel_index_0)) {
+        out_indices.insert(channel.ultra_fine_dmx_channel_index_0);
+    }
+}
+
+// Removes gobo wheel channels from zoom packing to keep fixture attributes independent.
+void reserve_gobo_wheel_channels_from_zoom(FixtureControlBinding &binding) {
+    std::unordered_set<int> gobo_indices;
+    for (const FixtureGoboWheelBinding &wheel : binding.gobo_wheels) {
+        collect_channel_indices(wheel.channel, gobo_indices);
+        collect_channel_indices(wheel.index_channel, gobo_indices);
+        collect_channel_indices(wheel.rotation_channel, gobo_indices);
+    }
+    if (gobo_indices.empty()) {
+        return;
+    }
+    if (gobo_indices.find(binding.zoom.coarse_dmx_channel_index_0) != gobo_indices.end()) {
+        binding.zoom = FixtureAttributeChannel();
+        return;
+    }
+    if (gobo_indices.find(binding.zoom.fine_dmx_channel_index_0) != gobo_indices.end()) {
+        binding.zoom.fine_dmx_channel_index_0 = -1;
+    }
+    if (gobo_indices.find(binding.zoom.ultra_fine_dmx_channel_index_0) != gobo_indices.end()) {
+        binding.zoom.ultra_fine_dmx_channel_index_0 = -1;
     }
 }
 
@@ -226,6 +263,7 @@ FixtureBindingBuildResult build_fixture_control_bindings(
         binding.has_zoom_physical_limits = offsets.has_zoom_physical_limits;
         binding.zoom_physical_min_degrees = offsets.zoom_physical_min_degrees;
         binding.zoom_physical_max_degrees = offsets.zoom_physical_max_degrees;
+        reserve_gobo_wheel_channels_from_zoom(binding);
 
         const bool has_dimmer = is_valid_channel_index(binding.dimmer.coarse_dmx_channel_index_0);
         const bool has_pan = is_valid_channel_index(binding.pan.coarse_dmx_channel_index_0);

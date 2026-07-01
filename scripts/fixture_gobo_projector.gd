@@ -50,6 +50,7 @@ const GOBO_BEHAVIOR_ROTATION: int = 2
 const GOBO_BEHAVIOR_SHAKE: int = 3
 
 const DmxGoboRangeResolverScript = preload("res://scripts/dmx_gobo_range_resolver.gd")
+const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 
 var _texture_cache: Dictionary = {}
 var _texture_composition_count: int = 0
@@ -95,6 +96,8 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 	var projected_rotation_deg: float = global_rotation_deg
 	var projected_shake_tilt_deg: float = 0.0
 	var has_bound_wheel_rotation: bool = false
+	var debug_resolved_slot_index: int = -1
+	var debug_texture_path: String = ""
 
 	if has_runtime_gobo:
 		for wheel in runtime_bindings:
@@ -109,6 +112,8 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 				"gobo_slots": wheel.get("slots", []),
 			}
 			var texture_entry: Dictionary = _resolve_gobo_texture_entry_for_slot(wheel_controls, slot_index)
+			debug_resolved_slot_index = slot_index
+			debug_texture_path = str(texture_entry.get("cache_key", ""))
 			var gobo_texture: Texture2D = texture_entry.get("texture", null) as Texture2D
 			if gobo_texture == null:
 				continue
@@ -130,6 +135,11 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 				projected_shake_tilt_deg = wheel_shake_tilt_deg
 			source_textures.append(gobo_texture)
 
+	light.set_meta("peraviz_live_gobo_projector_diagnostics", {
+		"resolved_slot_index": debug_resolved_slot_index,
+		"texture_path": debug_texture_path,
+		"texture_load_success": not source_textures.is_empty(),
+	})
 	var composed_texture_cache_key: String = _build_composed_gobo_cache_key(source_texture_cache_keys)
 	var prefer_native_fog_projector: bool = bool(controls.get("prefer_native_fog_projector", true))
 	var has_composed_texture: bool = not source_textures.is_empty()
@@ -632,36 +642,9 @@ func _resolve_gobo_raw_8bit(controls: Dictionary) -> int:
 			gobo_raw = raw_value
 	return clampi(gobo_raw, 0, 255)
 
+# Resolves projector gobo controls through the shared live/legacy resolver.
 func _resolve_gobo_controls(controls: Dictionary) -> Dictionary:
-	var merged_controls: Dictionary = controls.duplicate(false)
-	var capabilities: Dictionary = controls.get("capabilities", {})
-	if capabilities is Dictionary:
-		var gobo_blocks: Array = capabilities.get("gobo", [])
-		var first_gobo_block: Dictionary = {}
-		var aggregated_runtime_bindings: Array = []
-		var aggregated_slots: Array = []
-		var has_any_gobo: bool = false
-		for item in gobo_blocks:
-			if item is Dictionary:
-				var block: Dictionary = item
-				if first_gobo_block.is_empty():
-					first_gobo_block = block
-				if bool(block.get("has_gobo", false)):
-					has_any_gobo = true
-				for runtime_binding in block.get("gobo_runtime_bindings", []):
-					aggregated_runtime_bindings.append(runtime_binding)
-				for slot_item in block.get("gobo_slots", []):
-					aggregated_slots.append(slot_item)
-		if not first_gobo_block.is_empty():
-			merged_controls.merge(first_gobo_block, true)
-		merged_controls["has_gobo"] = has_any_gobo or not aggregated_runtime_bindings.is_empty()
-		merged_controls["gobo_runtime_bindings"] = aggregated_runtime_bindings
-		merged_controls["gobo_slots"] = aggregated_slots
-	if not merged_controls.has("gobo_runtime_bindings") or merged_controls.get("gobo_runtime_bindings", []) == null:
-		merged_controls["gobo_runtime_bindings"] = []
-	if not merged_controls.has("gobo_slots") or merged_controls.get("gobo_slots", []) == null:
-		merged_controls["gobo_slots"] = []
-	return merged_controls
+	return DmxGoboControlsResolverScript.resolve(controls)
 
 func _resolve_active_gobo_slot_index(controls: Dictionary, gobo_raw_8bit: int) -> int:
 	var gobo_ranges: Array = controls.get("gobo_ranges", [])

@@ -16,7 +16,7 @@ This matrix defines the acceptance baseline for incremental PRs that add or impr
 | Pan/Tilt | Partial | Partial | Partial | Limited motion-path validation in current runtime tests. | 16-bit coarse/fine handling may differ by fixture definitions. |
 | Zoom | Partial | Partial | Partial | No dedicated zoom-only regression suite yet. | Beam angle interpretation can vary between manufacturers. |
 | CMY | Partial | Partial | Partial | Covered indirectly by color rendering checks only. | Channel order and inversion differences may produce incorrect color mixing. |
-| Gobo | Partial | Partial | Partial | Existing gobo control documentation and focused checks are available, but not a full matrix test suite. | Slot indexing and rotation mode semantics can diverge from fixture specs. |
+| Gobo | Partial | Partial | Partial | Live visual-frame playback now forwards native gobo, gobo index, and gobo rotation changes to the cached projector path with separate topology and parametric diagnostics. | Static slot metadata is still bridged from cached Godot binding data while the native render-ready gobo resolver is expanded. |
 | Prism | No | No | No | No dedicated prism tests currently. | Multi-facet behavior and indexing standards differ per fixture family. |
 | Strobe | Partial | Partial | Partial | Basic intensity/time behavior is partially exercised in runtime tests. | Frequency curves and random strobe modes are not uniformly modeled. |
 | Color Wheel | Partial | Partial | Partial | Partial checks exist via color-related fixture scenarios. | Split-color interpolation and wheel indexing can be fixture-specific. |

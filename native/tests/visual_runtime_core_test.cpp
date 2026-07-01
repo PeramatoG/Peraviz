@@ -357,6 +357,50 @@ int test_single_step_pan_change_is_not_filtered() {
     return 0;
 }
 
+// Verifies gobo selection and rotation produce separate visual dirty flags.
+int test_gobo_topology_and_parametric_masks() {
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.set_fixture_bindings({
+        {1, 10, 8, 7, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 9, 8, -1, -1, 8, 0.0, 1.0},
+        {1, 10, 10, 9, -1, -1, 8, 0.0, 1.0},
+    });
+    std::vector<uint8_t> first(16, 0);
+    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
+    if (runtime.consume_latest_visual_frame().values.empty()) {
+        return fail("Initial gobo fixture state did not emit");
+    }
+    std::vector<uint8_t> slot_change = first;
+    slot_change[7] = 128;
+    runtime.submit_universe_frame(10, slot_change.data(), static_cast<int>(slot_change.size()));
+    peraviz::runtime::VisualFrame topology_frame = runtime.consume_latest_visual_frame();
+    if (topology_frame.values.empty()) {
+        return fail("Gobo slot change did not emit");
+    }
+    const uint32_t topology_mask = static_cast<uint32_t>(topology_frame.values[3]);
+    if ((topology_mask & peraviz::runtime::VisualChangeGobo) == 0U ||
+        (topology_mask & peraviz::runtime::VisualChangeBeamTopology) == 0U ||
+        (topology_mask & peraviz::runtime::VisualChangeGoboRotation) != 0U) {
+        return fail("Gobo slot change emitted the wrong visual mask");
+    }
+    std::vector<uint8_t> rotation_change = slot_change;
+    rotation_change[9] = 200;
+    runtime.submit_universe_frame(10, rotation_change.data(), static_cast<int>(rotation_change.size()));
+    peraviz::runtime::VisualFrame parametric_frame = runtime.consume_latest_visual_frame();
+    if (parametric_frame.values.empty()) {
+        return fail("Gobo rotation change did not emit");
+    }
+    const uint32_t parametric_mask = static_cast<uint32_t>(parametric_frame.values[3]);
+    if ((parametric_mask & peraviz::runtime::VisualChangeGoboRotation) == 0U ||
+        (parametric_mask & peraviz::runtime::VisualChangeBeamTopology) != 0U) {
+        return fail("Gobo rotation change emitted topology work");
+    }
+    if (parametric_frame.stats.gobo_topology_updates == 0 || parametric_frame.stats.gobo_parametric_updates == 0) {
+        return fail("Gobo diagnostics did not count topology and parametric updates");
+    }
+    return 0;
+}
+
 } // namespace
 
 // Runs visual runtime core regression tests.
@@ -398,6 +442,9 @@ int main() {
         return result;
     }
     if (int result = test_zoom_only_mask(); result != 0) {
+        return result;
+    }
+    if (int result = test_gobo_topology_and_parametric_masks(); result != 0) {
         return result;
     }
     return 0;

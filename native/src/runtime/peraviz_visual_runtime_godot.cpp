@@ -101,6 +101,9 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["changed_color"] = static_cast<int64_t>(stats.changed_color);
     out["changed_zoom"] = static_cast<int64_t>(stats.changed_zoom);
     out["changed_gobo"] = static_cast<int64_t>(stats.changed_gobo);
+    out["changed_gobo_rotation"] = static_cast<int64_t>(stats.changed_gobo_rotation);
+    out["gobo_topology_updates"] = static_cast<int64_t>(stats.gobo_topology_updates);
+    out["gobo_parametric_updates"] = static_cast<int64_t>(stats.gobo_parametric_updates);
     return out;
 }
 
