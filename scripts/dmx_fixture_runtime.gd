@@ -515,8 +515,9 @@ func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictio
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_PRISM_ROTATION, "prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0")
 	_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_STROBE, "strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0")
 
+# Registers the single gobo selector/index/rotation wheel currently carried by the native frame.
 func _append_native_gobo_bindings(native_bindings: Array, binding: Dictionary, fixture_id: int) -> void:
-	var gobo_wheel: Dictionary = _first_selectable_gobo_wheel(binding)
+	var gobo_wheel: Dictionary = _native_gobo_source_wheel(binding)
 	if int(binding.get("gobo1_channel_index_0", -1)) >= 0:
 		_append_native_channel_binding(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO, "gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0")
 	elif int(binding.get("gobo_channel_index_0", -1)) >= 0:
@@ -534,6 +535,7 @@ func _append_native_gobo_bindings(native_bindings: Array, binding: Dictionary, f
 	elif not gobo_wheel.is_empty():
 		_append_native_channel_binding_indices(native_bindings, binding, fixture_id, NATIVE_CHANNEL_GOBO_ROTATION, int(gobo_wheel.get("rotation_channel_index_0", -1)), int(gobo_wheel.get("rotation_fine_channel_index_0", -1)), int(gobo_wheel.get("rotation_ultra_fine_channel_index_0", -1)))
 
+# Finds the first wheel with a selectable DMX channel for the current fixture binding.
 func _first_selectable_gobo_wheel(binding: Dictionary) -> Dictionary:
 	var wheels: Array = binding.get("gobo_wheels", [])
 	for item in wheels:
@@ -543,6 +545,22 @@ func _first_selectable_gobo_wheel(binding: Dictionary) -> Dictionary:
 		if int(wheel.get("channel_index_0", -1)) >= 0 or int(wheel.get("fine_channel_index_0", -1)) >= 0 or int(wheel.get("ultra_fine_channel_index_0", -1)) >= 0:
 			return wheel
 	return {}
+
+# Resolves the single gobo wheel currently represented by the fixed native visual frame.
+func _native_gobo_source_wheel(binding: Dictionary) -> Dictionary:
+	var wheels: Array = binding.get("gobo_wheels", [])
+	if wheels.is_empty():
+		return {}
+	var primary_wheel_number: int = int(binding.get("gobo_wheel_number", 0))
+	if int(binding.get("gobo1_channel_index_0", -1)) >= 0 or int(binding.get("gobo_channel_index_0", -1)) >= 0:
+		for item in wheels:
+			if item is not Dictionary:
+				continue
+			var wheel: Dictionary = item
+			var wheel_number: int = int(wheel.get("wheel_number", 0))
+			if (primary_wheel_number > 0 and wheel_number == primary_wheel_number) or (primary_wheel_number <= 0 and wheel_number == 1):
+				return wheel
+	return _first_selectable_gobo_wheel(binding)
 
 
 func _first_fixture_photometric(_fixture_id: int, binding: Dictionary) -> Dictionary:
@@ -892,35 +910,38 @@ func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 		"metadata": binding.get("metadata", {}),
 	}
 
+# Caches static gobo wheel and slot metadata used by the live visual bridge.
 func _build_static_gobo_controls(binding: Dictionary) -> Dictionary:
 	var gobo_slots: Array = binding.get("gobo1_slots", binding.get("gobo_slots", []))
 	var gobo_ranges: Array = binding.get("gobo1_ranges", binding.get("gobo_ranges", []))
 	var gobo_wheels: Array = binding.get("gobo_wheels", [])
+	var source_wheel: Dictionary = _native_gobo_source_wheel(binding)
 	return {
 		"has_gobo": not gobo_slots.is_empty() or not gobo_ranges.is_empty() or not gobo_wheels.is_empty() or int(binding.get("gobo_channel_index_0", -1)) >= 0 or int(binding.get("gobo1_channel_index_0", -1)) >= 0,
-		"has_gobo_index": int(binding.get("gobo_index_channel_index_0", -1)) >= 0,
-		"has_gobo_rotation": int(binding.get("gobo_rotation_channel_index_0", -1)) >= 0,
+		"has_gobo_index": int(binding.get("gobo_index_channel_index_0", -1)) >= 0 or int(source_wheel.get("index_channel_index_0", -1)) >= 0,
+		"has_gobo_rotation": int(binding.get("gobo_rotation_channel_index_0", -1)) >= 0 or int(source_wheel.get("rotation_channel_index_0", -1)) >= 0,
 		"gobo_slots": gobo_slots,
 		"gobo_ranges": gobo_ranges,
 		"gobo_wheel_name": str(binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", ""))),
 		"gobo_wheel_number": int(binding.get("gobo_wheel_number", 0)),
 		"gobo_wheels": gobo_wheels,
 		"gobo_runtime_bindings": binding.get("gobo_runtime_bindings", []),
+		"live_gobo_source_wheel_number": int(source_wheel.get("wheel_number", int(binding.get("gobo_wheel_number", 0)))),
+		"live_gobo_source_wheel_name": str(source_wheel.get("wheel_name", binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", "")))),
 	}
 
+# Copies cached static gobo metadata into a live controls dictionary without recomputing it.
 func _merge_static_gobo_controls(target: Dictionary, static_controls: Dictionary) -> void:
 	if static_controls.is_empty():
 		return
-	for key in ["gobo_slots", "gobo_ranges", "gobo_wheel_name", "gobo_wheel_number", "gobo_wheels", "gobo_runtime_bindings"]:
+	for key in ["gobo_slots", "gobo_ranges", "gobo_wheel_name", "gobo_wheel_number", "gobo_wheels", "gobo_runtime_bindings", "live_gobo_source_wheel_number", "live_gobo_source_wheel_name"]:
 		target[key] = static_controls.get(key, target.get(key, []))
 	target["has_gobo"] = bool(target.get("has_gobo", false)) or bool(static_controls.get("has_gobo", false))
 	target["has_gobo_index"] = bool(target.get("has_gobo_index", false)) or bool(static_controls.get("has_gobo_index", false))
 	target["has_gobo_rotation"] = bool(target.get("has_gobo_rotation", false)) or bool(static_controls.get("has_gobo_rotation", false))
 
+# Resolves runtime gobo bindings from the native-packed selector and cached wheel metadata.
 func _build_live_visual_gobo_runtime_bindings(controls: Dictionary) -> Array:
-	var existing: Array = controls.get("gobo_runtime_bindings", [])
-	if not existing.is_empty():
-		return existing
 	var wheels: Array = controls.get("gobo_wheels", [])
 	var raw_8bit: int = int(controls.get("gobo_raw_value", round(clamp(float(controls.get("gobo_norm", 0.0)), 0.0, 1.0) * 255.0)))
 	if wheels.is_empty():
@@ -941,7 +962,7 @@ func _build_live_visual_gobo_runtime_bindings(controls: Dictionary) -> Array:
 		}]
 	var index_norm: float = clamp(float(controls.get("gobo_index_norm", -1.0)), 0.0, 1.0) if bool(controls.get("has_gobo_index", false)) else -1.0
 	var out: Array = []
-	for item in wheels:
+	for item in _live_visual_gobo_source_wheels(controls):
 		if item is not Dictionary:
 			continue
 		var wheel: Dictionary = item
@@ -973,6 +994,26 @@ func _build_live_visual_gobo_runtime_bindings(controls: Dictionary) -> Array:
 		})
 	return out
 
+# Returns only the wheel whose selector is packed into the current native gobo channel.
+func _live_visual_gobo_source_wheels(controls: Dictionary) -> Array:
+	var wheels: Array = controls.get("gobo_wheels", [])
+	if wheels.is_empty():
+		return []
+	var source_number: int = int(controls.get("live_gobo_source_wheel_number", 0))
+	var source_name: String = str(controls.get("live_gobo_source_wheel_name", ""))
+	for item in wheels:
+		if item is not Dictionary:
+			continue
+		var wheel: Dictionary = item
+		if source_number > 0 and int(wheel.get("wheel_number", 0)) == source_number:
+			return [wheel]
+		if source_number <= 0 and not source_name.is_empty() and str(wheel.get("wheel_name", "")) == source_name:
+			return [wheel]
+	for item in wheels:
+		if item is Dictionary:
+			return [item]
+	return []
+
 func _build_live_gobo_diagnostics(controls: Dictionary, static_controls: Dictionary, visual_mask: int) -> Dictionary:
 	return {
 		"mask_received": true,
@@ -984,6 +1025,8 @@ func _build_live_gobo_diagnostics(controls: Dictionary, static_controls: Diction
 		"gobo_range_count": (controls.get("gobo_ranges", []) as Array).size(),
 		"runtime_binding_count": (controls.get("gobo_runtime_bindings", []) as Array).size(),
 		"static_wheel_count": (static_controls.get("gobo_wheels", []) as Array).size(),
+		"live_gobo_source_wheel_number": int(controls.get("live_gobo_source_wheel_number", 0)),
+		"live_gobo_source_wheel_name": str(controls.get("live_gobo_source_wheel_name", "")),
 		"raw_gobo_value": int(controls.get("gobo_raw_value", -1)),
 	}
 

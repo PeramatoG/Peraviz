@@ -1,12 +1,14 @@
 extends SceneTree
 
 const ResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
+const RuntimeScript = preload("res://scripts/dmx_fixture_runtime.gd")
 
 # Runs live visual-frame gobo resolver regressions in a headless Godot process.
 func _init() -> void:
 	var failures: Array[String] = []
 	_test_live_controls_preserve_top_level_bindings(failures)
 	_test_legacy_capability_blocks_still_aggregate(failures)
+	_test_live_runtime_uses_single_native_gobo_wheel(failures)
 	if not failures.is_empty():
 		for failure in failures:
 			push_error(failure)
@@ -65,3 +67,41 @@ func _test_legacy_capability_blocks_still_aggregate(failures: Array[String]) -> 
 		failures.append("Legacy capability gobo controls did not aggregate runtime bindings.")
 	if (resolved.get("gobo_slots", []) as Array).size() != 1:
 		failures.append("Legacy capability gobo controls did not aggregate slots.")
+
+# Verifies one packed native gobo selector does not compose all cached fixture wheels together.
+func _test_live_runtime_uses_single_native_gobo_wheel(failures: Array[String]) -> void:
+	var runtime = RuntimeScript.new()
+	var binding: Dictionary = {
+		"gobo1_channel_index_0": 10,
+		"gobo_wheel_number": 1,
+		"gobo_wheels": [
+			{
+				"wheel_number": 1,
+				"wheel_name": "Gobo 1",
+				"channel_index_0": 10,
+				"ranges": [{"slot_index": 1, "dmx_from": 1, "dmx_to": 255}],
+				"slots": [{"slot_index": 1, "image_path": "res://tests/fixtures/gobo-one.png"}],
+			},
+			{
+				"wheel_number": 2,
+				"wheel_name": "Gobo 2",
+				"channel_index_0": 20,
+				"ranges": [{"slot_index": 2, "dmx_from": 1, "dmx_to": 255}],
+				"slots": [{"slot_index": 2, "image_path": "res://tests/fixtures/gobo-two.png"}],
+			},
+		],
+	}
+	var controls: Dictionary = {
+		"has_gobo": true,
+		"gobo_norm": 0.5,
+		"gobo_raw_value": 128,
+		"gobo_resolution_bits": 8,
+	}
+	runtime._merge_static_gobo_controls(controls, runtime._build_static_gobo_controls(binding))
+	var runtime_bindings: Array = runtime._build_live_visual_gobo_runtime_bindings(controls)
+	if runtime_bindings.size() != 1:
+		failures.append("Live native gobo selector should resolve exactly one source wheel, not compose multiple wheels.")
+		return
+	var resolved_wheel: Dictionary = runtime_bindings[0] as Dictionary
+	if int(resolved_wheel.get("wheel_number", 0)) != 1:
+		failures.append("Live native gobo selector resolved wheel %d instead of the packed source wheel 1." % int(resolved_wheel.get("wheel_number", 0)))
