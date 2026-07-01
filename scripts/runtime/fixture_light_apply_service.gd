@@ -33,6 +33,7 @@ var _visual_apply_counters: Dictionary = {
 	"rendering_server_calls": 0,
 }
 var _diagnostic_warning_keys: Dictionary = {}
+var _diagnostic_info_keys: Dictionary = {}
 
 func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls: Dictionary) -> void:
 	var phase_start: int = Time.get_ticks_usec()
@@ -152,6 +153,7 @@ func _apply_visual_frame_light(loader: Node, light: SpotLight3D, photometric: Di
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	var beam_visible: bool = scaled_intensity > threshold
+	_log_visual_once("beam_parent_visible_spot_rid_hidden", "[PeravizVisualRuntime] Beam intensity is visible while realtime SpotLight rendering is disabled; the SpotLight node stays visible as the beam parent and its RenderingServer instance remains hidden.", dimmer_norm > 0.0001 and beam_visible and not real_spot_visible)
 	_warn_visual_once(str(light.get_instance_id()) + ":beam_params_not_visible", "Light %s has dimmer %.3f but beam params are not visible." % [str(light.get_instance_id()), dimmer_norm], dimmer_norm > 0.0001 and not beam_visible)
 	return {"light_visible": real_spot_visible, "beam_visible": beam_visible}
 
@@ -203,10 +205,11 @@ func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
 	_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1
 
+# Keeps the light node available as a beam parent while independently gating the real SpotLight RID.
 func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> void:
 	if light == null or not is_instance_valid(light):
 		return
-	light.visible = real_spot_visible
+	light.visible = visible
 	var last_state: Dictionary = loader._get_or_create_emitter_last_state(light) if loader.has_method("_get_or_create_emitter_last_state") else {}
 	last_state["prop:visible"] = visible
 	last_state["prop:realtime_spot_visible"] = real_spot_visible
@@ -222,6 +225,13 @@ func _should_enable_realtime_spotlight(loader: Node, visible: bool) -> bool:
 	if settings is Dictionary:
 		return bool((settings as Dictionary).get("enable_realtime_spotlights", false))
 	return false
+
+# Emits a one-time diagnostic message for live visual-frame state transitions.
+func _log_visual_once(key: String, message: String, condition: bool = true) -> void:
+	if not condition or _diagnostic_info_keys.has(key):
+		return
+	_diagnostic_info_keys[key] = true
+	print(message)
 
 func _warn_visual_once(key: String, message: String, condition: bool = true) -> void:
 	if not condition or _diagnostic_warning_keys.has(key):
