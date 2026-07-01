@@ -20,7 +20,9 @@ func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture:
 	var cone_radius: float = tan(deg_to_rad(beam_angle * 0.5)) * beam_range
 	fog_volume.size = Vector3(max(cone_radius * 2.0, 0.1), max(cone_radius * 2.0, 0.1), beam_range)
 	fog_volume.position = Vector3(0.0, 0.0, -beam_range * 0.5)
-	fog_volume.visible = bool(beam_params.get("is_visible", true))
+	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_params.get("beam_intensity", 0.0))), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
+	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
+	fog_volume.visible = scaled_intensity > threshold
 
 	var fog_material: ShaderMaterial = fog_volume.material as ShaderMaterial
 	if fog_material == null:

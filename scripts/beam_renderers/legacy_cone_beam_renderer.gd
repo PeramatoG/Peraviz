@@ -48,10 +48,10 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
 	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
-	var is_visible: bool = bool(params.get("is_visible", true)) and scaled_intensity > threshold
+	var beam_visible: bool = scaled_intensity > threshold
 
-	prism.visible = is_visible
-	if not is_visible:
+	prism.visible = beam_visible
+	if not beam_visible:
 		var hidden_axis: MeshInstance3D = _ensure_debug_axis(light)
 		if hidden_axis != null:
 			hidden_axis.visible = false
@@ -111,9 +111,9 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
-	var is_visible: bool = bool(params.get("is_visible", true)) and scaled_intensity > threshold
-	prism.visible = is_visible
-	if not is_visible:
+	var beam_visible: bool = scaled_intensity > threshold
+	prism.visible = beam_visible
+	if not beam_visible:
 		return true
 
 	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)

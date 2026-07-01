@@ -63,7 +63,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 
-	if not bool(params.get("is_visible", true)) or intensity <= threshold:
+	if intensity <= threshold:
 		beam.visible = false
 		beam.set_instance_shader_parameter("beam_visibility", 0.0)
 		var hidden_axis: MeshInstance3D = _ensure_debug_axis(light)
@@ -153,7 +153,7 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
-	if not bool(params.get("is_visible", true)) or intensity <= threshold:
+	if intensity <= threshold:
 		beam.visible = false
 		beam.set_instance_shader_parameter("beam_visibility", 0.0)
 		return true

@@ -346,13 +346,13 @@ func _ready() -> void:
 	_refresh_fixture_debug_panel()
 	_setup_dmx_controls()
 	_setup_mvr_xchange_panel()
+	_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
 	_setup_dmx_fixture_runtime()
 	_apply_environment_quality_preset()
 	_capture_visual_environment_baseline()
 	_load_visual_settings_from_project()
 	_initialize_beam_renderers()
 	_fixture_gobo_projector = FixtureGoboProjectorScript.new()
-	_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
 	if visual_settings_window != null and visual_settings_window.has_method("configure"):
 		visual_settings_window.call("configure", _visual_settings)
 		if visual_settings_window.has_method("set_ui_visibility_policy"):
@@ -587,7 +587,6 @@ func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: flo
 	beam_params["scaled_intensity"] = scaled_intensity
 	beam_params["beam_intensity"] = scaled_intensity
 	beam_params["beam_color"] = beam_color
-	beam_params["is_visible"] = _get_cached_light_visibility(light)
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
 	if _active_beam_renderer.update_beam_intensity(light, beam_params):
 		light.set_meta("peraviz_beam_last_params", beam_params)
@@ -1686,6 +1685,8 @@ func _find_axis_for_role(axis_nodes: Array, role: String) -> Node3D:
 	return axis_nodes[0]
 
 func _apply_dmx_visual_frame(dmx_fixture_runtime: DmxFixtureRuntime, receiver, delta_sec: float) -> Dictionary:
+	if dmx_fixture_runtime == null:
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 	if _fixture_light_apply_service == null:
 		_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
 	return dmx_fixture_runtime.apply_visual_frame(receiver, self, _fixture_light_apply_service, delta_sec)
@@ -2155,9 +2156,6 @@ func _track_property_change(applied: bool) -> void:
 	else:
 		_debug_properties_skipped += 1
 
-func _get_cached_light_visibility(light: SpotLight3D) -> bool:
-	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
-	return bool(last_state.get("prop:visible", light.visible))
 
 func _set_light_property_float(light: SpotLight3D, property_name: String, value: float, last_state: Dictionary) -> void:
 	var cache_key: String = "prop:" + property_name
