@@ -574,15 +574,16 @@ func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionar
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
 	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
-	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color)
+	var scaled_intensity_override: float = render_ready_values[7] if render_ready_values.size() >= 9 else -1.0
+	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color, scaled_intensity_override)
 
-func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: float, beam_color: Color) -> bool:
+func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> bool:
 	if _active_beam_renderer == null or not light.has_meta("peraviz_beam_last_params"):
 		return false
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
 	if beam_params.is_empty():
 		return false
-	var scaled_intensity: float = clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
+	var scaled_intensity: float = clamp(scaled_intensity_override, 0.0, BEAM_INTENSITY_MAX) if scaled_intensity_override >= 0.0 else clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	beam_params["normalized_dimmer"] = clamp(normalized_dimmer, 0.0, 1.0)
 	beam_params["scaled_intensity"] = scaled_intensity
 	beam_params["beam_intensity"] = scaled_intensity
@@ -2075,7 +2076,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		lens_radius = max(source_beam_radius, 0.005)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
 	_set_light_meta_variant(light, "peraviz_beam_angle_source", "gdtf_full_angle_deg", last_state)
-	var scaled_intensity: float = clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
+	var scaled_intensity: float = clamp(render_ready_values[7], 0.0, BEAM_INTENSITY_MAX) if has_render_ready else clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	var beam_defaults: Dictionary = _cached_beam_defaults
 	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
 	beam_params["fade_end_ratio"] = EMITTER_CONE_FADE_END_RATIO

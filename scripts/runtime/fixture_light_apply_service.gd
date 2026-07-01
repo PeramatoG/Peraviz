@@ -145,7 +145,7 @@ func _apply_visual_frame_light(loader: Node, light: SpotLight3D, photometric: Di
 	_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
 	_track_phase("light_apply", light_phase_start)
 	if not light.has_meta("peraviz_beam_last_params"):
-		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, material_energy)
+		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_intensity, material_energy)
 	else:
 		_apply_visual_frame_beam(loader, light, visual_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
@@ -156,7 +156,7 @@ func _apply_visual_frame_light(loader: Node, light: SpotLight3D, photometric: Di
 	return {"light_visible": real_spot_visible, "beam_visible": beam_visible}
 
 
-func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, photometric: Dictionary, dimmer_norm: float, beam_color: Color, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, material_energy: float) -> void:
+func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, photometric: Dictionary, dimmer_norm: float, beam_color: Color, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_intensity: float, material_energy: float) -> void:
 	var render_ready_values := PackedFloat32Array([
 		beam_energy,
 		spot_energy,
@@ -165,7 +165,7 @@ func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, p
 		beam_color.r,
 		beam_color.g,
 		beam_color.b,
-		dimmer_norm * float(loader.get("BEAM_INTENSITY_MAX")) if loader.get("BEAM_INTENSITY_MAX") != null else dimmer_norm * 50.0,
+		beam_intensity,
 		material_energy,
 	])
 	loader._apply_emitter_light_state(light, photometric, dimmer_norm, {"render_ready_values": render_ready_values})
@@ -184,7 +184,7 @@ func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int
 	if loader.has_method("_update_beam_intensity_for_light"):
 		var beam_phase_start: int = Time.get_ticks_usec()
 		_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
-		if loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color):
+		if loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color, beam_intensity):
 			_visual_apply_counters["beam_intensity_updates"] = int(_visual_apply_counters.get("beam_intensity_updates", 0)) + 1
 		elif visible:
 			_apply_visual_frame_beam_topology(loader, light, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
