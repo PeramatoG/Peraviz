@@ -71,7 +71,7 @@ func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls:
 		apply_dimmer_feedback_to_fixture(loader, fixture_uuid, dimmer_percent, controls)
 	_track_phase("fixture_apply", phase_start)
 
-func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, frame_delta_sec: float) -> void:
+func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, frame_delta_sec: float, dmx_runtime: Object = null) -> void:
 	var phase_start: int = Time.get_ticks_usec()
 	var visual_mask: int = int(visual_frame[base + VISUAL_FRAME_VISUAL_MASK_OFFSET])
 	var dimmer_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET], 0.0, 1.0)
@@ -91,7 +91,7 @@ func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_fr
 	if (visual_mask & VISUAL_CHANGE_TRANSFORM) != 0:
 		_apply_visual_frame_pan_tilt(loader, fixture_uuid, pan_norm, tilt_norm)
 	if (visual_mask & (VISUAL_CHANGE_DIMMER | VISUAL_CHANGE_COLOR | VISUAL_CHANGE_ZOOM | VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION | VISUAL_CHANGE_MATERIAL | VISUAL_CHANGE_BEAM_TOPOLOGY)) != 0:
-		_apply_visual_frame_lighting(loader, fixture_uuid, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm)
+		_apply_visual_frame_lighting(loader, fixture_uuid, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
 	_track_phase("fixture_apply", phase_start)
 
 func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_norm: float, tilt_norm: float) -> void:
@@ -99,7 +99,7 @@ func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_norm: 
 	var tilt_degrees: float = lerp(float(loader.tilt_min_input.value), float(loader.tilt_max_input.value), tilt_norm)
 	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
-func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float) -> void:
+func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> void:
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
 	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
 	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
@@ -118,7 +118,7 @@ func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mas
 		if light == null or not is_instance_valid(light):
 			continue
 		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
-		var applied_state: Dictionary = _apply_visual_frame_light(loader, fixture_uuid, light, photometric, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm)
+		var applied_state: Dictionary = _apply_visual_frame_light(loader, fixture_uuid, light, photometric, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
 		if bool(applied_state.get("light_visible", false)):
 			visible_lights += 1
 		if bool(applied_state.get("beam_visible", false)):
@@ -127,12 +127,18 @@ func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mas
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
 
-func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLight3D, visual_mask: int, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float) -> bool:
+func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLight3D, visual_mask: int, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> bool:
 	if (visual_mask & (VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION)) == 0:
 		return false
 	if not loader.has_method("_apply_live_visual_gobo_to_light"):
 		return false
 	var gobo_phase_start: int = Time.get_ticks_usec()
+	var live_controls: Dictionary = {}
+	var diagnostics: Dictionary = {}
+	if dmx_runtime != null and dmx_runtime.has_method("get_live_visual_gobo_controls_for_fixture"):
+		live_controls = dmx_runtime.get_live_visual_gobo_controls_for_fixture(fixture_uuid)
+	if dmx_runtime != null and dmx_runtime.has_method("get_live_gobo_diagnostics_for_fixture"):
+		diagnostics = dmx_runtime.get_live_gobo_diagnostics_for_fixture(fixture_uuid)
 	var result: Dictionary = loader._apply_live_visual_gobo_to_light(fixture_uuid, light, {
 		"frame_delta_sec": frame_delta_sec,
 		"gobo_norm": gobo_norm,
@@ -140,7 +146,8 @@ func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLig
 		"gobo_rotation_norm": gobo_rotation_norm,
 		"topology_changed": (visual_mask & VISUAL_CHANGE_GOBO) != 0,
 		"parametric_changed": (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0,
-	})
+		"diagnostics": diagnostics,
+	}, live_controls)
 	_track_phase("gobo_update", gobo_phase_start)
 	if bool(result.get("applied", false)):
 		_visual_apply_counters["gobo_parametric_updates"] = int(_visual_apply_counters.get("gobo_parametric_updates", 0)) + 1
@@ -164,7 +171,7 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 				_visual_apply_counters["rendering_server_calls"] = int(_visual_apply_counters.get("rendering_server_calls", 0)) + 2
 	_track_phase("material_apply", material_phase_start)
 
-func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float) -> Dictionary:
+func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> Dictionary:
 	var light_phase_start: int = Time.get_ticks_usec()
 	var visible: bool = dimmer_norm > 0.0001
 	var real_spot_visible: bool = _should_enable_realtime_spotlight(loader, visible)
@@ -177,13 +184,15 @@ func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLi
 	light.set_meta("peraviz_beam_base_intensity", dimmer_norm)
 	_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
 	_track_phase("light_apply", light_phase_start)
-	var gobo_topology_changed: bool = _apply_visual_frame_gobo(loader, fixture_uuid, light, visual_mask, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm)
+	var gobo_topology_changed: bool = _apply_visual_frame_gobo(loader, fixture_uuid, light, visual_mask, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
 	if gobo_topology_changed:
 		visual_mask |= VISUAL_CHANGE_BEAM_TOPOLOGY
 	if not light.has_meta("peraviz_beam_last_params"):
 		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_intensity, material_energy)
 	else:
 		_apply_visual_frame_beam(loader, light, visual_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
+	if gobo_topology_changed and loader.has_method("_record_live_visual_gobo_beam_result"):
+		loader._record_live_visual_gobo_beam_result(fixture_uuid, light)
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
@@ -205,7 +214,7 @@ func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, p
 		beam_intensity,
 		material_energy,
 	])
-	loader._apply_emitter_light_state(light, photometric, dimmer_norm, {"render_ready_values": render_ready_values})
+	loader._apply_emitter_light_state(light, photometric, dimmer_norm, {"render_ready_values": render_ready_values, "skip_gobo_projection": true})
 	var visible: bool = dimmer_norm > 0.0001
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
 

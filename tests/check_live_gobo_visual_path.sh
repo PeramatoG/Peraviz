@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+require_pattern() {
+  local pattern="$1"
+  local file="$2"
+  if ! rg -q "$pattern" "$file"; then
+    echo "Missing expected live gobo pattern '$pattern' in $file" >&2
+    exit 1
+  fi
+}
+
+require_pattern "get_live_visual_gobo_controls_for_fixture" scripts/dmx_fixture_runtime.gd
+require_pattern "_build_static_gobo_controls" scripts/dmx_fixture_runtime.gd
+require_pattern "_build_live_visual_gobo_runtime_bindings" scripts/dmx_fixture_runtime.gd
+require_pattern "skip_gobo_projection" scripts/runtime/fixture_light_apply_service.gd
+require_pattern "skip_gobo_projection" scripts/load_scene.gd
+require_pattern "peraviz_gobo_texture" scripts/load_scene.gd
+require_pattern "peraviz_last_beam_gobo_consumed" scripts/beam_renderers/legacy_cone_beam_renderer.gd
+require_pattern "peraviz_last_beam_gobo_consumed" scripts/beam_renderers/volumetric_gobo_prism_shape_provider.gd
+
+echo "Live visual-frame gobo bridge invariants are present."

@@ -5,6 +5,7 @@ const MAX_UNBOUND_PREVIEW: int = 8
 const FORCE_COARSE_ONLY_DMX_READ: bool = false
 
 const GoboVectorizationCacheScript = preload("res://scripts/gobo_vectorization/gobo_vectorization_cache.gd")
+const DmxGoboRangeResolverScript = preload("res://scripts/dmx_gobo_range_resolver.gd")
 
 const NATIVE_CHANNEL_PAN: int = 1
 const NATIVE_CHANNEL_TILT: int = 2
@@ -99,6 +100,9 @@ var _native_fixture_ids_by_uuid: Dictionary = {}
 var _native_fixture_uuids_by_id: Dictionary = {}
 var _native_channel_values: Dictionary = {}
 var _native_render_ready_values: Dictionary = {}
+var _static_gobo_controls_by_fixture: Dictionary = {}
+var _live_visual_gobo_controls_by_fixture: Dictionary = {}
+var _live_gobo_diagnostics_by_fixture: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _fixture_output_buffers: Dictionary = {}
 var _used_universes: Dictionary = {}
@@ -137,6 +141,9 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_native_fixture_uuids_by_id.clear()
 	_native_channel_values.clear()
 	_native_render_ready_values.clear()
+	_static_gobo_controls_by_fixture.clear()
+	_live_visual_gobo_controls_by_fixture.clear()
+	_live_gobo_diagnostics_by_fixture.clear()
 	_fixture_apply_plans.clear()
 	_fixture_output_buffers.clear()
 	_used_universes.clear()
@@ -192,6 +199,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 		_register_native_fixture_id(fixture_uuid)
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
+		_static_gobo_controls_by_fixture[fixture_uuid] = _build_static_gobo_controls(binding)
 		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
 		var requires_time_tick: bool = _binding_requires_time_tick(binding)
 		_fixture_time_tick_flags[fixture_uuid] = requires_time_tick
@@ -602,8 +610,8 @@ func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node,
 			base += NATIVE_RENDER_READY_STRIDE
 			continue
 		if (visual_mask & (VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION)) != 0:
-			_store_visual_frame_gobo_controls(loader, fixture_uuid, visual_frame, base, visual_mask)
-		light_apply_service.apply_visual_frame_to_fixture(loader, fixture_uuid, visual_frame, base, frame_delta_sec)
+			_store_visual_frame_gobo_controls(fixture_uuid, visual_frame, base, visual_mask)
+		light_apply_service.apply_visual_frame_to_fixture(loader, fixture_uuid, visual_frame, base, frame_delta_sec, self)
 		fixtures_considered += 1
 		updated += 1
 		base += NATIVE_RENDER_READY_STRIDE
@@ -617,7 +625,7 @@ func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node,
 	}
 	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
-func _store_visual_frame_gobo_controls(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, visual_mask: int) -> void:
+func _store_visual_frame_gobo_controls(fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, visual_mask: int) -> void:
 	var changed_mask: int = int(visual_frame[base + 1])
 	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
 	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO, NATIVE_CHANNEL_GOBO, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO])
@@ -626,13 +634,24 @@ func _store_visual_frame_gobo_controls(loader: Node, fixture_uuid: String, visua
 	_native_channel_values[fixture_uuid] = values
 	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
 	var controls: Dictionary = _build_controls_from_native_values(fixture_plan, fixture_uuid)
+	var static_controls: Dictionary = get_static_gobo_controls_for_fixture(fixture_uuid)
+	_merge_static_gobo_controls(controls, static_controls)
+	controls["gobo_runtime_bindings"] = _build_live_visual_gobo_runtime_bindings(controls)
 	controls["changed_capability_types"] = {"gobo": true}
 	controls["visual_change_gobo"] = (visual_mask & VISUAL_CHANGE_GOBO) != 0
 	controls["visual_change_gobo_rotation"] = (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0
-	if loader != null:
-		var cache: Dictionary = loader.get_meta("peraviz_live_visual_gobo_controls", {}) if loader.has_meta("peraviz_live_visual_gobo_controls") else {}
-		cache[fixture_uuid] = controls
-		loader.set_meta("peraviz_live_visual_gobo_controls", cache)
+	_live_visual_gobo_controls_by_fixture[fixture_uuid] = controls
+	_live_gobo_diagnostics_by_fixture[fixture_uuid] = _build_live_gobo_diagnostics(controls, static_controls, visual_mask)
+
+func get_live_visual_gobo_controls_for_fixture(fixture_uuid: String) -> Dictionary:
+	return (_live_visual_gobo_controls_by_fixture.get(fixture_uuid, {}) as Dictionary).duplicate(false)
+
+func get_static_gobo_controls_for_fixture(fixture_uuid: String) -> Dictionary:
+	return (_static_gobo_controls_by_fixture.get(fixture_uuid, {}) as Dictionary).duplicate(false)
+
+func get_live_gobo_diagnostics_for_fixture(fixture_uuid: String) -> Dictionary:
+	return (_live_gobo_diagnostics_by_fixture.get(fixture_uuid, {}) as Dictionary).duplicate(false)
+
 
 func _apply_compact_universe_updates(compact: PackedFloat32Array, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
 	var updated: int = 0
@@ -781,11 +800,7 @@ func _build_controls_from_native_values(fixture_plan: Dictionary, fixture_uuid: 
 		compact_values[COMPACT_HAS_ZOOM_LIMITS] = 1.0 if bool(output.get("has_zoom_physical_limits", false)) else 0.0
 		compact_values[COMPACT_ZOOM_MIN_DEG] = float(output.get("zoom_physical_min_degrees", -1.0))
 		compact_values[COMPACT_ZOOM_MAX_DEG] = float(output.get("zoom_physical_max_degrees", -1.0))
-	if bool(output.get("has_gobo", false)):
-		output["gobo_slots"] = binding.get("gobo1_slots", binding.get("gobo_slots", []))
-		output["gobo_ranges"] = binding.get("gobo1_ranges", binding.get("gobo_ranges", []))
-		output["gobo_wheel_name"] = str(binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", "")))
-		output["gobo_wheel_number"] = int(binding.get("gobo_wheel_number", 0))
+	_merge_static_gobo_controls(output, get_static_gobo_controls_for_fixture(fixture_uuid))
 	output["compact_values"] = compact_values
 	output["changed_capability_types"] = _filter_unchanged_compact_controls(fixture_uuid, compact_values)
 	output["metadata"] = fixture_plan.get("metadata", output.get("metadata", {}))
@@ -852,12 +867,90 @@ func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 		"metadata": binding.get("metadata", {}),
 	}
 
-func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
+func _build_static_gobo_controls(binding: Dictionary) -> Dictionary:
+	var gobo_slots: Array = binding.get("gobo1_slots", binding.get("gobo_slots", []))
+	var gobo_ranges: Array = binding.get("gobo1_ranges", binding.get("gobo_ranges", []))
+	var gobo_wheels: Array = binding.get("gobo_wheels", [])
 	return {
+		"has_gobo": not gobo_slots.is_empty() or not gobo_ranges.is_empty() or not gobo_wheels.is_empty() or int(binding.get("gobo_channel_index_0", -1)) >= 0 or int(binding.get("gobo1_channel_index_0", -1)) >= 0,
+		"has_gobo_index": int(binding.get("gobo_index_channel_index_0", -1)) >= 0,
+		"has_gobo_rotation": int(binding.get("gobo_rotation_channel_index_0", -1)) >= 0,
+		"gobo_slots": gobo_slots,
+		"gobo_ranges": gobo_ranges,
+		"gobo_wheel_name": str(binding.get("gobo1_wheel_name", binding.get("gobo_wheel_name", ""))),
+		"gobo_wheel_number": int(binding.get("gobo_wheel_number", 0)),
+		"gobo_wheels": gobo_wheels,
+		"gobo_runtime_bindings": binding.get("gobo_runtime_bindings", []),
+	}
+
+func _merge_static_gobo_controls(target: Dictionary, static_controls: Dictionary) -> void:
+	if static_controls.is_empty():
+		return
+	for key in ["gobo_slots", "gobo_ranges", "gobo_wheel_name", "gobo_wheel_number", "gobo_wheels", "gobo_runtime_bindings"]:
+		target[key] = static_controls.get(key, target.get(key, []))
+	target["has_gobo"] = bool(target.get("has_gobo", false)) or bool(static_controls.get("has_gobo", false))
+	target["has_gobo_index"] = bool(target.get("has_gobo_index", false)) or bool(static_controls.get("has_gobo_index", false))
+	target["has_gobo_rotation"] = bool(target.get("has_gobo_rotation", false)) or bool(static_controls.get("has_gobo_rotation", false))
+
+func _build_live_visual_gobo_runtime_bindings(controls: Dictionary) -> Array:
+	var existing: Array = controls.get("gobo_runtime_bindings", [])
+	if not existing.is_empty():
+		return existing
+	var wheels: Array = controls.get("gobo_wheels", [])
+	if wheels.is_empty():
+		return []
+	var raw_8bit: int = int(controls.get("gobo_raw_value", round(clamp(float(controls.get("gobo_norm", 0.0)), 0.0, 1.0) * 255.0)))
+	var index_norm: float = clamp(float(controls.get("gobo_index_norm", -1.0)), 0.0, 1.0) if bool(controls.get("has_gobo_index", false)) else -1.0
+	var out: Array = []
+	for item in wheels:
+		if item is not Dictionary:
+			continue
+		var wheel: Dictionary = item
+		var ranges: Array = wheel.get("ranges", [])
+		var active_range: Dictionary = DmxGoboRangeResolverScript.resolve_active_range(raw_8bit, ranges) if not ranges.is_empty() else {}
+		var slot_index: int = int(active_range.get("slot_index", -1))
+		if slot_index <= 0:
+			continue
+		out.append({
+			"raw_8bit": raw_8bit,
+			"slot_index": slot_index,
+			"slots": wheel.get("slots", controls.get("gobo_slots", [])),
+			"ranges": ranges,
+			"wheel_number": int(wheel.get("wheel_number", controls.get("gobo_wheel_number", 0))),
+			"wheel_name": str(wheel.get("wheel_name", controls.get("gobo_wheel_name", ""))),
+			"behavior": int(active_range.get("behavior", 0)),
+			"supports_index": bool(wheel.get("supports_index", false)),
+			"supports_rotation": bool(wheel.get("supports_rotation", false)),
+			"supports_shake": bool(wheel.get("supports_shake", false)),
+			"index_norm": index_norm,
+			"has_index_physical_limits": bool(wheel.get("has_index_physical_limits", false)),
+			"index_physical_min": float(wheel.get("index_physical_min", 0.0)),
+			"index_physical_max": float(wheel.get("index_physical_max", 0.0)),
+		})
+	return out
+
+func _build_live_gobo_diagnostics(controls: Dictionary, static_controls: Dictionary, visual_mask: int) -> Dictionary:
+	return {
+		"mask_received": true,
+		"visual_change_gobo": (visual_mask & VISUAL_CHANGE_GOBO) != 0,
+		"visual_change_gobo_rotation": (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0,
+		"controls_found": not controls.is_empty(),
+		"has_gobo": bool(controls.get("has_gobo", false)),
+		"gobo_slot_count": (controls.get("gobo_slots", []) as Array).size(),
+		"gobo_range_count": (controls.get("gobo_ranges", []) as Array).size(),
+		"runtime_binding_count": (controls.get("gobo_runtime_bindings", []) as Array).size(),
+		"static_wheel_count": (static_controls.get("gobo_wheels", []) as Array).size(),
+		"raw_gobo_value": int(controls.get("gobo_raw_value", -1)),
+	}
+
+func _build_fixture_output_buffer(binding: Dictionary) -> Dictionary:
+	var output: Dictionary = {
 		"compact_values": _build_empty_compact_controls(),
 		"capabilities": {},
 		"metadata": binding.get("metadata", {}),
 	}
+	_merge_static_gobo_controls(output, _build_static_gobo_controls(binding))
+	return output
 
 func _build_empty_compact_controls() -> PackedFloat32Array:
 	var compact_values := PackedFloat32Array()

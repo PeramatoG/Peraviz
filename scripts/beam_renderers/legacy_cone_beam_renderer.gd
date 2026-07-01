@@ -81,6 +81,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var mirror_x: bool = bool(params.get("beam_gobo_mirror_x", DEFAULT_MIRROR_BEAM_SHAPE_X))
 	var mirror_z: bool = bool(params.get("beam_gobo_mirror_z", DEFAULT_MIRROR_BEAM_SHAPE_Z))
 	var prism_mesh: ArrayMesh = _mesh_builder.build_beam_mesh(gobo_texture, lens_radius, bottom_radius, beam_range, gobo_scale, true)
+	light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
+	light.set_meta("peraviz_last_beam_renderer_mode", "legacy_cone")
 	if prism_mesh != null:
 		prism.mesh = prism_mesh
 	prism.position = Vector3(lens_shift_x, lens_shift_y, -(beam_range * 0.5 + lens_offset_m))

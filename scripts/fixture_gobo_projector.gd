@@ -95,6 +95,8 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 	var projected_rotation_deg: float = global_rotation_deg
 	var projected_shake_tilt_deg: float = 0.0
 	var has_bound_wheel_rotation: bool = false
+	var debug_resolved_slot_index: int = -1
+	var debug_texture_path: String = ""
 
 	if has_runtime_gobo:
 		for wheel in runtime_bindings:
@@ -109,6 +111,8 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 				"gobo_slots": wheel.get("slots", []),
 			}
 			var texture_entry: Dictionary = _resolve_gobo_texture_entry_for_slot(wheel_controls, slot_index)
+			debug_resolved_slot_index = slot_index
+			debug_texture_path = str(texture_entry.get("cache_key", ""))
 			var gobo_texture: Texture2D = texture_entry.get("texture", null) as Texture2D
 			if gobo_texture == null:
 				continue
@@ -130,6 +134,11 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 				projected_shake_tilt_deg = wheel_shake_tilt_deg
 			source_textures.append(gobo_texture)
 
+	light.set_meta("peraviz_live_gobo_projector_diagnostics", {
+		"resolved_slot_index": debug_resolved_slot_index,
+		"texture_path": debug_texture_path,
+		"texture_load_success": not source_textures.is_empty(),
+	})
 	var composed_texture_cache_key: String = _build_composed_gobo_cache_key(source_texture_cache_keys)
 	var prefer_native_fog_projector: bool = bool(controls.get("prefer_native_fog_projector", true))
 	var has_composed_texture: bool = not source_textures.is_empty()
