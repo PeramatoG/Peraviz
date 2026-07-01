@@ -28,7 +28,7 @@ Changes since the initial Peraviz repository split.
 
 ## Fixes
 
-- Restored live DMX gobo visibility in the native visual-frame path by preserving cached gobo metadata, preventing first-update beam initialization from overwriting live gobo texture state, enabling beam shaders to sample the live gobo texture, and keeping texture changes separate from cheaper rotation/shake updates.
+- Restored live DMX gobo visibility in the native visual-frame path by preserving cached gobo metadata, preventing first-update beam initialization from overwriting live gobo texture state, restoring the vectorized footprint and conic-prism mesh gobo path, and keeping texture changes separate from cheaper rotation/shake updates.
 - Restored live DMX dimmer-driven beam visibility so beam meshes and fog volumes follow native cooked beam intensity while remaining visible when optional realtime SpotLight rendering is disabled.
 - Fixed live DMX dimmer visibility crossings so prewarmed hidden beams are rebuilt or revalidated when console dimmers raise fixture intensity.
 - Fixed repeated RenderingServer light RID errors during scene import by skipping direct light server updates until imported SpotLight3D resources are ready.

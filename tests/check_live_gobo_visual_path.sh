@@ -18,7 +18,7 @@ require_pattern "skip_gobo_projection" scripts/load_scene.gd
 require_pattern "peraviz_gobo_texture" scripts/load_scene.gd
 require_pattern "peraviz_last_beam_gobo_consumed" scripts/beam_renderers/legacy_cone_beam_renderer.gd
 require_pattern "peraviz_last_beam_gobo_consumed" scripts/beam_renderers/volumetric_gobo_prism_shape_provider.gd
-require_pattern "use_gobo.*gobo_texture != null" scripts/beam_renderers/legacy_cone_beam_renderer.gd
-require_pattern "use_gobo.*gobo_texture != null" scripts/beam_renderers/volumetric_beam_renderer.gd
+require_pattern "build_beam_mesh\(gobo_texture" scripts/beam_renderers/legacy_cone_beam_renderer.gd
+require_pattern "build_beam_mesh\(gobo_texture" scripts/beam_renderers/volumetric_gobo_prism_shape_provider.gd
 
 echo "Live visual-frame gobo bridge invariants are present."

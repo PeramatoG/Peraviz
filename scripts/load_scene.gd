@@ -1763,7 +1763,7 @@ func _record_live_gobo_diagnostic(fixture_uuid: String, light: SpotLight3D, visu
 	_live_gobo_diagnostic_keys[key] = true
 	print("[PeravizLiveGobo] fixture=%s controls=%s has_gobo=%s slots=%d ranges=%d runtime_bindings=%d raw=%d texture_meta=%s" % [fixture_uuid, str(bool(diagnostics.get("controls_found", false))), str(bool(diagnostics.get("has_gobo", false))), int(diagnostics.get("gobo_slot_count", 0)), int(diagnostics.get("gobo_range_count", 0)), int(diagnostics.get("runtime_binding_count", 0)), int(diagnostics.get("raw_gobo_value", -1)), str(bool(diagnostics.get("texture_meta_present_after_projector", false)))])
 
-func _record_live_visual_gobo_beam_result(fixture_uuid: String, light: SpotLight3D) -> void:
+func _record_live_visual_gobo_beam_result(_fixture_uuid: String, light: SpotLight3D) -> void:
 	if light == null or not is_instance_valid(light):
 		return
 	var diagnostics: Dictionary = light.get_meta("peraviz_live_gobo_diagnostics", {}) if light.has_meta("peraviz_live_gobo_diagnostics") else {}

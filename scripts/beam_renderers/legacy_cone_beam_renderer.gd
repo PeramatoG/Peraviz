@@ -94,7 +94,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
-	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, gobo_texture)
+	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
 
 
 func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
@@ -158,7 +158,7 @@ func _create_prism(prism_name: String) -> MeshInstance3D:
 	prism.visible = false
 	return prism
 
-func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float, gobo_texture: Texture2D = null) -> void:
+func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float) -> void:
 	if prism == null:
 		return
 	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
@@ -184,9 +184,7 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	prism.set_instance_shader_parameter("haze_density", haze_density)
 	var prism_material: ShaderMaterial = prism.material_override as ShaderMaterial
 	if prism_material != null:
-		prism_material.set_shader_parameter("use_gobo", gobo_texture != null)
-		if gobo_texture != null:
-			prism_material.set_shader_parameter("gobo_texture", gobo_texture)
+		prism_material.set_shader_parameter("use_gobo", false)
 		prism_material.set_shader_parameter("gobo_invert", false)
 
 func _ensure_debug_axis(light: SpotLight3D) -> MeshInstance3D:
