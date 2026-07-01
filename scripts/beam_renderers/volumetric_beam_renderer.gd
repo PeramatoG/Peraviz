@@ -97,7 +97,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
 	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-	_apply_beam_material_params(beam, beam_range, shape_result)
+	_apply_beam_material_params(beam, light, beam_range, shape_result)
 
 func _compute_beam_settings_hash() -> int:
 	var hash_value: int = 2166136261
@@ -125,9 +125,13 @@ func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void
 	beam.set_instance_shader_parameter("longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05))
 	beam.set_instance_shader_parameter("beam_softness", clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0))
 
-func _apply_beam_material_params(beam: MeshInstance3D, beam_range: float, shape_result: Dictionary) -> void:
+func _apply_beam_material_params(beam: MeshInstance3D, light: SpotLight3D, beam_range: float, shape_result: Dictionary) -> void:
 	var far_fade_end: float = max(400.0, beam_range * 12.0)
-	var material_signature: String = "%s|%s|%s|%s|%s" % [str(beam_range), str(shape_result.get("mirror_x", true)), str(shape_result.get("mirror_z", false)), str(far_fade_end), str(_active_shape_provider.shape_mode())]
+	var gobo_texture: Texture2D = null
+	if light != null and light.has_meta("peraviz_gobo_texture"):
+		gobo_texture = light.get_meta("peraviz_gobo_texture") as Texture2D
+	var gobo_texture_id: int = gobo_texture.get_rid().get_id() if gobo_texture != null else 0
+	var material_signature: String = "%s|%s|%s|%s|%s|%d" % [str(beam_range), str(shape_result.get("mirror_x", true)), str(shape_result.get("mirror_z", false)), str(far_fade_end), str(_active_shape_provider.shape_mode()), gobo_texture_id]
 	if str(beam.get_meta("peraviz_beam_material_signature", "")) == material_signature:
 		return
 	beam.set_meta("peraviz_beam_material_signature", material_signature)
@@ -137,7 +141,9 @@ func _apply_beam_material_params(beam: MeshInstance3D, beam_range: float, shape_
 	beam_material.set_shader_parameter("near_fade_end", max(2.0, beam_range * 0.2))
 	beam_material.set_shader_parameter("far_fade_start", far_fade_end * 0.6)
 	beam_material.set_shader_parameter("far_fade_end", far_fade_end)
-	beam_material.set_shader_parameter("use_gobo", false)
+	beam_material.set_shader_parameter("use_gobo", gobo_texture != null)
+	if gobo_texture != null:
+		beam_material.set_shader_parameter("gobo_texture", gobo_texture)
 	beam_material.set_shader_parameter("gobo_invert", false)
 	beam_material.set_shader_parameter("gobo_mirror_x", bool(shape_result.get("mirror_x", true)))
 	beam_material.set_shader_parameter("gobo_mirror_z", bool(shape_result.get("mirror_z", false)))
