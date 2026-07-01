@@ -36,7 +36,6 @@ static func BuildBeamParams(light: SpotLight3D, beam_angle_deg: float, beam_colo
 		"scaled_intensity": scaled_intensity,
 		"beam_intensity": scaled_intensity,
 		"lens_radius": lens_radius,
-		"is_visible": light.visible,
 		"beam_softness": float(visual_settings.get("beam_softness", merged_defaults.get("beam_softness", 0.32))),
 		"beam_radial_falloff": float(visual_settings.get("beam_radial_falloff", merged_defaults.get("beam_radial_falloff", 1.25))),
 		"beam_longitudinal_falloff": float(visual_settings.get("beam_longitudinal_falloff", merged_defaults.get("beam_longitudinal_falloff", 1.1))),

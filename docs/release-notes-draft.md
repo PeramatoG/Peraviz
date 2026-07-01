@@ -28,6 +28,7 @@ Changes since the initial Peraviz repository split.
 
 ## Fixes
 
+- Restored live DMX dimmer-driven beam visibility so beam meshes and fog volumes follow native cooked beam intensity while remaining visible when optional realtime SpotLight rendering is disabled.
 - Fixed live DMX dimmer visibility crossings so prewarmed hidden beams are rebuilt or revalidated when console dimmers raise fixture intensity.
 - Fixed repeated RenderingServer light RID errors during scene import by skipping direct light server updates until imported SpotLight3D resources are ready.
 - Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
