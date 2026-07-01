@@ -25,5 +25,9 @@ require_pattern "peraviz_last_beam_gobo_consumed" scripts/beam_renderers/legacy_
 require_pattern "peraviz_last_beam_gobo_consumed" scripts/beam_renderers/volumetric_gobo_prism_shape_provider.gd
 require_pattern "build_beam_mesh\(gobo_texture" scripts/beam_renderers/legacy_cone_beam_renderer.gd
 require_pattern "build_beam_mesh\(gobo_texture" scripts/beam_renderers/volumetric_gobo_prism_shape_provider.gd
+require_pattern "DmxGoboControlsResolverScript" scripts/fixture_gobo_projector.gd
+require_pattern "DmxGoboControlsResolverScript" scripts/runtime/fixture_light_apply_service.gd
+require_pattern "capabilities" tests/gdscript/test_dmx_gobo_controls_resolver.gd
+require_pattern "gobo_runtime_bindings" tests/gdscript/test_dmx_gobo_controls_resolver.gd
 
 echo "Live visual-frame gobo bridge invariants are present."
