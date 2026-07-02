@@ -1,110 +1,153 @@
 # Peraviz – real-time DMX 3D viewer based on MVR/GDTF
 
+<p align="center">
+  <a href="https://github.com/PeramatoG/Peraviz/releases">
+    <img alt="Release Status" src="https://img.shields.io/badge/release-unreleased-lightgrey?style=flat-square">
+  </a>
+  <img alt="Status" src="https://img.shields.io/badge/status-experimental-orange?style=flat-square">
+  <img alt="Godot" src="https://img.shields.io/badge/Godot-4.2%2B-478CBF?style=flat-square">
+  <img alt="GDExtension" src="https://img.shields.io/badge/GDExtension-C%2B%2B-00599C?style=flat-square">
+  <img alt="Art-Net" src="https://img.shields.io/badge/DMX-Art--Net-purple?style=flat-square">
+  <img alt="MVR/GDTF" src="https://img.shields.io/badge/MVR%20%2F%20GDTF-supported-blue?style=flat-square">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square">
+  <a href="https://github.com/PeramatoG/Peraviz/blob/main/LICENSE.txt">
+    <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square">
+  </a>
+</p>
+
+<p align="center">
+  <img width="1919" height="1079" alt="Peraviz 3D viewer" src="https://github.com/user-attachments/assets/19e536f2-e6df-4b70-9d41-14c48f55143b">
+</p>
+
 ## Overview
 
-**Peraviz** is a project developed in parallel to **Perastage** with the goal of becoming a **real-time 3D DMX visualizer**.  
-While Perastage focuses on project management and editing workflows, Peraviz is intentionally scoped as a **viewer-first** tool: load an **MVR** scene, interpret **GDTF** fixtures as reliably as possible, and render the result while reacting to **live DMX**.
+**Peraviz** is an experimental open-source project developed in parallel with **Perastage**. Its goal is to become a **real-time 3D DMX visualizer** based on **MVR**, **GDTF**, **Godot 4**, and a native **C++ GDExtension** backend.
 
-Peraviz is designed to work independently, but it may later become a partially integrated module inside Perastage (for example, to reuse project assets and scene organization) while still remaining usable as a standalone viewer.
+While Perastage focuses on project management, editing workflows, and MVR/GDTF authoring tasks, Peraviz is intentionally scoped as a **viewer-first** tool: load an **MVR** scene, interpret **GDTF** fixtures as reliably as possible, and render the result while reacting to **live DMX**.
 
-<img width="1919" height="1079" alt="Peraviz" src="https://github.com/user-attachments/assets/19e536f2-e6df-4b70-9d41-14c48f55143b" />
+Peraviz is designed to work independently. In the future, it may also become a partially integrated module inside Perastage, for example to reuse project assets and scene organization, while still remaining usable as a standalone viewer.
+
+## Current status
+
+Peraviz is currently in active development and should be considered experimental. It already includes the foundations for MVR loading, GDTF-based fixture interpretation, live DMX input, beam rendering, gobo parsing, and runtime validation, but it is not yet distributed as a packaged release.
 
 ### Key principles
 
-- **MVR/GDTF as source of truth**  
-  Peraviz loads `.mvr` scenes and reads `.gdtf` fixture definitions to drive both geometry placement and DMX behavior.
+* **MVR/GDTF as source of truth**
+  Peraviz loads `.mvr` scenes and reads `.gdtf` fixture definitions to drive geometry placement, fixture metadata, DMX patching, and runtime behavior.
 
-- **Visualization, not editing**  
-  The current focus is rendering and validation. Any editing is expected to remain minimal (if added at all), and Perastage remains the primary tool for authoring.
+* **Visualization, not editing**
+  The current focus is rendering, validation, and live DMX response. Editing features are expected to remain minimal, if added at all. Perastage remains the primary tool for authoring and editing workflows.
 
-- **Correct transforms and predictable units**  
-  Import correctness is treated as a first-class concern. Peraviz includes debug modes and a baseline workflow to validate axis conventions, handedness, and scale.
+* **Correct transforms and predictable units**
+  Import correctness is treated as a first-class concern. Peraviz includes debug modes and validation workflows to audit axis conventions, handedness, scale, and beam orientation.
 
-- **Godot 4 + native loader**  
-  Runtime/UI logic is implemented in Godot scripts, while MVR/GDTF parsing and heavy lifting is performed in a C++ GDExtension.
+* **Godot 4 + native C++ backend**
+  Runtime and UI logic are implemented in Godot scripts, while MVR/GDTF parsing and heavier data processing are handled by a native C++ GDExtension.
 
-## Current status (February 2026)
+* **Performance-oriented architecture**
+  The project aims to keep heavy calculations in C++ and pass only the data needed by Godot for rendering and interaction.
 
-This section summarizes what is implemented today.
+## Implemented features
 
-### 1) MVR loading and scene reconstruction
+### 1. MVR loading and scene reconstruction
 
-- **Native loader (GDExtension): `PeravizLoader`**
-  - Loads an `.mvr` file and returns a list of render nodes (id, parent id, name/type/class, local transform, asset references, and fixture metadata).
-  - Can load **3DS mesh data** for fixtures/assets.
-  - Exposes fixture patch info and can build DMX control bindings (when DMX support is enabled).
+* **Native loader: `PeravizLoader`**
 
-- **Standalone transform/runtime foundation**
-  - Peraviz contains local matrix and transform utilities in `native/src/` and does not require Perastage at build time.
-  - The viewer remains proxy-first for parts of the geometry/material path while runtime loading evolves.
+  * Loads `.mvr` files and returns render nodes with id, parent id, name, type, class, local transform, asset references, and fixture metadata.
+  * Loads 3DS mesh data for fixtures and scene assets when available.
+  * Exposes fixture patch information.
+  * Can build DMX control bindings when DMX support is enabled.
 
-### 2) Runtime viewer and UI
+* **Standalone transform/runtime foundation**
 
-- **Main viewer script (`scripts/load_scene.gd`)**
-  - Provides a file picker to load `.mvr` scenes.
-  - Builds a node tree in Godot, instantiating proxies and/or loading real assets when available.
-  - Includes tools for camera focus, selection, and debugging overlays.
+  * Peraviz contains its own matrix and transform utilities under `native/src/`.
+  * The native loader does not require Perastage at build time.
+  * The viewer remains proxy-first in some geometry and material paths while runtime asset loading continues to evolve.
 
-- **Fixture selection + manual testing**
-  - A manual test panel allows selecting a fixture and applying pan/tilt/dimmer controls for validation (useful even without live DMX).
+### 2. Runtime viewer and UI
 
-- **Visual Settings**
-  - A dedicated window exposes multipliers and quality settings to tune the look and performance.
+* **Main viewer script: `scripts/load_scene.gd`**
 
-### 3) Live DMX (Art-Net) support
+  * Provides a file picker to load `.mvr` scenes.
+  * Builds a Godot node tree from the parsed scene data.
+  * Instantiates proxies and/or real assets depending on the available data.
+  * Includes camera focus, selection tools, and debugging overlays.
 
-- **Art-Net receiver (native)**
-  - Peraviz includes a receiver class that can listen for Art-Net packets (default port `6454`) and expose per-universe frames to scripts.
-  - UI elements allow toggling DMX on/off, monitoring activity, and applying a universe offset.
+* **Fixture selection and manual testing**
 
-- **Fixture control runtime (`scripts/dmx_fixture_runtime.gd`)**
-  - Builds per-fixture DMX bindings from the parsed scene and GDTF data.
-  - Reads **8-bit**, **16-bit**, and **24-bit** control values (coarse/fine/ultra-fine).
-  - Applies controls at runtime via a callback so the viewer can update transforms and visual output.
-  - Reports unbound fixtures (e.g., missing scene nodes or incomplete metadata).
+  * A manual test panel allows selecting a fixture and applying pan, tilt, and dimmer controls.
+  * This is useful for validating fixture behavior even without live DMX input.
 
-### 4) Beam rendering
+* **Visual settings**
 
-Peraviz currently supports two beam rendering modes:
+  * A dedicated settings window exposes rendering multipliers and quality options.
+  * These controls are intended to help balance visual quality and performance.
 
-- **Volumetric (default)**  
-  Designed for a more realistic haze/shaft look with adjustable quality presets.
+### 3. Live DMX support
 
-- **Lightweight (legacy)**  
-  A lower-cost cone/mesh approach for maximum FPS on weaker hardware.
+* **Native Art-Net receiver**
 
-### 5) Gobos (parsing + runtime texture loading)
+  * Listens for Art-Net packets on the default Art-Net port.
+  * Exposes per-universe DMX frames to Godot scripts.
+  * Includes UI controls for enabling/disabling DMX, monitoring activity, and applying a universe offset.
 
-- Peraviz reads gobo wheel data from GDTF and maps DMX values to wheel slots.
-- Multiple active gobo wheels can be composed into a single gobo mask texture.
-- If gobo media is missing or malformed, Peraviz can generate a simple fake gobo texture to validate DMX bindings.
-- Projection/emission paths are intentionally disabled while gobo rendering is being refactored.
+* **Fixture control runtime: `scripts/dmx_fixture_runtime.gd`**
 
-### 6) Debug and validation workflow
+  * Builds per-fixture DMX bindings from parsed MVR/GDTF data.
+  * Reads 8-bit, 16-bit, and 24-bit control values.
+  * Supports coarse, fine, and ultra-fine channel resolution.
+  * Applies DMX-driven changes at runtime through callbacks.
+  * Reports unbound fixtures when scene nodes or metadata are incomplete.
+
+### 4. Beam rendering
+
+Peraviz currently supports two beam rendering approaches:
+
+* **Volumetric mode**
+  Intended for a more realistic haze and light-shaft look, with adjustable quality presets.
+
+* **Lightweight mode**
+  A lower-cost cone/mesh approach intended for higher FPS on weaker hardware or very dense scenes.
+
+### 5. Gobos
+
+* Reads gobo wheel data from GDTF files.
+* Maps DMX values to gobo wheel slots.
+* Supports composition of multiple active gobo wheels into a single mask texture.
+* Can generate simple fallback gobo textures when media is missing or malformed.
+* Projection and emission paths are currently being refactored.
+
+### 6. Debug and validation workflow
 
 Peraviz includes explicit tooling to make import correctness reproducible:
 
-- **Coordinate-system audit**
-  - Debug mode prints deterministic metadata about the mapping (scale, up/forward axes, handedness, beam local reference).
+* **Coordinate-system audit**
 
-- **Baseline render validation**
-  - A checklist-driven workflow to ensure changes do not introduce unintended transform/scale regressions across representative test scenes.
+  * Prints deterministic metadata about scale, up/forward axes, handedness, and beam local reference.
+
+* **Baseline render validation**
+
+  * Provides a checklist-driven workflow to prevent unintended transform, scale, or orientation regressions across representative test scenes.
 
 ## Build and run
 
 ### Requirements
 
-- **Godot**: 4.2+
-- **godot-cpp**: compatible with the chosen Godot version (the project targets the 4.2.x line)
-- Native dependencies used by the loader:
-  - `tinyxml2`
-  - `libzip` (used by the internal archive layer for ZIP-based MVR/GDTF files)
+* **Godot:** 4.2+
+* **godot-cpp:** compatible with the selected Godot 4.2.x line
+* **CMake**
+* **C++ compiler** compatible with the native extension build
+* Native dependencies used by the loader:
 
-### Build the native extension (GDExtension)
+  * `tinyxml2`
+  * `libzip`
+
+### Build the native extension
 
 The native project lives under `native/`.
 
-Example build (from repository root):
+Example debug build from the repository root:
 
 ```bash
 cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Debug
@@ -119,35 +162,76 @@ cmake --preset windows-release-static
 cmake --build --preset windows-release-static
 ```
 
-The resulting library is copied into `bin/` so the Godot editor can load it. For the full Windows export flow, including dependency verification and Godot resource include filters, see `docs/WINDOWS_EXPORT.md`.
+The resulting native library is copied into `bin/` so the Godot editor can load it.
+
+For the full Windows export flow, including dependency verification and Godot resource include filters, see:
+
+```text
+docs/WINDOWS_EXPORT.md
+```
 
 ### Run the viewer
 
 1. Open the Godot project from the repository root.
 2. Ensure the native extension is built and present in `bin/`.
-3. Run the test scene (or the main viewer scene) and load an `.mvr` file from disk.
-4. (Optional) Enable DMX, connect an Art-Net source, and verify incoming universes in the DMX monitor.
+3. Run the test scene or the main viewer scene.
+4. Load an `.mvr` file from disk.
+5. Optionally enable DMX, connect an Art-Net source, and verify incoming universes in the DMX monitor.
 
-## Known limitations and roadmap direction
+## Known limitations
 
-- **GDTF quality matters**  
-  Peraviz is intentionally strict about following the information present in GDTF. If a GDTF is incomplete or inconsistent (missing gobo media, unclear channel mapping), behavior may degrade. Debug tooling exists to help identify these cases.
+* **No packaged release yet**
+  Peraviz is currently intended to be built from source. Official release packages will be added later.
 
-- **Proxy-first geometry**  
-  The current milestone prioritizes correct transforms and DMX-driven behavior. High-fidelity model reuse (materials, full fixture geometry pipelines) is a likely future improvement.
+* **GDTF quality matters**
+  Peraviz follows the information present in GDTF files. If a GDTF is incomplete or inconsistent, behavior may degrade.
 
-- **Independence vs integration**  
-  Peraviz is expected to remain a dedicated viewer. Any future integration with Perastage should be modular and optional.
+* **Proxy-first geometry path**
+  The current milestone prioritizes correct transforms and DMX-driven behavior. High-fidelity model reuse, materials, and full fixture geometry pipelines are ongoing areas of work.
+
+* **Gobo rendering is being refactored**
+  Gobo parsing and runtime texture loading exist, but projection and emission paths are still under active development.
+
+* **Performance work is ongoing**
+  The project is moving toward a more C++-driven runtime pipeline so Godot receives preprocessed data and focuses on rendering.
+
+## Roadmap direction
+
+The main development priorities are:
+
+* Improve runtime performance with larger fixture counts.
+* Move heavy DMX and fixture calculations into C++.
+* Keep Godot focused on rendering, UI, and scene interaction.
+* Improve beam quality, haze, attenuation, and soft rendering behavior.
+* Complete the gobo rendering pipeline.
+* Improve material and geometry reuse for repeated fixture models.
+* Strengthen validation tools for transforms, scale, and coordinate-system correctness.
+* Prepare the project for future packaged releases.
 
 ## Additional documentation
 
 More detailed notes live under `docs/`:
 
-- `NATIVE_BUILD.md` – building the GDExtension
-- `COORDINATE_SYSTEM.md` – coordinate mapping and auditing strategy
-- `BASELINE_MVR_RENDER.md` – baseline comparison workflow
-- `BEAM_RENDERING_MODES.md` – beam modes and performance guidance
-- `LIGHT_INTENSITY_INTERPRETATION.md` – interpreting intensity/exposure in the viewer
-- `UI_ARCHITECTURE.md` – UI module map, visibility tiers, naming, and ownership rules
-- `UI_GROWTH_CHECKLIST.md` – pre-feature UI checklist, including clean-screen default gate
-- `README_gobos.md` – gobo parsing and runtime projection notes
+* `docs/NATIVE_BUILD.md` – building the GDExtension
+* `docs/COORDINATE_SYSTEM.md` – coordinate mapping and auditing strategy
+* `docs/BASELINE_MVR_RENDER.md` – baseline comparison workflow
+* `docs/BEAM_RENDERING_MODES.md` – beam modes and performance guidance
+* `docs/LIGHT_INTENSITY_INTERPRETATION.md` – interpreting intensity/exposure in the viewer
+* `docs/UI_ARCHITECTURE.md` – UI module map, visibility tiers, naming, and ownership rules
+* `docs/UI_GROWTH_CHECKLIST.md` – pre-feature UI checklist, including clean-screen default gate
+* `README_gobos.md` – gobo parsing and runtime projection notes
+
+## Relationship with Perastage
+
+Peraviz and Perastage are complementary projects:
+
+* **Perastage** focuses on MVR/GDTF project inspection, editing, organization, and export workflows.
+* **Peraviz** focuses on real-time visualization, DMX response, beam rendering, and visual validation.
+
+Peraviz may later integrate with Perastage in a modular way, but it is intended to remain usable as an independent viewer.
+
+## License
+
+Peraviz is licensed under the **GNU General Public License v3.0**.
+
+See [`LICENSE.txt`](LICENSE.txt) for details.
