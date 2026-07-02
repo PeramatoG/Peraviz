@@ -10,17 +10,19 @@ Peraviz treats live DMX playback as a latest-state visual simulation instead of 
 4. Repeated packets are coalesced with latest-state-wins semantics; if a newer universe frame arrives before the old one is consumed, only the newest frame is presented.
 5. The native resolver converts fixture channel bindings into fixed-stride visual rows with normalized controls and render-ready light/material values.
 6. Dirty fixture state is detected in native code before crossing into Godot.
-7. Godot-side runtime code remains responsible for scene ownership and main-thread visual application, with the legacy dictionary path kept as the compatibility fallback while the native applier is completed.
+7. Godot-side runtime code remains responsible for scene ownership and main-thread visual application. Live playback has no Array/Dictionary decoder fallback; `PeravizVisualRuntime.consume_latest_visual_frame()` is the single canonical live handoff.
 
 ## Current native frame schema
 
-The visual runtime core emits a fixed stride of 25 floats per dirty fixture:
+The visual runtime core emits a leading fixture count followed by fixed-stride rows of 25 floats per dirty fixture. This contract is mirrored by native `kVisualFrameHeaderCount`, `kVisualChannelCount`, and `kVisualRenderValueCount` and by the GDScript `NATIVE_VISUAL_*` / `VISUAL_FRAME_*` constants:
 
 - fixture id
 - dirty channel mask
 - semantic visual change mask
 - 13 normalized visual channel values
 - 9 cooked render values: base energy, spot energy, inner angle, outer angle, RGB color, beam intensity, and material emission energy
+
+The legacy `PeravizDmxUniverseDecoder` APIs remain native implementation/test scaffolding only and are not registered into Godot for live playback. Live scripts must not call `decode_universe*()` or rebuild per-fixture Array/Dictionary controls from universe packets.
 
 Dimmer changes that cross the off/on visibility threshold are flagged as beam-topology changes. That keeps the native diff efficient for normal dimmer fades while ensuring Godot rebuilds or revalidates the reusable beam target when a prewarmed hidden beam becomes visible again.
 

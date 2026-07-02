@@ -10,10 +10,15 @@ const VISUAL_CHANGE_GOBO_ROTATION: int = 1 << 5
 const VISUAL_CHANGE_MATERIAL: int = 1 << 8
 const VISUAL_CHANGE_BEAM_TOPOLOGY: int = 1 << 9
 
+# Mirrors the native visual-frame row: fixture id, channel mask, visual mask, 13 compact controls, then 9 render-ready values.
+const VISUAL_FRAME_HEADER_COUNT: int = 3
+const VISUAL_FRAME_CHANNEL_COUNT: int = 13
+const VISUAL_FRAME_RENDER_VALUE_COUNT: int = 9
+const VISUAL_FRAME_STRIDE: int = VISUAL_FRAME_HEADER_COUNT + VISUAL_FRAME_CHANNEL_COUNT + VISUAL_FRAME_RENDER_VALUE_COUNT
 const VISUAL_FRAME_CHANNEL_MASK_OFFSET: int = 1
 const VISUAL_FRAME_VISUAL_MASK_OFFSET: int = 2
-const VISUAL_FRAME_VALUES_OFFSET: int = 3
-const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = 16
+const VISUAL_FRAME_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT
+const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUAL_FRAME_CHANNEL_COUNT
 
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 
