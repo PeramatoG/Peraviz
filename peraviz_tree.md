@@ -100,3 +100,11 @@ Network/input packets
 ```
 
 Godot must not become the place where raw protocol data is repeatedly converted into fixture behavior during live playback.
+
+
+- `native/src/gdtf_runtime/` - serialization-neutral GDTF compiled-runtime foundation shared conceptually with Perastage semantics.
+- `native/src/runtime/visual_frame_schema.*` - versioned sectioned C++/Godot live visual protocol schema and validator.
+- `docs/gdtf-runtime-architecture.md` - GDTF-first native visual runtime flow.
+- `docs/gdtf-support-matrix.md` - registry-driven GDTF support taxonomy.
+- `docs/adr-gdtf-parser-ownership.md` - parser ownership decision.
+- `docs/peraviz-perastage-gdtf-contract.md` - cross-project semantic contract.

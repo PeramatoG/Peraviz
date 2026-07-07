@@ -333,7 +333,7 @@ func apply_dmx(receiver, apply_fixture_callback: Callable) -> Dictionary:
 func apply_visual_frame(receiver, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float) -> Dictionary:
 	return _collect_dmx(receiver, Callable(), loader, light_apply_service, frame_delta_sec)
 
-func _collect_dmx(receiver, apply_fixture_callback: Callable, loader: Node = null, light_apply_service: FixtureLightApplyService = null, frame_delta_sec: float = 0.0) -> Dictionary:
+func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = null, light_apply_service: FixtureLightApplyService = null, frame_delta_sec: float = 0.0) -> Dictionary:
 	if not _native_visual_runtime_available or _native_visual_runtime == null:
 		push_error("PeravizVisualRuntime is required for live DMX visualization but is not available.")
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": [], "native_visual_runtime_available": false}

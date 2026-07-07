@@ -113,3 +113,15 @@ These are expected hotspots for Peraviz and must be confirmed against the curren
 - Prefer immutable or double-buffered frame snapshots for cross-thread handoff.
 - Before introducing cross-module coupling, add an interface/helper in the module that owns the responsibility.
 - If a performance compromise is necessary, document the reason and the intended follow-up.
+
+
+## GDTF-first runtime priorities
+
+1. GDTF specification correctness is the first architectural priority.
+2. Native C++ owns GDTF parsing/compilation, DMX resolution, physical-state calculation, and dirty-state generation.
+3. Godot owns rendering and presentation, not GDTF semantic interpretation.
+4. The live C++/Godot boundary is versioned, schema-driven, packed, batched, and free of per-fixture Dictionaries.
+5. Repeated GDTF families must be represented with IDs and collections, never one fixed member per fixture.
+6. Unknown or unsupported GDTF behavior must be preserved and reported, not guessed or silently ignored.
+7. Any new GDTF capability must update the support matrix and regression tests.
+8. Changes to GDTF parsing, semantic interpretation, validation, canonical attribute handling, or serialization-neutral model types must be reviewed for compatibility with Perastage; a Peraviz-only interpretation is not acceptable.

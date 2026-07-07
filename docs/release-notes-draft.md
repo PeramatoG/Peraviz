@@ -76,7 +76,7 @@ Changes since the initial Peraviz repository split.
 
 - Added the first modular native visual runtime core for DMX playback, with patched-universe filtering, native interest-offset hashing, latest-frame coalescing, cooked fixed-stride visual output, and regression tests for coalescing, unused universes, irrelevant channel changes, and binding rebuilds.
 - Fixed the native Art-Net flow test helper so it builds consistently with Windows toolchains.
-- Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, and fixture light apply service so project reloads stay quieter for maintainers.
+- Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, DMX fixture runtime, and fixture light apply service so project reloads stay quieter for maintainers.
 - Added Perastage-compatible runtime table schemas and in-memory row storage for fixtures, trusses, and scene objects to prepare Peraviz for future cell-based synchronization without adding Live Link transport or editing UI.
 - Added a focused fixture row provider so fixture inspection UI now reads stable fixture metadata rows built from loaded MVR scene data, patch metadata, and DMX binding state instead of assembling fixture details in UI-facing code.
 - Added a focused project archive service for reading and writing the initial `.pvz` archive files.
@@ -85,3 +85,5 @@ Changes since the initial Peraviz repository split.
 - Replaced wxWidgets-based native archive handling with a small libzip-backed archive layer, reducing Windows export dependencies for MVR and GDTF loading.
 - Prevented native source and CMake build output from being scanned as Godot resources, avoiding accidental imports of compiled object files in the editor.
 - Added reproducible Windows static native build presets, dependency verification guidance, and export documentation so Godot exports keep `peraviz_native.dll` under `bin/` without obsolete third-party runtime DLLs.
+
+- Added the GDTF-first native visual runtime architecture foundation, including the Peraviz/Perastage semantic contract, parser ownership ADR, support taxonomy, compiled fixture model foundation, and sectioned live frame schema validation.
