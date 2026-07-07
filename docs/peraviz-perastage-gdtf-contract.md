@@ -34,3 +34,7 @@ The semantic contract has an explicit version. Changes to shared semantics requi
 ## Perastage review notes
 
 The current Perastage repository review found GDTF mutation and canonicalization ownership documented around `core/gdtf_canonicalizer`, `core/gdtf_mutation_audit`, truss GDTF generation, MVR export patching, dictionary lookup, and viewer3d GDTF loading. This confirms that Perastage already has editor/export responsibilities that must remain outside the shared semantic layer while sharing canonical parsing, validation, and normalized attribute behavior with Peraviz.
+
+
+## Deterministic semantic contract artifacts
+Checkpoint 2 adds neutral contract vectors under `docs/contract/gdtf/`. Perastage can run the same GDTF fixtures through its parser/compiler and compare normalized attributes, wildcard indexes, DMX functions, wheel references, physical ranges, and diagnostics without depending on Godot renderer details.

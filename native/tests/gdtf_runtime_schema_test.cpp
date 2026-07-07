@@ -30,7 +30,7 @@ int test_two_gobo_wheels_remain_independent() {
 int test_stale_schema_generation_is_rejected() {
     const auto schema = peraviz::runtime::make_default_visual_frame_schema(7);
     peraviz::runtime::SectionedVisualFrame frame;
-    frame.metadata = {peraviz::runtime::kVisualProtocolVersion, 6, 0, 0, 0};
+    frame.schema_generation = 6;
     const auto result = peraviz::runtime::validate_sectioned_visual_frame(schema, frame);
     if (result.valid) {
         return fail("Expected stale schema generation to be rejected.");
@@ -42,9 +42,8 @@ int test_stale_schema_generation_is_rejected() {
 int test_section_bounds_are_validated() {
     const auto schema = peraviz::runtime::make_default_visual_frame_schema(1);
     peraviz::runtime::SectionedVisualFrame frame;
-    frame.metadata = {peraviz::runtime::kVisualProtocolVersion, 1, 1, 0, 0,
-                      static_cast<int>(peraviz::runtime::VisualSectionType::EmitterIntensity), 2, 10, 0, 0};
-    frame.values = {1.0f, 2.0f, 3.0f, 4.0f};
+    frame.descriptors = {static_cast<int>(peraviz::runtime::VisualSectionType::EmitterIntensity), 2, 10, 0, 0};
+    frame.floats = {1.0f, 2.0f, 3.0f, 4.0f};
     const auto result = peraviz::runtime::validate_sectioned_visual_frame(schema, frame);
     if (result.valid) {
         return fail("Expected section metadata overrun to be rejected.");

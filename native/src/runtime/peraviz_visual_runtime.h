@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/visual_frame_buffers.h"
+#include "runtime/visual_frame_schema.h"
 
 #include <array>
 #include <cstdint>
@@ -16,7 +17,8 @@ public:
     void set_fixture_bindings(const std::vector<FixtureChannelBinding> &bindings);
     void set_fixture_render_params(int fixture_id, const FixtureRenderParams &params);
     void submit_universe_frame(int universe_id, const uint8_t *data, int length);
-    VisualFrame consume_latest_visual_frame();
+    SectionedVisualFrame consume_latest_visual_frame();
+    const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
 
 private:
@@ -55,6 +57,7 @@ private:
     std::unordered_map<int, UniverseState> universes_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
     std::unordered_map<int, FixtureState> fixture_state_by_id_;
+    VisualFrameSchema schema_ = make_default_visual_frame_schema(1);
     VisualFrameStats stats_;
 };
 

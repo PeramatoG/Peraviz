@@ -52,3 +52,7 @@ Parsing, validation, fixture compilation, DMX resolution, physical-value mapping
 ## Diagnostics
 
 Most diagnostics are generated during import and schema compilation. The native model records invalid references, missing required sections, bad ranges, unknown/custom attributes, unsupported official attributes, non-visual attributes, and approximated capabilities without adding frame-time overhead.
+
+
+## Checkpoint 2 sectioned runtime activation
+The active vertical slice now emits typed section descriptors plus integer and float payload buffers from the native runtime. Implemented layouts are named in `native/src/runtime/visual_frame_schema.h` for GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput. The current implementation remains a focused compatibility slice for the existing visual controls while real GDTF semantic coverage continues to expand.

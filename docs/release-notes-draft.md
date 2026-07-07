@@ -87,3 +87,6 @@ Changes since the initial Peraviz repository split.
 - Added reproducible Windows static native build presets, dependency verification guidance, and export documentation so Godot exports keep `peraviz_native.dll` under `bin/` without obsolete third-party runtime DLLs.
 
 - Added the GDTF-first native visual runtime architecture foundation, including the Peraviz/Perastage semantic contract, parser ownership ADR, support taxonomy, compiled fixture model foundation, and sectioned live frame schema validation.
+
+- Activated the first sectioned native visual-frame path for live DMX updates, including typed descriptor, integer, and float buffers for transform, intensity, color, optics, wheel, and temporal sections.
+- Added a pinned GDTF attribute registry provenance file and semantic contract fixture snapshot for future Peraviz/Perastage compatibility checks.

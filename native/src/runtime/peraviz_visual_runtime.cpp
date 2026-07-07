@@ -62,11 +62,19 @@ void PeravizVisualRuntimeCore::submit_universe_frame(int universe_id, const uint
     universe.has_pending_frame = true;
 }
 
-// Consumes newest dirty universes and returns one cooked fixed-stride visual frame.
-VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
-    VisualFrame frame;
-    frame.values.push_back(0.0f);
-    uint64_t output_count = 0;
+// Consumes newest dirty universes and returns one typed sectioned visual frame.
+SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
+    SectionedVisualFrame frame;
+    frame.schema_generation = schema_.schema_generation;
+
+    struct PendingRow {
+        int fixture_id = 0;
+        uint32_t changed_channel_mask = 0;
+        uint32_t changed_visual_mask = 0;
+        std::array<float, kVisualChannelCount> channels {};
+        std::array<float, 9> render_values {};
+    };
+    std::vector<PendingRow> rows;
 
     for (auto &[universe_id, universe] : universes_) {
         (void)universe_id;
@@ -113,25 +121,114 @@ VisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             }
             add_visual_mask_stats(change.changed_visual_mask);
             ++stats_.fixtures_dirty;
-            ++output_count;
-            frame.values.push_back(static_cast<float>(fixture_id));
-            frame.values.push_back(static_cast<float>(change.changed_channel_mask));
-            frame.values.push_back(static_cast<float>(change.changed_visual_mask));
-            for (float value : channels) {
-                frame.values.push_back(value);
-            }
-            for (float value : render_values) {
-                frame.values.push_back(value);
-            }
+            rows.push_back({fixture_id, change.changed_channel_mask, change.changed_visual_mask, channels, render_values});
         }
     }
 
-    frame.values[0] = static_cast<float>(output_count);
-    frame.stats = stats_;
-    if (output_count == 0) {
-        frame.values.clear();
+    auto append_descriptor = [&frame](VisualSectionType type, int32_t row_count, int32_t int_offset, int32_t float_offset) {
+        frame.descriptors.push_back(static_cast<int32_t>(type));
+        frame.descriptors.push_back(row_count);
+        frame.descriptors.push_back(int_offset);
+        frame.descriptors.push_back(float_offset);
+        frame.descriptors.push_back(0);
+    };
+
+    auto section_count_for = [&rows](uint32_t mask) {
+        return static_cast<int32_t>(std::count_if(rows.begin(), rows.end(), [mask](const PendingRow &row) { return (row.changed_visual_mask & mask) != 0U; }));
+    };
+
+    const int32_t transform_count = section_count_for(VisualChangeTransform);
+    if (transform_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & VisualChangeTransform) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.channels[1], row.channels[2]});
+        }
+        append_descriptor(VisualSectionType::GeometryTransform, transform_count, int_offset, float_offset);
     }
+
+    const int32_t intensity_count = section_count_for(VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology);
+    if (intensity_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & (VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology)) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.channels[0], row.render_values[0], row.render_values[1], row.render_values[7], row.render_values[8]});
+        }
+        append_descriptor(VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
+    }
+
+    const int32_t color_count = section_count_for(VisualChangeColor | VisualChangeMaterial);
+    if (color_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & (VisualChangeColor | VisualChangeMaterial)) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.render_values[4], row.render_values[5], row.render_values[6]});
+        }
+        append_descriptor(VisualSectionType::EmitterColor, color_count, int_offset, float_offset);
+    }
+
+    const int32_t optics_count = section_count_for(VisualChangeZoom | VisualChangeBeamTopology);
+    if (optics_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & (VisualChangeZoom | VisualChangeBeamTopology)) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.render_values[2], row.render_values[3], row.channels[3]});
+        }
+        append_descriptor(VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
+    }
+
+    const int32_t wheel_selection_count = section_count_for(VisualChangeGobo | VisualChangePrism);
+    if (wheel_selection_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & (VisualChangeGobo | VisualChangePrism)) == 0U) continue;
+            const int32_t slot = static_cast<int32_t>(std::floor(std::clamp(row.channels[7], 0.0f, 1.0f) * 255.0f));
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, 1, row.fixture_id, slot, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.push_back(row.channels[7]);
+        }
+        append_descriptor(VisualSectionType::WheelSelection, wheel_selection_count, int_offset, float_offset);
+    }
+
+    const int32_t wheel_motion_count = section_count_for(VisualChangeGoboRotation | VisualChangePrism);
+    if (wheel_motion_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & (VisualChangeGoboRotation | VisualChangePrism)) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, 1, static_cast<int32_t>(row.changed_visual_mask), 0});
+            frame.floats.insert(frame.floats.end(), {row.channels[8], row.channels[9], 0.0f});
+        }
+        append_descriptor(VisualSectionType::WheelMotion, wheel_motion_count, int_offset, float_offset);
+    }
+
+    const int32_t temporal_count = section_count_for(VisualChangeStrobe);
+    if (temporal_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & VisualChangeStrobe) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id, 0, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.channels[12], row.channels[0]});
+        }
+        append_descriptor(VisualSectionType::TemporalOutput, temporal_count, int_offset, float_offset);
+    }
+
+    frame.stats = stats_;
     return frame;
+}
+
+// Returns the immutable schema currently used by emitted sectioned frames.
+const VisualFrameSchema &PeravizVisualRuntimeCore::schema() const {
+    return schema_;
 }
 
 // Returns cumulative runtime counters for debug UI and benchmarks.
