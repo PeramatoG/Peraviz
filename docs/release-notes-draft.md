@@ -95,3 +95,4 @@ Changes since the initial Peraviz repository split.
 ## Internal changes
 - Replaced the native visual-runtime cache with component-oriented semantic state and typed section emission so active dirty rows are no longer assembled from a fixed 13-control state or fixed render-value array.
 - Added runtime guardrails for the GDTF component-engine migration to prevent fixed-control buffers, obsolete visual frame buffers, and universal section applier state from returning to active runtime code.
+- Restored the sectioned live DMX dimmer path by applying intensity, color, optics, wheel, motion, and temporal sections through dedicated render-domain methods so later sections no longer reset beam or light energy with partial default values.

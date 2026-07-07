@@ -90,22 +90,22 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 			light_apply_service._apply_visual_frame_pan_tilt(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
 		SECTION_EMITTER_INTENSITY:
 			if float_base + 4 >= floats.size(): return false
-			light_apply_service._apply_visual_frame_lighting(loader, fixture_uuid, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], 12.5, 25.0, Color.WHITE, floats[float_base + 3], floats[float_base + 4], frame_delta_sec, 0.0, 0.0, 0.0, dmx_runtime)
+			light_apply_service.apply_emitter_intensity(loader, fixture_uuid, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
 		SECTION_EMITTER_COLOR:
 			if float_base + 2 >= floats.size(): return false
-			light_apply_service._apply_visual_frame_lighting(loader, fixture_uuid, changed_mask, 1.0, 0.0, 0.0, 12.5, 25.0, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0), 0.0, 1.0, frame_delta_sec, 0.0, 0.0, 0.0, dmx_runtime)
+			light_apply_service.apply_emitter_color(loader, fixture_uuid, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))
 		SECTION_BEAM_OPTICS:
 			if float_base + 2 >= floats.size(): return false
-			light_apply_service._apply_visual_frame_lighting(loader, fixture_uuid, changed_mask, 1.0, 0.0, 0.0, floats[float_base], floats[float_base + 1], Color.WHITE, 0.0, 0.0, frame_delta_sec, 0.0, 0.0, 0.0, dmx_runtime)
+			light_apply_service.apply_beam_optics(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
 		SECTION_WHEEL_SELECTION:
 			if float_base >= floats.size(): return false
-			light_apply_service._apply_visual_frame_lighting(loader, fixture_uuid, changed_mask, 1.0, 0.0, 0.0, 12.5, 25.0, Color.WHITE, 0.0, 0.0, frame_delta_sec, floats[float_base], 0.0, 0.0, dmx_runtime)
+			light_apply_service.apply_wheel_selection(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], dmx_runtime)
 		SECTION_WHEEL_MOTION:
 			if float_base + 1 >= floats.size(): return false
-			light_apply_service._apply_visual_frame_lighting(loader, fixture_uuid, changed_mask, 1.0, 0.0, 0.0, 12.5, 25.0, Color.WHITE, 0.0, 0.0, frame_delta_sec, 0.0, floats[float_base], floats[float_base + 1], dmx_runtime)
+			light_apply_service.apply_wheel_motion(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], floats[float_base + 1], dmx_runtime)
 		SECTION_TEMPORAL_OUTPUT:
 			if float_base >= floats.size(): return false
-			light_apply_service._apply_visual_frame_lighting(loader, fixture_uuid, changed_mask, floats[float_base + 1] if float_base + 1 < floats.size() else 1.0, 0.0, 0.0, 12.5, 25.0, Color.WHITE, 0.0, 0.0, frame_delta_sec, 0.0, 0.0, 0.0, dmx_runtime)
+			light_apply_service.apply_temporal_output(loader, fixture_uuid, floats[float_base], floats[float_base + 1] if float_base + 1 < floats.size() else 1.0)
 		_:
 			return false
 	return true

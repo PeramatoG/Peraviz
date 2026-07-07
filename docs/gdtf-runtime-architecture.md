@@ -62,3 +62,7 @@ The active vertical slice now emits typed section descriptors plus integer and f
 Active native DMX evaluation now uses compiled semantic programs and per-fixture component state. The state cache has named semantic members for transform, emitter, optics, wheel, prism, and temporal domains, and dirty rows are written directly to the section protocol. This replaces the previous fixed control-array cache and fixed render-ready array. Fixture IDs are retained only as scene fixture identifiers; generated component and render-target IDs use distinct numeric spaces in emitted rows.
 
 The parser-owned `CompiledGdtfFixtureType` remains the contract target for the next integration step: scene compilation should populate the runtime program table from parsed GDTF ChannelFunctions, ChannelSets, wheels, emitters, filters, relations, and mode-master records without any live XML or string lookups.
+
+## Render-domain application correction
+
+Godot section application now preserves native-owned component separation at the render boundary. The section applier dispatches rows to direct render-domain methods instead of reconstructing a universal lighting call. This keeps dimmer/intensity state independent from color, optics, wheel, motion, and temporal updates while the native runtime continues to emit dirty typed sections.

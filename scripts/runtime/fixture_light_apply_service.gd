@@ -106,6 +106,168 @@ func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_norm: 
 	var tilt_degrees: float = lerp(float(loader.tilt_min_input.value), float(loader.tilt_max_input.value), tilt_norm)
 	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
+func apply_emitter_intensity(loader: Node, fixture_uuid: String, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_set_fixture_intensity_state(fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
+	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
+	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
+	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
+		_warn_visual_once(fixture_uuid + ":no_visual_nodes", "Fixture %s has dimmer %.3f but no geometry or emitter nodes." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001)
+		return
+	var beam_color: Color = _fixture_render_color(fixture_uuid)
+	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
+	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
+	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
+	var visible_beams: int = 0
+	var visible_lights: int = 0
+	for index in range(emitter_lights.size()):
+		var light: SpotLight3D = emitter_lights[index]
+		if light == null or not is_instance_valid(light):
+			continue
+		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
+		_apply_intensity_to_light(loader, fixture_uuid, light, photometric, changed_mask, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
+		if _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001):
+			visible_lights += 1
+		if _beam_is_visible(light, beam_intensity):
+			visible_beams += 1
+	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
+	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
+
+func apply_emitter_color(loader: Node, fixture_uuid: String, beam_color: Color) -> void:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_set_fixture_render_color(fixture_uuid, beam_color)
+	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
+	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, _fixture_material_energy(fixture_uuid))
+	for light in _fixture_lights(loader, fixture_uuid):
+		light.light_color = beam_color
+		if light.has_meta("peraviz_beam_last_params"):
+			_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_COLOR, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), beam_color, _fixture_beam_intensity(fixture_uuid))
+
+func apply_beam_optics(loader: Node, fixture_uuid: String, beam_half_angle: float, beam_angle: float) -> void:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_set_fixture_beam_angles(fixture_uuid, beam_half_angle, beam_angle)
+	for light in _fixture_lights(loader, fixture_uuid):
+		light.spot_angle = beam_half_angle
+		_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_ZOOM | VISUAL_CHANGE_BEAM_TOPOLOGY, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), beam_angle, _fixture_render_color(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
+
+func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_set_fixture_gobo_selection(fixture_uuid, gobo_norm)
+	for light in _fixture_lights(loader, fixture_uuid):
+		var topology_changed: bool = _apply_visual_frame_gobo(loader, fixture_uuid, light, changed_mask, frame_delta_sec, gobo_norm, _fixture_gobo_index(fixture_uuid), _fixture_gobo_rotation(fixture_uuid), dmx_runtime)
+		if topology_changed:
+			_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_BEAM_TOPOLOGY, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), _fixture_render_color(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
+
+func apply_wheel_motion(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> void:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_set_fixture_gobo_motion(fixture_uuid, gobo_index_norm, gobo_rotation_norm)
+	for light in _fixture_lights(loader, fixture_uuid):
+		_apply_visual_frame_gobo(loader, fixture_uuid, light, changed_mask, frame_delta_sec, _fixture_gobo_selection(fixture_uuid), gobo_index_norm, gobo_rotation_norm, dmx_runtime)
+
+func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: float, output_norm: float) -> void:
+	var key: String = _fixture_state_key(fixture_uuid)
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_diagnostic_info_keys[key + ":temporal_state"] = {"strobe_norm": strobe_norm, "output_norm": output_norm}
+
+func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+	var visible: bool = dimmer_norm > 0.0001
+	var beam_color: Color = _fixture_render_color(fixture_uuid)
+	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
+	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
+	var light_energy: float = spot_energy if spot_energy > 0.0 else beam_energy
+	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
+	light.light_energy = light_energy
+	light.spot_angle = beam_half_angle
+	light.light_color = beam_color
+	light.set_meta("peraviz_base_light_energy", beam_energy)
+	light.set_meta("peraviz_beam_base_intensity", dimmer_norm)
+	_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
+	if not light.has_meta("peraviz_beam_last_params"):
+		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_intensity, material_energy)
+	else:
+		_apply_visual_frame_beam(loader, light, changed_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
+
+func _fixture_lights(loader: Node, fixture_uuid: String) -> Array:
+	return loader._collect_fixture_emitter_lights(fixture_uuid, loader._get_fixture_emitter_nodes(fixture_uuid))
+
+func _fixture_state_key(fixture_uuid: String) -> String:
+	return "section_state:" + fixture_uuid
+
+func _fixture_state(fixture_uuid: String) -> Dictionary:
+	var key: String = _fixture_state_key(fixture_uuid)
+	if not _diagnostic_info_keys.has(key):
+		_diagnostic_info_keys[key] = {
+			"dimmer": 0.0,
+			"beam_energy": 0.0,
+			"spot_energy": 0.0,
+			"beam_intensity": 0.0,
+			"material_energy": 0.0,
+			"beam_half_angle": 12.5,
+			"beam_angle": 25.0,
+			"beam_color": Color.WHITE,
+			"gobo": 0.0,
+			"gobo_index": 0.0,
+			"gobo_rotation": 0.0,
+		}
+	return _diagnostic_info_keys[key]
+
+func _set_fixture_intensity_state(fixture_uuid: String, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+	var state: Dictionary = _fixture_state(fixture_uuid)
+	state["dimmer"] = dimmer_norm
+	state["beam_energy"] = beam_energy
+	state["spot_energy"] = spot_energy
+	state["beam_intensity"] = beam_intensity
+	state["material_energy"] = material_energy
+
+func _set_fixture_render_color(fixture_uuid: String, beam_color: Color) -> void:
+	_fixture_state(fixture_uuid)["beam_color"] = beam_color
+
+func _set_fixture_beam_angles(fixture_uuid: String, beam_half_angle: float, beam_angle: float) -> void:
+	var state: Dictionary = _fixture_state(fixture_uuid)
+	state["beam_half_angle"] = beam_half_angle
+	state["beam_angle"] = beam_angle
+
+func _set_fixture_gobo_selection(fixture_uuid: String, gobo_norm: float) -> void:
+	_fixture_state(fixture_uuid)["gobo"] = gobo_norm
+
+func _set_fixture_gobo_motion(fixture_uuid: String, gobo_index_norm: float, gobo_rotation_norm: float) -> void:
+	var state: Dictionary = _fixture_state(fixture_uuid)
+	state["gobo_index"] = gobo_index_norm
+	state["gobo_rotation"] = gobo_rotation_norm
+
+func _fixture_dimmer(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("dimmer", 0.0))
+
+func _fixture_material_energy(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("material_energy", 0.0))
+
+func _fixture_beam_intensity(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("beam_intensity", 0.0))
+
+func _fixture_beam_half_angle(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("beam_half_angle", 12.5))
+
+func _fixture_beam_angle(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("beam_angle", 25.0))
+
+func _fixture_render_color(fixture_uuid: String) -> Color:
+	return _fixture_state(fixture_uuid).get("beam_color", Color.WHITE)
+
+func _fixture_gobo_selection(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("gobo", 0.0))
+
+func _fixture_gobo_index(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("gobo_index", 0.0))
+
+func _fixture_gobo_rotation(fixture_uuid: String) -> float:
+	return float(_fixture_state(fixture_uuid).get("gobo_rotation", 0.0))
+
+func _beam_is_visible(light: SpotLight3D, fallback_intensity: float) -> bool:
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
+	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
+	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", fallback_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
+	return scaled_intensity > threshold
+
 func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> void:
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
 	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
