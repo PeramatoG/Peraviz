@@ -7,8 +7,11 @@
 
 namespace peraviz::runtime {
 
+// Canonical live DMX visual-frame row: fixture id, channel mask, visual mask, 13 controls, and 9 render-ready values.
 constexpr int kVisualChannelCount = 13;
-constexpr int kVisualFrameStride = 25;
+constexpr int kVisualRenderValueCount = 9;
+constexpr int kVisualFrameHeaderCount = 3;
+constexpr int kVisualFrameStride = kVisualFrameHeaderCount + kVisualChannelCount + kVisualRenderValueCount;
 
 enum class VisualChannel : int {
     Dimmer = 0,
