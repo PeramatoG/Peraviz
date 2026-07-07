@@ -11,8 +11,10 @@ struct AttributeIdentity {
     std::string name;
     std::string canonical_family;
     int32_t primary_index = 0;
+    std::vector<int32_t> wildcard_indexes;
     int32_t secondary_index = 0;
     bool known_official = false;
+    bool custom = false;
 };
 
 struct GeometryInstance {

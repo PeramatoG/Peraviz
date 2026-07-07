@@ -14,3 +14,7 @@ Godot must reject frames whose protocol version or schema generation does not ma
 - `PackedFloat32Array`: physical and render-ready numeric values.
 
 The live loop must avoid per-fixture Dictionaries, strings, one call per fixture, section slicing, per-frame schema rebuilds, and duplicate protocols.
+
+
+## Sectioned live frame protocol
+Live DMX visualization no longer exposes one float-only fixture row to GDScript. `PeravizVisualRuntime.consume_latest_visual_frame()` returns one coherent snapshot dictionary containing protocol version, schema generation, `PackedInt32Array` descriptors, `PackedInt32Array` integer payload, and `PackedFloat32Array` float payload. Godot installs schema metadata at runtime setup and applies rows through `scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd`.

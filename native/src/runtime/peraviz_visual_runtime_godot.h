@@ -8,6 +8,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 
 namespace godot {
 
@@ -22,7 +23,8 @@ public:
     void set_fixture_bindings(const Array &bindings);
     void set_fixture_render_params(int fixture_id, const Dictionary &render_params);
     void submit_universe_frame(int universe_id, const PackedByteArray &data);
-    PackedFloat32Array consume_latest_visual_frame();
+    Dictionary consume_latest_visual_frame();
+    Dictionary get_visual_frame_schema() const;
     Dictionary get_stats() const;
 
 private:

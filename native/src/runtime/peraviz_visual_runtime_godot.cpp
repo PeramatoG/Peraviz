@@ -9,6 +9,7 @@ void PeravizVisualRuntime::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_fixture_render_params", "fixture_id", "render_params"), &PeravizVisualRuntime::set_fixture_render_params);
     ClassDB::bind_method(D_METHOD("submit_universe_frame", "universe_id", "data"), &PeravizVisualRuntime::submit_universe_frame);
     ClassDB::bind_method(D_METHOD("consume_latest_visual_frame"), &PeravizVisualRuntime::consume_latest_visual_frame);
+    ClassDB::bind_method(D_METHOD("get_visual_frame_schema"), &PeravizVisualRuntime::get_visual_frame_schema);
     ClassDB::bind_method(D_METHOD("get_stats"), &PeravizVisualRuntime::get_stats);
 }
 
@@ -41,14 +42,51 @@ void PeravizVisualRuntime::submit_universe_frame(int universe_id, const PackedBy
     core_.submit_universe_frame(universe_id, data.ptr(), data.size());
 }
 
-// Consumes the latest cooked dirty-fixture visual frame as a fixed-stride float buffer.
-PackedFloat32Array PeravizVisualRuntime::consume_latest_visual_frame() {
-    const peraviz::runtime::VisualFrame frame = core_.consume_latest_visual_frame();
-    PackedFloat32Array out;
-    out.resize(static_cast<int64_t>(frame.values.size()));
-    for (int64_t index = 0; index < out.size(); ++index) {
-        out.set(index, frame.values[static_cast<size_t>(index)]);
+// Consumes the latest cooked dirty visual frame as one coherent typed snapshot.
+Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
+    const peraviz::runtime::SectionedVisualFrame frame = core_.consume_latest_visual_frame();
+    PackedInt32Array descriptors;
+    descriptors.resize(static_cast<int64_t>(frame.descriptors.size()));
+    for (int64_t index = 0; index < descriptors.size(); ++index) {
+        descriptors.set(index, frame.descriptors[static_cast<size_t>(index)]);
     }
+    PackedInt32Array integers;
+    integers.resize(static_cast<int64_t>(frame.integers.size()));
+    for (int64_t index = 0; index < integers.size(); ++index) {
+        integers.set(index, frame.integers[static_cast<size_t>(index)]);
+    }
+    PackedFloat32Array floats;
+    floats.resize(static_cast<int64_t>(frame.floats.size()));
+    for (int64_t index = 0; index < floats.size(); ++index) {
+        floats.set(index, frame.floats[static_cast<size_t>(index)]);
+    }
+    Dictionary out;
+    out["protocol_major"] = frame.protocol_major;
+    out["protocol_minor"] = frame.protocol_minor;
+    out["schema_generation"] = frame.schema_generation;
+    out["descriptors"] = descriptors;
+    out["integers"] = integers;
+    out["floats"] = floats;
+    return out;
+}
+
+// Returns the installed section schema for structural registration and validation in Godot.
+Dictionary PeravizVisualRuntime::get_visual_frame_schema() const {
+    const peraviz::runtime::VisualFrameSchema &schema = core_.schema();
+    Array sections;
+    for (const peraviz::runtime::VisualSectionSchema &section : schema.sections) {
+        Dictionary row;
+        row["section_type"] = section.section_type;
+        row["row_stride_ints"] = section.row_stride_ints;
+        row["row_stride_floats"] = section.row_stride_floats;
+        row["flags"] = section.flags;
+        sections.push_back(row);
+    }
+    Dictionary out;
+    out["protocol_major"] = schema.protocol_major;
+    out["protocol_minor"] = schema.protocol_minor;
+    out["schema_generation"] = schema.schema_generation;
+    out["sections"] = sections;
     return out;
 }
 

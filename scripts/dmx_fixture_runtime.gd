@@ -6,6 +6,7 @@ const FORCE_COARSE_ONLY_DMX_READ: bool = false
 
 const GoboVectorizationCacheScript = preload("res://scripts/gobo_vectorization/gobo_vectorization_cache.gd")
 const DmxGoboRangeResolverScript = preload("res://scripts/dmx_gobo_range_resolver.gd")
+const SectionedVisualFrameApplierScript = preload("res://scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd")
 
 const NATIVE_CHANNEL_PAN: int = 1
 const NATIVE_CHANNEL_TILT: int = 2
@@ -120,6 +121,7 @@ var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
 var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
+var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
 
 func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_loader = loader
@@ -127,6 +129,9 @@ func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: Fixt
 	_fixture_row_provider = fixture_row_provider
 	_gobo_vectorization_cache = GoboVectorizationCacheScript.new()
 	_initialize_native_visual_runtime()
+	_sectioned_visual_frame_applier = SectionedVisualFrameApplierScript.new()
+	if _native_visual_runtime != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
+		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
 func rebuild(universe_offset: int) -> Dictionary:
 	_bindings.clear()
@@ -376,14 +381,18 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		_last_universe_interest_hashes[universe_id] = interest_hash
 		_native_visual_runtime.submit_universe_frame(universe_id, frame)
 
-	var visual_frame: PackedFloat32Array = _native_visual_runtime.consume_latest_visual_frame()
-	_last_visual_frame_size = visual_frame.size()
-	if not visual_frame.is_empty():
+	var visual_frame: Dictionary = _native_visual_runtime.consume_latest_visual_frame()
+	var visual_descriptors: PackedInt32Array = visual_frame.get("descriptors", PackedInt32Array())
+	var visual_integers: PackedInt32Array = visual_frame.get("integers", PackedInt32Array())
+	var visual_floats: PackedFloat32Array = visual_frame.get("floats", PackedFloat32Array())
+	_last_visual_frame_size = visual_descriptors.size() + visual_integers.size() + visual_floats.size()
+	if _last_visual_frame_size > 0:
 		var compact_result: Dictionary = {}
 		if loader == null or light_apply_service == null:
 			push_error("PeravizVisualRuntime requires the visual-frame light applier for live DMX playback.")
-			return {"updated": updated, "skipped": skipped + int(visual_frame[0]), "universes_changed": changed_frames.size(), "fixtures_considered": fixtures_considered, "controls": pending_controls}
-		compact_result = _apply_visual_frame_updates(visual_frame, loader, light_apply_service, frame_delta_sec)
+			return {"updated": updated, "skipped": skipped, "universes_changed": changed_frames.size(), "fixtures_considered": fixtures_considered, "controls": pending_controls}
+		compact_result = _sectioned_visual_frame_applier.apply_snapshot(visual_frame, loader, light_apply_service, frame_delta_sec, self, _native_fixture_uuids_by_id, _bound_fixture_ids)
+		_last_visual_mask_counts = compact_result.get("visual_mask_counts", {})
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
@@ -501,6 +510,8 @@ func _register_native_visual_runtime_bindings() -> void:
 				_append_native_bindings_for_fixture(native_bindings, binding)
 	_native_bindings_count = native_bindings.size()
 	_native_visual_runtime.set_fixture_bindings(native_bindings)
+	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
+		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -650,62 +661,12 @@ func _append_native_channel_binding_indices(native_bindings: Array, binding: Dic
 		"bit_depth": 8 + (8 if resolved_fine_address >= 0 else 0) + (8 if resolved_ultra_fine_address >= 0 else 0),
 	})
 
-func _apply_visual_frame_updates(visual_frame: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float) -> Dictionary:
-	var updated: int = 0
-	var skipped: int = 0
-	var fixtures_considered: int = 0
-	var fixture_count: int = int(visual_frame[0])
-	var transform_count: int = 0
-	var dimmer_count: int = 0
-	var color_count: int = 0
-	var zoom_count: int = 0
-	var gobo_count: int = 0
-	var gobo_rotation_count: int = 0
-	var base: int = 1
-	for _i in range(fixture_count):
-		if base + NATIVE_RENDER_READY_STRIDE > visual_frame.size():
-			break
-		var fixture_id: int = int(visual_frame[base])
-		var fixture_uuid: String = str(_native_fixture_uuids_by_id.get(fixture_id, ""))
-		var visual_mask: int = int(visual_frame[base + NATIVE_VISUAL_MASK_OFFSET])
-		if (visual_mask & VISUAL_CHANGE_TRANSFORM) != 0:
-			transform_count += 1
-		if (visual_mask & VISUAL_CHANGE_DIMMER) != 0:
-			dimmer_count += 1
-		if (visual_mask & VISUAL_CHANGE_COLOR) != 0:
-			color_count += 1
-		if (visual_mask & VISUAL_CHANGE_ZOOM) != 0:
-			zoom_count += 1
-		if (visual_mask & VISUAL_CHANGE_GOBO) != 0:
-			gobo_count += 1
-		if (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0:
-			gobo_rotation_count += 1
-		if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
-			skipped += 1
-			base += NATIVE_RENDER_READY_STRIDE
-			continue
-		if (visual_mask & (VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION)) != 0:
-			_store_visual_frame_gobo_controls(fixture_uuid, visual_frame, base, visual_mask)
-		light_apply_service.apply_visual_frame_to_fixture(loader, fixture_uuid, visual_frame, base, frame_delta_sec, self)
-		fixtures_considered += 1
-		updated += 1
-		base += NATIVE_RENDER_READY_STRIDE
-	_last_visual_mask_counts = {
-		"changed_transform_count": transform_count,
-		"changed_dimmer_count": dimmer_count,
-		"changed_color_count": color_count,
-		"changed_zoom_count": zoom_count,
-		"changed_gobo_count": gobo_count,
-		"changed_gobo_rotation_count": gobo_rotation_count,
-	}
-	return {"updated": updated, "skipped": skipped, "fixtures_considered": fixtures_considered}
 
-func _store_visual_frame_gobo_controls(fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, visual_mask: int) -> void:
-	var changed_mask: int = int(visual_frame[base + 1])
+func update_live_visual_gobo_from_section(fixture_uuid: String, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, visual_mask: int) -> void:
 	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO, NATIVE_CHANNEL_GOBO, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_INDEX, NATIVE_CHANNEL_GOBO_INDEX, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_INDEX])
-	_store_compact_channel_value(values, changed_mask, NATIVE_COMPACT_GOBO_ROTATION, NATIVE_CHANNEL_GOBO_ROTATION, visual_frame[base + NATIVE_VALUES_OFFSET + NATIVE_COMPACT_GOBO_ROTATION])
+	values[NATIVE_CHANNEL_GOBO] = clamp(gobo_norm, 0.0, 1.0)
+	values[NATIVE_CHANNEL_GOBO_INDEX] = clamp(gobo_index_norm, 0.0, 1.0)
+	values[NATIVE_CHANNEL_GOBO_ROTATION] = clamp(gobo_rotation_norm, 0.0, 1.0)
 	_native_channel_values[fixture_uuid] = values
 	var static_controls: Dictionary = _static_gobo_controls_by_fixture.get(fixture_uuid, {})
 	var controls: Dictionary = _live_visual_gobo_controls_by_fixture.get(fixture_uuid, {})

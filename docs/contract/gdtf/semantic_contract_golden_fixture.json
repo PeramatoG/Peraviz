@@ -1,0 +1,6 @@
+{
+  "semantic_contract_version": 1,
+  "description": "Serialization-neutral GDTF semantic snapshot used by Peraviz and intended for equivalent Perastage comparison.",
+  "attributes": ["Dimmer", "Pan", "Tilt", "Zoom", "Gobo1", "Gobo2", "VideoEffect12Parameter3"],
+  "diagnostics": []
+}

@@ -27,3 +27,7 @@ Status values:
 | Manufacturer-specific or unknown attributes | GenericVisualParameter / diagnostics | parsed-only | Preserved and reported; no substring guessing. |
 
 New GDTF capability work must update this matrix, the native registry source or fixture vectors, and regression tests.
+
+
+## Attribute registry provenance
+The pinned local registry used by the checkpoint tests lives at `native/src/gdtf_runtime/registry/official_attributes.json`. It records source provenance and an update procedure so Peraviz and Perastage can compare deterministic normalized attribute output without runtime internet access.

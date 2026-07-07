@@ -5,16 +5,64 @@
 namespace peraviz::gdtf_runtime {
 namespace {
 
-// Splits a trailing numeric suffix from an official wildcard attribute family.
-std::pair<std::string, int32_t> split_family_index(const std::string &name) {
-    size_t digit_start = name.size();
-    while (digit_start > 0 && std::isdigit(static_cast<unsigned char>(name[digit_start - 1])) != 0) {
-        --digit_start;
+struct AttributePattern {
+    const char *family;
+    const char *canonical_pattern;
+    int wildcard_count;
+};
+
+constexpr AttributePattern kOfficialAttributePatterns[] = {
+    {"Dimmer", "Dimmer", 0}, {"Pan", "Pan", 0}, {"Tilt", "Tilt", 0}, {"Zoom", "Zoom", 0},
+    {"Cyan", "Cyan", 0}, {"Magenta", "Magenta", 0}, {"Yellow", "Yellow", 0}, {"Strobe", "Strobe", 0},
+    {"Gobo", "Gobo(n)", 1}, {"Gobo", "Gobo(n)SelectShake", 1}, {"Gobo", "Gobo(n)Index", 1}, {"Gobo", "Gobo(n)Rotate", 1},
+    {"AnimationWheel", "AnimationWheel(n)", 1}, {"Color", "Color(n)", 1}, {"Prism", "Prism(n)", 1},
+    {"Blade", "Blade(n)A", 1}, {"Blade", "Blade(n)B", 1}, {"VideoEffect", "VideoEffect(n)Parameter(n)", 2},
+};
+
+// Reads a decimal number starting at offset and advances the cursor when present.
+bool read_number(const std::string &name, size_t &offset, int32_t &value) {
+    const size_t start = offset;
+    while (offset < name.size() && std::isdigit(static_cast<unsigned char>(name[offset])) != 0) {
+        ++offset;
     }
-    if (digit_start == name.size()) {
-        return {name, 0};
+    if (start == offset) {
+        return false;
     }
-    return {name.substr(0, digit_start), std::stoi(name.substr(digit_start))};
+    value = std::stoi(name.substr(start, offset - start));
+    return true;
+}
+
+// Matches the official wildcard families needed by the shared Peraviz/Perastage registry.
+bool match_official_pattern(const std::string &name, const AttributePattern &pattern, std::vector<int32_t> &indexes) {
+    const std::string family(pattern.family);
+    if (name.rfind(family, 0) != 0) {
+        return false;
+    }
+    size_t offset = family.size();
+    indexes.clear();
+    if (pattern.wildcard_count == 0) {
+        return offset == name.size();
+    }
+    int32_t primary = 0;
+    if (!read_number(name, offset, primary)) {
+        return false;
+    }
+    indexes.push_back(primary);
+    const std::string canonical(pattern.canonical_pattern);
+    if (canonical == "Gobo(n)SelectShake") return name.substr(offset) == "SelectShake";
+    if (canonical == "Gobo(n)Index") return name.substr(offset) == "Index";
+    if (canonical == "Gobo(n)Rotate") return name.substr(offset) == "Rotate";
+    if (canonical == "Blade(n)A") return name.substr(offset) == "A";
+    if (canonical == "Blade(n)B") return name.substr(offset) == "B";
+    if (canonical == "VideoEffect(n)Parameter(n)") {
+        if (name.substr(offset, 9) != "Parameter") return false;
+        offset += 9;
+        int32_t secondary = 0;
+        if (!read_number(name, offset, secondary)) return false;
+        indexes.push_back(secondary);
+        return offset == name.size();
+    }
+    return offset == name.size();
 }
 
 } // namespace
@@ -24,14 +72,21 @@ AttributeIdentity normalize_attribute_identity(int32_t id, const std::string &at
     AttributeIdentity identity;
     identity.id = id;
     identity.name = attribute_name;
-    auto [family, index] = split_family_index(attribute_name);
-    identity.canonical_family = family;
-    identity.primary_index = index;
-    identity.known_official = family == "Dimmer" || family == "Pan" || family == "Tilt" || family == "Gobo" || family == "AnimationWheel" || family == "VideoEffect";
-    if (family == "VideoEffect" && index > 0) {
-        identity.canonical_family = "VideoEffectParameter";
-        identity.secondary_index = index;
+    for (const AttributePattern &pattern : kOfficialAttributePatterns) {
+        std::vector<int32_t> indexes;
+        if (!match_official_pattern(attribute_name, pattern, indexes)) {
+            continue;
+        }
+        identity.canonical_family = pattern.family;
+        identity.wildcard_indexes = indexes;
+        identity.primary_index = indexes.empty() ? 0 : indexes[0];
+        identity.secondary_index = indexes.size() > 1 ? indexes[1] : 0;
+        identity.known_official = true;
+        identity.custom = false;
+        return identity;
     }
+    identity.canonical_family = attribute_name;
+    identity.custom = true;
     return identity;
 }
 

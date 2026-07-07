@@ -108,3 +108,8 @@ Godot must not become the place where raw protocol data is repeatedly converted 
 - `docs/gdtf-support-matrix.md` - registry-driven GDTF support taxonomy.
 - `docs/adr-gdtf-parser-ownership.md` - parser ownership decision.
 - `docs/peraviz-perastage-gdtf-contract.md` - cross-project semantic contract.
+
+
+- `scripts/runtime/visual_sections/` contains modular live visual section appliers for the native sectioned frame protocol.
+- `native/src/gdtf_runtime/registry/official_attributes.json` pins the local GDTF attribute registry provenance used by shared Peraviz/Perastage tests.
+- `docs/contract/gdtf/` stores deterministic semantic contract snapshots.
