@@ -18,3 +18,9 @@ The live loop must avoid per-fixture Dictionaries, strings, one call per fixture
 
 ## Sectioned live frame protocol
 Live DMX visualization no longer exposes one float-only fixture row to GDScript. `PeravizVisualRuntime.consume_latest_visual_frame()` returns one coherent snapshot dictionary containing protocol version, schema generation, `PackedInt32Array` descriptors, `PackedInt32Array` integer payload, and `PackedFloat32Array` float payload. Godot installs schema metadata at runtime setup and applies rows through `scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd`.
+
+## Corrective sectioned runtime checkpoint
+
+The active native runtime now builds its live schema from the capabilities present in registered fixture bindings and advances the schema generation whenever bindings are rebuilt or the runtime is cleared. The active C++ sectioned path no longer includes the deprecated universal visual-frame row header; legacy row definitions remain isolated for historical compatibility code only.
+
+Godot's sectioned visual-frame applier now routes GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput rows directly into specialized apply calls. It keeps per-fixture render state only as cached section state and no longer reconstructs a 25-float universal fixture row or calls the fixed-row apply entry point from the sectioned path.

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "runtime/visual_frame_buffers.h"
+#include "runtime/visual_runtime_types.h"
 
 namespace peraviz::runtime {
 

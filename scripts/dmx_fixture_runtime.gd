@@ -662,24 +662,6 @@ func _append_native_channel_binding_indices(native_bindings: Array, binding: Dic
 	})
 
 
-func update_live_visual_gobo_from_section(fixture_uuid: String, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, visual_mask: int) -> void:
-	var values: Dictionary = _native_channel_values.get(fixture_uuid, {})
-	values[NATIVE_CHANNEL_GOBO] = clamp(gobo_norm, 0.0, 1.0)
-	values[NATIVE_CHANNEL_GOBO_INDEX] = clamp(gobo_index_norm, 0.0, 1.0)
-	values[NATIVE_CHANNEL_GOBO_ROTATION] = clamp(gobo_rotation_norm, 0.0, 1.0)
-	_native_channel_values[fixture_uuid] = values
-	var static_controls: Dictionary = _static_gobo_controls_by_fixture.get(fixture_uuid, {})
-	var controls: Dictionary = _live_visual_gobo_controls_by_fixture.get(fixture_uuid, {})
-	if controls.is_empty():
-		controls = _build_cached_live_gobo_controls(static_controls)
-	_update_cached_live_gobo_controls(controls, values)
-	controls["gobo_runtime_bindings"] = _build_live_visual_gobo_runtime_bindings(controls)
-	controls["changed_capability_types"] = {"gobo": true}
-	controls["visual_change_gobo"] = (visual_mask & VISUAL_CHANGE_GOBO) != 0
-	controls["visual_change_gobo_rotation"] = (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0
-	_live_visual_gobo_controls_by_fixture[fixture_uuid] = controls
-	_live_gobo_diagnostics_by_fixture[fixture_uuid] = _build_live_gobo_diagnostics(controls, static_controls, visual_mask)
-
 func get_live_visual_gobo_controls_for_fixture(fixture_uuid: String) -> Dictionary:
 	return (_live_visual_gobo_controls_by_fixture.get(fixture_uuid, {}) as Dictionary).duplicate(false)
 
