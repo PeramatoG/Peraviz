@@ -76,7 +76,7 @@ Changes since the initial Peraviz repository split.
 
 - Added the first modular native visual runtime core for DMX playback, with patched-universe filtering, native interest-offset hashing, latest-frame coalescing, cooked fixed-stride visual output, and regression tests for coalescing, unused universes, irrelevant channel changes, and binding rebuilds.
 - Fixed the native Art-Net flow test helper so it builds consistently with Windows toolchains.
-- Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, and fixture light apply service so project reloads stay quieter for maintainers.
+- Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, DMX fixture runtime, and fixture light apply service so project reloads stay quieter for maintainers.
 - Added Perastage-compatible runtime table schemas and in-memory row storage for fixtures, trusses, and scene objects to prepare Peraviz for future cell-based synchronization without adding Live Link transport or editing UI.
 - Added a focused fixture row provider so fixture inspection UI now reads stable fixture metadata rows built from loaded MVR scene data, patch metadata, and DMX binding state instead of assembling fixture details in UI-facing code.
 - Added a focused project archive service for reading and writing the initial `.pvz` archive files.
