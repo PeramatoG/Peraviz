@@ -12,15 +12,49 @@ void PeravizVisualRuntimeCore::clear() {
     render_params_by_fixture_.clear();
     fixture_state_by_id_.clear();
     stats_ = VisualFrameStats();
+    schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
 
 // Replaces fixture bindings and precomputes native universe interest offsets.
 void PeravizVisualRuntimeCore::set_fixture_bindings(const std::vector<FixtureChannelBinding> &bindings) {
     universes_.clear();
     fixture_state_by_id_.clear();
+    VisualFrameSchemaCapabilities capabilities;
     for (const FixtureChannelBinding &binding : bindings) {
-        if (binding.fixture_id <= 0 || binding.universe_id < 0 || compact_index_for_channel_type(binding.channel_type) < 0) {
+        const int control_index = control_index_for_channel_type(binding.channel_type);
+        if (binding.fixture_id <= 0 || binding.universe_id < 0 || control_index < 0) {
             continue;
+        }
+        switch (control_index) {
+            case Pan:
+            case Tilt:
+                capabilities.has_transform = true;
+                break;
+            case Dimmer:
+                capabilities.has_intensity = true;
+                break;
+            case Cyan:
+            case Magenta:
+            case Yellow:
+                capabilities.has_color = true;
+                break;
+            case Zoom:
+                capabilities.has_optics = true;
+                break;
+            case Gobo:
+            case GoboIndex:
+            case Prism:
+                capabilities.has_wheel_selection = true;
+                break;
+            case GoboRotation:
+            case PrismRotation:
+                capabilities.has_wheel_motion = true;
+                break;
+            case Strobe:
+                capabilities.has_temporal = true;
+                break;
+            default:
+                break;
         }
         UniverseState &universe = universes_[binding.universe_id];
         universe.bindings.push_back(binding);
@@ -36,6 +70,7 @@ void PeravizVisualRuntimeCore::set_fixture_bindings(const std::vector<FixtureCha
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
         universe.interest_offsets.erase(std::unique(universe.interest_offsets.begin(), universe.interest_offsets.end()), universe.interest_offsets.end());
     }
+    schema_ = make_visual_frame_schema(++next_schema_generation_, capabilities);
 }
 
 // Stores static render parameters used by the cooked visual resolver.
@@ -71,7 +106,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         int fixture_id = 0;
         uint32_t changed_channel_mask = 0;
         uint32_t changed_visual_mask = 0;
-        std::array<float, kVisualChannelCount> channels {};
+        std::array<float, kRuntimeControlCount> channels {};
         std::array<float, 9> render_values {};
     };
     std::vector<PendingRow> rows;
@@ -90,13 +125,13 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         universe.has_hash = true;
         universe.interest_hash = interest_hash;
 
-        std::unordered_map<int, std::array<float, kVisualChannelCount>> fixture_channels;
+        std::unordered_map<int, std::array<float, kRuntimeControlCount>> fixture_channels;
         for (const FixtureChannelBinding &binding : universe.bindings) {
-            const int compact_index = compact_index_for_channel_type(binding.channel_type);
+            const int compact_index = control_index_for_channel_type(binding.channel_type);
             if (compact_index < 0) {
                 continue;
             }
-            auto insert_result = fixture_channels.emplace(binding.fixture_id, std::array<float, kVisualChannelCount>());
+            auto insert_result = fixture_channels.emplace(binding.fixture_id, std::array<float, kRuntimeControlCount>());
             auto &channels = insert_result.first->second;
             if (insert_result.second) {
                 const auto state_it = fixture_state_by_id_.find(binding.fixture_id);
@@ -237,7 +272,7 @@ const VisualFrameStats &PeravizVisualRuntimeCore::stats() const {
 }
 
 // Maps fixture channel identifiers into fixed visual channel indexes.
-int PeravizVisualRuntimeCore::compact_index_for_channel_type(int channel_type) {
+int PeravizVisualRuntimeCore::control_index_for_channel_type(int channel_type) {
     switch (channel_type) {
         case 3: return 0;
         case 1: return 1;
@@ -311,7 +346,7 @@ uint64_t PeravizVisualRuntimeCore::compute_interest_hash(const std::vector<uint8
 }
 
 // Appends cooked light and material parameters for a fixture channel state.
-void PeravizVisualRuntimeCore::append_render_values(std::vector<float> &out, const std::array<float, kVisualChannelCount> &channels, const FixtureRenderParams &params) {
+void PeravizVisualRuntimeCore::append_render_values(std::vector<float> &out, const std::array<float, kRuntimeControlCount> &channels, const FixtureRenderParams &params) {
     constexpr double energy_scale = 0.02;
     constexpr double default_zoom_min = 4.0;
     constexpr double max_beam_angle = 90.0;
@@ -357,27 +392,27 @@ void PeravizVisualRuntimeCore::append_render_values(std::vector<float> &out, con
 
 // Maps a changed channel index to semantic visual apply categories.
 uint32_t PeravizVisualRuntimeCore::visual_mask_for_channel_index(size_t channel_index) {
-    switch (static_cast<VisualChannel>(channel_index)) {
-        case VisualChannel::Dimmer:
+    switch (channel_index) {
+        case Dimmer:
             return VisualChangeDimmer | VisualChangeMaterial;
-        case VisualChannel::Pan:
-        case VisualChannel::Tilt:
+        case Pan:
+        case Tilt:
             return VisualChangeTransform;
-        case VisualChannel::Zoom:
+        case Zoom:
             return VisualChangeZoom | VisualChangeBeamTopology;
-        case VisualChannel::Cyan:
-        case VisualChannel::Magenta:
-        case VisualChannel::Yellow:
+        case Cyan:
+        case Magenta:
+        case Yellow:
             return VisualChangeColor | VisualChangeMaterial;
-        case VisualChannel::Gobo:
-        case VisualChannel::GoboIndex:
+        case Gobo:
+        case GoboIndex:
             return VisualChangeGobo | VisualChangeBeamTopology;
-        case VisualChannel::GoboRotation:
+        case GoboRotation:
             return VisualChangeGoboRotation;
-        case VisualChannel::Prism:
-        case VisualChannel::PrismRotation:
+        case Prism:
+        case PrismRotation:
             return VisualChangePrism;
-        case VisualChannel::Strobe:
+        case Strobe:
             return VisualChangeStrobe;
         default:
             return VisualChangeNone;
@@ -429,7 +464,7 @@ void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
 }
 
 // Updates cached fixture state and returns real changed channel and visual masks.
-PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::fixture_changed(int fixture_id, const std::array<float, kVisualChannelCount> &channels, const std::array<float, 9> &render_values) {
+PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::fixture_changed(int fixture_id, const std::array<float, kRuntimeControlCount> &channels, const std::array<float, 9> &render_values) {
     constexpr float default_epsilon = 0.0001f;
     constexpr float angle_epsilon = 0.01f;
     FixtureState &state = fixture_state_by_id_[fixture_id];
@@ -459,8 +494,8 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::fixture_
             }
         }
     }
-    const bool previous_visible = state.initialized && state.channels[static_cast<size_t>(VisualChannel::Dimmer)] > default_epsilon;
-    const bool current_visible = channels[static_cast<size_t>(VisualChannel::Dimmer)] > default_epsilon;
+    const bool previous_visible = state.initialized && state.channels[Dimmer] > default_epsilon;
+    const bool current_visible = channels[Dimmer] > default_epsilon;
     if (state.initialized && previous_visible != current_visible) {
         result.changed_visual_mask |= VisualChangeBeamTopology;
     }

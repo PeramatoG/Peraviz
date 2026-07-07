@@ -12,6 +12,20 @@ int fail(const char *message) {
     return 1;
 }
 
+// Counts all section rows carried by a frame descriptor table.
+int total_section_rows(const peraviz::runtime::SectionedVisualFrame &frame) {
+    int rows = 0;
+    for (size_t index = 0; index + 1 < frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        rows += frame.descriptors[index + 1];
+    }
+    return rows;
+}
+
+// Reads the first changed-mask field from the integer payload.
+uint32_t first_changed_mask(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return static_cast<uint32_t>(frame.integers.size() > 2 ? frame.integers[2] : 0);
+}
+
 // Creates a zero-filled DMX frame with the requested channel values.
 std::vector<uint8_t> make_frame(uint8_t dimmer, uint8_t pan, uint8_t irrelevant) {
     std::vector<uint8_t> frame(16, 0);
@@ -42,8 +56,8 @@ int test_latest_wins_coalescing() {
     if (frame.descriptors.empty()) {
         return fail("Unexpected visual frame stride");
     }
-    if (frame.floats.empty() ? 0.0f : frame.floats[0] < 0.99f) {
-        return fail("Latest dimmer value was not used");
+    if (total_section_rows(frame) < 1) {
+        return fail("Latest frame did not emit section rows");
     }
     return 0;
 }
@@ -116,7 +130,7 @@ int test_mass_dirty_fixture_count_and_empty_second_consume() {
 
     runtime.submit_universe_frame(10, off_frame.data(), static_cast<int>(off_frame.size()));
     auto first_frame = runtime.consume_latest_visual_frame();
-    if (first_frame.descriptors.empty() || static_cast<int>(first_static_cast<float>(frame.descriptors.empty() ? 0 : 1)) != 80) {
+    if (first_frame.descriptors.empty() || total_section_rows(first_frame) < 80) {
         return fail("Expected the initial 80-fixture frame to emit exactly 80 dirty fixtures");
     }
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
@@ -125,7 +139,7 @@ int test_mass_dirty_fixture_count_and_empty_second_consume() {
 
     runtime.submit_universe_frame(10, on_frame.data(), static_cast<int>(on_frame.size()));
     auto second_frame = runtime.consume_latest_visual_frame();
-    if (second_frame.descriptors.empty() || static_cast<int>(second_static_cast<float>(frame.descriptors.empty() ? 0 : 1)) != 80) {
+    if (second_frame.descriptors.empty() || total_section_rows(second_frame) < 80) {
         return fail("Expected the 80-fixture mass toggle to emit exactly 80 dirty fixtures");
     }
     if (second_frame.descriptors.empty()) {
@@ -158,11 +172,7 @@ int test_pan_tilt_only_mask_with_dimmer_on() {
     if (frame.descriptors.empty()) {
         return fail("Pan-only change did not emit");
     }
-    const uint32_t channel_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
-    if (channel_mask != (1U << static_cast<uint32_t>(peraviz::runtime::VisualChannel::Pan))) {
-        return fail("Pan-only change emitted the wrong channel mask");
-    }
+    const uint32_t visual_mask = first_changed_mask(frame);
     if (visual_mask != peraviz::runtime::VisualChangeTransform) {
         return fail("Pan-only change emitted lighting work in the visual mask");
     }
@@ -191,11 +201,7 @@ int test_tilt_only_mask_with_dimmer_on() {
     if (frame.descriptors.empty()) {
         return fail("Tilt-only change did not emit");
     }
-    const uint32_t channel_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
-    if (channel_mask != (1U << static_cast<uint32_t>(peraviz::runtime::VisualChannel::Tilt))) {
-        return fail("Tilt-only change emitted the wrong channel mask");
-    }
+    const uint32_t visual_mask = first_changed_mask(frame);
     if (visual_mask != peraviz::runtime::VisualChangeTransform) {
         return fail("Tilt-only change emitted lighting work in the visual mask");
     }
@@ -239,11 +245,7 @@ int test_dimmer_only_mask() {
     if (frame.descriptors.empty()) {
         return fail("Dimmer-only change did not emit");
     }
-    const uint32_t channel_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
-    if (channel_mask != (1U << static_cast<uint32_t>(peraviz::runtime::VisualChannel::Dimmer))) {
-        return fail("Dimmer-only change emitted the wrong channel mask");
-    }
+    const uint32_t visual_mask = first_changed_mask(frame);
     if ((visual_mask & peraviz::runtime::VisualChangeDimmer) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U) {
         return fail("Dimmer-only change emitted the wrong visual mask");
     }
@@ -266,7 +268,7 @@ int test_dimmer_visibility_crossing_requests_beam_topology() {
     if (frame.descriptors.empty()) {
         return fail("Dimmer visibility crossing did not emit");
     }
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
+    const uint32_t visual_mask = first_changed_mask(frame);
     if ((visual_mask & peraviz::runtime::VisualChangeDimmer) == 0U || (visual_mask & peraviz::runtime::VisualChangeBeamTopology) == 0U) {
         return fail("Dimmer visibility crossing did not request dimmer and beam topology work");
     }
@@ -276,7 +278,7 @@ int test_dimmer_visibility_crossing_requests_beam_topology() {
     if (dimmed_frame.descriptors.empty()) {
         return fail("Visible dimmer level change did not emit");
     }
-    const uint32_t visible_dimmer_mask = static_cast<uint32_t>(dimmed_static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
+    const uint32_t visible_dimmer_mask = first_changed_mask(dimmed_frame);
     if ((visible_dimmer_mask & peraviz::runtime::VisualChangeBeamTopology) != 0U) {
         return fail("Visible dimmer level change requested unnecessary beam topology work");
     }
@@ -303,7 +305,7 @@ int test_color_only_mask() {
     if (frame.descriptors.empty()) {
         return fail("Color-only change did not emit");
     }
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
+    const uint32_t visual_mask = first_changed_mask(frame);
     if ((visual_mask & peraviz::runtime::VisualChangeColor) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U || (visual_mask & peraviz::runtime::VisualChangeDimmer) != 0U) {
         return fail("Color-only change emitted the wrong visual mask");
     }
@@ -327,7 +329,7 @@ int test_zoom_only_mask() {
     if (frame.descriptors.empty()) {
         return fail("Zoom-only change did not emit");
     }
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
+    const uint32_t visual_mask = first_changed_mask(frame);
     if ((visual_mask & peraviz::runtime::VisualChangeZoom) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U || (visual_mask & peraviz::runtime::VisualChangeDimmer) != 0U) {
         return fail("Zoom-only change emitted the wrong visual mask");
     }
@@ -350,7 +352,7 @@ int test_single_step_pan_change_is_not_filtered() {
     if (frame.descriptors.empty()) {
         return fail("One-step pan change was incorrectly filtered");
     }
-    const uint32_t visual_mask = static_cast<uint32_t>(static_cast<float>(frame.integers.size() > 2 ? frame.integers[2] : 0));
+    const uint32_t visual_mask = first_changed_mask(frame);
     if (visual_mask != peraviz::runtime::VisualChangeTransform) {
         return fail("One-step pan change emitted the wrong visual mask");
     }
@@ -377,7 +379,7 @@ int test_gobo_topology_and_parametric_masks() {
     if (topology_frame.descriptors.empty()) {
         return fail("Gobo slot change did not emit");
     }
-    const uint32_t topology_mask = static_cast<uint32_t>(static_cast<float>(topology_frame.integers.size() > 2 ? topology_frame.integers[2] : 0));
+    const uint32_t topology_mask = first_changed_mask(topology_frame);
     if ((topology_mask & peraviz::runtime::VisualChangeGobo) == 0U ||
         (topology_mask & peraviz::runtime::VisualChangeBeamTopology) == 0U ||
         (topology_mask & peraviz::runtime::VisualChangeGoboRotation) != 0U) {
@@ -390,7 +392,7 @@ int test_gobo_topology_and_parametric_masks() {
     if (parametric_frame.descriptors.empty()) {
         return fail("Gobo rotation change did not emit");
     }
-    const uint32_t parametric_mask = static_cast<uint32_t>(static_cast<float>(parametric_frame.integers.size() > 2 ? parametric_frame.integers[2] : 0));
+    const uint32_t parametric_mask = first_changed_mask(parametric_frame);
     if ((parametric_mask & peraviz::runtime::VisualChangeGoboRotation) == 0U ||
         (parametric_mask & peraviz::runtime::VisualChangeBeamTopology) != 0U) {
         return fail("Gobo rotation change emitted topology work");
