@@ -113,3 +113,6 @@ Godot must not become the place where raw protocol data is repeatedly converted 
 - `scripts/runtime/visual_sections/` contains modular live visual section appliers for the native sectioned frame protocol.
 - `native/src/gdtf_runtime/registry/official_attributes.json` pins the local GDTF attribute registry provenance used by shared Peraviz/Perastage tests.
 - `docs/contract/gdtf/` stores deterministic semantic contract snapshots.
+
+- `native/src/runtime/peraviz_visual_runtime.*` owns the component-oriented native visual runtime and emits typed dirty sections.
+- `tests/check_gdtf_component_runtime_guardrails.sh` prevents deleted fixed-control and universal-applier runtime patterns from returning.

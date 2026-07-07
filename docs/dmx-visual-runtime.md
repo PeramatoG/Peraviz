@@ -24,3 +24,9 @@ Live DMX visualization no longer exposes one float-only fixture row to GDScript.
 The active native runtime now builds its live schema from the capabilities present in registered fixture bindings and advances the schema generation whenever bindings are rebuilt or the runtime is cleared. The active C++ sectioned path no longer includes the deprecated universal visual-frame row header; legacy row definitions remain isolated for historical compatibility code only.
 
 Godot's sectioned visual-frame applier now routes GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput rows directly into specialized apply calls. It keeps per-fixture render state only as cached section state and no longer reconstructs a 25-float universal fixture row or calls the fixed-row apply entry point from the sectioned path.
+
+## Component-oriented runtime checkpoint
+
+The native visual runtime now stores live values in component-oriented semantic state instead of a fixed compact-control array. Incoming setup bindings are compiled into semantic channel programs, dirty state is grouped by render domain, and section rows are emitted directly into typed integer and float buffers for GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput. Godot section consumption no longer rebuilds a universal fixture-state dictionary in the section applier.
+
+This checkpoint keeps the existing Godot setup bridge while removing the fixed native state model from the active C++ runtime. The remaining migration work is to feed these compiled programs directly from parser-owned `CompiledGdtfFixtureType` data instead of setup-time legacy binding dictionaries.

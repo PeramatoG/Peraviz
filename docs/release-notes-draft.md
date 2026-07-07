@@ -91,3 +91,7 @@ Changes since the initial Peraviz repository split.
 
 - Activated the first sectioned native visual-frame path for live DMX updates, including typed descriptor, integer, and float buffers for transform, intensity, color, optics, wheel, and temporal sections.
 - Added a pinned GDTF attribute registry provenance file and semantic contract fixture snapshot for future Peraviz/Perastage compatibility checks.
+
+## Internal changes
+- Replaced the native visual-runtime cache with component-oriented semantic state and typed section emission so active dirty rows are no longer assembled from a fixed 13-control state or fixed render-value array.
+- Added runtime guardrails for the GDTF component-engine migration to prevent fixed-control buffers, obsolete visual frame buffers, and universal section applier state from returning to active runtime code.

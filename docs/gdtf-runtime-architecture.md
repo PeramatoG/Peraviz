@@ -56,3 +56,9 @@ Most diagnostics are generated during import and schema compilation. The native 
 
 ## Checkpoint 2 sectioned runtime activation
 The active vertical slice now emits typed section descriptors plus integer and float payload buffers from the native runtime. Implemented layouts are named in `native/src/runtime/visual_frame_schema.h` for GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput. The current implementation remains a focused compatibility slice for the existing visual controls while real GDTF semantic coverage continues to expand.
+
+## Component-engine migration checkpoint
+
+Active native DMX evaluation now uses compiled semantic programs and per-fixture component state. The state cache has named semantic members for transform, emitter, optics, wheel, prism, and temporal domains, and dirty rows are written directly to the section protocol. This replaces the previous fixed control-array cache and fixed render-ready array. Fixture IDs are retained only as scene fixture identifiers; generated component and render-target IDs use distinct numeric spaces in emitted rows.
+
+The parser-owned `CompiledGdtfFixtureType` remains the contract target for the next integration step: scene compilation should populate the runtime program table from parsed GDTF ChannelFunctions, ChannelSets, wheels, emitters, filters, relations, and mode-master records without any live XML or string lookups.

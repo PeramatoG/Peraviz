@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 
 namespace peraviz::runtime {
 
@@ -60,9 +59,5 @@ struct VisualFrameStats {
     uint64_t gobo_parametric_updates = 0;
 };
 
-struct VisualFrame {
-    std::vector<float> values;
-    VisualFrameStats stats;
-};
 
 } // namespace peraviz::runtime

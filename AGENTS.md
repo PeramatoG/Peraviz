@@ -125,3 +125,7 @@ These are expected hotspots for Peraviz and must be confirmed against the curren
 6. Unknown or unsupported GDTF behavior must be preserved and reported, not guessed or silently ignored.
 7. Any new GDTF capability must update the support matrix and regression tests.
 8. Changes to GDTF parsing, semantic interpretation, validation, canonical attribute handling, or serialization-neutral model types must be reviewed for compatibility with Perastage; a Peraviz-only interpretation is not acceptable.
+
+## Active component-runtime guardrail
+
+The active visual runtime must remain component-oriented. Do not reintroduce fixed compact-control arrays, fixed render-ready arrays, universal fixture-state dictionaries in section appliers, hardcoded wheel ID rows, or obsolete `VisualFrame` buffer paths.

@@ -142,8 +142,6 @@ func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLig
 	var gobo_phase_start: int = Time.get_ticks_usec()
 	var live_controls: Dictionary = {}
 	var diagnostics: Dictionary = {}
-	if dmx_runtime != null and dmx_runtime.has_method("get_live_visual_gobo_controls_for_fixture"):
-		live_controls = dmx_runtime.get_live_visual_gobo_controls_for_fixture(fixture_uuid)
 	if dmx_runtime != null and dmx_runtime.has_method("get_live_gobo_diagnostics_for_fixture"):
 		diagnostics = dmx_runtime.get_live_gobo_diagnostics_for_fixture(fixture_uuid)
 	var result: Dictionary = loader._apply_live_visual_gobo_to_light(fixture_uuid, light, {

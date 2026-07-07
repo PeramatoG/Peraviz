@@ -144,3 +144,7 @@ Peraviz uses a project-owned GDTF parser and a native compiled fixture model for
 
 ## Active sectioned visual runtime
 The native visual runtime now owns dirty-state detection and section assembly for the first GDTF-first rendering slice. Godot receives typed descriptor, integer, and float buffers and routes them to section appliers, keeping live protocol IDs in integer payloads rather than float rows.
+
+## Visual runtime component-state checkpoint
+
+The visual runtime no longer keeps active fixture state as a fixed compact-control row. Native DMX input is compiled into semantic channel programs, cached as component state, and emitted as dirty typed sections. Godot remains the rendering layer and consumes section rows through the sectioned visual-frame applier without rebuilding a universal fixture dictionary inside the applier.
