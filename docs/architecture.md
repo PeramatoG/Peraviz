@@ -135,3 +135,8 @@ Update this document when changing:
 - Threading model.
 - Supported protocol/import behavior.
 - Any performance strategy that changes the live data path.
+
+
+## GDTF-first native visual runtime
+
+Peraviz uses a project-owned GDTF parser and a native compiled fixture model for live visualization. GDTF semantic interpretation, DMX resolution, physical-state calculation, diagnostics, dirty-state generation, and packed section-frame assembly belong on the native C++ side. Godot installs immutable schemas and applies compact section rows to scene or RenderingServer resources without interpreting GDTF during live playback. See `docs/gdtf-runtime-architecture.md` and `docs/peraviz-perastage-gdtf-contract.md`.
