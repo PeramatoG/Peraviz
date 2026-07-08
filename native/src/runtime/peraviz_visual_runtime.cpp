@@ -25,8 +25,10 @@ void PeravizVisualRuntimeCore::clear() {
     universes_.clear();
     render_params_by_fixture_.clear();
     component_state_by_fixture_.clear();
-    component_id_by_fixture_.clear();
-    render_target_id_by_fixture_.clear();
+    pan_component_id_by_fixture_.clear();
+    tilt_component_id_by_fixture_.clear();
+    dimmer_target_id_by_fixture_.clear();
+    source_programs_by_id_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
@@ -36,15 +38,27 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     universes_.clear();
     render_params_by_fixture_.clear();
     component_state_by_fixture_.clear();
-    component_id_by_fixture_.clear();
-    render_target_id_by_fixture_.clear();
+    pan_component_id_by_fixture_.clear();
+    tilt_component_id_by_fixture_.clear();
+    dimmer_target_id_by_fixture_.clear();
+    source_programs_by_id_.clear();
     diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
-    std::unordered_map<int32_t, const CompiledDmxSourceProgram *> programs_by_id;
+    if (scene.fixtures.empty()) {
+        diagnostics_.push_back({"PVZ-RUNTIME-EMPTY-SCENE", "error", "Compiled runtime scene contains no fixture instances.", "CompiledRuntimeScene"});
+    }
     for (const CompiledDmxSourceProgram &program : scene.source_programs) {
-        programs_by_id[program.program_id] = &program;
+        if (program.program_id <= 0 || source_programs_by_id_.find(program.program_id) != source_programs_by_id_.end()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-DUPLICATE-PROGRAM", "error", "Compiled source program ID is invalid or duplicated.", std::to_string(program.program_id)});
+            continue;
+        }
+        source_programs_by_id_[program.program_id] = program;
     }
     for (const CompiledFixtureInstance &fixture : scene.fixtures) {
+        if (fixture.fixture_id <= 0 || fixture.universe_id < 0 || fixture.start_address < 1 || fixture.start_address > 512) {
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PATCH", "error", "Compiled fixture has an invalid ID, universe, or patch address.", fixture.fixture_uuid});
+            continue;
+        }
         FixtureRenderParams params;
         params.luminous_flux = fixture.luminous_flux;
         params.beam_angle_default = fixture.beam_angle_default;
@@ -52,35 +66,60 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         params.beam_multiplier = fixture.beam_multiplier;
         render_params_by_fixture_[fixture.fixture_id] = params;
     }
+    int installed_properties = 0;
     for (const CompiledComponentProperty &property : scene.properties) {
         const SemanticParameter parameter = semantic_parameter_for_compiled(property.semantic);
         if (property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PROPERTY", "warning", "Compiled property is missing fixture, semantic, or contributors.", std::to_string(property.fixture_id)});
             continue;
         }
-        component_id_by_fixture_[property.fixture_id] = property.component_id;
-        render_target_id_by_fixture_[property.fixture_id] = property.render_target_id;
-        capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
-        capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
+        int property_universe = -1;
+        bool valid_property = true;
         for (const CompiledPropertyContributor &contributor : property.contributors) {
-            auto program_it = programs_by_id.find(contributor.source_program_id);
-            if (program_it == programs_by_id.end()) {
+            auto program_it = source_programs_by_id_.find(contributor.source_program_id);
+            if (program_it == source_programs_by_id_.end()) {
                 diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled property references a missing source program.", std::to_string(contributor.source_program_id)});
+                valid_property = false;
                 continue;
             }
-            const CompiledDmxSourceProgram &program = *program_it->second;
-            if (program.sources.empty()) {
-                diagnostics_.push_back({"PVZ-RUNTIME-EMPTY-SOURCE", "warning", "Compiled source program has no DMX byte sources.", std::to_string(program.program_id)});
+            const CompiledDmxSourceProgram &program = program_it->second;
+            if (program.sources.empty() || program.sources.size() > 4) {
+                diagnostics_.push_back({"PVZ-RUNTIME-INVALID-SOURCE-COUNT", "warning", "Compiled source program must contain one to four DMX byte sources.", std::to_string(program.program_id)});
+                valid_property = false;
                 continue;
             }
-            const int universe_id = program.sources.front().universe_id;
-            UniverseState &universe = universes_[universe_id];
-            universe.programs.push_back({program, {contributor}, parameter, property.fixture_id, property.component_id, property.render_target_id, 0});
             for (const CompiledDmxByteSource &source : program.sources) {
-                if (source.universe_id == universe_id && source.address >= 0) {
-                    universe.interest_offsets.push_back(source.address);
+                if (source.address < 0 || source.address >= 512) {
+                    diagnostics_.push_back({"PVZ-RUNTIME-SOURCE-OUT-OF-RANGE", "warning", "Compiled DMX byte source is outside the 512-slot universe.", std::to_string(program.program_id)});
+                    valid_property = false;
+                }
+                if (property_universe < 0) property_universe = source.universe_id;
+                if (source.universe_id != property_universe) {
+                    diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-PROPERTY", "warning", "Compiled property spans universes, which is not supported by this evaluator.", std::to_string(program.program_id)});
+                    valid_property = false;
                 }
             }
         }
+        if (!valid_property || property_universe < 0) {
+            continue;
+        }
+        if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
+        if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
+        if (parameter == SemanticParameter::Dimmer) dimmer_target_id_by_fixture_[property.fixture_id] = property.render_target_id;
+        capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
+        capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
+        UniverseState &universe = universes_[property_universe];
+        universe.properties.push_back({property, parameter});
+        for (const CompiledPropertyContributor &contributor : property.contributors) {
+            const CompiledDmxSourceProgram &program = source_programs_by_id_[contributor.source_program_id];
+            for (const CompiledDmxByteSource &source : program.sources) {
+                universe.interest_offsets.push_back(source.address);
+            }
+        }
+        ++installed_properties;
+    }
+    if (installed_properties == 0) {
+        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported Dimmer/Pan/Tilt properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
@@ -131,13 +170,13 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         universe.interest_hash = interest_hash;
 
         std::unordered_map<int, ComponentState> pending_by_fixture;
-        for (const CompiledChannelProgram &program : universe.programs) {
-            ComponentState &state = pending_by_fixture[program.fixture_id];
-            auto existing = component_state_by_fixture_.find(program.fixture_id);
+        for (const CompiledPropertyProgram &program : universe.properties) {
+            ComponentState &state = pending_by_fixture[program.property.fixture_id];
+            auto existing = component_state_by_fixture_.find(program.property.fixture_id);
             if (!state.initialized && existing != component_state_by_fixture_.end()) {
                 state = existing->second;
             }
-            apply_semantic_value(state, program.parameter, read_normalized_value(universe.latest_frame, program.source_program, &diagnostics_));
+            apply_semantic_value(state, program.parameter, evaluate_property_value(universe.latest_frame, program.property));
         }
 
         for (auto &[fixture_id, next_state] : pending_by_fixture) {
@@ -164,7 +203,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & VisualChangeTransform) == 0U) continue;
-            const int32_t component_id = component_id_by_fixture_.count(row.fixture_id) != 0 ? component_id_by_fixture_[row.fixture_id] : row.fixture_id;
+            const int32_t component_id = pan_component_id_by_fixture_.count(row.fixture_id) != 0 ? pan_component_id_by_fixture_[row.fixture_id] : row.fixture_id;
             frame.integers.insert(frame.integers.end(), {row.fixture_id, component_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.pan, row.state.tilt});
         }
@@ -177,7 +216,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & (VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology)) == 0U) continue;
-            const int32_t target_id = render_target_id_by_fixture_.count(row.fixture_id) != 0 ? render_target_id_by_fixture_[row.fixture_id] : row.fixture_id;
+            const int32_t target_id = dimmer_target_id_by_fixture_.count(row.fixture_id) != 0 ? dimmer_target_id_by_fixture_[row.fixture_id] : row.fixture_id;
             frame.integers.insert(frame.integers.end(), {row.fixture_id, target_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.dimmer, row.state.beam_energy, row.state.spot_energy, row.state.beam_intensity, row.state.material_energy});
         }
@@ -290,6 +329,27 @@ float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t>
     const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.dmx_from)) / dmx_span, 0.0, 1.0) : normalized;
     const double physical = program.physical_from + ((program.physical_to - program.physical_from) * local);
     return static_cast<float>(physical);
+}
+
+// Resolves all contributors for one property into a single deterministic value.
+float PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property) {
+    double weighted_sum = 0.0;
+    double total_weight = 0.0;
+    for (const CompiledPropertyContributor &contributor : property.contributors) {
+        if (contributor.operation != CompiledContributorOperation::WeightedAdd) {
+            diagnostics_.push_back({"PVZ-RUNTIME-UNSUPPORTED-CONTRIBUTOR", "warning", "Compiled contributor operation is not supported.", std::to_string(contributor.source_program_id)});
+            continue;
+        }
+        auto program_it = source_programs_by_id_.find(contributor.source_program_id);
+        if (program_it == source_programs_by_id_.end()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled contributor references a missing source program.", std::to_string(contributor.source_program_id)});
+            continue;
+        }
+        const double weight = contributor.weight;
+        weighted_sum += static_cast<double>(read_normalized_value(frame, program_it->second, &diagnostics_)) * weight;
+        total_weight += weight;
+    }
+    return total_weight != 0.0 ? static_cast<float>(weighted_sum / total_weight) : 0.0f;
 }
 
 // Computes a native hash over only patched DMX offsets for a universe.

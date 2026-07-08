@@ -27,6 +27,17 @@ peraviz::runtime::CompiledRuntimeScene make_scene() {
     return scene;
 }
 
+// Reads the first dimmer value from the emitter intensity section.
+float first_intensity_dimmer(const peraviz::runtime::SectionedVisualFrame &frame) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+            const int32_t float_offset = frame.descriptors[index + 3];
+            return float_offset >= 0 && float_offset < static_cast<int32_t>(frame.floats.size()) ? frame.floats[static_cast<size_t>(float_offset)] : -1.0f;
+        }
+    }
+    return -1.0f;
+}
+
 // Verifies the production path emits transform and intensity sections from compiled programs.
 int test_compiled_scene_e2e() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
@@ -80,15 +91,27 @@ int test_more_than_two_source_bytes() {
 int test_multiple_contributors() {
     using namespace peraviz::runtime;
     CompiledRuntimeScene scene = make_scene();
-    scene.source_programs.push_back({4, CompiledSemantic::Dimmer, {{10, 5, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerVirtual"});
-    scene.properties[0].contributors.push_back({4, 0.0});
+    scene.source_programs.clear();
+    scene.properties.clear();
+    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerA"});
+    scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
+    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}, {2, 3.0}}});
     PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> frame(8, 0);
-    frame[0] = 128;
-    frame[5] = 255;
+    frame[0] = 0;
+    frame[1] = 255;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected multi-contributor property to emit output");
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (std::fabs(first_intensity_dimmer(visual) - 0.75f) > 0.001f) return fail("Expected weighted contributors to resolve exact dimmer value");
+
+    CompiledRuntimeScene zero_scene = scene;
+    zero_scene.properties[0].contributors[1].weight = 0.0;
+    PeravizVisualRuntimeCore zero_runtime;
+    zero_runtime.install_compiled_scene(zero_scene);
+    zero_runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const auto zero_visual = zero_runtime.consume_latest_visual_frame();
+    if (std::fabs(first_intensity_dimmer(zero_visual)) > 0.001f) return fail("Expected zero-weight contributor not to override the property value");
     return 0;
 }
 

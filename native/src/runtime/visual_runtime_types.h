@@ -45,9 +45,14 @@ struct CompiledDmxSourceProgram {
     std::string function_name;
 };
 
+enum class CompiledContributorOperation : int32_t {
+    WeightedAdd = 0,
+};
+
 struct CompiledPropertyContributor {
     int32_t source_program_id = 0;
     double weight = 1.0;
+    CompiledContributorOperation operation = CompiledContributorOperation::WeightedAdd;
 };
 
 struct CompiledComponentProperty {

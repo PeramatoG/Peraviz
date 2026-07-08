@@ -35,18 +35,13 @@ public:
     const VisualFrameStats &stats() const;
 
 private:
-    struct CompiledChannelProgram {
-        CompiledDmxSourceProgram source_program;
-        std::vector<CompiledPropertyContributor> contributors;
+    struct CompiledPropertyProgram {
+        CompiledComponentProperty property;
         SemanticParameter parameter = SemanticParameter::Unknown;
-        int32_t fixture_id = 0;
-        int32_t component_id = 0;
-        int32_t render_target_id = 0;
-        int32_t wheel_id = 0;
     };
 
     struct UniverseState {
-        std::vector<CompiledChannelProgram> programs;
+        std::vector<CompiledPropertyProgram> properties;
         std::vector<int> interest_offsets;
         std::vector<uint8_t> latest_frame;
         uint64_t interest_hash = 0;
@@ -87,6 +82,7 @@ private:
 
     static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
     static float read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
+    float evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property);
     static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
@@ -99,8 +95,10 @@ private:
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
     std::vector<CompiledRuntimeDiagnostic> diagnostics_;
     std::unordered_map<int, ComponentState> component_state_by_fixture_;
-    std::unordered_map<int, int32_t> component_id_by_fixture_;
-    std::unordered_map<int, int32_t> render_target_id_by_fixture_;
+    std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
+    std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
+    std::unordered_map<int, int32_t> dimmer_target_id_by_fixture_;
+    std::unordered_map<int32_t, CompiledDmxSourceProgram> source_programs_by_id_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;

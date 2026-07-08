@@ -122,6 +122,7 @@ var _time_tick_fixture_ids := PackedStringArray()
 var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
 var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
+var _runtime_universe_offset: int = -1
 
 func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_loader = loader
@@ -134,6 +135,7 @@ func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: Fixt
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
 func rebuild(universe_offset: int) -> Dictionary:
+	_runtime_universe_offset = universe_offset
 	_bindings.clear()
 	_unbound.clear()
 	_fixture_patch_lookup.clear()
@@ -503,36 +505,15 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_channel_values[fixture_uuid] = {}
 
 func _register_native_visual_runtime_bindings() -> void:
-	var scene_integers := PackedInt32Array()
-	var scene_floats := PackedFloat32Array()
-	for universe_key in _bindings_by_universe.keys():
-		for binding in _bindings_by_universe.get(universe_key, []):
-			if binding is Dictionary and _append_compiled_scene_fixture(scene_integers, scene_floats, binding):
-				break
-		if not scene_integers.is_empty():
-			break
-	_native_bindings_count = 1 if not scene_integers.is_empty() else 0
+	if _loader == null or not _loader.has_method("compile_visual_runtime_scene"):
+		_native_bindings_count = 0
+		return
+	var compiled_scene: Dictionary = _loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	_native_bindings_count = int(compiled_scene.get("property_count", 0))
 	if _native_visual_runtime.has_method("install_compiled_scene"):
-		_native_visual_runtime.install_compiled_scene(scene_integers, scene_floats)
+		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
-
-func _append_compiled_scene_fixture(scene_integers: PackedInt32Array, scene_floats: PackedFloat32Array, binding: Dictionary) -> bool:
-	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
-	var fixture_id: int = int(_native_fixture_ids_by_uuid.get(fixture_uuid, 0))
-	if fixture_id <= 0:
-		return false
-	var dimmer: int = int(binding.get("dimmer_channel_index_0", -1))
-	var pan: int = int(binding.get("pan_channel_index_0", -1))
-	var pan_fine: int = int(binding.get("pan_fine_channel_index_0", -1))
-	var tilt: int = int(binding.get("tilt_channel_index_0", -1))
-	var tilt_fine: int = int(binding.get("tilt_fine_channel_index_0", -1))
-	if dimmer < 0 or pan < 0 or pan_fine < 0 or tilt < 0 or tilt_fine < 0:
-		return false
-	var photometric: Dictionary = _first_fixture_photometric(fixture_id, binding)
-	scene_integers.append_array(PackedInt32Array([fixture_id, int(binding.get("artnet_universe_id", -1)), 0, dimmer, pan, pan_fine, tilt, tilt_fine, fixture_id, fixture_id]))
-	scene_floats.append_array(PackedFloat32Array([float(photometric.get("luminous_flux", 10000.0)), float(photometric.get("beam_angle", 25.0))]))
-	return true
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))

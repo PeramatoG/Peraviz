@@ -8,13 +8,13 @@ This is the short technical source of truth for the active Peraviz runtime. Pera
 
 The active live output remains the native sectioned visual frame. `SectionedVisualFrame` carries section descriptors plus separate integer and float payload arrays. The Godot bridge exposes the latest completed frame as a `Dictionary` with `descriptors`, `integers`, `floats`, and schema data for the section applier.
 
-The production setup authority for the visual runtime is now a native compiled scene contract. It installs stable fixture, component, render-target, patch, DMX source-program, and property-contributor records before live frames are submitted. The initial verified production slice covers Dimmer, Pan, and Tilt.
+The production setup authority for the visual runtime is now a native compiled scene contract produced by the loader-owned native GDTF/MVR compiler. It installs stable fixture, component, render-target, patch, DMX source-program, and property-contributor records before live frames are submitted. The initial verified production slice covers independently compiled Dimmer, Pan, and Tilt properties.
 
 Current native runtime responsibilities include:
 
 - Latest-frame coalescing so Godot consumes only the newest visual frame.
 - Universe filtering and relevant-slot hashing before fixture updates are emitted.
-- Native compiled scene installation for fixture instances, stable IDs, DMX byte sources, and property contributors.
+- Native compiled scene generation and installation for fixture instances, stable IDs, DMX byte sources, and property contributors.
 - Multi-byte DMX value assembly from ordered source byte records, including non-adjacent coarse/fine addresses.
 - Dirty-state detection for transform and intensity output in the verified Dimmer/Pan/Tilt slice.
 - Render-value cooking for sectioned visual output.
@@ -55,8 +55,9 @@ The remaining GDScript renderer-side compatibility code should be treated as orc
 - Dimmer: 8-bit source values are assembled and normalized in native compiled programs.
 - Pan: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
 - Tilt: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
-- The generic source reader accepts one to four ordered bytes, so 24-bit and 32-bit layouts are not structurally blocked.
-- One resolved component property can reference multiple compiled source contributors.
+- The generic source reader accepts one to four ordered bytes, so 8-bit, 16-bit, 24-bit, and 32-bit source layouts are supported by the runtime model.
+- One resolved component property can reference multiple weighted compiled source contributors.
+- Transform section Pan/Tilt values are physical degrees, not normalized values.
 
 ## Known unsupported GDTF semantics
 

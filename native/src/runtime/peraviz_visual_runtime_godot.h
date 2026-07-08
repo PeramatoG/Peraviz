@@ -20,7 +20,7 @@ protected:
 
 public:
     void clear();
-    void install_compiled_scene(const PackedInt32Array &integers, const PackedFloat32Array &floats);
+    void install_compiled_scene(const Dictionary &packed_scene);
     void submit_universe_frame(int universe_id, const PackedByteArray &data);
     Dictionary consume_latest_visual_frame();
     Dictionary get_visual_frame_schema() const;
