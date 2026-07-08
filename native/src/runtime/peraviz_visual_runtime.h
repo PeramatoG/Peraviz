@@ -2,13 +2,28 @@
 
 #include "runtime/visual_frame_schema.h"
 
-#include <array>
 #include <cstdint>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace peraviz::runtime {
+
+enum class SemanticParameter : int32_t {
+    Unknown = 0,
+    Pan,
+    Tilt,
+    Dimmer,
+    Zoom,
+    Cyan,
+    Magenta,
+    Yellow,
+    GoboSelect,
+    GoboIndex,
+    GoboRotation,
+    PrismSelect,
+    PrismRotation,
+    Strobe,
+};
 
 class PeravizVisualRuntimeCore {
 public:
@@ -21,10 +36,16 @@ public:
     const VisualFrameStats &stats() const;
 
 private:
-    static constexpr size_t kRuntimeControlCount = 13;
-    enum RuntimeControl : size_t { Dimmer = 0, Pan = 1, Tilt = 2, Zoom = 3, Cyan = 4, Magenta = 5, Yellow = 6, Gobo = 7, GoboIndex = 8, GoboRotation = 9, Prism = 10, PrismRotation = 11, Strobe = 12 };
+    struct CompiledChannelProgram {
+        FixtureChannelBinding binding;
+        SemanticParameter parameter = SemanticParameter::Unknown;
+        int32_t component_id = 0;
+        int32_t render_target_id = 0;
+        int32_t wheel_id = 0;
+    };
+
     struct UniverseState {
-        std::vector<FixtureChannelBinding> bindings;
+        std::vector<CompiledChannelProgram> programs;
         std::vector<int> interest_offsets;
         std::vector<uint8_t> latest_frame;
         uint64_t interest_hash = 0;
@@ -32,32 +53,52 @@ private:
         bool has_hash = false;
     };
 
-    struct FixtureState {
-        std::array<float, kRuntimeControlCount> channels {};
-        std::array<float, 9> render_values {};
+    struct ComponentState {
+        float pan = 0.0f;
+        float tilt = 0.0f;
+        float dimmer = 0.0f;
+        float zoom = 0.0f;
+        float cyan = 0.0f;
+        float magenta = 0.0f;
+        float yellow = 0.0f;
+        float gobo_select = 0.0f;
+        float gobo_index = 0.0f;
+        float gobo_rotation = 0.0f;
+        float prism_select = 0.0f;
+        float prism_rotation = 0.0f;
+        float strobe = 0.0f;
+        float beam_energy = 0.0f;
+        float spot_energy = 0.0f;
+        float beam_half_angle = 12.5f;
+        float beam_angle = 25.0f;
+        float red = 1.0f;
+        float green = 1.0f;
+        float blue = 1.0f;
+        float beam_intensity = 0.0f;
+        float material_energy = 0.0f;
         bool initialized = false;
     };
 
     struct FixtureChangeResult {
         bool changed = false;
-        uint32_t changed_channel_mask = 0;
         uint32_t changed_visual_mask = 0;
     };
 
-    static int control_index_for_channel_type(int channel_type);
+    static SemanticParameter semantic_parameter_for_legacy_channel_type(int channel_type);
     static int bytes_for_bit_depth(int bit_depth);
     static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
     static float read_normalized_value(const std::vector<uint8_t> &frame, const FixtureChannelBinding &binding);
     static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
-    static void append_render_values(std::vector<float> &out, const std::array<float, kRuntimeControlCount> &channels, const FixtureRenderParams &params);
-    static uint32_t visual_mask_for_channel_index(size_t channel_index);
-    static uint32_t visual_mask_for_render_index(size_t render_index);
+    static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
+    static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
+    static void cook_render_state(ComponentState &state, const FixtureRenderParams &params);
+    static bool nearly_equal(float a, float b, float epsilon);
     void add_visual_mask_stats(uint32_t visual_mask);
-    FixtureChangeResult fixture_changed(int fixture_id, const std::array<float, kRuntimeControlCount> &channels, const std::array<float, 9> &render_values);
+    FixtureChangeResult merge_component_state(int fixture_id, const ComponentState &next_state);
 
     std::unordered_map<int, UniverseState> universes_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
-    std::unordered_map<int, FixtureState> fixture_state_by_id_;
+    std::unordered_map<int, ComponentState> component_state_by_fixture_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;

@@ -38,3 +38,7 @@ The current Perastage repository review found GDTF mutation and canonicalization
 
 ## Deterministic semantic contract artifacts
 Checkpoint 2 adds neutral contract vectors under `docs/contract/gdtf/`. Perastage can run the same GDTF fixtures through its parser/compiler and compare normalized attributes, wildcard indexes, DMX functions, wheel references, physical ranges, and diagnostics without depending on Godot renderer details.
+
+## Runtime contract checkpoint
+
+Peraviz now treats the typed section protocol as the live renderer contract and the serialization-neutral compiled fixture model as the shared semantic target for Peraviz and Perastage. Contract snapshots must continue to include fixture type, selected mode, attributes, wildcard indexes, geometry paths, channel functions, channel sets, physical ranges, wheel data, resources, relations, and diagnostics. The native component runtime is prepared to consume these compiled identities without introducing Godot renderer state into shared GDTF semantics.

@@ -633,12 +633,9 @@ A change is not complete merely because the new module exists. The old path must
 
 The following areas require special care during the GDTF-first runtime replacement:
 
-1. Replace Godot-created fixture binding Dictionaries with parser-owned and compiler-owned native programs.
-2. Separate structural scene installation from live frame deltas.
-3. Remove magic channel-type numbers from the final production path.
-4. Replace fixed single-instance fixture state with ID-based repeated component collections.
-5. Keep Godot section appliers renderer-only.
-6. Move CPU-heavy gobo preparation and semantic wheel resolution to native code.
-7. Replace architecture checks that inspect nonexistent directories.
-8. Add a real GDTF to Dimmer, Pan, and Tilt vertical runtime test.
-9. Remove obsolete runtime registrations, bridges, caches, and fallback paths after the replacement becomes active.
+- `scripts/runtime/visual_sections/` contains modular live visual section appliers for the native sectioned frame protocol.
+- `native/src/gdtf_runtime/registry/official_attributes.json` pins the local GDTF attribute registry provenance used by shared Peraviz/Perastage tests.
+- `docs/contract/gdtf/` stores deterministic semantic contract snapshots.
+
+- `native/src/runtime/peraviz_visual_runtime.*` owns the component-oriented native visual runtime and emits typed dirty sections.
+- `tests/check_gdtf_component_runtime_guardrails.sh` prevents deleted fixed-control and universal-applier runtime patterns from returning.

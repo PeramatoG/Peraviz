@@ -1120,18 +1120,15 @@ Use the `Current implementation status` section for temporary migration state.
 
 The following conditions must remain true:
 
-1. GDTF is the semantic source of truth.
-2. Native C++ owns GDTF parsing and compilation.
-3. Native C++ owns live DMX resolution.
-4. Native C++ owns physical and render-state preparation.
-5. Godot owns rendering and presentation.
-6. Godot does not reinterpret GDTF during live playback.
-7. Structural installation and live updates are separate.
-8. Stable IDs are used for repeated families and render targets.
-9. Integer identities remain integer data.
-10. Unknown and unsupported behavior is diagnosed rather than guessed.
-11. Repeated GDTF families are never collapsed into one fixed field per fixture.
-12. The active production path must be proven by end-to-end tests.
-13. Legacy internal compatibility does not override an approved architectural replacement.
-14. Shared Peraviz and Perastage semantics remain serialization-neutral.
-15. Documentation never presents an unproven target as active behavior.
+## Checkpoint 2 sectioned runtime activation
+The active vertical slice now emits typed section descriptors plus integer and float payload buffers from the native runtime. Implemented layouts are named in `native/src/runtime/visual_frame_schema.h` for GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput. The current implementation remains a focused compatibility slice for the existing visual controls while real GDTF semantic coverage continues to expand.
+
+## Component-engine migration checkpoint
+
+Active native DMX evaluation now uses compiled semantic programs and per-fixture component state. The state cache has named semantic members for transform, emitter, optics, wheel, prism, and temporal domains, and dirty rows are written directly to the section protocol. This replaces the previous fixed control-array cache and fixed render-ready array. Fixture IDs are retained only as scene fixture identifiers; generated component and render-target IDs use distinct numeric spaces in emitted rows.
+
+The parser-owned `CompiledGdtfFixtureType` remains the contract target for the next integration step: scene compilation should populate the runtime program table from parsed GDTF ChannelFunctions, ChannelSets, wheels, emitters, filters, relations, and mode-master records without any live XML or string lookups.
+
+## Render-domain application correction
+
+Godot section application now preserves native-owned component separation at the render boundary. The section applier dispatches rows to direct render-domain methods instead of reconstructing a universal lighting call. This keeps dimmer/intensity state independent from color, optics, wheel, motion, and temporal updates while the native runtime continues to emit dirty typed sections.

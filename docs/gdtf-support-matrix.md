@@ -31,3 +31,9 @@ New GDTF capability work must update this matrix, the native registry source or 
 
 ## Attribute registry provenance
 The pinned local registry used by the checkpoint tests lives at `native/src/gdtf_runtime/registry/official_attributes.json`. It records source provenance and an update procedure so Peraviz and Perastage can compare deterministic normalized attribute output without runtime internet access.
+
+## Runtime architecture status
+
+- Supported in active runtime: component-oriented dirty domains for dimmer, pan, tilt, zoom, CMY color, strobe, gobo selection/motion, and prism selection/motion.
+- Partially integrated: parser-owned compiled fixture types and semantic contract fixtures exist, but scene setup still needs to source runtime programs directly from parsed GDTF XML for full GDTF-first operation.
+- Unsupported or diagnostic-only: full ModeMaster evaluation, Relations, DMXProfiles, ColorSpaces, Gamuts, emitters/filters beyond current visual needs, and complete wheel-slot resource selection.

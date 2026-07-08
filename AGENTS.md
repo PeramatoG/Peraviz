@@ -177,22 +177,11 @@ These are expected hotspots for Peraviz and must be confirmed against the curren
 2. Native C++ owns GDTF parsing, validation, compilation, DMX resolution, physical-state calculation, relation handling, ModeMaster evaluation, diagnostics, dirty-state generation, and render-data preparation.
 3. Godot owns rendering and presentation, not GDTF semantic interpretation.
 4. The live C++/Godot boundary is versioned, schema-driven, packed, batched, and free of per-fixture Dictionaries.
-5. Structural setup and live updates use separate contracts.
-6. Repeated GDTF families must be represented with stable IDs and collections, never one fixed member per fixture.
-7. Gobo wheels, animation wheels, color wheels, prisms, emitters, filters, shapers, media layers, lasers, and numbered attributes must support multiple instances where the GDTF data permits them.
-8. Unknown, custom, invalid, or unsupported GDTF behavior must be preserved in diagnostics and never silently guessed or discarded.
-9. The runtime must consume parser-owned and compiler-owned fixture programs directly. Godot-created channel bindings, magic channel-type numbers, or manually reconstructed semantic programs are not an acceptable final path.
-10. Component IDs and render-target IDs must be assigned by structural compilation or scene registration. Do not derive them from arbitrary fixture ID multiplication or other collision-prone formulas.
-11. Any new GDTF capability must update the support matrix, semantic contract data, and regression tests.
-12. Changes to GDTF parsing, semantic interpretation, validation, canonical attribute handling, or serialization-neutral model types must be reviewed for compatibility with Perastage. A Peraviz-only interpretation is not acceptable.
-13. Perastage compatibility means shared semantic meaning and deterministic contract data. It does not require sharing Godot renderer types, Peraviz runtime caches, editor commands, undo/redo systems, or archive-writing logic.
-14. The first mandatory end-to-end runtime vertical slice is:
-    - Real GDTF input.
-    - Project-owned parser.
-    - Serialization-neutral compiled fixture type.
-    - Scene and component registry.
-    - Compiled DMX program.
-    - Native physical and render-value resolution.
-    - Typed dirty delta.
-    - Direct Godot render-domain application.
-15. Dimmer, pan, and tilt must pass through this vertical slice before adding further compatibility layers or advanced gobo behavior.
+5. Repeated GDTF families must be represented with IDs and collections, never one fixed member per fixture.
+6. Unknown or unsupported GDTF behavior must be preserved and reported, not guessed or silently ignored.
+7. Any new GDTF capability must update the support matrix and regression tests.
+8. Changes to GDTF parsing, semantic interpretation, validation, canonical attribute handling, or serialization-neutral model types must be reviewed for compatibility with Perastage; a Peraviz-only interpretation is not acceptable.
+
+## Active component-runtime guardrail
+
+The active visual runtime must remain component-oriented. Do not reintroduce fixed compact-control arrays, fixed render-ready arrays, universal fixture-state dictionaries in section appliers, hardcoded wheel ID rows, or obsolete `VisualFrame` buffer paths.
