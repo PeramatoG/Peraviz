@@ -1,27 +1,46 @@
 # DMX visual runtime
 
-The long-term live boundary is a versioned, schema-driven, sectioned protocol. The former single universal fixture row is deprecated because it cannot represent arbitrary GDTF attributes, repeated numbered families, or sparse dirty updates efficiently.
+## Purpose
 
-## Schema installation
+This document defines the C++ to Godot runtime transport contract for live visualization.
 
-A schema is installed after MVR load, selected DMX mode changes, fixture patch changes, geometry/component binding changes, or another structural rebuild. The schema contains protocol version, schema generation, stable section type IDs, row strides, and stable render/component IDs.
+It covers:
 
-Godot must reject frames whose protocol version or schema generation does not match the active registry. Section offsets and strides are checked before buffer access.
+- Structural schema installation.
+- Stable IDs.
+- Live typed deltas.
+- Packed integer and float payloads.
+- Section descriptors.
+- Validation.
+- Dirty-state behavior.
+- Error handling.
+- Threading and ownership.
+- Migration constraints.
+- Completion criteria.
 
-## Packed buffers
+This document does not define GDTF parsing semantics. Those belong in `docs/gdtf-runtime-architecture.md`.
 
-- `PackedInt32Array`: protocol metadata, schema generation, section descriptors, IDs, counts, strides, masks, indexes.
-- `PackedFloat32Array`: physical and render-ready numeric values.
+This document does not describe temporary compatibility checkpoints as final architecture.
 
-The live loop must avoid per-fixture Dictionaries, strings, one call per fixture, section slicing, per-frame schema rebuilds, and duplicate protocols.
+## Architectural objective
 
+The runtime boundary is:
 
-## Sectioned live frame protocol
-Live DMX visualization no longer exposes one float-only fixture row to GDScript. `PeravizVisualRuntime.consume_latest_visual_frame()` returns one coherent snapshot dictionary containing protocol version, schema generation, `PackedInt32Array` descriptors, `PackedInt32Array` integer payload, and `PackedFloat32Array` float payload. Godot installs schema metadata at runtime setup and applies rows through `scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd`.
+- Versioned.
+- Schema-driven.
+- Typed.
+- Packed.
+- Batched.
+- Sparse.
+- Dirty-state based.
+- Free of per-fixture Dictionaries in the live path.
+- Free of magic channel-type numbers in the final production path.
+- Independent from raw GDTF and raw DMX semantics on the Godot side.
 
-## Corrective sectioned runtime checkpoint
+The boundary is divided into two distinct contracts:
 
-The active native runtime now builds its live schema from the capabilities present in registered fixture bindings and advances the schema generation whenever bindings are rebuilt or the runtime is cleared. The active C++ sectioned path no longer includes the deprecated universal visual-frame row header; legacy row definitions remain isolated for historical compatibility code only.
+1. Structural installation.
+2. Live render deltas.
 
 Godot's sectioned visual-frame applier now routes GeometryTransform, EmitterIntensity, EmitterColor, BeamOptics, WheelSelection, WheelMotion, and TemporalOutput rows directly into specialized apply calls. It keeps per-fixture render state only as cached section state and no longer reconstructs a 25-float universal fixture row or calls the fixed-row apply entry point from the sectioned path.
 
