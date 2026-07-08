@@ -129,13 +129,6 @@ if(PERAVIZ_ENABLE_DMX)
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/visual_frame_schema.cpp
-        src/gdtf_runtime/runtime_scene_compiler.cpp
-        src/dmx/fixture_dmx_binding.cpp
-        src/dmx/gdtf_control_offsets_resolver.cpp
-        src/dmx/gdtf_xml_reader.cpp
-        src/dmx/gdtf_physical_ranges.cpp
-        src/dmx/gdtf_gobo_catalog.cpp
-        src/archive/zip_archive.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
@@ -262,6 +255,7 @@ if(BUILD_TESTING)
         src/runtime/visual_frame_schema.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/dmx/fixture_dmx_binding.cpp
+        src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_control_offsets_resolver.cpp
         src/dmx/gdtf_xml_reader.cpp
         src/dmx/gdtf_physical_ranges.cpp
