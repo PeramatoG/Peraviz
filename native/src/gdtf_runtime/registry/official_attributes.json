@@ -2,7 +2,7 @@
   "provenance": {
     "source_url": "https://gdtf.eu/",
     "spec_revision": "GDTF attribute families pinned for Peraviz checkpoint 2 vertical-slice tests",
-    "update_procedure": "Update this deterministic JSON from the official GDTF attribute definitions, then run tests/check_gdtf_attribute_registry.sh. Runtime does not use internet access."
+    "update_procedure": "Update this deterministic JSON from the official GDTF attribute definitions, then run native GDTF registry/schema tests. Runtime does not use internet access."
   },
   "families": ["Dimmer", "Pan", "Tilt", "Zoom", "Cyan", "Magenta", "Yellow", "Strobe", "Gobo(n)", "Gobo(n)SelectShake", "Blade(n)A", "VideoEffect(n)Parameter(n)"]
 }

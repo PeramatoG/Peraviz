@@ -43,7 +43,7 @@ Peraviz is currently in active development and should be considered experimental
   Import correctness is treated as a first-class concern. Peraviz includes debug modes and validation workflows to audit axis conventions, handedness, scale, and beam orientation.
 
 * **Godot 4 + native C++ backend**
-  Runtime and UI logic are implemented in Godot scripts, while MVR/GDTF parsing and heavier data processing are handled by a native C++ GDExtension.
+  Runtime setup and UI logic are implemented in Godot scripts, while MVR/GDTF parsing and heavier live data processing are handled by a native C++ GDExtension.
 
 * **Performance-oriented architecture**
   The project aims to keep heavy calculations in C++ and pass only the data needed by Godot for rendering and interaction.
@@ -95,9 +95,9 @@ Peraviz is currently in active development and should be considered experimental
 * **Fixture control runtime: `scripts/dmx_fixture_runtime.gd`**
 
   * Builds per-fixture DMX bindings from parsed MVR/GDTF data.
-  * Reads 8-bit, 16-bit, and 24-bit control values.
-  * Supports coarse, fine, and ultra-fine channel resolution.
-  * Applies DMX-driven changes at runtime through callbacks.
+  * Registers the current fixture/channel setup with the native visual runtime.
+  * Consumes native sectioned visual frames with descriptor, integer, and float payloads.
+  * Applies prepared transform, intensity, color, optics, wheel, and temporal sections to cached scene objects.
   * Reports unbound fixtures when scene nodes or metadata are incomplete.
 
 ### 4. Beam rendering

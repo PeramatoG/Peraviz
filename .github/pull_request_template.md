@@ -58,7 +58,7 @@ Notes:
 
 - [ ] Updated user documentation
 - [ ] Updated developer/architecture documentation
-- [ ] Updated `AGENTS.md`, `peraviz_tree.md`, or docs boundary notes if needed
+- [ ] Updated `AGENTS.md`, `docs/architecture.md`, or related docs if needed
 - [ ] Not needed because this change is internal only
 
 ## Checklist

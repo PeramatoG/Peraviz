@@ -1,294 +1,98 @@
 # Contributing to Peraviz
 
-Thank you for taking the time to help improve Peraviz.
+Thank you for helping improve Peraviz. This guide is for external contributors and summarizes the workflow, project boundaries, and checks expected before opening a pull request.
 
-Peraviz is an open-source real-time 3D DMX visualizer based on MVR and GDTF workflows. It is developed alongside Perastage, but its main goal is different: Peraviz should load a scene, interpret fixture data, receive live control data, and render the result as efficiently, accurately, and predictably as possible.
+## Project focus
 
-You do not need to be an experienced developer to contribute. Bug reports, real-world test files, performance feedback, fixture compatibility notes, documentation improvements, translations, and usability feedback are all valuable.
+Peraviz is a real-time lighting visualizer built with native C++ and Godot. The native layer prepares runtime data; Godot presents and renders it.
 
-## Ways to contribute
+Before changing runtime behavior, read:
 
-You can help Peraviz in several ways:
+- `docs/architecture.md` for the current architecture and target split.
+- `docs/NATIVE_BUILD.md` for native build steps.
+- `docs/pvz-project-format.md` for `.pvz` archive behavior.
+- `docs/gdtf-support-matrix.md` when touching GDTF semantics.
 
-- Report bugs or crashes.
-- Report performance or latency problems.
-- Suggest new features or improvements.
-- Test the application with real MVR, GDTF, fixture, truss, scene object, Art-Net, sACN, and DMX data.
-- Improve documentation.
-- Help with translations or clearer wording.
-- Submit code changes through pull requests.
-- Share screenshots, logs, profiler data, or simplified example files when possible.
+## Branches and pull requests
 
-## Before opening an issue
+- Create a focused branch for each change.
+- Keep pull requests small enough to review.
+- Separate runtime changes from documentation-only or test-only cleanup when practical.
+- Explain user-visible changes first, then internal changes.
+- Mention any tests that could not run and why.
 
-Before creating a new issue, please check whether a similar one already exists.
+## Runtime boundaries
 
-If it does, feel free to add extra information instead of opening a duplicate. Extra details are especially useful when they come from a different operating system, GPU, fixture file, MVR exporter, lighting console, network configuration, or Godot version.
+When contributing code, preserve these boundaries:
 
-## Reporting bugs
+- Native C++ owns protocol input, high-frequency DMX processing, fixture state resolution, dirty-state generation, and render-ready frame preparation.
+- Godot owns UI, scene presentation, renderer resources, interaction, and applying prepared render data.
+- Do not add new live GDTF or DMX semantic parsing to Godot.
+- Do not reintroduce the removed fixed visual-frame row.
+- Do not remove transitional setup APIs unless the task explicitly targets that runtime migration.
 
-When reporting a bug, please include as much useful information as possible.
+The current production setup still uses Godot-built fixture binding data and native setup calls. Do not write documentation or tests that claim parser-owned compiled GDTF programs already drive the visual runtime.
 
-A good bug report usually includes:
+## GDTF, MVR, and `.pvz` data
 
-- The Peraviz version or commit you are using.
-- Your operating system.
-- Your GPU and graphics driver version, if the issue may be visual or performance-related.
-- The Godot version used, if you built or ran the project from source.
-- What you were trying to do.
-- What happened instead.
-- The steps needed to reproduce the issue.
-- Screenshots or screen recordings, if they help explain the problem.
-- Any crash report, log file, console output, or error message.
-- A simplified MVR, GDTF, or project file, if you are allowed to share it.
+- Follow official GDTF and MVR specifications for parsing or writing behavior.
+- Preserve unknown or unsupported fixture data where possible and report it clearly.
+- Do not mutate source GDTF files unless a task explicitly asks for that workflow and defines compatibility rules.
+- `.pvz` project archives store Peraviz project state around an MVR; they do not replace MVR or GDTF source ownership.
 
-If you cannot share the original file because it belongs to a real production, venue, client, designer, manufacturer, or third party, that is completely fine. A simplified test file that reproduces the same problem is also very helpful.
+## Coding style
 
-Please do not upload private, confidential, copyrighted, or client-owned show files unless you have permission to share them publicly.
+- Keep changes modular and avoid duplicating logic.
+- Prefer small focused helpers with clear ownership.
+- Keep generated/build/cache files out of Git.
+- For C++ changes, add a concise English comment above each new or substantially changed function definition.
+- Add comments in other languages only when they clarify non-obvious behavior.
+- Keep comments and developer-facing text in English.
+- Do not wrap imports in try/catch blocks.
 
-## Reporting performance or latency problems
+## Documentation and release notes
 
-Peraviz is intended to become a low-latency real-time visualizer, so performance reports are especially valuable.
+Update documentation when behavior, architecture, data flow, supported protocols, import/export behavior, renderer behavior, fixture behavior, or visible UI behavior changes.
 
-When reporting a performance issue, please describe:
+Always keep `docs/release-notes-draft.md` release-ready when a change is meaningful to users or maintainers. Use clear sections such as Highlights, Improvements, Fixes, Documentation, and Internal changes. Avoid process notes or raw commit-style wording.
 
-- Whether the problem concerns FPS, input latency, import time, render quality, memory usage, CPU usage, GPU usage, network processing, or something else.
-- The approximate number of fixtures, meshes, universes, patched DMX addresses, and repeated models involved.
-- Whether the problem happens with live Art-Net, sACN, or DMX input, manual fixture testing, scene loading, camera movement, or all of them.
-- Whether the same scene is smooth when live input is disabled.
-- Your CPU, GPU, RAM, operating system, graphics driver, and Godot version.
-- Any profiler capture, frame-time log, packet timing, or before-and-after measurement you can provide.
+## Tests and checks
 
-Performance reports do not need to be perfect. Rough numbers and clear reproduction steps can still help identify the bottleneck.
+Run the most relevant checks for your change. Common commands include:
 
-## Suggesting features
+```bash
+tests/check_no_large_files.sh
+tests/check_runtime_architecture.sh
+git diff --check
+```
 
-Feature requests are welcome.
+For native changes, configure and run the native CMake tests described in `docs/NATIVE_BUILD.md`. For GDScript behavior, run the relevant headless Godot scripts under `tests/`.
 
-When suggesting a feature, please describe:
+If a dependency such as Godot or a compiler is unavailable, report the exact command and the reason it could not run.
 
-- What problem it would solve.
-- How you imagine it working.
-- Whether it relates to MVR import, GDTF parsing, live DMX, Art-Net, sACN, fixture attributes, beam rendering, gobos, prisms, color, atmosphere, camera workflow, UI, performance, or another area.
-- Whether another application already implements something similar.
+## Review checklist
 
-The more context you provide, the easier it is to understand the real use case behind the request.
+Before requesting review, confirm that:
 
-## Code contributions
+- The change matches the scope described in the pull request.
+- Runtime behavior changes are covered by behavior or integration tests where practical.
+- Documentation links still point to existing files.
+- Release notes summarize the change at the right level for users or maintainers.
+- Static guardrails were not relaxed to hide a real regression.
+- New test data is small, deterministic, and safe to redistribute.
 
-Code contributions are welcome.
+## Communication
 
-For large or architectural changes, it is usually better to open an issue or discussion first. This helps avoid duplicated work and confirms whether the proposed direction matches the current project architecture.
+Use clear, concrete language in issues and pull requests. When discussing architectural work, distinguish current implementation from target direction. If a change is intentionally transitional, describe the follow-up condition that will let maintainers remove it later.
 
-For small fixes, documentation improvements, tests, or simple corrections, you can open a pull request directly.
+## Reporting issues
 
-Every code contribution must follow the active repository instructions in `AGENTS.md`. When a task is explicitly declared as an architectural replacement, legacy removal, or breaking internal migration, the architectural replacement rules in that file take precedence over the general preference for small, compatibility-preserving changes.
+When filing an issue, include:
 
-## Development direction
+- Operating system and Godot version.
+- The Peraviz build or commit used.
+- Steps to reproduce.
+- Expected and actual behavior.
+- Relevant logs, screenshots, fixtures, MVR files, or GDTF files when shareable.
 
-Peraviz has an important native C++ side and an important Godot side.
-
-The intended ownership is:
-
-- Native C++ owns heavy and high-frequency data processing.
-- Native C++ owns GDTF parsing, validation, compilation, DMX resolution, physical-state calculation, interpolation, dirty-state generation, and render-data preparation.
-- Godot focuses on graphics, scene presentation, UI, cameras, materials, meshes, beams, atmosphere, renderer configuration, and renderer-facing resource updates.
-- Godot should receive compact, already-resolved structural data and render-ready live updates.
-- Godot should not repeatedly parse or reinterpret raw DMX, GDTF ChannelFunctions, ChannelSets, ModeMaster rules, attribute names, or physical ranges during live playback.
-
-The C++ and Godot boundary should remain narrow, versioned, schema-driven, batched, and based on stable identifiers.
-
-## Compatibility policy
-
-Peraviz distinguishes between public compatibility and internal implementation compatibility.
-
-Public compatibility includes:
-
-- Supported MVR and GDTF files.
-- Supported Art-Net, sACN, and DMX behavior.
-- Documented project files and user workflows.
-- Supported operating systems and build environments.
-- External semantic contracts shared with Perastage.
-
-Internal implementation compatibility includes:
-
-- Temporary bridge APIs.
-- Legacy runtime classes.
-- Old cache layouts.
-- Magic channel-type numbers.
-- Obsolete GDScript managers.
-- Transitional Dictionaries.
-- Deprecated fixed-control buffers.
-- Superseded internal call paths.
-
-Contributors must preserve public compatibility unless the change explicitly documents a deliberate behavior change.
-
-Contributors are not required to preserve obsolete internal APIs or legacy implementation details during an approved architectural replacement. Keeping an obsolete internal path alive is not considered safer if it creates two competing sources of truth.
-
-Git history is the reference for removed internal code. Legacy code does not need to remain compiled or callable for reference purposes.
-
-## Development guidelines
-
-Please keep the codebase clean, modular, efficient, testable, and easy to maintain.
-
-General guidelines:
-
-- Keep changes focused and avoid mixing unrelated modifications in the same pull request.
-- Prefer clear commits with one understandable purpose.
-- Small commits are preferred, but a coordinated multi-file change is acceptable when required for an approved architectural replacement.
-- Do not artificially split a structural migration in a way that leaves two active implementations for the same responsibility.
-- Avoid creating very large files.
-- Split responsibilities into modules when it improves ownership and maintainability.
-- Use clear names for classes, functions, variables, resources, protocols, and scripts.
-- Add a concise one-line or two-line English comment above every new or substantially changed function definition.
-- Write code comments and developer documentation in English.
-- Avoid high-frequency node creation and deletion during live playback.
-- Reuse meshes, materials, textures, shaders, nodes, RIDs, and other resources whenever possible.
-- Consider batching, dirty flags, shared resources, `MultiMeshInstance3D`, packed buffers, native-side snapshots, and shader-side parameters before adding per-fixture or per-channel Godot updates.
-- Avoid unnecessary dependencies unless there is a clear and documented reason.
-- Keep the project portable across supported platforms whenever possible.
-- Do not duplicate the same authoritative runtime state in both C++ and Godot.
-- Do not add a compatibility bridge without documenting its owner, purpose, expiration condition, and deletion criteria.
-- Do not describe a target architecture as active until the production path and tests prove that it is active.
-
-Please also follow the architecture rules in:
-
-- `AGENTS.md`
-- `peraviz_tree.md`
-- `docs/architecture.md`
-- `docs/godot_performance_guidelines.md`
-- `docs/gdtf-runtime-architecture.md`
-- `docs/dmx-visual-runtime.md`
-
-If these documents disagree with the actual repository structure or active code path, update the documentation or raise the inconsistency before relying on it.
-
-## Normal refactoring and architectural replacement
-
-### Normal refactoring
-
-For normal maintenance and feature work:
-
-- Refactor incrementally around the affected code path.
-- Preserve public behavior.
-- Prefer small, focused changes.
-- Avoid unrelated rewrites.
-- Keep supported formats and workflows compatible.
-- Measure performance changes when practical.
-
-### Architectural replacement
-
-An architectural replacement applies when the issue, task, or maintainer explicitly requests a large structural refactor, legacy removal, breaking internal migration, or irreversible pipeline change.
-
-In that case:
-
-- The requested target architecture is authoritative for the affected subsystem.
-- Internal APIs may be broken, renamed, or removed.
-- Legacy paths should be deleted from the active build instead of being wrapped, adapted, or retained as automatic fallback.
-- Temporary bridges are allowed only when strictly necessary for a documented multi-step migration.
-- A temporary bridge must not receive new feature development.
-- A migration is not complete while the production path still depends on legacy bindings, magic channel codes, duplicate caches, universal fixture-state Dictionaries, or obsolete appliers.
-- A migration is not complete merely because new types or new documentation exist.
-- Tests must exercise the new production path.
-- Large deletions and coordinated multi-file changes are acceptable when required to establish one authoritative implementation.
-- Secondary capabilities may remain temporarily unsupported when the new vertical path is real, testable, documented, and no longer routes through the legacy engine.
-
-## Working with MVR, GDTF, and live control data
-
-Peraviz works with formats and protocols used in real productions, manufacturer libraries, consoles, CAD applications, and visualization workflows.
-
-When contributing changes related to MVR, GDTF, DMX, Art-Net, sACN, fixture attributes, gobos, color, prisms, strobe, pan, tilt, beam rendering, emitters, filters, shapers, or media:
-
-- Follow the official format or protocol structure as closely as possible.
-- Preserve public compatibility and report intentional deviations.
-- Avoid assumptions that only work with one exporter, console, manufacturer, fixture library, or application.
-- Test with more than one representative file when possible.
-- Keep imported, compiled, runtime, and renderer data predictable.
-- Preserve unknown or unsupported GDTF information in diagnostics rather than silently guessing or discarding it.
-- Represent repeated GDTF families with stable IDs and collections instead of one fixed member per fixture.
-- Keep expensive per-frame work out of Godot scripts unless profiling and documentation justify it.
-- Keep parser-owned and compiler-owned GDTF semantics in native code.
-- Do not reconstruct GDTF meaning from names, strings, or magic values in the live Godot path.
-- Review semantic model changes for compatibility with the Peraviz and Perastage GDTF contract.
-
-If you are unsure whether a behavior is correct according to a standard or common lighting workflow, mention it clearly in the issue or pull request instead of silently choosing an interpretation.
-
-## Testing requirements
-
-Tests should verify architecture and behavior, not only implementation names.
-
-When adding or changing runtime behavior:
-
-- Prefer end-to-end or vertical tests that use the real parser, compiler, runtime, bridge, and applier path when practical.
-- Do not use manually constructed legacy bindings as the only proof that a GDTF-first runtime works.
-- Test schema version and schema-generation validation.
-- Test invalid and unsupported data paths.
-- Test dirty-state behavior and unchanged-frame suppression.
-- Test that unused universes and irrelevant channel changes are ignored early.
-- Test repeated GDTF families and stable ID handling.
-- Test that Godot does not reinterpret raw protocol or GDTF semantics in the live path.
-- Add or update architecture guardrails when changing an important boundary.
-- Ensure guardrails inspect the real repository paths.
-- A missing expected source directory must fail the check instead of silently passing.
-
-## Pull request checklist
-
-Before opening a pull request, check the following:
-
-- The native extension builds successfully when the change touches native code.
-- The Godot project opens and runs when the change touches viewer, UI, scene, or rendering code.
-- The change has been tested locally with a representative scene or test fixture when possible.
-- The pull request has a clear description.
-- The change is related to a specific issue, discussion, or architectural task when possible.
-- The PR states whether it is a normal refactor or an architectural replacement.
-- Performance-oriented changes include a short before-and-after note when practical.
-- Architectural changes explain the old ownership, the new ownership, and any removed legacy path.
-- New behavior and changed architecture are documented.
-- Documentation distinguishes target architecture from currently active implementation.
-- UI changes include screenshots when useful.
-- The code follows the existing project style.
-- The change does not introduce unrelated formatting changes.
-- Available checks under `tests/` have been run.
-- Native tests relevant to the changed pipeline have been run.
-- The intended production path is tested.
-- Any check that could not run is listed with the reason and the closest equivalent that was run.
-- Temporary bridges, fallbacks, or incomplete migration steps are documented with deletion criteria.
-- The PR does not claim that a migration is complete while legacy runtime paths remain active.
-
-## Documentation contributions
-
-Documentation improvements are very welcome.
-
-This includes:
-
-- Fixing typos.
-- Improving explanations.
-- Adding screenshots.
-- Clarifying installation and build steps.
-- Explaining workflows.
-- Updating outdated information.
-- Correcting project structure diagrams.
-- Separating target architecture from current implementation status.
-- Documenting migration state and deletion criteria.
-- Making the documentation easier for contributors from the live events, lighting, stage design, visualization, and software development communities.
-
-Documentation must reflect the real repository and active production path. Do not copy future plans into sections that describe current behavior.
-
-## Be friendly and constructive
-
-Please keep discussions respectful and constructive.
-
-It is completely fine to disagree about how something should work, but explain the reasoning behind your position. The goal is to make Peraviz more accurate, efficient, maintainable, and useful.
-
-## New to GitHub?
-
-No problem.
-
-If you are new to GitHub and only created an account to report something, you are still welcome.
-
-Open an issue and explain the problem as clearly as you can. Screenshots, steps to reproduce the problem, sample files, logs, and simple observations are often more useful than technical language.
-
-## License
-
-By contributing to Peraviz, you agree that your contributions will be released under the same license as the project.
-
-Only contribute code, files, images, models, fixture data, documentation, or test files that you have the right to share.
+Do not include private show files, credentials, or proprietary fixture data unless you have permission to share them.
