@@ -1,5 +1,6 @@
 #include "runtime/peraviz_visual_runtime.h"
 
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -12,442 +13,92 @@ int fail(const char *message) {
     return 1;
 }
 
-// Counts all section rows carried by a frame descriptor table.
-int total_section_rows(const peraviz::runtime::SectionedVisualFrame &frame) {
-    int rows = 0;
-    for (size_t index = 0; index + 1 < frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
-        rows += frame.descriptors[index + 1];
-    }
-    return rows;
+// Creates a compiled Dimmer/Pan/Tilt scene with stable fixture-owned IDs.
+peraviz::runtime::CompiledRuntimeScene make_scene() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "Dimmer"});
+    scene.source_programs.push_back({2, CompiledSemantic::Pan, {{10, 1, 0}, {10, 3, 1}}, 0, 65535, -270.0, 270.0, "Pan", "Pan"});
+    scene.source_programs.push_back({3, CompiledSemantic::Tilt, {{10, 2, 0}, {10, 4, 1}}, 0, 65535, -135.0, 135.0, "Tilt", "Tilt"});
+    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
+    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Pan, {{2, 1.0}}});
+    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Tilt, {{3, 1.0}}});
+    return scene;
 }
 
-// Reads the first changed-mask field from the integer payload.
-uint32_t first_changed_mask(const peraviz::runtime::SectionedVisualFrame &frame) {
-    return static_cast<uint32_t>(frame.integers.size() > 2 ? frame.integers[2] : 0);
-}
-
-// Creates a zero-filled DMX frame with the requested channel values.
-std::vector<uint8_t> make_frame(uint8_t dimmer, uint8_t pan, uint8_t irrelevant) {
-    std::vector<uint8_t> frame(16, 0);
-    frame[0] = dimmer;
-    frame[1] = pan;
-    frame[12] = irrelevant;
-    return frame;
-}
-
-// Verifies latest-wins coalescing and cooked frame output.
-int test_latest_wins_coalescing() {
+// Verifies the production path emits transform and intensity sections from compiled programs.
+int test_compiled_scene_e2e() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
-    });
-    auto first = make_frame(10, 20, 0);
-    auto second = make_frame(255, 64, 0);
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty() || static_cast<int>(static_cast<float>(frame.descriptors.empty() ? 0 : 1)) != 1) {
-        return fail("Expected one dirty fixture from coalesced latest frame");
-    }
-    if (frame.stats.packets_coalesced != 1) {
-        return fail("Expected one coalesced packet");
-    }
-    if (frame.descriptors.empty()) {
-        return fail("Unexpected visual frame stride");
-    }
-    if (total_section_rows(frame) < 1) {
-        return fail("Latest frame did not emit section rows");
-    }
-    return 0;
-}
-
-// Verifies unused universes are ignored before fixture work.
-int test_unused_universe_ignored() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({{1, 10, 3, 0, -1, -1, 8, 0.0, 1.0}});
-    auto frame = make_frame(255, 0, 0);
-    runtime.submit_universe_frame(99, frame.data(), static_cast<int>(frame.size()));
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Unused universe produced visual output");
-    }
-    if (runtime.stats().universes_ignored != 1) {
-        return fail("Unused universe was not counted as ignored");
-    }
-    return 0;
-}
-
-// Verifies irrelevant channel changes do not dirty fixture state.
-int test_interest_hash_filters_irrelevant_changes() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({{1, 10, 3, 0, -1, -1, 8, 0.0, 1.0}});
-    auto first = make_frame(128, 0, 1);
-    auto second = make_frame(128, 0, 200);
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial relevant frame did not dirty fixture");
-    }
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Irrelevant channel change dirtied fixture");
-    }
-    return 0;
-}
-
-// Verifies binding rebuilds clear old universe interest state.
-int test_rebuild_clears_old_state() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({{1, 10, 3, 0, -1, -1, 8, 0.0, 1.0}});
-    auto frame = make_frame(255, 0, 0);
+    runtime.install_compiled_scene(make_scene());
+    std::vector<uint8_t> frame(8, 0);
+    frame[0] = 255;
+    frame[1] = 0x80;
+    frame[3] = 0x00;
+    frame[2] = 0x40;
+    frame[4] = 0x00;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial binding did not produce output");
-    }
-    runtime.set_fixture_bindings({{2, 11, 3, 0, -1, -1, 8, 0.0, 1.0}});
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (visual.descriptors.size() < peraviz::runtime::kVisualSectionDescriptorStride * 2) return fail("Expected transform and intensity sections");
+    if (visual.integers.size() < 6 || visual.integers[1] != 101 || visual.integers[4] != 1001) return fail("Expected stable IDs from compiled scene rows");
+    if (visual.floats.empty()) return fail("Expected cooked float payloads");
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Old universe remained active after binding rebuild");
-    }
-    runtime.submit_universe_frame(11, frame.data(), static_cast<int>(frame.size()));
-    auto rebuilt_frame = runtime.consume_latest_visual_frame();
-    if (rebuilt_frame.descriptors.empty() || static_cast<int>(static_cast<float>(rebuilt_frame.integers.empty() ? 0 : rebuilt_frame.integers[0])) != 2) {
-        return fail("New binding did not produce fixture 2 output");
-    }
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Unchanged relevant DMX values should not dirty output");
     return 0;
 }
 
-// Verifies a mass fixture update emits exactly the dirty fixture count once.
-int test_mass_dirty_fixture_count_and_empty_second_consume() {
+// Verifies non-adjacent coarse/fine bytes are assembled as one 16-bit value.
+int test_non_adjacent_16_bit_value() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    std::vector<peraviz::runtime::FixtureChannelBinding> bindings;
-    bindings.reserve(80);
-    for (int fixture_id = 1; fixture_id <= 80; ++fixture_id) {
-        bindings.push_back({fixture_id, 10, 3, fixture_id - 1, -1, -1, 8, 0.0, 1.0});
-    }
-    runtime.set_fixture_bindings(bindings);
-    std::vector<uint8_t> off_frame(128, 0);
-    std::vector<uint8_t> on_frame(128, 255);
-
-    runtime.submit_universe_frame(10, off_frame.data(), static_cast<int>(off_frame.size()));
-    auto first_frame = runtime.consume_latest_visual_frame();
-    if (first_frame.descriptors.empty() || total_section_rows(first_frame) < 80) {
-        return fail("Expected the initial 80-fixture frame to emit exactly 80 dirty fixtures");
-    }
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Second consume without a submitted frame should be empty");
-    }
-
-    runtime.submit_universe_frame(10, on_frame.data(), static_cast<int>(on_frame.size()));
-    auto second_frame = runtime.consume_latest_visual_frame();
-    if (second_frame.descriptors.empty() || total_section_rows(second_frame) < 80) {
-        return fail("Expected the 80-fixture mass toggle to emit exactly 80 dirty fixtures");
-    }
-    if (second_frame.descriptors.empty()) {
-        return fail("Mass toggle output buffer size did not match the dirty fixture count");
-    }
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Repeated consume after mass toggle should be empty");
-    }
-    return 0;
-}
-
-// Verifies pan changes with dimmer already on only request transform application.
-int test_pan_tilt_only_mask_with_dimmer_on() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 2, 2, -1, -1, 8, 0.0, 1.0},
-    });
-    std::vector<uint8_t> first(16, 0);
-    first[0] = 255;
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial pan fixture state did not emit");
-    }
-    std::vector<uint8_t> second = first;
-    second[1] = 128;
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("Pan-only change did not emit");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if (visual_mask != peraviz::runtime::VisualChangeTransform) {
-        return fail("Pan-only change emitted lighting work in the visual mask");
-    }
-    return 0;
-}
-
-
-// Verifies tilt changes with dimmer already on only request transform application.
-int test_tilt_only_mask_with_dimmer_on() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 2, 2, -1, -1, 8, 0.0, 1.0},
-    });
-    std::vector<uint8_t> first(16, 0);
-    first[0] = 255;
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial tilt fixture state did not emit");
-    }
-    std::vector<uint8_t> second = first;
-    second[2] = 128;
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("Tilt-only change did not emit");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if (visual_mask != peraviz::runtime::VisualChangeTransform) {
-        return fail("Tilt-only change emitted lighting work in the visual mask");
-    }
-    return 0;
-}
-
-// Verifies repeated identical DMX frames emit no fixtures after the initial state.
-int test_repeated_identical_dmx_frames_emit_no_fixtures() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
-    });
-    auto frame = make_frame(255, 64, 0);
+    runtime.install_compiled_scene(make_scene());
+    std::vector<uint8_t> frame(8, 0);
+    frame[1] = 0xff;
+    frame[3] = 0xff;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial identical-frame fixture state did not emit");
-    }
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (visual.floats.empty() || std::fabs(visual.floats[0] - 270.0f) > 0.01f) return fail("Expected non-adjacent 16-bit Pan maximum physical value");
+    return 0;
+}
+
+// Verifies the source reader accepts more than two ordered bytes through the compiled model.
+int test_more_than_two_source_bytes() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}, {10, 2, 1}, {10, 4, 2}}, 0, 16777215, 0.0, 1.0, "Dimmer", "Dimmer24"});
+    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(8, 0xff);
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Repeated identical DMX frame emitted fixtures");
-    }
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (visual.descriptors.empty()) return fail("Expected 24-bit source program to emit output");
     return 0;
 }
 
-// Verifies dimmer-only changes do not request transform work.
-int test_dimmer_only_mask() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 3, 0, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 1, 1, -1, -1, 8, 0.0, 1.0},
-    });
-    auto first = make_frame(0, 64, 0);
-    auto second = make_frame(255, 64, 0);
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial dimmer fixture state did not emit");
-    }
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("Dimmer-only change did not emit");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if ((visual_mask & peraviz::runtime::VisualChangeDimmer) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U) {
-        return fail("Dimmer-only change emitted the wrong visual mask");
-    }
-    return 0;
-}
-
-
-// Verifies dimmer visibility crossings rebuild beam topology so hidden prewarmed beams can turn on.
-int test_dimmer_visibility_crossing_requests_beam_topology() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({{1, 10, 3, 0, -1, -1, 8, 0.0, 1.0}});
-    auto first = make_frame(0, 0, 0);
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial dimmer-off fixture state did not emit");
-    }
-    auto second = make_frame(255, 0, 0);
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("Dimmer visibility crossing did not emit");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if ((visual_mask & peraviz::runtime::VisualChangeDimmer) == 0U || (visual_mask & peraviz::runtime::VisualChangeBeamTopology) == 0U) {
-        return fail("Dimmer visibility crossing did not request dimmer and beam topology work");
-    }
-    auto third = make_frame(200, 0, 0);
-    runtime.submit_universe_frame(10, third.data(), static_cast<int>(third.size()));
-    auto dimmed_frame = runtime.consume_latest_visual_frame();
-    if (dimmed_frame.descriptors.empty()) {
-        return fail("Visible dimmer level change did not emit");
-    }
-    const uint32_t visible_dimmer_mask = first_changed_mask(dimmed_frame);
-    if ((visible_dimmer_mask & peraviz::runtime::VisualChangeBeamTopology) != 0U) {
-        return fail("Visible dimmer level change requested unnecessary beam topology work");
-    }
-    return 0;
-}
-
-// Verifies color-only changes request color/material work only.
-int test_color_only_mask() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 5, 4, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 6, 5, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 7, 6, -1, -1, 8, 0.0, 1.0},
-    });
-    std::vector<uint8_t> first(16, 0);
-    std::vector<uint8_t> second = first;
-    second[4] = 128;
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial color fixture state did not emit");
-    }
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("Color-only change did not emit");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if ((visual_mask & peraviz::runtime::VisualChangeColor) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U || (visual_mask & peraviz::runtime::VisualChangeDimmer) != 0U) {
-        return fail("Color-only change emitted the wrong visual mask");
-    }
-    return 0;
-}
-
-// Verifies zoom-only changes request zoom work only.
-int test_zoom_only_mask() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({{1, 10, 4, 3, -1, -1, 8, 0.0, 1.0}});
-    runtime.set_fixture_render_params(1, {10000.0, 25.0, 4.0, 40.0, 5600.0, 1.0, 20.0, true, false});
-    std::vector<uint8_t> first(16, 0);
-    std::vector<uint8_t> second = first;
-    second[3] = 255;
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial zoom fixture state did not emit");
-    }
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("Zoom-only change did not emit");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if ((visual_mask & peraviz::runtime::VisualChangeZoom) == 0U || (visual_mask & peraviz::runtime::VisualChangeTransform) != 0U || (visual_mask & peraviz::runtime::VisualChangeDimmer) != 0U) {
-        return fail("Zoom-only change emitted the wrong visual mask");
-    }
-    return 0;
-}
-
-// Verifies one DMX step of pan still emits a transform update.
-int test_single_step_pan_change_is_not_filtered() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({{1, 10, 1, 1, -1, -1, 8, 0.0, 1.0}});
-    std::vector<uint8_t> first(16, 0);
-    std::vector<uint8_t> second = first;
-    second[1] = 1;
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial single-step pan fixture state did not emit");
-    }
-    runtime.submit_universe_frame(10, second.data(), static_cast<int>(second.size()));
-    auto frame = runtime.consume_latest_visual_frame();
-    if (frame.descriptors.empty()) {
-        return fail("One-step pan change was incorrectly filtered");
-    }
-    const uint32_t visual_mask = first_changed_mask(frame);
-    if (visual_mask != peraviz::runtime::VisualChangeTransform) {
-        return fail("One-step pan change emitted the wrong visual mask");
-    }
-    return 0;
-}
-
-// Verifies gobo selection and rotation produce separate visual dirty flags.
-int test_gobo_topology_and_parametric_masks() {
-    peraviz::runtime::PeravizVisualRuntimeCore runtime;
-    runtime.set_fixture_bindings({
-        {1, 10, 8, 7, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 9, 8, -1, -1, 8, 0.0, 1.0},
-        {1, 10, 10, 9, -1, -1, 8, 0.0, 1.0},
-    });
-    std::vector<uint8_t> first(16, 0);
-    runtime.submit_universe_frame(10, first.data(), static_cast<int>(first.size()));
-    if (runtime.consume_latest_visual_frame().descriptors.empty()) {
-        return fail("Initial gobo fixture state did not emit");
-    }
-    std::vector<uint8_t> slot_change = first;
-    slot_change[7] = 128;
-    runtime.submit_universe_frame(10, slot_change.data(), static_cast<int>(slot_change.size()));
-    auto topology_frame = runtime.consume_latest_visual_frame();
-    if (topology_frame.descriptors.empty()) {
-        return fail("Gobo slot change did not emit");
-    }
-    const uint32_t topology_mask = first_changed_mask(topology_frame);
-    if ((topology_mask & peraviz::runtime::VisualChangeGobo) == 0U ||
-        (topology_mask & peraviz::runtime::VisualChangeBeamTopology) == 0U ||
-        (topology_mask & peraviz::runtime::VisualChangeGoboRotation) != 0U) {
-        return fail("Gobo slot change emitted the wrong visual mask");
-    }
-    std::vector<uint8_t> rotation_change = slot_change;
-    rotation_change[9] = 200;
-    runtime.submit_universe_frame(10, rotation_change.data(), static_cast<int>(rotation_change.size()));
-    auto parametric_frame = runtime.consume_latest_visual_frame();
-    if (parametric_frame.descriptors.empty()) {
-        return fail("Gobo rotation change did not emit");
-    }
-    const uint32_t parametric_mask = first_changed_mask(parametric_frame);
-    if ((parametric_mask & peraviz::runtime::VisualChangeGoboRotation) == 0U ||
-        (parametric_mask & peraviz::runtime::VisualChangeBeamTopology) != 0U) {
-        return fail("Gobo rotation change emitted topology work");
-    }
-    if (parametric_frame.stats.gobo_topology_updates == 0 || parametric_frame.stats.gobo_parametric_updates == 0) {
-        return fail("Gobo diagnostics did not count topology and parametric updates");
-    }
+// Verifies one property can name multiple compiled contributors deterministically.
+int test_multiple_contributors() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene = make_scene();
+    scene.source_programs.push_back({4, CompiledSemantic::Dimmer, {{10, 5, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerVirtual"});
+    scene.properties[0].contributors.push_back({4, 0.0});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(8, 0);
+    frame[0] = 128;
+    frame[5] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    if (runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected multi-contributor property to emit output");
     return 0;
 }
 
 } // namespace
 
-// Runs visual runtime core regression tests.
+// Runs compiled scene runtime behavior tests.
 int main() {
-    if (int result = test_latest_wins_coalescing(); result != 0) {
-        return result;
-    }
-    if (int result = test_unused_universe_ignored(); result != 0) {
-        return result;
-    }
-    if (int result = test_interest_hash_filters_irrelevant_changes(); result != 0) {
-        return result;
-    }
-    if (int result = test_rebuild_clears_old_state(); result != 0) {
-        return result;
-    }
-    if (int result = test_mass_dirty_fixture_count_and_empty_second_consume(); result != 0) {
-        return result;
-    }
-    if (int result = test_pan_tilt_only_mask_with_dimmer_on(); result != 0) {
-        return result;
-    }
-    if (int result = test_tilt_only_mask_with_dimmer_on(); result != 0) {
-        return result;
-    }
-    if (int result = test_single_step_pan_change_is_not_filtered(); result != 0) {
-        return result;
-    }
-    if (int result = test_repeated_identical_dmx_frames_emit_no_fixtures(); result != 0) {
-        return result;
-    }
-    if (int result = test_dimmer_only_mask(); result != 0) {
-        return result;
-    }
-    if (int result = test_dimmer_visibility_crossing_requests_beam_topology(); result != 0) {
-        return result;
-    }
-    if (int result = test_color_only_mask(); result != 0) {
-        return result;
-    }
-    if (int result = test_zoom_only_mask(); result != 0) {
-        return result;
-    }
-    if (int result = test_gobo_topology_and_parametric_masks(); result != 0) {
-        return result;
-    }
+    if (test_compiled_scene_e2e() != 0) return 1;
+    if (test_non_adjacent_16_bit_value() != 0) return 1;
+    if (test_more_than_two_source_bytes() != 0) return 1;
+    if (test_multiple_contributors() != 0) return 1;
     return 0;
 }

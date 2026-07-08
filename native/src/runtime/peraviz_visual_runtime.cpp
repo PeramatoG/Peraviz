@@ -9,18 +9,6 @@ namespace {
 constexpr float kDefaultEpsilon = 0.0001f;
 constexpr float kAngleEpsilon = 0.01f;
 
-struct LegacySemanticBinding {
-    int channel_type;
-    SemanticParameter parameter;
-};
-
-constexpr LegacySemanticBinding kLegacySemanticBindings[] = {
-    {1, SemanticParameter::Pan}, {2, SemanticParameter::Tilt}, {3, SemanticParameter::Dimmer}, {4, SemanticParameter::Zoom},
-    {5, SemanticParameter::Cyan}, {6, SemanticParameter::Magenta}, {7, SemanticParameter::Yellow}, {8, SemanticParameter::GoboSelect},
-    {9, SemanticParameter::GoboIndex}, {10, SemanticParameter::GoboRotation}, {11, SemanticParameter::PrismSelect},
-    {12, SemanticParameter::PrismRotation}, {13, SemanticParameter::Strobe},
-};
-
 // Adds one typed section descriptor to the frame descriptor table.
 void append_descriptor(SectionedVisualFrame &frame, VisualSectionType type, int32_t row_count, int32_t int_offset, int32_t float_offset) {
     frame.descriptors.push_back(static_cast<int32_t>(type));
@@ -37,38 +25,60 @@ void PeravizVisualRuntimeCore::clear() {
     universes_.clear();
     render_params_by_fixture_.clear();
     component_state_by_fixture_.clear();
+    component_id_by_fixture_.clear();
+    render_target_id_by_fixture_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
 
-// Replaces fixture bindings and compiles them into semantic channel programs.
-void PeravizVisualRuntimeCore::set_fixture_bindings(const std::vector<FixtureChannelBinding> &bindings) {
+// Installs parser-owned compiled scene programs as the only runtime setup authority.
+void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene &scene) {
     universes_.clear();
+    render_params_by_fixture_.clear();
     component_state_by_fixture_.clear();
+    component_id_by_fixture_.clear();
+    render_target_id_by_fixture_.clear();
+    diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
-    for (const FixtureChannelBinding &binding : bindings) {
-        const SemanticParameter parameter = semantic_parameter_for_legacy_channel_type(binding.channel_type);
-        if (binding.fixture_id <= 0 || binding.universe_id < 0 || parameter == SemanticParameter::Unknown) {
+    std::unordered_map<int32_t, const CompiledDmxSourceProgram *> programs_by_id;
+    for (const CompiledDmxSourceProgram &program : scene.source_programs) {
+        programs_by_id[program.program_id] = &program;
+    }
+    for (const CompiledFixtureInstance &fixture : scene.fixtures) {
+        FixtureRenderParams params;
+        params.luminous_flux = fixture.luminous_flux;
+        params.beam_angle_default = fixture.beam_angle_default;
+        params.spot_multiplier = fixture.spot_multiplier;
+        params.beam_multiplier = fixture.beam_multiplier;
+        render_params_by_fixture_[fixture.fixture_id] = params;
+    }
+    for (const CompiledComponentProperty &property : scene.properties) {
+        const SemanticParameter parameter = semantic_parameter_for_compiled(property.semantic);
+        if (property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
             continue;
         }
+        component_id_by_fixture_[property.fixture_id] = property.component_id;
+        render_target_id_by_fixture_[property.fixture_id] = property.render_target_id;
         capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
         capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
-        capabilities.has_color = capabilities.has_color || parameter == SemanticParameter::Cyan || parameter == SemanticParameter::Magenta || parameter == SemanticParameter::Yellow;
-        capabilities.has_optics = capabilities.has_optics || parameter == SemanticParameter::Zoom;
-        capabilities.has_wheel_selection = capabilities.has_wheel_selection || parameter == SemanticParameter::GoboSelect || parameter == SemanticParameter::PrismSelect;
-        capabilities.has_wheel_motion = capabilities.has_wheel_motion || parameter == SemanticParameter::GoboIndex || parameter == SemanticParameter::GoboRotation || parameter == SemanticParameter::PrismRotation;
-        capabilities.has_temporal = capabilities.has_temporal || parameter == SemanticParameter::Strobe;
-
-        UniverseState &universe = universes_[binding.universe_id];
-        const int32_t component_id = binding.fixture_id * 100 + static_cast<int32_t>(parameter);
-        const int32_t target_id = binding.fixture_id * 1000 + static_cast<int32_t>(parameter);
-        const int32_t wheel_id = parameter == SemanticParameter::GoboSelect || parameter == SemanticParameter::GoboIndex || parameter == SemanticParameter::GoboRotation ? 10 : 20;
-        universe.programs.push_back({binding, parameter, component_id, target_id, wheel_id});
-        const int byte_count = bytes_for_bit_depth(binding.bit_depth);
-        for (int byte_index = 0; byte_index < byte_count; ++byte_index) {
-            const int address = address_for_byte_index(binding, byte_index);
-            if (address >= 0) {
-                universe.interest_offsets.push_back(address);
+        for (const CompiledPropertyContributor &contributor : property.contributors) {
+            auto program_it = programs_by_id.find(contributor.source_program_id);
+            if (program_it == programs_by_id.end()) {
+                diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled property references a missing source program.", std::to_string(contributor.source_program_id)});
+                continue;
+            }
+            const CompiledDmxSourceProgram &program = *program_it->second;
+            if (program.sources.empty()) {
+                diagnostics_.push_back({"PVZ-RUNTIME-EMPTY-SOURCE", "warning", "Compiled source program has no DMX byte sources.", std::to_string(program.program_id)});
+                continue;
+            }
+            const int universe_id = program.sources.front().universe_id;
+            UniverseState &universe = universes_[universe_id];
+            universe.programs.push_back({program, {contributor}, parameter, property.fixture_id, property.component_id, property.render_target_id, 0});
+            for (const CompiledDmxByteSource &source : program.sources) {
+                if (source.universe_id == universe_id && source.address >= 0) {
+                    universe.interest_offsets.push_back(source.address);
+                }
             }
         }
     }
@@ -77,13 +87,6 @@ void PeravizVisualRuntimeCore::set_fixture_bindings(const std::vector<FixtureCha
         universe.interest_offsets.erase(std::unique(universe.interest_offsets.begin(), universe.interest_offsets.end()), universe.interest_offsets.end());
     }
     schema_ = make_visual_frame_schema(++next_schema_generation_, capabilities);
-}
-
-// Stores static render parameters used when cooking component render values.
-void PeravizVisualRuntimeCore::set_fixture_render_params(int fixture_id, const FixtureRenderParams &params) {
-    if (fixture_id > 0) {
-        render_params_by_fixture_[fixture_id] = params;
-    }
 }
 
 // Submits a universe snapshot using latest-wins coalescing.
@@ -129,12 +132,12 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
 
         std::unordered_map<int, ComponentState> pending_by_fixture;
         for (const CompiledChannelProgram &program : universe.programs) {
-            ComponentState &state = pending_by_fixture[program.binding.fixture_id];
-            auto existing = component_state_by_fixture_.find(program.binding.fixture_id);
+            ComponentState &state = pending_by_fixture[program.fixture_id];
+            auto existing = component_state_by_fixture_.find(program.fixture_id);
             if (!state.initialized && existing != component_state_by_fixture_.end()) {
                 state = existing->second;
             }
-            apply_semantic_value(state, program.parameter, read_normalized_value(universe.latest_frame, program.binding));
+            apply_semantic_value(state, program.parameter, read_normalized_value(universe.latest_frame, program.source_program, &diagnostics_));
         }
 
         for (auto &[fixture_id, next_state] : pending_by_fixture) {
@@ -161,7 +164,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & VisualChangeTransform) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 100 + 1, static_cast<int32_t>(row.changed_visual_mask)});
+            const int32_t component_id = component_id_by_fixture_.count(row.fixture_id) != 0 ? component_id_by_fixture_[row.fixture_id] : row.fixture_id;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, component_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.pan, row.state.tilt});
         }
         append_descriptor(frame, VisualSectionType::GeometryTransform, transform_count, int_offset, float_offset);
@@ -173,7 +177,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & (VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology)) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 3, static_cast<int32_t>(row.changed_visual_mask)});
+            const int32_t target_id = render_target_id_by_fixture_.count(row.fixture_id) != 0 ? render_target_id_by_fixture_[row.fixture_id] : row.fixture_id;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, target_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.dimmer, row.state.beam_energy, row.state.spot_energy, row.state.beam_intensity, row.state.material_energy});
         }
         append_descriptor(frame, VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
@@ -252,45 +257,39 @@ const VisualFrameSchema &PeravizVisualRuntimeCore::schema() const { return schem
 // Returns cumulative runtime counters for debug UI and benchmarks.
 const VisualFrameStats &PeravizVisualRuntimeCore::stats() const { return stats_; }
 
-// Maps legacy numeric bindings into compiled semantic parameters until parser-backed programs replace setup input.
-SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_legacy_channel_type(int channel_type) {
-    for (const LegacySemanticBinding &binding : kLegacySemanticBindings) {
-        if (binding.channel_type == channel_type) {
-            return binding.parameter;
-        }
+// Maps compiled semantic identifiers into runtime component state parameters.
+SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(CompiledSemantic semantic) {
+    switch (semantic) {
+        case CompiledSemantic::Pan: return SemanticParameter::Pan;
+        case CompiledSemantic::Tilt: return SemanticParameter::Tilt;
+        case CompiledSemantic::Dimmer: return SemanticParameter::Dimmer;
+        case CompiledSemantic::Unknown: return SemanticParameter::Unknown;
     }
     return SemanticParameter::Unknown;
 }
 
-// Returns the byte count required for a channel bit depth.
-int PeravizVisualRuntimeCore::bytes_for_bit_depth(int bit_depth) {
-    if (bit_depth <= 8) return 1;
-    if (bit_depth <= 16) return 2;
-    return 3;
-}
-
-// Resolves the source byte address for coarse, fine, and ultra-fine channels.
-int PeravizVisualRuntimeCore::address_for_byte_index(const FixtureChannelBinding &binding, int byte_index) {
-    if (byte_index == 0) return binding.start_address;
-    if (byte_index == 1 && binding.fine_address >= 0) return binding.fine_address;
-    if (byte_index == 2 && binding.ultra_fine_address >= 0) return binding.ultra_fine_address;
-    return binding.start_address + byte_index;
-}
-
-// Reads one DMX channel as a scaled normalized value.
-float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t> &frame, const FixtureChannelBinding &binding) {
+// Reads a compiled DMX program by assembling ordered source bytes before normalization.
+float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
+    if (program.sources.empty() || program.sources.size() > 4) {
+        if (diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program_id)});
+        return 0.0f;
+    }
+    std::vector<CompiledDmxByteSource> ordered = program.sources;
+    std::sort(ordered.begin(), ordered.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
     uint32_t raw_value = 0;
     uint32_t max_value = 0;
-    const int byte_count = bytes_for_bit_depth(binding.bit_depth);
-    for (int byte_index = 0; byte_index < byte_count; ++byte_index) {
-        const int address = address_for_byte_index(binding, byte_index);
-        const uint8_t value = address >= 0 && address < static_cast<int>(frame.size()) ? frame[static_cast<size_t>(address)] : 0;
+    for (const CompiledDmxByteSource &source : ordered) {
+        const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
+        if (!valid && diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program_id)});
+        const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
         raw_value = (raw_value << 8U) | value;
         max_value = (max_value << 8U) | 0xffU;
     }
     const double normalized = max_value > 0 ? static_cast<double>(raw_value) / static_cast<double>(max_value) : 0.0;
-    const double scaled = binding.scale_min + ((binding.scale_max - binding.scale_min) * normalized);
-    return static_cast<float>(std::clamp(scaled, 0.0, 1.0));
+    const double dmx_span = program.dmx_to > program.dmx_from ? static_cast<double>(program.dmx_to - program.dmx_from) : static_cast<double>(max_value);
+    const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.dmx_from)) / dmx_span, 0.0, 1.0) : normalized;
+    const double physical = program.physical_from + ((program.physical_to - program.physical_from) * local);
+    return static_cast<float>(physical);
 }
 
 // Computes a native hash over only patched DMX offsets for a universe.
@@ -393,7 +392,7 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_co
     FixtureChangeResult result;
     result.changed = !previous.initialized;
     if (!previous.initialized) {
-        result.changed_visual_mask = VisualChangeTransform | VisualChangeDimmer | VisualChangeMaterial | VisualChangeColor | VisualChangeZoom | VisualChangeBeamTopology | VisualChangeGobo | VisualChangeGoboRotation | VisualChangePrism | VisualChangeStrobe;
+        result.changed_visual_mask = VisualChangeTransform | VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology;
     } else {
         if (!nearly_equal(previous.pan, next_state.pan, kDefaultEpsilon) || !nearly_equal(previous.tilt, next_state.tilt, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Pan);
         if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Dimmer);

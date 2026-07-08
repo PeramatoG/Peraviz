@@ -28,8 +28,7 @@ enum class SemanticParameter : int32_t {
 class PeravizVisualRuntimeCore {
 public:
     void clear();
-    void set_fixture_bindings(const std::vector<FixtureChannelBinding> &bindings);
-    void set_fixture_render_params(int fixture_id, const FixtureRenderParams &params);
+    void install_compiled_scene(const CompiledRuntimeScene &scene);
     void submit_universe_frame(int universe_id, const uint8_t *data, int length);
     SectionedVisualFrame consume_latest_visual_frame();
     const VisualFrameSchema &schema() const;
@@ -37,8 +36,10 @@ public:
 
 private:
     struct CompiledChannelProgram {
-        FixtureChannelBinding binding;
+        CompiledDmxSourceProgram source_program;
+        std::vector<CompiledPropertyContributor> contributors;
         SemanticParameter parameter = SemanticParameter::Unknown;
+        int32_t fixture_id = 0;
         int32_t component_id = 0;
         int32_t render_target_id = 0;
         int32_t wheel_id = 0;
@@ -84,10 +85,8 @@ private:
         uint32_t changed_visual_mask = 0;
     };
 
-    static SemanticParameter semantic_parameter_for_legacy_channel_type(int channel_type);
-    static int bytes_for_bit_depth(int bit_depth);
-    static int address_for_byte_index(const FixtureChannelBinding &binding, int byte_index);
-    static float read_normalized_value(const std::vector<uint8_t> &frame, const FixtureChannelBinding &binding);
+    static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
+    static float read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
     static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
@@ -98,7 +97,10 @@ private:
 
     std::unordered_map<int, UniverseState> universes_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
+    std::vector<CompiledRuntimeDiagnostic> diagnostics_;
     std::unordered_map<int, ComponentState> component_state_by_fixture_;
+    std::unordered_map<int, int32_t> component_id_by_fixture_;
+    std::unordered_map<int, int32_t> render_target_id_by_fixture_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;

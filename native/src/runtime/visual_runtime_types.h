@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace peraviz::runtime {
 
@@ -18,16 +20,70 @@ enum VisualChangeMask : uint32_t {
     VisualChangeBeamTopology = 1U << 9,
 };
 
-struct FixtureChannelBinding {
-    int fixture_id = 0;
-    int universe_id = 0;
-    int channel_type = 0;
-    int start_address = 0;
-    int fine_address = -1;
-    int ultra_fine_address = -1;
-    int bit_depth = 8;
-    double scale_min = 0.0;
-    double scale_max = 1.0;
+enum class CompiledSemantic : int32_t {
+    Unknown = 0,
+    Pan,
+    Tilt,
+    Dimmer,
+};
+
+struct CompiledDmxByteSource {
+    int32_t universe_id = -1;
+    int32_t address = -1;
+    int32_t byte_order = 0;
+};
+
+struct CompiledDmxSourceProgram {
+    int32_t program_id = 0;
+    CompiledSemantic semantic = CompiledSemantic::Unknown;
+    std::vector<CompiledDmxByteSource> sources;
+    uint32_t dmx_from = 0;
+    uint32_t dmx_to = 255;
+    double physical_from = 0.0;
+    double physical_to = 1.0;
+    std::string attribute_name;
+    std::string function_name;
+};
+
+struct CompiledPropertyContributor {
+    int32_t source_program_id = 0;
+    double weight = 1.0;
+};
+
+struct CompiledComponentProperty {
+    int32_t fixture_id = 0;
+    int32_t component_id = 0;
+    int32_t render_target_id = 0;
+    CompiledSemantic semantic = CompiledSemantic::Unknown;
+    std::vector<CompiledPropertyContributor> contributors;
+};
+
+struct CompiledFixtureInstance {
+    int32_t fixture_id = 0;
+    std::string fixture_uuid;
+    std::string fixture_type_name;
+    std::string dmx_mode_name;
+    int32_t universe_id = -1;
+    int32_t start_address = -1;
+    double luminous_flux = 10000.0;
+    double beam_angle_default = 25.0;
+    double spot_multiplier = 1.0;
+    double beam_multiplier = 20.0;
+};
+
+struct CompiledRuntimeDiagnostic {
+    std::string code;
+    std::string severity;
+    std::string message;
+    std::string subject;
+};
+
+struct CompiledRuntimeScene {
+    int32_t contract_version = 1;
+    std::vector<CompiledFixtureInstance> fixtures;
+    std::vector<CompiledDmxSourceProgram> source_programs;
+    std::vector<CompiledComponentProperty> properties;
+    std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };
 
 struct FixtureRenderParams {
@@ -58,6 +114,5 @@ struct VisualFrameStats {
     uint64_t gobo_topology_updates = 0;
     uint64_t gobo_parametric_updates = 0;
 };
-
 
 } // namespace peraviz::runtime

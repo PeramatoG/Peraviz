@@ -20,16 +20,13 @@ protected:
 
 public:
     void clear();
-    void set_fixture_bindings(const Array &bindings);
-    void set_fixture_render_params(int fixture_id, const Dictionary &render_params);
+    void install_compiled_scene(const PackedInt32Array &integers, const PackedFloat32Array &floats);
     void submit_universe_frame(int universe_id, const PackedByteArray &data);
     Dictionary consume_latest_visual_frame();
     Dictionary get_visual_frame_schema() const;
     Dictionary get_stats() const;
 
 private:
-    static peraviz::runtime::FixtureChannelBinding parse_binding(const Dictionary &binding);
-    static peraviz::runtime::FixtureRenderParams parse_render_params(const Dictionary &render_params);
     static Dictionary stats_to_dictionary(const peraviz::runtime::VisualFrameStats &stats);
 
     peraviz::runtime::PeravizVisualRuntimeCore core_;
