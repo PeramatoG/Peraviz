@@ -1,98 +1,22 @@
-# Peraviz v0.1.0 Release Notes
+# Peraviz v0.x.x
 
-Changes since the initial Peraviz repository split.
+Changes since the previous Peraviz release.
 
 ## Highlights
 
-- Peraviz can now remember the last opened MVR or PVZ project for a smoother return to recent work, without forcing startup auto-load on.
-- Added the first read-only Fixture Inspection panel for reviewing loaded fixture information from the main User area.
-- Introduced the first `.pvz` project archive foundation for saving Peraviz sessions with embedded MVR scene data and project settings.
-
-## New features
-
-- MVR-xchange can now advertise Peraviz as a TCP-mode station, join discovered stations, detect available MVR revisions, manually request an update, safely receive the MVR file, and load it through the existing scene import workflow.
-- Added a first-phase MVR-xchange discovery panel for finding local stations such as Perastage without requesting or loading MVR files yet.
-- Added a read-only Fixture Inspection panel in the User area so loaded MVR and PVZ scenes can be reviewed by fixture name, user-facing fixture ID, type, patch address, and DMX binding status without opening Debug tools.
-- Added the first Peraviz project archive foundation, allowing sessions to be saved as reliably written `.pvz` files containing the current MVR and basic Peraviz settings.
-- Peraviz now remembers the last opened MVR or PVZ project as a user preference, while keeping startup auto-load as an explicit opt-in choice instead of enabling it whenever a file is loaded or saved.
-- Added an Advanced startup auto-load toggle so users who want Peraviz to reopen their last show automatically can enable that behavior deliberately.
-- New `.pvz` archives now include a reserved `fixture_overrides.json` file so future fixture-level project data has a stable place in the archive without changing the base layout.
+- Improved documentation reliability by consolidating the runtime architecture guidance into one concise source of truth.
 
 ## Improvements
 
-- Hardened the MVR-xchange viewer/client path with stricter UUID handling, safer received-file finalization, clearer request/receive/load state reporting, and documentation for the standard-compatible manual update workflow.
-
-- Improved DMX unlinked fixture presentation so fixture names and available patch details are shown in user-facing summaries instead of exposing UUIDs by default.
-- Made the DMX panel easier to scan by keeping the quick fixture summary visible while moving unlinked fixture technical details behind an optional details toggle.
-- Made last loaded file recovery more predictable by preserving the user's startup auto-load choice and reporting clear messages when remembered files are missing or unsupported.
-
-## Fixes
-
-- Restored live DMX gobo visibility in the native visual-frame path by preserving cached gobo metadata, preventing first-update beam initialization from overwriting live gobo texture state, restoring the vectorized footprint and conic-prism mesh gobo path, registering wheel-only gobo selectors in the native visual frame, preserving slot metadata for wheel and primary gobo bindings, sharing one live/legacy gobo-control resolver so flattened runtime bindings are not discarded when legacy capability blocks are empty, resolving only the gobo wheel represented by the current native selector instead of accidentally composing multiple wheels, reserving gobo wheel offsets away from zoom packing in both native binding data and the Godot bridge, and keeping texture changes separate from cheaper rotation/shake updates.
-- Restored live DMX dimmer-driven beam visibility so beam meshes and fog volumes follow native cooked beam intensity while remaining visible when optional realtime SpotLight rendering is disabled.
-- Fixed live DMX dimmer visibility crossings so prewarmed hidden beams are rebuilt or revalidated when console dimmers raise fixture intensity.
-- Fixed repeated RenderingServer light RID errors during scene import by skipping direct light server updates until imported SpotLight3D resources are ready.
-- Fixed an editor-time AppShell initialization issue that could report a placeholder-instance error while loading the Peraviz scene in Godot.
-- Fixed direct RenderingServer light updates so fixture lighting prewarm uses the correct light resource RID and loads without runtime errors.
-
-## Stability and reliability
-
-- Improved live DMX visual correctness and responsiveness by making native visual-frame beam visibility cache-coherent, defaulting live playback to efficient fake beam visibility instead of real SpotLight rendering, rebuilding missing beam targets on demand, and keeping transform-only pan/tilt updates out of the lighting path.
-- Improved Art-Net responsiveness by treating received DMX frames as latest-wins even when a controller sends irregular sequence values, avoiding visible stalls from sequence filtering during rapid cues.
-- Hardened live Art-Net frame caching so shorter packets update transmitted slots without forcing untransmitted fixture channels to zero, preventing intermittent pan/tilt snaps during DMX stream changes.
-- Improved live DMX performance by keeping beam geometry caches warm during per-light cleanup, caching resolved pan/tilt axes per fixture, and prioritizing light/beam updates for dimmer-only changes so rapid intensity cues stay more responsive.
-- Improved live DMX rendering performance by hashing runtime capability buckets with typed fields and applying frequent light energy, color, and visibility updates through RenderingServer direct calls.
-- Reduced live DMX render overhead by applying spotlight property changes directly through RenderingServer and lowering the unused positional shadow atlas size.
-- Improved live DMX fixture update performance by caching resolved fixture anchors and applying emissive material dimmer/color updates through RenderingServer material parameters.
-- Improved live DMX rendering performance by disabling fixture spotlight shadows by default, caching resolved fixture nodes, reducing per-tick photometric dictionary copying, lowering volumetric fog allocation defaults, and speeding native changed-universe frame copies.
-- Improved DMX runtime responsiveness by moving fixture control decoding off the main thread, keeping threaded DMX work on flat fixture data, waking the worker without busy polling, reducing repeated beam parameter writes, reusing fixture control buffers, and scoping live Art-Net updates to the fixture attributes whose DMX capabilities actually changed.
-- Hardened and optimized Art-Net/DMX reception and fixture application so the network thread keeps bounded latest-frame state, the main thread avoids idle universe scans, ignores unchanged DMX payloads before copying, caches patched-channel interest offsets per universe, only processes patched-channel changes, capability comparisons avoid string serialization, and dimmer-only updates avoid expensive beam geometry refreshes after fixtures are warmed.
-- Improved DMX runtime latency by exposing dirty-universe consumption from the native Art-Net receiver and adding a native batch universe decoder foundation for changed channel updates, while keeping standalone Art-Net flow tests independent of Godot-only decoder headers.
-- Reduced live DMX command latency by removing the extra GDScript worker-to-main pending-control handoff from normal playback, so each render frame consumes the latest dirty native receiver state and applies the coalesced fixture batch immediately.
-- Fixed DMX runtime script loading after the native decoder path so live fixture capability buffers are cleared, compared, and skipped correctly when incoming channel values do not change.
-- Reduced live DMX latency by letting the threaded DMX control decoder run continuously on its own short polling interval and queue main-thread application immediately when fresh controls are available, instead of waking only from the render update loop.
-- Reduced per-frame DMX decode overhead by routing fixture channel normalization through the native universe decoder and sending only changed fixture control values back to the runtime.
-- Reduced live DMX apply stalls by using native render-ready DMX values, avoiding unnecessary gobo control construction when gobo capabilities are unchanged, reusing bounded shared beam templates for fixtures with matching beam shape, reducing compact channel allocation pressure, and keeping the main-thread apply drain from holding the runtime mutex.
-- Reduced DMX runtime overhead by keeping fixture controls in compact numeric buffers for change detection and apply routing instead of rebuilding per-capability dictionary buckets, avoiding deep control copies in the gobo path, and removed unused high-resolution volumetric fog constants.
-- Reduced threaded DMX apply pressure by sharing decoded fixture control buffers with the main-thread drain under runtime locking instead of deep-copying capability dictionaries for every updated fixture.
-- Reduced live DMX apply work by moving render-ready fixture state comparison into the native decoder, preserving compact numeric batches, and skipping main-thread fixture application when incoming DMX does not produce visible changes.
-- Project archive writes now include the current MVR, visual settings, DMX settings, app state, and reserved fixture override data in a consistent version 1 layout.
-- PVZ loading tolerates missing optional JSON files from older archives while still validating that required scene data is present.
+- Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.
+- Simplified contributor and agent guidance so maintainers can focus on enforceable rules and current workflows.
 
 ## Documentation
 
-- Documented the native DMX-to-visual runtime pipeline, including latest-wins coalescing, fixed-stride visual frames, native metrics, and the main-thread scene mutation rule.
-- Expanded MVR-xchange documentation with the current TCP join, commit detection, manual request, receive, and load workflow.
-- Added MVR-xchange documentation that clarifies the Phase 1 discovery-only scope and Peraviz viewer role.
-- Documented the initial `.pvz` project archive format and its version 1 archive structure, including reserved future fixture override data and compatibility expectations for older archives.
-- Documented the Peraviz project architecture around MVR scene data, GDTF fixture definitions, future PVZ project data, and runtime fixture entities.
-- Clarified the separation between `.pvz` project data and global user preferences, including how remembered last-file paths are treated as session preferences rather than project source content.
+- Removed overlapping architecture documents and stale migration history.
+- Updated release notes to present user-visible changes first and keep internal architecture notes brief.
 
 ## Internal changes
-- Advanced the sectioned native visual runtime by deriving schemas from active fixture bindings, incrementing schema generations on structural resets, removing active native dependencies on the universal visual-channel row, applying Godot section payloads directly instead of reconstructing fixed fixture rows, and tightening guardrails against reintroducing the legacy row bridge.
-- Tightened the native-first live DMX handoff by documenting and testing the fixed visual-frame stride, removing the legacy universe decoder from Godot registration, and caching the transitional gobo bridge so live ticks update numeric gobo state without rebuilding full fixture controls.
-- Added live gobo diagnostics and bridge checks for visual-frame masks, cached controls, resolved slots, texture application, beam consumption, topology updates, parametric updates, texture compositions, and rotation/shake render-state updates, and gated non-critical fake-spotlight beam diagnostics behind beam debug logging to support the ongoing move toward native gobo state resolution.
-- Extended native visual runtime regression coverage for tilt-only changes and repeated identical DMX frames, skipped legacy time-tick fixture callbacks when the mandatory native visual runtime is active, and added focused warning-once diagnostics for missing runtime light or beam targets when dimmers are active.
-- Reworked the DMX visual apply path to require the native cooked visual runtime, apply real semantic change masks, preserve fine pan/tilt movement and update lights and beams from cooked fixture rows, and avoid the previous per-fixture capability dictionary rebuild during live playback.
 
-- Added the first modular native visual runtime core for DMX playback, with patched-universe filtering, native interest-offset hashing, latest-frame coalescing, cooked fixed-stride visual output, and regression tests for coalescing, unused universes, irrelevant channel changes, and binding rebuilds.
-- Fixed the native Art-Net flow test helper so it builds consistently with Windows toolchains.
-- Cleaned up GDScript editor warnings and class-reference loading in the MVR-xchange panel, received-file callback, DMX fixture runtime, and fixture light apply service so project reloads stay quieter for maintainers.
-- Added Perastage-compatible runtime table schemas and in-memory row storage for fixtures, trusses, and scene objects to prepare Peraviz for future cell-based synchronization without adding Live Link transport or editing UI.
-- Added a focused fixture row provider so fixture inspection UI now reads stable fixture metadata rows built from loaded MVR scene data, patch metadata, and DMX binding state instead of assembling fixture details in UI-facing code.
-- Added a focused project archive service for reading and writing the initial `.pvz` archive files.
-- Extended user preferences with lightweight session state for the last loaded file and project auto-load / DMX auto-start options.
-- Peraviz now has a dedicated version source and release-notes draft workflow.
-- Replaced wxWidgets-based native archive handling with a small libzip-backed archive layer, reducing Windows export dependencies for MVR and GDTF loading.
-- Prevented native source and CMake build output from being scanned as Godot resources, avoiding accidental imports of compiled object files in the editor.
-- Added reproducible Windows static native build presets, dependency verification guidance, and export documentation so Godot exports keep `peraviz_native.dll` under `bin/` without obsolete third-party runtime DLLs.
-
-- Added the GDTF-first native visual runtime architecture foundation, including the Peraviz/Perastage semantic contract, parser ownership ADR, support taxonomy, compiled fixture model foundation, and sectioned live frame schema validation.
-
-- Activated the first sectioned native visual-frame path for live DMX updates, including typed descriptor, integer, and float buffers for transform, intensity, color, optics, wheel, and temporal sections.
-- Added a pinned GDTF attribute registry provenance file and semantic contract fixture snapshot for future Peraviz/Perastage compatibility checks.
-
-## Internal changes
-- Replaced the native visual-runtime cache with component-oriented semantic state and typed section emission so active dirty rows are no longer assembled from a fixed 13-control state or fixed render-value array.
-- Added runtime guardrails for the GDTF component-engine migration to prevent fixed-control buffers, obsolete visual frame buffers, and universal section applier state from returning to active runtime code.
-- Restored the sectioned live DMX dimmer path by applying intensity, color, optics, wheel, motion, and temporal sections through dedicated render-domain methods so later sections no longer reset beam or light energy with partial default values.
+- Consolidated overlapping static runtime guardrails into one current architecture check.
+- Removed shell checks that preserved transitional helper names instead of validating behavior.
