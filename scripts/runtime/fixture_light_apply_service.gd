@@ -101,9 +101,7 @@ func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_fr
 		_apply_visual_frame_lighting(loader, fixture_uuid, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
 	_track_phase("fixture_apply", phase_start)
 
-func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_norm: float, tilt_norm: float) -> void:
-	var pan_degrees: float = lerp(float(loader.pan_min_input.value), float(loader.pan_max_input.value), pan_norm)
-	var tilt_degrees: float = lerp(float(loader.tilt_min_input.value), float(loader.tilt_max_input.value), tilt_norm)
+func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_degrees: float, tilt_degrees: float) -> void:
 	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
 func apply_emitter_intensity(loader: Node, fixture_uuid: String, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:

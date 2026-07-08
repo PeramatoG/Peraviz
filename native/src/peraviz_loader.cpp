@@ -6,10 +6,13 @@
 
 #ifdef PERAVIZ_ENABLE_DMX
 #include "dmx/fixture_dmx_binding.h"
+#include "gdtf_runtime/runtime_scene_compiler.h"
+#include "runtime/visual_runtime_types.h"
 #endif
 
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
@@ -122,6 +125,9 @@ void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("build_fixture_dmx_bindings", "universe_offset"),
                          &PeravizLoader::build_fixture_dmx_bindings,
                          DEFVAL(-1));
+    ClassDB::bind_method(D_METHOD("compile_visual_runtime_scene", "universe_offset"),
+                         &PeravizLoader::compile_visual_runtime_scene,
+                         DEFVAL(-1));
     // Deprecated alias kept for one release to avoid breaking existing scripts/scenes.
     ClassDB::bind_method(D_METHOD("build_fixture_dimmer_bindings", "universe_offset"),
                          &PeravizLoader::build_fixture_dimmer_bindings,
@@ -230,6 +236,131 @@ Dictionary PeravizLoader::load_3ds_mesh_data(const String &path) const {
 // Returns cached fixture patch metadata from the loaded scene.
 Array PeravizLoader::get_fixtures_patch() const {
     return serialize_fixture_patches(last_scene_model_);
+}
+
+
+// Serializes a native compiled runtime scene into the versioned packed setup contract.
+Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) const {
+    Dictionary out;
+    PackedInt32Array integers;
+    PackedFloat32Array floats;
+#ifdef PERAVIZ_ENABLE_DMX
+
+    const peraviz::runtime::CompiledRuntimeScene scene = peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, universe_offset);
+    integers.push_back(scene.contract_version);
+    integers.push_back(static_cast<int32_t>(scene.fixtures.size()));
+    integers.push_back(static_cast<int32_t>(scene.source_programs.size()));
+    integers.push_back(static_cast<int32_t>(scene.properties.size()));
+    integers.push_back(static_cast<int32_t>(scene.diagnostics.size()));
+    auto push_float = [&floats](double value) -> int32_t {
+        const int32_t index = static_cast<int32_t>(floats.size());
+        floats.push_back(static_cast<float>(value));
+        return index;
+    };
+    for (const peraviz::runtime::CompiledFixtureInstance &fixture : scene.fixtures) {
+        integers.push_back(fixture.fixture_id);
+        integers.push_back(fixture.universe_id);
+        integers.push_back(fixture.start_address);
+        integers.push_back(0);
+        integers.push_back(push_float(fixture.luminous_flux));
+        integers.push_back(push_float(fixture.beam_angle_default));
+    }
+    for (const peraviz::runtime::CompiledDmxSourceProgram &program : scene.source_programs) {
+        integers.push_back(program.program_id);
+        integers.push_back(static_cast<int32_t>(program.semantic));
+        integers.push_back(static_cast<int32_t>(program.sources.size()));
+        integers.push_back(static_cast<int32_t>(program.dmx_from));
+        integers.push_back(static_cast<int32_t>(program.dmx_to));
+        integers.push_back(push_float(program.physical_from));
+        integers.push_back(push_float(program.physical_to));
+        integers.push_back(0);
+        for (const peraviz::runtime::CompiledDmxByteSource &source : program.sources) {
+            integers.push_back(source.universe_id);
+            integers.push_back(source.address);
+            integers.push_back(source.byte_order);
+        }
+    }
+    for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+        integers.push_back(property.fixture_id);
+        integers.push_back(property.component_id);
+        integers.push_back(property.render_target_id);
+        integers.push_back(static_cast<int32_t>(property.semantic));
+        integers.push_back(static_cast<int32_t>(property.contributors.size()));
+        for (const peraviz::runtime::CompiledPropertyContributor &contributor : property.contributors) {
+            integers.push_back(contributor.source_program_id);
+            integers.push_back(push_float(contributor.weight));
+            integers.push_back(static_cast<int32_t>(contributor.operation));
+        }
+    }
+    Array diagnostics;
+    diagnostics.resize(static_cast<int64_t>(scene.diagnostics.size()));
+    for (int64_t index = 0; index < static_cast<int64_t>(scene.diagnostics.size()); ++index) {
+        const peraviz::runtime::CompiledRuntimeDiagnostic &diagnostic = scene.diagnostics[static_cast<size_t>(index)];
+        Dictionary item;
+        item["code"] = String(diagnostic.code.c_str());
+        item["severity"] = String(diagnostic.severity.c_str());
+        item["message"] = String(diagnostic.message.c_str());
+        item["subject"] = String(diagnostic.subject.c_str());
+        diagnostics[index] = item;
+    }
+    Array manifest;
+    manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
+    for (int64_t fixture_index = 0; fixture_index < static_cast<int64_t>(scene.fixtures.size()); ++fixture_index) {
+        const peraviz::runtime::CompiledFixtureInstance &fixture = scene.fixtures[static_cast<size_t>(fixture_index)];
+        Dictionary entry;
+        entry["fixture_id"] = fixture.fixture_id;
+        entry["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+        entry["gdtf_path"] = String(fixture.fixture_type_name.c_str());
+        entry["dmx_mode"] = String(fixture.dmx_mode_name.c_str());
+        entry["universe_id"] = fixture.universe_id;
+        entry["start_address"] = fixture.start_address;
+        int32_t capability_flags = 0;
+        for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+            if (property.fixture_id != fixture.fixture_id) {
+                continue;
+            }
+            if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
+                entry["dimmer_target_id"] = property.render_target_id;
+                capability_flags |= 1;
+            } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
+                entry["pan_component_id"] = property.component_id;
+                capability_flags |= 2;
+            } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
+                entry["tilt_component_id"] = property.component_id;
+                capability_flags |= 4;
+            }
+        }
+        entry["capability_flags"] = capability_flags;
+        manifest[fixture_index] = entry;
+    }
+    out["integers"] = integers;
+    out["floats"] = floats;
+    out["diagnostics"] = diagnostics;
+    out["renderer_manifest"] = manifest;
+    out["fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
+    out["program_count"] = static_cast<int32_t>(scene.source_programs.size());
+    out["property_count"] = static_cast<int32_t>(scene.properties.size());
+#else
+    integers.push_back(1);
+    integers.push_back(0);
+    integers.push_back(0);
+    integers.push_back(0);
+    integers.push_back(1);
+    Array diagnostics;
+    Dictionary diagnostic;
+    diagnostic["code"] = "PVZ-GDTF-DMX-DISABLED";
+    diagnostic["severity"] = "error";
+    diagnostic["message"] = "Native DMX/GDTF runtime compilation is disabled in this build.";
+    diagnostic["subject"] = "PeravizLoader";
+    diagnostics.push_back(diagnostic);
+    out["integers"] = integers;
+    out["floats"] = floats;
+    out["diagnostics"] = diagnostics;
+    out["fixture_count"] = 0;
+    out["program_count"] = 0;
+    out["property_count"] = 0;
+#endif
+    return out;
 }
 
 // Builds DMX control bindings for all patched fixtures.

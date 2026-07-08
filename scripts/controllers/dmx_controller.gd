@@ -359,7 +359,7 @@ func _update_dmx_toggle_color(enabled: bool, receiving_signal: bool) -> void:
 	_dmx_toggle_button.modulate = Color(0.25, 0.95, 0.25) if receiving_signal else Color(0.95, 0.25, 0.25)
 
 func _refresh_dmx_monitor_window(running: bool) -> void:
-	if _dmx_monitor_window == null or not is_instance_valid(_dmx_monitor_window):
+	if _dmx_monitor_window == null or not is_instance_valid(_dmx_monitor_window) or not _dmx_monitor_window.visible:
 		return
 	_dmx_monitor_window.refresh(running)
 

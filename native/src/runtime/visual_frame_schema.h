@@ -31,8 +31,8 @@ enum VisualSectionFlags : int32_t {
     VisualSectionFlagMandatory = 1 << 0,
 };
 
-enum GeometryTransformIntField : int32_t { GeometryTransformFixtureId = 0, GeometryTransformComponentId = 1, GeometryTransformChangedMask = 2 };
-enum GeometryTransformFloatField : int32_t { GeometryTransformPanNorm = 0, GeometryTransformTiltNorm = 1 };
+enum GeometryTransformIntField : int32_t { GeometryTransformFixtureId = 0, GeometryTransformPanComponentId = 1, GeometryTransformTiltComponentId = 2, GeometryTransformChangedMask = 3 };
+enum GeometryTransformFloatField : int32_t { GeometryTransformPanDegrees = 0, GeometryTransformTiltDegrees = 1 };
 enum EmitterIntensityIntField : int32_t { EmitterIntensityFixtureId = 0, EmitterIntensityTargetId = 1, EmitterIntensityChangedMask = 2 };
 enum EmitterIntensityFloatField : int32_t { EmitterIntensityDimmerNorm = 0, EmitterIntensityEnergy = 1, EmitterIntensitySpotEnergy = 2, EmitterIntensityBeamIntensity = 3, EmitterIntensityMaterialEnergy = 4 };
 enum EmitterColorIntField : int32_t { EmitterColorFixtureId = 0, EmitterColorTargetId = 1, EmitterColorChangedMask = 2 };

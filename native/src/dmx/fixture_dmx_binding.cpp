@@ -115,6 +115,8 @@ FixtureBindingBuildResult build_fixture_control_bindings(
 
         FixtureControlBinding binding;
         binding.fixture_uuid = patch.fixture_uuid;
+        binding.dmx_mode = patch.dmx_mode;
+        binding.gdtf_path = patch.gdtf_path;
         binding.artnet_universe_id = patch.mvr_universe + universe_offset;
         binding.scale = 1.0F;
 

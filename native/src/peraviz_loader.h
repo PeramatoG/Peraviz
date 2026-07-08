@@ -23,6 +23,7 @@ public:
     Dictionary load_3ds_mesh_data(const String &path) const;
     Array get_fixtures_patch() const;
     Dictionary build_fixture_dmx_bindings(int universe_offset = -1) const;
+    Dictionary compile_visual_runtime_scene(int universe_offset = -1) const;
     Dictionary build_fixture_dimmer_bindings(int universe_offset = -1) const;
     Dictionary get_runtime_table_schema(const String &table_id) const;
     Array get_runtime_table_rows(const String &table_id) const;

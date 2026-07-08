@@ -31,7 +31,7 @@ bool range_fits(int32_t offset, int32_t row_count, int32_t stride, size_t size, 
 VisualFrameSchema make_visual_frame_schema(int32_t schema_generation, const VisualFrameSchemaCapabilities &capabilities) {
     VisualFrameSchema schema;
     schema.schema_generation = schema_generation;
-    if (capabilities.has_transform) add_section(schema.sections, VisualSectionType::GeometryTransform, 3, 2);
+    if (capabilities.has_transform) add_section(schema.sections, VisualSectionType::GeometryTransform, 4, 2);
     if (capabilities.has_intensity) add_section(schema.sections, VisualSectionType::EmitterIntensity, 3, 5);
     if (capabilities.has_color) add_section(schema.sections, VisualSectionType::EmitterColor, 3, 3);
     if (capabilities.has_optics) add_section(schema.sections, VisualSectionType::BeamOptics, 3, 3);

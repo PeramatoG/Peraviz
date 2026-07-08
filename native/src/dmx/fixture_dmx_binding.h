@@ -92,6 +92,8 @@ struct FixtureGoboWheelBinding {
 
 struct FixtureControlBinding {
     std::string fixture_uuid;
+    std::string dmx_mode;
+    std::string gdtf_path;
     int artnet_universe_id = -1;
     FixtureAttributeChannel dimmer;
     FixtureAttributeChannel pan;

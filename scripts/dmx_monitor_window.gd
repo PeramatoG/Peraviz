@@ -10,7 +10,10 @@ var _universe_buttons: Dictionary = {}
 var _channel_panels: Array[PanelContainer] = []
 var _channel_labels: Array[Label] = []
 var _channel_values: PackedInt32Array = PackedInt32Array()
+var _channel_styles: Array[StyleBoxFlat] = []
 var _show_only_active_channels: bool = false
+var _last_selected_counter: int = -1
+var _last_selected_hash: int = -1
 
 var _state_label: Label
 var _universes_flow: FlowContainer
@@ -81,14 +84,23 @@ func _ready() -> void:
 
 		_channel_panels.append(panel)
 		_channel_labels.append(label)
-		_channel_values.append(0)
+		_channel_values.append(-1)
+		var style: StyleBoxFlat = StyleBoxFlat.new()
+		style.border_color = Color(0.05, 0.05, 0.05)
+		style.border_width_left = 1
+		style.border_width_right = 1
+		style.border_width_top = 1
+		style.border_width_bottom = 1
+		_channel_styles.append(style)
 
-		_update_channel_cell(channel_idx, 0)
+		_update_channel_cell(channel_idx, 0, true)
 
 func configure(receiver) -> void:
 	_receiver = receiver
 
 func refresh(running: bool) -> void:
+	if not visible:
+		return
 	if _receiver == null:
 		_state_label.text = "DMX unavailable"
 		return
@@ -96,11 +108,10 @@ func refresh(running: bool) -> void:
 	if not running:
 		_state_label.text = "DMX OFF"
 		_update_universe_buttons([])
-		for channel_idx in range(CHANNEL_COUNT):
-			_update_channel_cell(channel_idx, 0)
 		return
 
-	var active_universes: PackedInt32Array = _receiver.get_active_universes(2000)
+	var stats: Dictionary = _receiver.get_stats()
+	var active_universes: PackedInt32Array = stats.get("active_universes", PackedInt32Array())
 	_update_universe_buttons(active_universes)
 
 	if _selected_universe < 0 and active_universes.size() > 0:
@@ -109,17 +120,25 @@ func refresh(running: bool) -> void:
 	var selected_text: String = "none"
 	if _selected_universe >= 0:
 		selected_text = str(_selected_universe)
-	_state_label.text = "Active universes: %d | Selected universe: %s" % [active_universes.size(), selected_text]
+	var last_packet_ms: int = int(stats.get("last_packet_ms_ago", -1))
+	_state_label.text = "Running: yes | Packets/s: %d | Total: %d | Last packet: %sms | Active universes: %d | Selected: %s" % [int(stats.get("packets_per_sec", 0)), int(stats.get("total_packets", 0)), str(last_packet_ms), active_universes.size(), selected_text]
 
-	var data: PackedByteArray = PackedByteArray()
-	if _selected_universe >= 0:
-		data = _receiver.get_universe_data(_selected_universe)
-
+	if _selected_universe < 0:
+		return
+	var metadata: Dictionary = _receiver.get_universe_metadata(_selected_universe)
+	if metadata.is_empty():
+		return
+	var counter: int = int(metadata.get("counter", -1))
+	var content_hash: int = int(metadata.get("content_hash", -1))
+	if counter == _last_selected_counter and content_hash == _last_selected_hash:
+		return
+	_last_selected_counter = counter
+	_last_selected_hash = content_hash
+	var data: PackedByteArray = _receiver.get_universe_data(_selected_universe)
 	for channel_idx in range(CHANNEL_COUNT):
-		var channel_value: int = 0
-		if channel_idx < data.size():
-			channel_value = int(data[channel_idx])
-		_update_channel_cell(channel_idx, channel_value)
+		var channel_value: int = int(data[channel_idx]) if channel_idx < data.size() else 0
+		if int(_channel_values[channel_idx]) != channel_value:
+			_update_channel_cell(channel_idx, channel_value)
 
 func _update_universe_buttons(active_universes: PackedInt32Array) -> void:
 	var active_map: Dictionary = {}
@@ -150,19 +169,14 @@ func _update_universe_buttons(active_universes: PackedInt32Array) -> void:
 		_universe_buttons[uni_id] = button
 		_universes_flow.add_child(button)
 
-func _update_channel_cell(channel_idx: int, channel_value: int) -> void:
+func _update_channel_cell(channel_idx: int, channel_value: int, force: bool = false) -> void:
 	var normalized: float = clamp(float(channel_value) / 255.0, 0.0, 1.0)
 	var color: Color = Color(0.08, 0.16 + (0.84 * normalized), 0.08)
 
-	var style: StyleBoxFlat = StyleBoxFlat.new()
+	var style: StyleBoxFlat = _channel_styles[channel_idx]
 	style.bg_color = color
-	style.border_color = Color(0.05, 0.05, 0.05)
-	style.border_width_left = 1
-	style.border_width_right = 1
-	style.border_width_top = 1
-	style.border_width_bottom = 1
-
-	_channel_panels[channel_idx].add_theme_stylebox_override("panel", style)
+	if force:
+		_channel_panels[channel_idx].add_theme_stylebox_override("panel", style)
 	_channel_labels[channel_idx].text = "%03d:%03d" % [channel_idx + 1, channel_value]
 	_channel_values[channel_idx] = channel_value
 	_channel_panels[channel_idx].visible = (channel_value > 0) if _show_only_active_channels else true

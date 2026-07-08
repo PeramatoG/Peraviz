@@ -122,6 +122,7 @@ var _time_tick_fixture_ids := PackedStringArray()
 var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
 var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
+var _runtime_universe_offset: int = -1
 
 func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_loader = loader
@@ -134,6 +135,7 @@ func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: Fixt
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
 func rebuild(universe_offset: int) -> Dictionary:
+	_runtime_universe_offset = universe_offset
 	_bindings.clear()
 	_unbound.clear()
 	_fixture_patch_lookup.clear()
@@ -503,15 +505,30 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_channel_values[fixture_uuid] = {}
 
 func _register_native_visual_runtime_bindings() -> void:
-	var native_bindings: Array = []
-	for universe_key in _bindings_by_universe.keys():
-		for binding in _bindings_by_universe.get(universe_key, []):
-			if binding is Dictionary:
-				_append_native_bindings_for_fixture(native_bindings, binding)
-	_native_bindings_count = native_bindings.size()
-	_native_visual_runtime.set_fixture_bindings(native_bindings)
+	if _loader == null or not _loader.has_method("compile_visual_runtime_scene"):
+		_native_bindings_count = 0
+		return
+	var compiled_scene: Dictionary = _loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
+	_native_bindings_count = int(compiled_scene.get("property_count", 0))
+	if _native_visual_runtime.has_method("install_compiled_scene"):
+		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
+
+func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
+	for item in renderer_manifest:
+		if item is not Dictionary:
+			continue
+		var row: Dictionary = item
+		var fixture_id: int = int(row.get("fixture_id", 0))
+		var fixture_uuid: String = str(row.get("fixture_uuid", ""))
+		if fixture_id <= 0 or fixture_uuid.is_empty():
+			continue
+		_native_fixture_ids_by_uuid[fixture_uuid] = fixture_id
+		_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
+		if not _native_channel_values.has(fixture_uuid):
+			_native_channel_values[fixture_uuid] = {}
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
