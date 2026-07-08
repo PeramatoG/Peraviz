@@ -11,8 +11,8 @@ Status values:
 
 | Official family / examples | Section | Status | Notes |
 | --- | --- | --- | --- |
-| Dimmer | EmitterIntensity | partial | Native runtime-scene compiler installs eligible dimmer properties independently and emits normalized intensity for render cooking. |
-| Pan, Tilt | GeometryTransform | partial | Native runtime-scene compiler installs 8-bit through 32-bit source layouts and emits physical degrees in the transform section. |
+| Dimmer | EmitterIntensity | partial | Native runtime-scene compiler installs eligible selected-mode ChannelFunction records with preserved DMX/physical ranges and target IDs, then emits normalized intensity for render cooking. |
+| Pan, Tilt | GeometryTransform | partial | Native runtime-scene compiler installs eligible selected-mode ChannelFunction records with preserved DMX/physical ranges and component IDs, then emits physical degrees in the transform section. |
 | XYZ, Rotation, Scale | GeometryTransform | planned | Not part of the verified production slice. |
 | Cyan, Magenta, Yellow, RGB/ColorAdditive, filters | EmitterColor | planned | Must be reconnected through native compiled runtime programs before production support is claimed. |
 | Zoom, Focus, Iris, Frost | BeamOptics | planned | Must be reconnected through native compiled runtime programs before production support is claimed. |
@@ -27,7 +27,7 @@ Status values:
 
 ## Runtime architecture status
 
-- Active native compiled runtime slice: Dimmer, Pan, and Tilt from parser-owned fixture patches/control offsets into `CompiledRuntimeScene` and sectioned visual output.
+- Active native compiled runtime slice: Dimmer, Pan, and Tilt from parser-owned fixture patches, selected GDTF modes, and real ChannelFunction records into `CompiledRuntimeScene` and sectioned visual output.
 - Supported source widths for the slice: 8-bit, 16-bit, 24-bit, and 32-bit ordered source bytes, including non-adjacent byte addresses.
-- Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion. The row carries separate Pan and Tilt component IDs.
+- Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion. Transform rows carry separate Pan and Tilt component IDs, and Intensity rows carry a Dimmer render-target ID.
 - Unsupported or diagnostic-only: full ChannelSet selection, ModeMaster evaluation, Relations, DMXProfiles, ColorSpaces, Gamuts, emitters/filters beyond current visual needs, and complete wheel-slot resource selection.

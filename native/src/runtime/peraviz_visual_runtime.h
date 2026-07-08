@@ -98,6 +98,7 @@ private:
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, int32_t> dimmer_target_id_by_fixture_;
+    std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
     std::unordered_map<int32_t, CompiledDmxSourceProgram> source_programs_by_id_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;

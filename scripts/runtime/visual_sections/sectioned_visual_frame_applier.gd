@@ -87,10 +87,13 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 	match section_type:
 		SECTION_GEOMETRY_TRANSFORM:
 			if float_base + 1 >= floats.size(): return false
-			light_apply_service._apply_visual_frame_pan_tilt(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
+			var pan_component_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
+			var tilt_component_id: int = integers[int_base + 2] if int_base + 2 < integers.size() else 0
+			light_apply_service.apply_transform_targets(loader, fixture_uuid, pan_component_id, tilt_component_id, floats[float_base], floats[float_base + 1])
 		SECTION_EMITTER_INTENSITY:
 			if float_base + 4 >= floats.size(): return false
-			light_apply_service.apply_emitter_intensity(loader, fixture_uuid, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
+			var dimmer_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
+			light_apply_service.apply_emitter_intensity(loader, fixture_uuid, dimmer_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
 		SECTION_EMITTER_COLOR:
 			if float_base + 2 >= floats.size(): return false
 			light_apply_service.apply_emitter_color(loader, fixture_uuid, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))

@@ -104,7 +104,12 @@ func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_fr
 func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_degrees: float, tilt_degrees: float) -> void:
 	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
-func apply_emitter_intensity(loader: Node, fixture_uuid: String, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+func apply_transform_targets(loader: Node, fixture_uuid: String, pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> void:
+	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, pan_component_id > 0, pan_degrees, tilt_component_id > 0, tilt_degrees)
+
+func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_id: int, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+	if dimmer_target_id <= 0:
+		return
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_intensity_state(fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)

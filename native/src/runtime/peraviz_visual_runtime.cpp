@@ -28,6 +28,7 @@ void PeravizVisualRuntimeCore::clear() {
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
     dimmer_target_id_by_fixture_.clear();
+    installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
@@ -41,6 +42,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
     dimmer_target_id_by_fixture_.clear();
+    installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
     diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
@@ -106,6 +108,8 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Dimmer) dimmer_target_id_by_fixture_[property.fixture_id] = property.render_target_id;
+        const uint32_t installed_mask = visual_mask_for_parameter(parameter);
+        installed_visual_mask_by_fixture_[property.fixture_id] |= installed_mask;
         capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
         capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
         UniverseState &universe = universes_[property_universe];
@@ -217,74 +221,11 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & (VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology)) == 0U) continue;
-            const int32_t target_id = dimmer_target_id_by_fixture_.count(row.fixture_id) != 0 ? dimmer_target_id_by_fixture_[row.fixture_id] : row.fixture_id;
+            const int32_t target_id = dimmer_target_id_by_fixture_.count(row.fixture_id) != 0 ? dimmer_target_id_by_fixture_[row.fixture_id] : 0;
             frame.integers.insert(frame.integers.end(), {row.fixture_id, target_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.dimmer, row.state.beam_energy, row.state.spot_energy, row.state.beam_intensity, row.state.material_energy});
         }
         append_descriptor(frame, VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
-    }
-
-    const int32_t color_count = section_count_for(VisualChangeColor | VisualChangeMaterial);
-    if (color_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeColor | VisualChangeMaterial)) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 5, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.red, row.state.green, row.state.blue});
-        }
-        append_descriptor(frame, VisualSectionType::EmitterColor, color_count, int_offset, float_offset);
-    }
-
-    const int32_t optics_count = section_count_for(VisualChangeZoom | VisualChangeBeamTopology);
-    if (optics_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeZoom | VisualChangeBeamTopology)) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 4, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.beam_half_angle, row.state.beam_angle, row.state.zoom});
-        }
-        append_descriptor(frame, VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
-    }
-
-    const int32_t wheel_selection_count = section_count_for(VisualChangeGobo | VisualChangePrism);
-    if (wheel_selection_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeGobo | VisualChangePrism)) == 0U) continue;
-            const int32_t wheel_id = (row.changed_visual_mask & VisualChangeGobo) != 0U ? 10 : 20;
-            const int32_t resolved_slot = static_cast<int32_t>(std::round(std::clamp(row.state.gobo_select, 0.0f, 1.0f) * 6.0f));
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, wheel_id, row.fixture_id * 1000 + wheel_id, resolved_slot, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.push_back(row.state.gobo_select);
-        }
-        append_descriptor(frame, VisualSectionType::WheelSelection, wheel_selection_count, int_offset, float_offset);
-    }
-
-    const int32_t wheel_motion_count = section_count_for(VisualChangeGoboRotation | VisualChangePrism);
-    if (wheel_motion_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeGoboRotation | VisualChangePrism)) == 0U) continue;
-            const int32_t wheel_id = (row.changed_visual_mask & VisualChangeGoboRotation) != 0U ? 10 : 20;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, wheel_id, static_cast<int32_t>(row.changed_visual_mask), 0});
-            frame.floats.insert(frame.floats.end(), {row.state.gobo_index, row.state.gobo_rotation, 0.0f});
-        }
-        append_descriptor(frame, VisualSectionType::WheelMotion, wheel_motion_count, int_offset, float_offset);
-    }
-
-    const int32_t temporal_count = section_count_for(VisualChangeStrobe);
-    if (temporal_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & VisualChangeStrobe) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 13, 0, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.strobe, row.state.dimmer});
-        }
-        append_descriptor(frame, VisualSectionType::TemporalOutput, temporal_count, int_offset, float_offset);
     }
 
     frame.stats = stats_;
@@ -453,7 +394,8 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_co
     FixtureChangeResult result;
     result.changed = !previous.initialized;
     if (!previous.initialized) {
-        result.changed_visual_mask = VisualChangeTransform | VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology;
+        const auto mask_it = installed_visual_mask_by_fixture_.find(fixture_id);
+        result.changed_visual_mask = mask_it != installed_visual_mask_by_fixture_.end() ? mask_it->second : VisualChangeNone;
     } else {
         if (!nearly_equal(previous.pan, next_state.pan, kDefaultEpsilon) || !nearly_equal(previous.tilt, next_state.tilt, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Pan);
         if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Dimmer);
@@ -468,6 +410,10 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_co
         if (previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;
         result.changed = result.changed_visual_mask != VisualChangeNone;
     }
+    const auto mask_it = installed_visual_mask_by_fixture_.find(fixture_id);
+    const uint32_t installed_mask = mask_it != installed_visual_mask_by_fixture_.end() ? mask_it->second : VisualChangeNone;
+    result.changed_visual_mask &= installed_mask;
+    result.changed = result.changed_visual_mask != VisualChangeNone;
     previous = next_state;
     previous.initialized = true;
     return result;

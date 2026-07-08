@@ -31,8 +31,10 @@ Current Godot runtime responsibilities include:
 ## Current live data flow
 
 ```text
-MVR scene and parsed GDTF data
+MVR fixture patch
+  -> parsed GDTF description.xml
   -> selected DMX mode
+  -> real ChannelFunction records
   -> native compiled runtime scene
   -> native fixture instances, patch, source programs, and contributors
   -> submitted universe snapshots
@@ -48,13 +50,13 @@ The live frame format is intentionally sectioned rather than one universal fixed
 
 The native visual runtime no longer exposes the old `set_fixture_bindings(Array<Dictionary>)` or `set_fixture_render_params(Dictionary)` setup methods. The runtime core no longer uses `FixtureChannelBinding`, magic numeric `channel_type` mappings, or a legacy semantic translation table to install production visual programs.
 
-The remaining GDScript renderer-side compatibility code should be treated as orchestration and section-consumption surface area, not as the authoritative semantic runtime. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
+Godot registers the native renderer manifest once during structural setup and applies live Transform and Intensity rows through the native component and render-target IDs carried by each row. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
 
 ## Verified GDTF/runtime coverage
 
-- Dimmer: 8-bit source values are assembled and normalized in native compiled programs.
-- Pan: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
-- Tilt: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
+- Dimmer: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and render-target ownership for native evaluation.
+- Pan: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
+- Tilt: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
 - The generic source reader accepts one to four ordered bytes, so 8-bit, 16-bit, 24-bit, and 32-bit source layouts are supported by the runtime model.
 - One resolved component property can reference multiple weighted compiled source contributors.
 - Transform section rows use integer payloads `[fixture_id, pan_component_id, tilt_component_id, changed_mask]` and float payloads `[pan_degrees, tilt_degrees]`.
@@ -63,7 +65,7 @@ The remaining GDScript renderer-side compatibility code should be treated as orc
 
 ## Known unsupported GDTF semantics
 
-ModeMaster, Relations, virtual attributes, complex ChannelSet selection, color mixing, gobos, prisms, strobe curves, repeated emitters, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
+ModeMaster, Relations, virtual attributes, complex ChannelSet selection, CMY/RGB/color wheels/CTO, gobos, prisms, strobe curves, repeated emitters, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
 
 ## Runtime invariants
 

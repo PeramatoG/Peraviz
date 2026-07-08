@@ -1,7 +1,11 @@
 #include "runtime/peraviz_visual_runtime.h"
+#include "gdtf_runtime/runtime_scene_compiler.h"
+#include "archive/zip_archive.h"
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <vector>
 
@@ -11,6 +15,27 @@ namespace {
 int fail(const char *message) {
     std::cerr << message << std::endl;
     return 1;
+}
+
+
+// Derives the repository root path relative to this source file.
+std::filesystem::path repo_root_from_source() {
+    return std::filesystem::weakly_canonical(std::filesystem::path(__FILE__)).parent_path().parent_path().parent_path();
+}
+
+// Reads an entire text file into memory.
+std::string read_file(const std::filesystem::path &path) {
+    std::ifstream file(path);
+    if (!file.good()) return {};
+    return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+}
+
+// Creates a minimal GDTF archive with the provided XML.
+bool write_gdtf_archive(const std::filesystem::path &path, const std::string &description_xml) {
+    peraviz::archive::ZipArchive archive;
+    if (!archive.open_create_or_modify(path)) return false;
+    if (!archive.write_file("description.xml", description_xml)) return false;
+    return archive.close();
 }
 
 // Creates a compiled Dimmer/Pan/Tilt scene with stable fixture-owned IDs.
@@ -115,6 +140,65 @@ int test_multiple_contributors() {
     return 0;
 }
 
+// Verifies parser-owned scene compilation and runtime output from real ChannelFunction records.
+int test_parser_owned_runtime_scene() {
+    const std::filesystem::path repo_root = repo_root_from_source();
+    const std::string golden_xml = read_file(repo_root / "native/tests/data/golden_fixture_description.xml");
+    if (golden_xml.empty()) return fail("Failed to read golden fixture XML");
+    const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "peraviz_native_visual_runtime_tests";
+    std::error_code ec;
+    std::filesystem::create_directories(temp_dir, ec);
+    const std::filesystem::path gdtf_path = temp_dir / "golden_fixture.gdtf";
+    if (!write_gdtf_archive(gdtf_path, golden_xml)) return fail("Failed to write parser-owned runtime test GDTF");
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"fixture-a", 10, 1, "Standard", gdtf_path.string()});
+    model.fixture_patches.push_back({"fixture-b", 10, 101, "Standard", gdtf_path.string()});
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
+    if (scene.fixtures.size() != 2 || scene.properties.size() < 6) return fail("Expected two compiled fixtures with Dimmer/Pan/Tilt properties");
+    bool saw_pan = false;
+    bool saw_tilt = false;
+    bool saw_dimmer = false;
+    for (const auto &program : scene.source_programs) {
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
+            saw_dimmer = true;
+            if (program.dmx_from != 0 || program.dmx_to != 255 || std::fabs(program.physical_from - 0.0) > 0.001 || std::fabs(program.physical_to - 1.0) > 0.001) return fail("Unexpected Dimmer ChannelFunction range");
+            if (program.sources.empty() || program.sources[0].address != 0) return fail("Unexpected Dimmer source address");
+        }
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Pan) {
+            saw_pan = true;
+            if (program.sources.size() < 2 || program.sources[0].address != 3 || program.sources[1].address != 4) return fail("Unexpected Pan coarse/fine source addresses");
+            if (std::fabs(program.physical_from + 270.0) > 0.001 || std::fabs(program.physical_to - 270.0) > 0.001) return fail("Unexpected Pan physical range");
+        }
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
+            saw_tilt = true;
+            if (program.sources.size() < 2 || program.sources[0].address != 5 || program.sources[1].address != 6) return fail("Unexpected Tilt coarse/fine source addresses");
+            if (std::fabs(program.physical_from + 135.0) > 0.001 || std::fabs(program.physical_to - 135.0) > 0.001) return fail("Unexpected Tilt physical range");
+        }
+    }
+    if (!saw_dimmer || !saw_pan || !saw_tilt) return fail("Expected real Dimmer/Pan/Tilt ChannelFunction programs");
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(160, 0);
+    dmx[0] = 255;
+    dmx[3] = 0xff;
+    dmx[4] = 0xff;
+    dmx[5] = 0x80;
+    dmx[6] = 0x00;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (visual.descriptors.size() != peraviz::runtime::kVisualSectionDescriptorStride * 2) return fail("Expected only Transform and Intensity sections");
+    bool has_transform = false;
+    bool has_intensity = false;
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= visual.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        has_transform = has_transform || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GeometryTransform);
+        has_intensity = has_intensity || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity);
+    }
+    if (!has_transform || !has_intensity) return fail("Expected transform and intensity output sections");
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged relevant DMX to produce no dirty rows");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -123,5 +207,6 @@ int main() {
     if (test_non_adjacent_16_bit_value() != 0) return 1;
     if (test_more_than_two_source_bytes() != 0) return 1;
     if (test_multiple_contributors() != 0) return 1;
+    if (test_parser_owned_runtime_scene() != 0) return 1;
     return 0;
 }
