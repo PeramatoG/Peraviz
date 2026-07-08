@@ -261,6 +261,7 @@ if(BUILD_TESTING)
         src/dmx/gdtf_physical_ranges.cpp
         src/dmx/gdtf_gobo_catalog.cpp
         src/archive/zip_archive.cpp
+        src/asset_cache.cpp
     )
     target_include_directories(peraviz_native_visual_runtime_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"

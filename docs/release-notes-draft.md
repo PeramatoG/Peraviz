@@ -18,6 +18,6 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
-- Replaced the native visual runtime setup authority with a compiled scene contract for the verified Dimmer, Pan, and Tilt slice, including multi-fixture installation, partial-capability fixtures, stable runtime IDs, weighted contributors, physical Pan/Tilt degrees, multi-byte DMX source evaluation, and complete native source registration for the runtime compiler.
+- Replaced the native visual runtime setup authority with a compiled scene contract for the verified Dimmer, Pan, and Tilt slice, including multi-fixture installation, partial-capability fixtures, stable runtime IDs, weighted contributors, physical Pan/Tilt degrees, multi-byte DMX source evaluation, and complete native source registration for the runtime compiler and its asset extraction dependencies.
 - Consolidated overlapping static runtime guardrails into one current architecture check.
 - Removed shell checks that preserved transitional helper names instead of validating behavior.
