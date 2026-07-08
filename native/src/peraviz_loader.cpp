@@ -303,9 +303,40 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         item["subject"] = String(diagnostic.subject.c_str());
         diagnostics[index] = item;
     }
+    Array manifest;
+    manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
+    for (int64_t fixture_index = 0; fixture_index < static_cast<int64_t>(scene.fixtures.size()); ++fixture_index) {
+        const peraviz::runtime::CompiledFixtureInstance &fixture = scene.fixtures[static_cast<size_t>(fixture_index)];
+        Dictionary entry;
+        entry["fixture_id"] = fixture.fixture_id;
+        entry["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+        entry["gdtf_path"] = String(fixture.fixture_type_name.c_str());
+        entry["dmx_mode"] = String(fixture.dmx_mode_name.c_str());
+        entry["universe_id"] = fixture.universe_id;
+        entry["start_address"] = fixture.start_address;
+        int32_t capability_flags = 0;
+        for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+            if (property.fixture_id != fixture.fixture_id) {
+                continue;
+            }
+            if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
+                entry["dimmer_target_id"] = property.render_target_id;
+                capability_flags |= 1;
+            } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
+                entry["pan_component_id"] = property.component_id;
+                capability_flags |= 2;
+            } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
+                entry["tilt_component_id"] = property.component_id;
+                capability_flags |= 4;
+            }
+        }
+        entry["capability_flags"] = capability_flags;
+        manifest[fixture_index] = entry;
+    }
     out["integers"] = integers;
     out["floats"] = floats;
     out["diagnostics"] = diagnostics;
+    out["renderer_manifest"] = manifest;
     out["fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
     out["program_count"] = static_cast<int32_t>(scene.source_programs.size());
     out["property_count"] = static_cast<int32_t>(scene.properties.size());

@@ -51,7 +51,7 @@ int test_compiled_scene_e2e() {
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     const auto visual = runtime.consume_latest_visual_frame();
     if (visual.descriptors.size() < peraviz::runtime::kVisualSectionDescriptorStride * 2) return fail("Expected transform and intensity sections");
-    if (visual.integers.size() < 6 || visual.integers[1] != 101 || visual.integers[4] != 1001) return fail("Expected stable IDs from compiled scene rows");
+    if (visual.integers.size() < 7 || visual.integers[1] != 101 || visual.integers[2] != 101 || visual.integers[5] != 1001) return fail("Expected stable IDs from compiled scene rows");
     if (visual.floats.empty()) return fail("Expected cooked float payloads");
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Unchanged relevant DMX values should not dirty output");

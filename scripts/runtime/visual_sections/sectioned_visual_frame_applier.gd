@@ -117,6 +117,8 @@ func _changed_mask_for_row(section_type: int, int_base: int, integers: PackedInt
 		return integers[int_base + 2]
 	if section_type == SECTION_TEMPORAL_OUTPUT and int_base + 3 < integers.size():
 		return integers[int_base + 3]
+	if section_type == SECTION_GEOMETRY_TRANSFORM and int_base + 3 < integers.size():
+		return integers[int_base + 3]
 	if int_base + 2 < integers.size():
 		return integers[int_base + 2]
 	return 0

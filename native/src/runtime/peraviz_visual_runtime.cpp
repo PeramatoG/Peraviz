@@ -203,8 +203,9 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & VisualChangeTransform) == 0U) continue;
-            const int32_t component_id = pan_component_id_by_fixture_.count(row.fixture_id) != 0 ? pan_component_id_by_fixture_[row.fixture_id] : row.fixture_id;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, component_id, static_cast<int32_t>(row.changed_visual_mask)});
+            const int32_t pan_component_id = pan_component_id_by_fixture_.count(row.fixture_id) != 0 ? pan_component_id_by_fixture_[row.fixture_id] : 0;
+            const int32_t tilt_component_id = tilt_component_id_by_fixture_.count(row.fixture_id) != 0 ? tilt_component_id_by_fixture_[row.fixture_id] : 0;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, pan_component_id, tilt_component_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.pan, row.state.tilt});
         }
         append_descriptor(frame, VisualSectionType::GeometryTransform, transform_count, int_offset, float_offset);

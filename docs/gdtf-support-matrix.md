@@ -29,5 +29,5 @@ Status values:
 
 - Active native compiled runtime slice: Dimmer, Pan, and Tilt from parser-owned fixture patches/control offsets into `CompiledRuntimeScene` and sectioned visual output.
 - Supported source widths for the slice: 8-bit, 16-bit, 24-bit, and 32-bit ordered source bytes, including non-adjacent byte addresses.
-- Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion.
+- Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion. The row carries separate Pan and Tilt component IDs.
 - Unsupported or diagnostic-only: full ChannelSet selection, ModeMaster evaluation, Relations, DMXProfiles, ColorSpaces, Gamuts, emitters/filters beyond current visual needs, and complete wheel-slot resource selection.

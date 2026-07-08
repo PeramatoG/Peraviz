@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <unordered_map>
 
 namespace peraviz::gdtf_runtime {
@@ -21,10 +20,17 @@ dmx::FixturePatch to_dmx_patch(const SceneModel::FixturePatch &patch) {
     return out;
 }
 
-// Creates deterministic nonzero IDs from fixture UUID and semantic labels.
+// Creates deterministic nonzero IDs from fixture UUID and semantic labels using FNV-1a.
 int32_t stable_id(const std::string &fixture_uuid, const char *label) {
-    const std::size_t hash = std::hash<std::string>{}(fixture_uuid + ":" + label);
-    return static_cast<int32_t>((hash % 2000000000U) + 1U);
+    constexpr uint64_t fnv_offset = 1469598103934665603ULL;
+    constexpr uint64_t fnv_prime = 1099511628211ULL;
+    uint64_t hash = fnv_offset;
+    const std::string key = fixture_uuid + ":" + label;
+    for (unsigned char value : key) {
+        hash ^= static_cast<uint64_t>(value);
+        hash *= fnv_prime;
+    }
+    return static_cast<int32_t>((hash % 2000000000ULL) + 1ULL);
 }
 
 // Appends valid channel bytes in coarse-to-fine order.
@@ -89,7 +95,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
     int32_t next_program_id = 1;
     for (const dmx::FixtureControlBinding &binding : bindings.bindings) {
         const int32_t fixture_id = stable_id(binding.fixture_uuid, "fixture");
-        out.fixtures.push_back({fixture_id, binding.fixture_uuid, "", "", binding.artnet_universe_id, 1, 10000.0, 25.0, 1.0, 20.0});
+        out.fixtures.push_back({fixture_id, binding.fixture_uuid, binding.gdtf_path, binding.dmx_mode, binding.artnet_universe_id, 1, 10000.0, 25.0, 1.0, 20.0});
         const std::size_t property_start = out.properties.size();
         add_property(out, next_program_id, binding, "Dimmer", runtime::CompiledSemantic::Dimmer, binding.dimmer, 0.0, 1.0);
         add_property(out, next_program_id, binding, "Pan", runtime::CompiledSemantic::Pan, binding.pan, -270.0, 270.0);

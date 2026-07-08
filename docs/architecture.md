@@ -8,7 +8,7 @@ This is the short technical source of truth for the active Peraviz runtime. Pera
 
 The active live output remains the native sectioned visual frame. `SectionedVisualFrame` carries section descriptors plus separate integer and float payload arrays. The Godot bridge exposes the latest completed frame as a `Dictionary` with `descriptors`, `integers`, `floats`, and schema data for the section applier.
 
-The production setup authority for the visual runtime is now a native compiled scene contract produced by the loader-owned native GDTF/MVR compiler. It installs stable fixture, component, render-target, patch, DMX source-program, and property-contributor records before live frames are submitted. The initial verified production slice covers independently compiled Dimmer, Pan, and Tilt properties.
+The production setup authority for the visual runtime is now a native compiled scene contract produced by the loader-owned native GDTF/MVR compiler. It installs stable fixture, component, render-target, patch, DMX source-program, property-contributor, and renderer-manifest records before live frames are submitted. The current Dimmer/Pan/Tilt slice is native-first, with application verification still required before broader production claims.
 
 Current native runtime responsibilities include:
 
@@ -57,7 +57,9 @@ The remaining GDScript renderer-side compatibility code should be treated as orc
 - Tilt: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
 - The generic source reader accepts one to four ordered bytes, so 8-bit, 16-bit, 24-bit, and 32-bit source layouts are supported by the runtime model.
 - One resolved component property can reference multiple weighted compiled source contributors.
+- Transform section rows use integer payloads `[fixture_id, pan_component_id, tilt_component_id, changed_mask]` and float payloads `[pan_degrees, tilt_degrees]`.
 - Transform section Pan/Tilt values are physical degrees, not normalized values.
+- The technical DMX monitor is on-demand: hidden windows perform no grid refresh work, and visible windows copy the selected universe only when metadata changes.
 
 ## Known unsupported GDTF semantics
 
