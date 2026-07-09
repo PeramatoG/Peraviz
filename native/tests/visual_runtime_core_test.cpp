@@ -242,6 +242,41 @@ int test_full_resolution_ranges_and_function_selection() {
     return 0;
 }
 
+// Verifies scoped parser traversal accepts direct channel wrappers and infers missing DMXTo ranges.
+int test_direct_channels_and_inferred_ranges() {
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF><DMXModes><DMXMode Name="DirectMode">
+  <VendorWrapper><DMXChannel Offset="1"><LogicalChannel Attribute="Dimmer">
+    <ChannelFunction Name="DimmerLow" Attribute="Dimmer" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="0.25" />
+    <ChannelFunction Name="DimmerHigh" Attribute="Dimmer" DMXFrom="128/1" PhysicalFrom="0.5" PhysicalTo="1" />
+  </LogicalChannel></DMXChannel></VendorWrapper>
+  <DMXChannel Offset="2,3" Geometry="PanAxis"><LogicalChannel Attribute="Pan">
+    <ChannelFunction Name="Pan16" Attribute="Pan" DMXFrom="0/2" PhysicalFrom="-100" PhysicalTo="100" />
+  </LogicalChannel></DMXChannel>
+</DMXMode></DMXModes></GDTF>)XML";
+    const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "peraviz_native_visual_runtime_tests";
+    std::error_code ec;
+    std::filesystem::create_directories(temp_dir, ec);
+    const std::filesystem::path gdtf_path = temp_dir / "direct_fixture.gdtf";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Failed to write direct-channel fixture GDTF");
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"direct-a", 1, 1, " DirectMode ", gdtf_path.string()});
+    model.fixture_patches.push_back({"direct-b", 1, 11, "directmode", gdtf_path.string()});
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, -1);
+    if (scene.gdtf_files_opened != 1) return fail("Expected fixture type compilation cache to parse one GDTF for two patches");
+    if (scene.dmxchannel_records_found < 2 || scene.channel_functions_found < 3) return fail("Expected robust scoped DMXChannel traversal diagnostics");
+    bool saw_low = false;
+    bool saw_high = false;
+    bool saw_pan = false;
+    for (const auto &program : scene.source_programs) {
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Dimmer && program.function_name == "DimmerLow") saw_low = program.dmx_from == 0 && program.dmx_to == 127;
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Dimmer && program.function_name == "DimmerHigh") saw_high = program.dmx_from == 128 && program.dmx_to == 255;
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Pan) saw_pan = program.dmx_from == 0 && program.dmx_to == 65535 && program.sources[0].universe_id == 0;
+    }
+    if (!saw_low || !saw_high || !saw_pan) return fail("Expected inferred Dimmer ranges and 16-bit Pan range on offset-adjusted universe");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -252,5 +287,6 @@ int main() {
     if (test_multiple_contributors() != 0) return 1;
     if (test_parser_owned_runtime_scene() != 0) return 1;
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
+    if (test_direct_channels_and_inferred_ranges() != 0) return 1;
     return 0;
 }

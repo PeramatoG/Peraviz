@@ -114,15 +114,16 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 		return {"dimmer_requested": dimmer_target_id > 0, "dimmer_applied": false, "failed": 1}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_intensity_state(fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
-	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
-	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
+	var target_record: Dictionary = loader._get_native_dimmer_target_record(dimmer_target_id) if loader.has_method("_get_native_dimmer_target_record") else {}
+	var geometry_nodes: Array = target_record.get("geometry_nodes", [])
+	var emitter_nodes: Array = target_record.get("emitter_nodes", [])
 	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
 		_warn_visual_once(fixture_uuid + ":no_visual_nodes", "Fixture %s has dimmer %.3f but no geometry or emitter nodes." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001)
 		return {"dimmer_requested": true, "dimmer_applied": false, "failed": 1}
 	var beam_color: Color = _fixture_render_color(fixture_uuid)
 	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
-	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
-	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
+	var emitter_photometrics: Array = target_record.get("emitter_photometrics", [])
+	var emitter_lights: Array = target_record.get("emitter_lights", [])
 	var visible_beams: int = 0
 	var visible_lights: int = 0
 	for index in range(emitter_lights.size()):

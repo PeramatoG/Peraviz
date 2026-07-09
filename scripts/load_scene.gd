@@ -58,6 +58,7 @@ var _native_pan_targets: Dictionary = {}
 var _native_tilt_targets: Dictionary = {}
 var _native_dimmer_targets: Dictionary = {}
 var _native_target_resolution_failures: Dictionary = {}
+var _native_geometry_targets_by_key: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
@@ -1671,6 +1672,8 @@ func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 	_native_tilt_targets.clear()
 	_native_dimmer_targets.clear()
 	_native_target_resolution_failures.clear()
+	_native_geometry_targets_by_key.clear()
+	_build_native_geometry_target_map(renderer_manifest)
 	for item in renderer_manifest:
 		if item is not Dictionary:
 			continue
@@ -1682,25 +1685,54 @@ func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 		_register_native_axis_target(_native_tilt_targets, row, int(row.get("tilt_component_id", 0)), fixture_uuid, str(row.get("tilt_geometry_key", "")), "tilt")
 		_register_native_dimmer_target(row, int(row.get("dimmer_target_id", 0)), fixture_uuid, str(row.get("dimmer_geometry_key", "")))
 
+func _build_native_geometry_target_map(renderer_manifest: Array) -> void:
+	var fixture_uuids: Dictionary = {}
+	for item in renderer_manifest:
+		if item is Dictionary:
+			var fixture_uuid: String = str(item.get("fixture_uuid", ""))
+			if not fixture_uuid.is_empty():
+				fixture_uuids[fixture_uuid] = true
+	for fixture_uuid in fixture_uuids.keys():
+		for node in _get_fixture_geometry_nodes(str(fixture_uuid)):
+			var node3d: Node3D = node as Node3D
+			if node3d == null:
+				continue
+			var key: String = str(node3d.get_meta("peraviz_gdtf_geometry_key", ""))
+			if not key.is_empty():
+				_native_geometry_targets_by_key[key] = node3d
+		for node in _get_fixture_emitter_nodes(str(fixture_uuid)):
+			var emitter3d: Node3D = node as Node3D
+			if emitter3d == null:
+				continue
+			var emitter_key: String = str(emitter3d.get_meta("peraviz_gdtf_geometry_key", ""))
+			if not emitter_key.is_empty():
+				_native_geometry_targets_by_key[emitter_key] = emitter3d
+
 func _register_native_axis_target(targets: Dictionary, manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String, role: String) -> void:
 	if target_id <= 0:
 		return
-	var axis_entry: Dictionary = _get_fixture_axis_nodes(fixture_uuid)
-	var target: Node3D = _find_node_by_geometry_key(axis_entry.values(), geometry_key)
+	var target: Node3D = _native_geometry_targets_by_key.get(geometry_key, null) as Node3D
 	if target == null:
-		_native_target_resolution_failures[target_id] = _target_failure(manifest_row, target_id, role, "No axis node has canonical geometry key %s" % geometry_key)
+		_native_target_resolution_failures[target_id] = _target_failure(manifest_row, target_id, role, "No imported geometry node has canonical geometry key %s" % geometry_key)
 		return
 	targets[target_id] = target
 
 func _register_native_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:
 		return
-	var nodes: Array = _get_fixture_emitter_nodes(fixture_uuid)
-	var target: Node3D = _find_node_by_geometry_key(nodes, geometry_key)
+	var target: Node3D = _native_geometry_targets_by_key.get(geometry_key, null) as Node3D
 	if target == null:
-		_native_target_resolution_failures[target_id] = _target_failure(manifest_row, target_id, "dimmer", "No emitter node has canonical geometry key %s" % geometry_key)
+		_native_target_resolution_failures[target_id] = _target_failure(manifest_row, target_id, "dimmer", "No imported emitter node has canonical geometry key %s" % geometry_key)
 		return
-	_native_dimmer_targets[target_id] = {"fixture_uuid": fixture_uuid, "node": target}
+	var target_nodes: Array = [target]
+	_native_dimmer_targets[target_id] = {
+		"fixture_uuid": fixture_uuid,
+		"node": target,
+		"geometry_nodes": target_nodes,
+		"emitter_nodes": target_nodes,
+		"emitter_lights": _collect_fixture_emitter_lights("%s:%d" % [fixture_uuid, target_id], target_nodes),
+		"emitter_photometrics": _get_fixture_emitter_photometrics(fixture_uuid),
+	}
 
 func _find_node_by_geometry_key(nodes: Array, geometry_key: String) -> Node3D:
 	for node in nodes:
@@ -1742,6 +1774,11 @@ func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: i
 
 func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
 	return dimmer_target_id > 0 and _native_dimmer_targets.has(dimmer_target_id)
+
+func _get_native_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
+	if dimmer_target_id <= 0:
+		return {}
+	return _native_dimmer_targets.get(dimmer_target_id, {})
 
 func _get_native_target_registry_summary() -> Dictionary:
 	return {

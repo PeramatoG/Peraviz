@@ -529,6 +529,30 @@ func _register_native_visual_runtime_bindings() -> void:
 		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
+	_report_native_setup_summary()
+
+func _report_native_setup_summary() -> void:
+	var summary: Dictionary = _native_setup_summary.duplicate(true)
+	var dpt_count: int = int(summary.get("dimmer_property_count", 0)) + int(summary.get("pan_property_count", 0)) + int(summary.get("tilt_property_count", 0))
+	print("[native-dpt-setup] mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offsets=%s manifest_fixtures=%d installed_native_properties=%d" % [
+		int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))),
+		int(summary.get("gdtf_files_opened", 0)),
+		int(summary.get("selected_modes_found", 0)),
+		int(summary.get("dmxchannels_found", 0)),
+		int(summary.get("dmxchannel_records_found", 0)),
+		int(summary.get("logical_channels_found", 0)),
+		int(summary.get("channel_functions_found", 0)),
+		int(summary.get("dimmer_program_count", 0)),
+		int(summary.get("pan_program_count", 0)),
+		int(summary.get("tilt_program_count", 0)),
+		int(_native_bindings_count),
+		str(summary.get("used_universes", {})),
+		str(summary.get("relevant_offsets_by_universe", {})),
+		int(summary.get("manifest_fixture_count", 0)),
+		int(summary.get("installed_native_properties", _native_bindings_count)),
+	])
+	if int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))) > 0 and dpt_count == 0:
+		push_error("Native Dimmer/Pan/Tilt runtime installed zero properties for patched fixtures; live DMX visualization will not produce DPT rows.")
 
 func _register_compiled_runtime_submission_metadata(compiled_scene: Dictionary) -> void:
 	_compiled_used_universes.clear()
@@ -557,6 +581,12 @@ func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
 		_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
 		if not _native_channel_values.has(fixture_uuid):
 			_native_channel_values[fixture_uuid] = {}
+		var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid) if _scene_registry != null else null
+		if fixture_node != null:
+			_fixture_nodes[fixture_uuid] = fixture_node
+			_bound_fixture_ids[fixture_uuid] = true
+			if _loader != null and _loader.has_method("_prepare_fixture_node_cache"):
+				_loader._prepare_fixture_node_cache(fixture_uuid)
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))

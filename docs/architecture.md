@@ -33,7 +33,8 @@ Current Godot runtime responsibilities include:
 ```text
 MVR fixture patch
   -> parser-owned selected GDTF DMX mode model
-  -> real DMXChannels / DMXChannel / LogicalChannel / ChannelFunction records
+  -> scoped DMXChannel records under the selected mode, including standard DMXChannels wrappers and harmless vendor wrappers
+  -> LogicalChannel / ChannelFunction records with inferred or explicit full-resolution DMX ranges
   -> CompiledGdtfFixtureType
   -> native compiled runtime scene
   -> native fixture instances, patch, source programs, and contributors
@@ -41,6 +42,7 @@ MVR fixture patch
   -> relevant-slot filtering and native DMX evaluation
   -> dirty SectionedVisualFrame descriptors + integer payloads + float payloads
   -> Godot sectioned frame applier
+  -> exact cached native target IDs resolved from canonical GDTF geometry keys
   -> cached renderer nodes, materials, lights, and beams
 ```
 

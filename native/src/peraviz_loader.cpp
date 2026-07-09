@@ -326,18 +326,21 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
                 entry["dimmer_geometry_id"] = property.geometry_id;
                 entry["dimmer_geometry_name"] = String(property.geometry_name.c_str());
                 entry["dimmer_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
+                entry["dimmer_geometry_path"] = String(property.geometry_name.c_str());
                 capability_flags |= 1;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
                 entry["pan_component_id"] = property.component_id;
                 entry["pan_geometry_id"] = property.geometry_id;
                 entry["pan_geometry_name"] = String(property.geometry_name.c_str());
                 entry["pan_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
+                entry["pan_geometry_path"] = String(property.geometry_name.c_str());
                 capability_flags |= 2;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
                 entry["tilt_component_id"] = property.component_id;
                 entry["tilt_geometry_id"] = property.geometry_id;
                 entry["tilt_geometry_name"] = String(property.geometry_name.c_str());
                 entry["tilt_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
+                entry["tilt_geometry_path"] = String(property.geometry_name.c_str());
                 capability_flags |= 4;
             }
         }
@@ -368,12 +371,23 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         }
     }
     Dictionary setup_summary;
+    setup_summary["mvr_fixture_patches"] = scene.mvr_fixture_patches;
     setup_summary["scene_fixture_count"] = static_cast<int32_t>(last_scene_model_.fixture_patches.size());
+    setup_summary["gdtf_files_opened"] = scene.gdtf_files_opened;
+    setup_summary["selected_modes_found"] = scene.selected_modes_found;
+    setup_summary["dmxchannels_found"] = scene.dmxchannels_containers_found;
+    setup_summary["dmxchannel_records_found"] = scene.dmxchannel_records_found;
+    setup_summary["logical_channels_found"] = scene.logical_channels_found;
+    setup_summary["channel_functions_found"] = scene.channel_functions_found;
+    setup_summary["dimmer_program_count"] = scene.dimmer_program_count;
+    setup_summary["pan_program_count"] = scene.pan_program_count;
+    setup_summary["tilt_program_count"] = scene.tilt_program_count;
     setup_summary["compiled_fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
     setup_summary["dimmer_property_count"] = dimmer_property_count;
     setup_summary["pan_property_count"] = pan_property_count;
     setup_summary["tilt_property_count"] = tilt_property_count;
     setup_summary["source_program_count"] = static_cast<int32_t>(scene.source_programs.size());
+    setup_summary["installed_native_properties"] = static_cast<int32_t>(scene.properties.size());
     setup_summary["used_universes"] = used_universes;
     setup_summary["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
     setup_summary["manifest_fixture_count"] = static_cast<int32_t>(manifest.size());

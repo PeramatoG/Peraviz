@@ -7,6 +7,7 @@ class FakeLoader:
 	extends Node
 	var pan_node := Node3D.new()
 	var tilt_node := Node3D.new()
+	var dimmer_node := Node3D.new()
 	var dimmer_valid: bool = true
 
 	func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
@@ -25,6 +26,17 @@ class FakeLoader:
 
 	func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
 		return dimmer_valid and dimmer_target_id == 201
+
+	func _get_native_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
+		if not dimmer_valid or dimmer_target_id != 201:
+			return {}
+		var light := SpotLight3D.new()
+		return {
+			"geometry_nodes": [dimmer_node],
+			"emitter_nodes": [dimmer_node],
+			"emitter_lights": [light],
+			"emitter_photometrics": [],
+		}
 
 	func _get_fixture_geometry_nodes(_fixture_uuid: String) -> Array:
 		return [Node3D.new()]

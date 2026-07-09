@@ -89,6 +89,16 @@ struct CompiledRuntimeDiagnostic {
 
 struct CompiledRuntimeScene {
     int32_t contract_version = 1;
+    int32_t mvr_fixture_patches = 0;
+    int32_t gdtf_files_opened = 0;
+    int32_t selected_modes_found = 0;
+    int32_t dmxchannels_containers_found = 0;
+    int32_t dmxchannel_records_found = 0;
+    int32_t logical_channels_found = 0;
+    int32_t channel_functions_found = 0;
+    int32_t dimmer_program_count = 0;
+    int32_t pan_program_count = 0;
+    int32_t tilt_program_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;

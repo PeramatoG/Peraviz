@@ -1,6 +1,7 @@
 #include "gdtf_runtime/runtime_scene_compiler.h"
 
 #include "dmx/gdtf_attribute_classifier.h"
+#include "dmx/gdtf_xml_reader.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 
 #include <algorithm>
@@ -96,6 +97,24 @@ void check_generated_id(std::unordered_set<int32_t> &ids, runtime::CompiledRunti
     if (id <= 0 || !ids.insert(id).second) scene.diagnostics.push_back({"PVZ-RUNTIME-ID-COLLISION", "error", "Native compiler generated an invalid or duplicate runtime ID.", subject});
 }
 
+// Builds a cache key for parser-owned fixture type compilation.
+std::string fixture_type_cache_key(const SceneModel::FixturePatch &patch) {
+    return patch.gdtf_path + "\n" + dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
+}
+
+// Adds parser setup counters from a unique fixture type into the runtime setup report.
+void add_fixture_type_counters(runtime::CompiledRuntimeScene &out, const CompiledGdtfFixtureType &fixture_type) {
+    out.gdtf_files_opened += fixture_type.gdtf_files_opened;
+    out.selected_modes_found += fixture_type.selected_modes_found;
+    out.dmxchannels_containers_found += fixture_type.dmxchannels_containers_found;
+    out.dmxchannel_records_found += fixture_type.dmxchannel_records_found;
+    out.logical_channels_found += fixture_type.logical_channels_found;
+    out.channel_functions_found += fixture_type.channel_functions_found;
+    out.dimmer_program_count += fixture_type.dimmer_program_count;
+    out.pan_program_count += fixture_type.pan_program_count;
+    out.tilt_program_count += fixture_type.tilt_program_count;
+}
+
 // Appends one runtime property containing all ChannelFunction programs for the same component.
 void append_property(runtime::CompiledRuntimeScene &scene,
                      const SceneModel::FixturePatch &patch,
@@ -147,8 +166,10 @@ void append_property(runtime::CompiledRuntimeScene &scene,
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
 runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset) {
     runtime::CompiledRuntimeScene out;
+    out.mvr_fixture_patches = static_cast<int32_t>(scene.fixture_patches.size());
     int32_t next_program_id = 1;
     std::unordered_set<int32_t> generated_ids;
+    std::unordered_map<std::string, CompiledGdtfFixtureType> fixture_type_cache;
     for (const SceneModel::FixturePatch &patch : scene.fixture_patches) {
         if (patch.fixture_uuid.empty() || patch.mvr_universe <= 0 || patch.mvr_address <= 0 || patch.mvr_address > 512 || patch.dmx_mode.empty() || patch.gdtf_path.empty()) {
             out.diagnostics.push_back({"PVZ-GDTF-FIXTURE-SKIPPED", "warning", "Fixture patch is missing UUID, mode, GDTF path, universe, or address.", patch.fixture_uuid});
@@ -157,7 +178,13 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const int artnet_universe = patch.mvr_universe + universe_offset;
         const int32_t fixture_id = stable_id(patch.fixture_uuid, "fixture");
         check_generated_id(generated_ids, out, fixture_id, patch.fixture_uuid);
-        const CompiledGdtfFixtureType fixture_type = compile_gdtf_fixture_type(patch.gdtf_path, patch.dmx_mode);
+        const std::string cache_key = fixture_type_cache_key(patch);
+        auto cache_it = fixture_type_cache.find(cache_key);
+        if (cache_it == fixture_type_cache.end()) {
+            cache_it = fixture_type_cache.emplace(cache_key, compile_gdtf_fixture_type(patch.gdtf_path, patch.dmx_mode)).first;
+            add_fixture_type_counters(out, cache_it->second);
+        }
+        const CompiledGdtfFixtureType &fixture_type = cache_it->second;
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
