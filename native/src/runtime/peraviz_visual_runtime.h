@@ -81,6 +81,7 @@ private:
     };
 
     static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
+    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
     static float read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
     float evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property);
     static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);

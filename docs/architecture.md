@@ -32,9 +32,9 @@ Current Godot runtime responsibilities include:
 
 ```text
 MVR fixture patch
-  -> parsed GDTF description.xml
-  -> selected DMX mode
-  -> real ChannelFunction records
+  -> parser-owned selected GDTF DMX mode model
+  -> real DMXChannels / DMXChannel / LogicalChannel / ChannelFunction records
+  -> CompiledGdtfFixtureType
   -> native compiled runtime scene
   -> native fixture instances, patch, source programs, and contributors
   -> submitted universe snapshots
@@ -50,7 +50,7 @@ The live frame format is intentionally sectioned rather than one universal fixed
 
 The native visual runtime no longer exposes the old `set_fixture_bindings(Array<Dictionary>)` or `set_fixture_render_params(Dictionary)` setup methods. The runtime core no longer uses `FixtureChannelBinding`, magic numeric `channel_type` mappings, or a legacy semantic translation table to install production visual programs.
 
-Godot registers the native renderer manifest once during structural setup and applies live Transform and Intensity rows through the native component and render-target IDs carried by each row. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
+Godot registers the native renderer manifest once during structural setup, resolves native component/render-target IDs to cached scene targets, and applies live Transform and Intensity rows through those IDs. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
 
 ## Verified GDTF/runtime coverage
 
@@ -58,7 +58,7 @@ Godot registers the native renderer manifest once during structural setup and ap
 - Pan: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
 - Tilt: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
 - The generic source reader accepts one to four ordered bytes, so 8-bit, 16-bit, 24-bit, and 32-bit source layouts are supported by the runtime model.
-- One resolved component property can reference multiple weighted compiled source contributors.
+- One resolved component property can contain multiple ChannelFunction ranges; native evaluation selects the active range from the assembled raw DMX value.
 - Transform section rows use integer payloads `[fixture_id, pan_component_id, tilt_component_id, changed_mask]` and float payloads `[pan_degrees, tilt_degrees]`.
 - Transform section Pan/Tilt values are physical degrees, not normalized values.
 - The technical DMX monitor is on-demand: hidden windows perform no grid refresh work, and visible windows copy the selected universe only when metadata changes.

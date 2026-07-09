@@ -54,6 +54,10 @@ var _fixture_emitter_light_cache: Dictionary = {}
 var _fixture_geometry_nodes_cache: Dictionary = {}
 var _fixture_emitter_nodes_cache: Dictionary = {}
 var _fixture_axis_nodes_cache: Dictionary = {}
+var _native_pan_targets: Dictionary = {}
+var _native_tilt_targets: Dictionary = {}
+var _native_dimmer_targets: Dictionary = {}
+var _native_target_resolution_failures: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
@@ -1661,6 +1665,72 @@ func _apply_pan_tilt_components_to_fixture(fixture_uuid: String,
 		pan_axis.rotation_degrees.y = pan_degrees
 	if has_tilt and tilt_axis != null:
 		tilt_axis.rotation_degrees.x = tilt_degrees
+
+func _register_native_runtime_targets(renderer_manifest: Array) -> void:
+	_native_pan_targets.clear()
+	_native_tilt_targets.clear()
+	_native_dimmer_targets.clear()
+	_native_target_resolution_failures.clear()
+	for item in renderer_manifest:
+		if item is not Dictionary:
+			continue
+		var row: Dictionary = item
+		var fixture_uuid: String = str(row.get("fixture_uuid", ""))
+		if fixture_uuid.is_empty():
+			continue
+		_register_native_axis_target(_native_pan_targets, int(row.get("pan_component_id", 0)), fixture_uuid, str(row.get("pan_geometry_name", "")), "pan")
+		_register_native_axis_target(_native_tilt_targets, int(row.get("tilt_component_id", 0)), fixture_uuid, str(row.get("tilt_geometry_name", "")), "tilt")
+		_register_native_dimmer_target(int(row.get("dimmer_target_id", 0)), fixture_uuid, str(row.get("dimmer_geometry_name", "")))
+
+func _register_native_axis_target(targets: Dictionary, target_id: int, fixture_uuid: String, geometry_name: String, role: String) -> void:
+	if target_id <= 0:
+		return
+	var axis_entry: Dictionary = _get_fixture_axis_nodes(fixture_uuid)
+	var target: Node3D = _find_node_by_name_or_path(axis_entry.values(), geometry_name)
+	if target == null:
+		target = axis_entry.get(role, null) as Node3D
+	if target == null:
+		_native_target_resolution_failures[target_id] = "Missing %s target for fixture %s geometry %s" % [role, fixture_uuid, geometry_name]
+		return
+	targets[target_id] = target
+
+func _register_native_dimmer_target(target_id: int, fixture_uuid: String, geometry_name: String) -> void:
+	if target_id <= 0:
+		return
+	var nodes: Array = _get_fixture_emitter_nodes(fixture_uuid)
+	if nodes.is_empty():
+		nodes = _get_fixture_geometry_nodes(fixture_uuid)
+	var target: Node3D = _find_node_by_name_or_path(nodes, geometry_name)
+	if target == null and not nodes.is_empty():
+		target = nodes[0] as Node3D
+	if target == null:
+		_native_target_resolution_failures[target_id] = "Missing dimmer target for fixture %s geometry %s" % [fixture_uuid, geometry_name]
+		return
+	_native_dimmer_targets[target_id] = {"fixture_uuid": fixture_uuid, "node": target}
+
+func _find_node_by_name_or_path(nodes: Array, geometry_name: String) -> Node3D:
+	for node in nodes:
+		var node3d: Node3D = node as Node3D
+		if node3d == null:
+			continue
+		if geometry_name.is_empty() or node3d.name == geometry_name or str(node3d.get_path()).ends_with(geometry_name):
+			return node3d
+	return null
+
+func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> void:
+	var pan_axis: Node3D = _native_pan_targets.get(pan_component_id, null) as Node3D
+	var tilt_axis: Node3D = _native_tilt_targets.get(tilt_component_id, null) as Node3D
+	if pan_component_id > 0 and pan_axis != null:
+		pan_axis.rotation_degrees.y = pan_degrees
+	elif pan_component_id > 0:
+		_native_target_resolution_failures[pan_component_id] = "Missing cached Pan target"
+	if tilt_component_id > 0 and tilt_axis != null:
+		tilt_axis.rotation_degrees.x = tilt_degrees
+	elif tilt_component_id > 0:
+		_native_target_resolution_failures[tilt_component_id] = "Missing cached Tilt target"
+
+func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
+	return dimmer_target_id > 0 and _native_dimmer_targets.has(dimmer_target_id)
 
 func _find_axis_for_role(axis_nodes: Array, role: String) -> Node3D:
 	if axis_nodes.is_empty():

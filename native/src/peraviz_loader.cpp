@@ -321,12 +321,18 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             }
             if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
                 entry["dimmer_target_id"] = property.render_target_id;
+                entry["dimmer_geometry_id"] = property.geometry_id;
+                entry["dimmer_geometry_name"] = String(property.geometry_name.c_str());
                 capability_flags |= 1;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
                 entry["pan_component_id"] = property.component_id;
+                entry["pan_geometry_id"] = property.geometry_id;
+                entry["pan_geometry_name"] = String(property.geometry_name.c_str());
                 capability_flags |= 2;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
                 entry["tilt_component_id"] = property.component_id;
+                entry["tilt_geometry_id"] = property.geometry_id;
+                entry["tilt_geometry_name"] = String(property.geometry_name.c_str());
                 capability_flags |= 4;
             }
         }

@@ -253,6 +253,7 @@ if(BUILD_TESTING)
         tests/visual_runtime_core_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/visual_frame_schema.cpp
+        src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/dmx/fixture_dmx_binding.cpp
         src/dmx/gdtf_attribute_classifier.cpp
@@ -276,10 +277,18 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_gdtf_runtime_schema_tests
         tests/gdtf_runtime_schema_test.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/archive/zip_archive.cpp
+        src/asset_cache.cpp
+        src/dmx/gdtf_attribute_classifier.cpp
+        src/dmx/gdtf_xml_reader.cpp
         src/runtime/visual_frame_schema.cpp
     )
     target_include_directories(peraviz_native_gdtf_runtime_schema_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(peraviz_native_gdtf_runtime_schema_tests PRIVATE
+        tinyxml2::tinyxml2
+        libzip::zip
     )
     add_test(NAME peraviz_native_gdtf_runtime_schema_tests COMMAND peraviz_native_gdtf_runtime_schema_tests)
 

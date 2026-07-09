@@ -161,17 +161,19 @@ int test_parser_owned_runtime_scene() {
     for (const auto &program : scene.source_programs) {
         if (program.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
             saw_dimmer = true;
-            if (program.dmx_from != 0 || program.dmx_to != 255 || std::fabs(program.physical_from - 0.0) > 0.001 || std::fabs(program.physical_to - 1.0) > 0.001) return fail("Unexpected Dimmer ChannelFunction range");
-            if (program.sources.empty() || program.sources[0].address != 0) return fail("Unexpected Dimmer source address");
+            if (program.dmx_from != 0 || program.dmx_to != 16777215 || std::fabs(program.physical_from - 0.0) > 0.001 || std::fabs(program.physical_to - 1.0) > 0.001) return fail("Unexpected Dimmer ChannelFunction range");
+            if (program.sources.empty() || (program.sources[0].address != 0 && program.sources[0].address != 100)) return fail("Unexpected Dimmer source address");
         }
         if (program.semantic == peraviz::runtime::CompiledSemantic::Pan) {
             saw_pan = true;
-            if (program.sources.size() < 2 || program.sources[0].address != 3 || program.sources[1].address != 4) return fail("Unexpected Pan coarse/fine source addresses");
+            if (program.sources.size() < 2 || ((program.sources[0].address != 3 || program.sources[1].address != 4) && (program.sources[0].address != 103 || program.sources[1].address != 104))) return fail("Unexpected Pan coarse/fine source addresses");
+            if (program.dmx_from != 0 || program.dmx_to != 65535) return fail("Unexpected Pan full-resolution DMX range");
             if (std::fabs(program.physical_from + 270.0) > 0.001 || std::fabs(program.physical_to - 270.0) > 0.001) return fail("Unexpected Pan physical range");
         }
         if (program.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
             saw_tilt = true;
-            if (program.sources.size() < 2 || program.sources[0].address != 5 || program.sources[1].address != 6) return fail("Unexpected Tilt coarse/fine source addresses");
+            if (program.sources.size() < 2 || ((program.sources[0].address != 5 || program.sources[1].address != 6) && (program.sources[0].address != 105 || program.sources[1].address != 106))) return fail("Unexpected Tilt coarse/fine source addresses");
+            if (program.dmx_from != 0 || program.dmx_to != 65535) return fail("Unexpected Tilt full-resolution DMX range");
             if (std::fabs(program.physical_from + 135.0) > 0.001 || std::fabs(program.physical_to - 135.0) > 0.001) return fail("Unexpected Tilt physical range");
         }
     }
@@ -199,6 +201,47 @@ int test_parser_owned_runtime_scene() {
     return 0;
 }
 
+// Verifies full-resolution GDTF DMX value syntax and multi-function selection.
+int test_full_resolution_ranges_and_function_selection() {
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF><DMXModes><DMXMode Name="Mode16"><DMXChannels>
+  <DMXChannel Offset="1"><LogicalChannel Attribute="Dimmer">
+    <ChannelFunction Name="Low" Attribute="Dimmer" DMXFrom="0/1" DMXTo="127/1" PhysicalFrom="0" PhysicalTo="0.5" />
+    <ChannelFunction Name="High" Attribute="Dimmer" DMXFrom="128/1" DMXTo="255/1" PhysicalFrom="0.5" PhysicalTo="1" />
+  </LogicalChannel></DMXChannel>
+  <DMXChannel Offset="2,3" Geometry="PanAxis"><LogicalChannel Attribute="Pan">
+    <ChannelFunction Name="PanFine" Attribute="Pan" DMXFrom="1024/2" DMXTo="65535/2" PhysicalFrom="-90" PhysicalTo="90" />
+  </LogicalChannel></DMXChannel>
+</DMXChannels></DMXMode></DMXModes></GDTF>)XML";
+    const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "peraviz_native_visual_runtime_tests";
+    std::error_code ec;
+    std::filesystem::create_directories(temp_dir, ec);
+    const std::filesystem::path gdtf_path = temp_dir / "range_fixture.gdtf";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Failed to write range fixture GDTF");
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"range-fixture", 1, 1, "Mode16", gdtf_path.string()});
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
+    bool saw_pan_range = false;
+    bool saw_multi_dimmer = false;
+    for (const auto &program : scene.source_programs) {
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Pan && program.dmx_from == 1024 && program.dmx_to == 65535) saw_pan_range = true;
+    }
+    for (const auto &property : scene.properties) {
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer && property.contributors.size() == 2) saw_multi_dimmer = true;
+    }
+    if (!saw_pan_range) return fail("Expected exact 16-bit Pan DMX range");
+    if (!saw_multi_dimmer) return fail("Expected multiple Dimmer ChannelFunctions under one property");
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(8, 0);
+    dmx[0] = 192;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto visual = runtime.consume_latest_visual_frame();
+    const float dimmer = first_intensity_dimmer(visual);
+    if (std::fabs(dimmer - 0.751969f) > 0.001f) return fail("Expected high Dimmer ChannelFunction to be selected exactly");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -208,5 +251,6 @@ int main() {
     if (test_more_than_two_source_bytes() != 0) return 1;
     if (test_multiple_contributors() != 0) return 1;
     if (test_parser_owned_runtime_scene() != 0) return 1;
+    if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     return 0;
 }

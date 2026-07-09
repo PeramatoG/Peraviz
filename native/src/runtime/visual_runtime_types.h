@@ -43,6 +43,8 @@ struct CompiledDmxSourceProgram {
     double physical_to = 1.0;
     std::string attribute_name;
     std::string function_name;
+    int32_t geometry_id = 0;
+    std::string geometry_name;
 };
 
 enum class CompiledContributorOperation : int32_t {
@@ -61,6 +63,8 @@ struct CompiledComponentProperty {
     int32_t render_target_id = 0;
     CompiledSemantic semantic = CompiledSemantic::Unknown;
     std::vector<CompiledPropertyContributor> contributors;
+    int32_t geometry_id = 0;
+    std::string geometry_name;
 };
 
 struct CompiledFixtureInstance {

@@ -18,6 +18,6 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
-- Consolidated the verified Dimmer, Pan, and Tilt runtime around parser-owned selected-mode ChannelFunction records, stable native component/render-target IDs, target-ID section application, capability-derived dirty masks, and diagnostics for unsupported domains.
+- Consolidated the verified Dimmer, Pan, and Tilt runtime around parser-owned selected-mode ChannelFunction records, stable native component/render-target IDs, target-ID section application, capability-derived dirty masks, and diagnostics for unsupported domains. Restored real GDTF `DMXChannels` hierarchy traversal and exact multi-function DMX range selection in the native compiled path.
 - Consolidated overlapping static runtime guardrails into one current architecture check.
 - Removed shell checks that preserved transitional helper names instead of validating behavior.

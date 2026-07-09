@@ -510,6 +510,8 @@ func _register_native_visual_runtime_bindings() -> void:
 		return
 	var compiled_scene: Dictionary = _loader.compile_visual_runtime_scene(_runtime_universe_offset)
 	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
+	if _loader.has_method("_register_native_runtime_targets"):
+		_loader._register_native_runtime_targets(compiled_scene.get("renderer_manifest", []))
 	_native_bindings_count = int(compiled_scene.get("property_count", 0))
 	if _native_visual_runtime.has_method("install_compiled_scene"):
 		_native_visual_runtime.install_compiled_scene(compiled_scene)

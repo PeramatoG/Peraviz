@@ -249,23 +249,31 @@ SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(Comp
     return SemanticParameter::Unknown;
 }
 
-// Reads a compiled DMX program by assembling ordered source bytes before normalization.
-float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
+// Reads a compiled DMX program by assembling ordered source bytes into a raw integer value.
+uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
     if (program.sources.empty() || program.sources.size() > 4) {
         if (diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program_id)});
-        return 0.0f;
+        return 0U;
     }
     std::vector<CompiledDmxByteSource> ordered = program.sources;
     std::sort(ordered.begin(), ordered.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
     uint32_t raw_value = 0;
-    uint32_t max_value = 0;
     for (const CompiledDmxByteSource &source : ordered) {
         const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
         if (!valid && diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program_id)});
         const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
         raw_value = (raw_value << 8U) | value;
+    }
+    return raw_value;
+}
+
+// Reads a compiled DMX program by assembling ordered source bytes before normalization.
+float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
+    uint32_t max_value = 0;
+    for (size_t index = 0; index < program.sources.size() && index < 4; ++index) {
         max_value = (max_value << 8U) | 0xffU;
     }
+    const uint32_t raw_value = read_raw_value(frame, program, diagnostics);
     const double normalized = max_value > 0 ? static_cast<double>(raw_value) / static_cast<double>(max_value) : 0.0;
     const double dmx_span = program.dmx_to > program.dmx_from ? static_cast<double>(program.dmx_to - program.dmx_from) : static_cast<double>(max_value);
     const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.dmx_from)) / dmx_span, 0.0, 1.0) : normalized;
@@ -277,6 +285,11 @@ float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t>
 float PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property) {
     double weighted_sum = 0.0;
     double total_weight = 0.0;
+    const CompiledDmxSourceProgram *active_program = nullptr;
+    bool has_range_selector = false;
+    bool has_reference_range = false;
+    uint32_t reference_from = 0;
+    uint32_t reference_to = 0;
     for (const CompiledPropertyContributor &contributor : property.contributors) {
         if (contributor.operation != CompiledContributorOperation::WeightedAdd) {
             diagnostics_.push_back({"PVZ-RUNTIME-UNSUPPORTED-CONTRIBUTOR", "warning", "Compiled contributor operation is not supported.", std::to_string(contributor.source_program_id)});
@@ -285,6 +298,32 @@ float PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_
         auto program_it = source_programs_by_id_.find(contributor.source_program_id);
         if (program_it == source_programs_by_id_.end()) {
             diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled contributor references a missing source program.", std::to_string(contributor.source_program_id)});
+            continue;
+        }
+        const CompiledDmxSourceProgram &program = program_it->second;
+        if (!has_reference_range) {
+            reference_from = program.dmx_from;
+            reference_to = program.dmx_to;
+            has_reference_range = true;
+        } else if (program.dmx_from != reference_from || program.dmx_to != reference_to) {
+            has_range_selector = true;
+        }
+        const uint32_t raw_value = read_raw_value(frame, program, &diagnostics_);
+        if (raw_value >= program.dmx_from && raw_value <= program.dmx_to) {
+            if (active_program != nullptr) diagnostics_.push_back({"PVZ-RUNTIME-OVERLAPPING-FUNCTIONS", "warning", "Multiple ChannelFunctions matched the same raw DMX value; using the first match.", std::to_string(property.fixture_id)});
+            if (active_program == nullptr) active_program = &program;
+        }
+    }
+    if (property.contributors.size() > 1 && has_range_selector) {
+        if (active_program == nullptr) {
+            diagnostics_.push_back({"PVZ-RUNTIME-NO-ACTIVE-FUNCTION", "warning", "No ChannelFunction range matched the assembled raw DMX value.", std::to_string(property.fixture_id)});
+            return 0.0f;
+        }
+        return read_normalized_value(frame, *active_program, &diagnostics_);
+    }
+    for (const CompiledPropertyContributor &contributor : property.contributors) {
+        auto program_it = source_programs_by_id_.find(contributor.source_program_id);
+        if (program_it == source_programs_by_id_.end()) {
             continue;
         }
         const double weight = contributor.weight;
