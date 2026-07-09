@@ -375,6 +375,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["mvr_fixture_patches"] = scene.mvr_fixture_patches;
     setup_summary["scene_fixture_count"] = static_cast<int32_t>(last_scene_model_.fixture_patches.size());
     setup_summary["gdtf_files_opened"] = scene.gdtf_files_opened;
+    setup_summary["unique_fixture_types_compiled"] = scene.gdtf_files_opened;
     setup_summary["selected_modes_found"] = scene.selected_modes_found;
     setup_summary["dmxchannels_found"] = scene.dmxchannels_containers_found;
     setup_summary["dmxchannel_records_found"] = scene.dmxchannel_records_found;
@@ -383,16 +384,48 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["dimmer_program_count"] = scene.dimmer_program_count;
     setup_summary["pan_program_count"] = scene.pan_program_count;
     setup_summary["tilt_program_count"] = scene.tilt_program_count;
+    setup_summary["unique_dimmer_programs_per_fixture_type"] = scene.dimmer_program_count;
+    setup_summary["unique_pan_programs_per_fixture_type"] = scene.pan_program_count;
+    setup_summary["unique_tilt_programs_per_fixture_type"] = scene.tilt_program_count;
     setup_summary["compiled_fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
     setup_summary["dimmer_property_count"] = dimmer_property_count;
     setup_summary["pan_property_count"] = pan_property_count;
     setup_summary["tilt_property_count"] = tilt_property_count;
     setup_summary["source_program_count"] = static_cast<int32_t>(scene.source_programs.size());
     setup_summary["installed_native_properties"] = static_cast<int32_t>(scene.properties.size());
+    setup_summary["fixture_instance_properties"] = static_cast<int32_t>(scene.properties.size());
     setup_summary["used_universes"] = used_universes;
     setup_summary["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
     setup_summary["manifest_fixture_count"] = static_cast<int32_t>(manifest.size());
     out["setup_summary"] = setup_summary;
+    Array fixture_results;
+    fixture_results.resize(static_cast<int64_t>(last_scene_model_.fixture_patches.size()));
+    for (int64_t patch_index = 0; patch_index < static_cast<int64_t>(last_scene_model_.fixture_patches.size()); ++patch_index) {
+        const auto &patch = last_scene_model_.fixture_patches[static_cast<size_t>(patch_index)];
+        Dictionary result;
+        result["fixture_uuid"] = String(patch.fixture_uuid.c_str());
+        result["gdtf_path"] = String(patch.gdtf_path.c_str());
+        result["dmx_mode"] = String(patch.dmx_mode.c_str());
+        result["mvr_universe"] = patch.mvr_universe;
+        result["mvr_address"] = patch.mvr_address;
+        int32_t fixture_id = 0;
+        for (const auto &fixture : scene.fixtures) {
+            if (fixture.fixture_uuid == patch.fixture_uuid) {
+                fixture_id = fixture.fixture_id;
+                break;
+            }
+        }
+        int32_t property_count = 0;
+        for (const auto &property : scene.properties) {
+            if (property.fixture_id == fixture_id) ++property_count;
+        }
+        result["manifest_included"] = fixture_id > 0;
+        result["fixture_id"] = fixture_id;
+        result["supported_dpt_property_count"] = property_count;
+        result["exclusion_reason"] = fixture_id <= 0 ? String("invalid patch or missing mode/GDTF") : property_count <= 0 ? String("no supported DPT property") : String("");
+        fixture_results[patch_index] = result;
+    }
+    out["fixture_compilation_results"] = fixture_results;
     out["used_universes"] = used_universes;
     out["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
     out["fixture_count"] = static_cast<int32_t>(scene.fixtures.size());

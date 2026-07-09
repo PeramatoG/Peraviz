@@ -42,7 +42,7 @@ MVR fixture patch
   -> relevant-slot filtering and native DMX evaluation
   -> dirty SectionedVisualFrame descriptors + integer payloads + float payloads
   -> Godot sectioned frame applier
-  -> exact cached native target IDs resolved from shared canonical GDTF geometry-instance keys
+  -> exact cached native target IDs resolved from full imported-node canonical GDTF geometry-instance keys
   -> cached renderer nodes, materials, lights, and beams
 ```
 

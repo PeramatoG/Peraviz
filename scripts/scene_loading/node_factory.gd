@@ -44,6 +44,10 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	root.set_meta("peraviz_is_lens", is_lens)
 	root.set_meta("peraviz_gdtf_geometry_key", str(data.get("gdtf_geometry_key", "")))
 	root.set_meta("peraviz_gdtf_geometry_path", str(data.get("gdtf_geometry_path", "")))
+	var geometry_key: String = str(data.get("gdtf_geometry_key", ""))
+	if not geometry_key.is_empty():
+		var separator: int = geometry_key.find("/")
+		root.set_meta("peraviz_fixture_uuid", geometry_key if separator < 0 else geometry_key.substr(0, separator))
 	var node_position: Vector3 = _safe_position(data.get("pos", Vector3.ZERO), "create_scene_node:" + root.name)
 	if bool(data.get("has_basis", false)):
 		var node_basis: Basis = _safe_basis_from_data(data)

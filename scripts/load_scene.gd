@@ -59,6 +59,7 @@ var _native_tilt_targets: Dictionary = {}
 var _native_dimmer_targets: Dictionary = {}
 var _native_target_resolution_failures: Dictionary = {}
 var _native_geometry_targets_by_key: Dictionary = {}
+var _native_target_registry_summary: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
 var _fixture_gobo_projector: FixtureGoboProjector = null
@@ -1673,6 +1674,7 @@ func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 	_native_dimmer_targets.clear()
 	_native_target_resolution_failures.clear()
 	_native_geometry_targets_by_key.clear()
+	_native_target_registry_summary = _new_native_target_registry_summary()
 	_build_native_geometry_target_map(renderer_manifest)
 	for item in renderer_manifest:
 		if item is not Dictionary:
@@ -1684,6 +1686,26 @@ func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 		_register_native_axis_target(_native_pan_targets, row, int(row.get("pan_component_id", 0)), str(row.get("pan_geometry_key", "")), "pan")
 		_register_native_axis_target(_native_tilt_targets, row, int(row.get("tilt_component_id", 0)), str(row.get("tilt_geometry_key", "")), "tilt")
 		_register_native_dimmer_target(row, int(row.get("dimmer_target_id", 0)), fixture_uuid, str(row.get("dimmer_geometry_key", "")))
+	_log_native_target_registry_summary_once()
+
+func _new_native_target_registry_summary() -> Dictionary:
+	return {
+		"imported_geometry_keys": 0,
+		"empty_manifest_geometry_keys": 0,
+		"duplicate_imported_geometry_keys": 0,
+		"duplicate_manifest_target_ids": 0,
+		"registration_timing_failures": 0,
+		"pan_requested": 0,
+		"pan_resolved": 0,
+		"pan_failed": 0,
+		"tilt_requested": 0,
+		"tilt_resolved": 0,
+		"tilt_failed": 0,
+		"dimmer_requested": 0,
+		"dimmer_resolved": 0,
+		"dimmer_failed": 0,
+		"first_failures": [],
+	}
 
 func _build_native_geometry_target_map(renderer_manifest: Array) -> void:
 	var fixture_uuids: Dictionary = {}
@@ -1692,37 +1714,57 @@ func _build_native_geometry_target_map(renderer_manifest: Array) -> void:
 			var fixture_uuid: String = str(item.get("fixture_uuid", ""))
 			if not fixture_uuid.is_empty():
 				fixture_uuids[fixture_uuid] = true
-	for fixture_uuid in fixture_uuids.keys():
-		for node in _get_fixture_geometry_nodes(str(fixture_uuid)):
-			var node3d: Node3D = node as Node3D
-			if node3d == null:
-				continue
-			var key: String = str(node3d.get_meta("peraviz_gdtf_geometry_key", ""))
-			if not key.is_empty():
-				_native_geometry_targets_by_key[key] = node3d
-		for node in _get_fixture_emitter_nodes(str(fixture_uuid)):
-			var emitter3d: Node3D = node as Node3D
-			if emitter3d == null:
-				continue
-			var emitter_key: String = str(emitter3d.get_meta("peraviz_gdtf_geometry_key", ""))
-			if not emitter_key.is_empty():
-				_native_geometry_targets_by_key[emitter_key] = emitter3d
+	for node_id in _node_index.keys():
+		var node3d: Node3D = _node_index.get(node_id, null) as Node3D
+		if node3d == null:
+			continue
+		var key: String = str(node3d.get_meta("peraviz_gdtf_geometry_key", ""))
+		if key.is_empty():
+			continue
+		var fixture_uuid: String = str(node3d.get_meta("peraviz_fixture_uuid", ""))
+		if fixture_uuid.is_empty():
+			fixture_uuid = _fixture_uuid_from_geometry_key(key)
+		if not fixture_uuids.has(fixture_uuid):
+			continue
+		if _native_geometry_targets_by_key.has(key):
+			_native_target_registry_summary["duplicate_imported_geometry_keys"] = int(_native_target_registry_summary.get("duplicate_imported_geometry_keys", 0)) + 1
+		_native_geometry_targets_by_key[key] = node3d
+	_native_target_registry_summary["imported_geometry_keys"] = _native_geometry_targets_by_key.size()
 
 func _register_native_axis_target(targets: Dictionary, manifest_row: Dictionary, target_id: int, geometry_key: String, role: String) -> void:
 	if target_id <= 0:
 		return
+	_increment_registry_counter("%s_requested" % role)
+	if geometry_key.is_empty():
+		_increment_registry_counter("empty_manifest_geometry_keys")
+		_register_native_target_failure(manifest_row, target_id, role, "Manifest target has an empty canonical geometry key.")
+		return
+	if targets.has(target_id):
+		_increment_registry_counter("duplicate_manifest_target_ids")
+		_register_native_target_failure(manifest_row, target_id, role, "Duplicate native target handle in renderer manifest.")
+		return
 	var target: Node3D = _native_geometry_targets_by_key.get(geometry_key, null) as Node3D
 	if target == null:
-		_native_target_resolution_failures[target_id] = _target_failure(manifest_row, target_id, role, "No imported geometry node has canonical geometry key %s" % geometry_key)
+		_register_native_target_failure(manifest_row, target_id, role, "No imported geometry node has canonical geometry key %s" % geometry_key)
 		return
 	targets[target_id] = target
+	_increment_registry_counter("%s_resolved" % role)
 
 func _register_native_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:
 		return
+	_increment_registry_counter("dimmer_requested")
+	if geometry_key.is_empty():
+		_increment_registry_counter("empty_manifest_geometry_keys")
+		_register_native_target_failure(manifest_row, target_id, "dimmer", "Manifest target has an empty canonical geometry key.")
+		return
+	if _native_dimmer_targets.has(target_id):
+		_increment_registry_counter("duplicate_manifest_target_ids")
+		_register_native_target_failure(manifest_row, target_id, "dimmer", "Duplicate native Dimmer target handle in renderer manifest.")
+		return
 	var target: Node3D = _native_geometry_targets_by_key.get(geometry_key, null) as Node3D
 	if target == null:
-		_native_target_resolution_failures[target_id] = _target_failure(manifest_row, target_id, "dimmer", "No imported emitter node has canonical geometry key %s" % geometry_key)
+		_register_native_target_failure(manifest_row, target_id, "dimmer", "No imported geometry node has canonical geometry key %s" % geometry_key)
 		return
 	var target_nodes: Array = [target]
 	var emitter_nodes: Array = _collect_native_descendant_emitters(geometry_key)
@@ -1736,6 +1778,7 @@ func _register_native_dimmer_target(manifest_row: Dictionary, target_id: int, fi
 		"emitter_lights": _collect_fixture_emitter_lights("%s:%d" % [fixture_uuid, target_id], emitter_nodes),
 		"emitter_photometrics": _get_fixture_emitter_photometrics(fixture_uuid),
 	}
+	_increment_registry_counter("dimmer_resolved")
 
 func _collect_native_descendant_emitters(geometry_key: String) -> Array:
 	var nodes: Array = []
@@ -1749,6 +1792,41 @@ func _collect_native_descendant_emitters(geometry_key: String) -> Array:
 			nodes.append(node)
 	return nodes
 
+func _fixture_uuid_from_geometry_key(geometry_key: String) -> String:
+	var slash_index: int = geometry_key.find("/")
+	return geometry_key if slash_index < 0 else geometry_key.substr(0, slash_index)
+
+func _increment_registry_counter(key: String) -> void:
+	_native_target_registry_summary[key] = int(_native_target_registry_summary.get(key, 0)) + 1
+
+func _register_native_target_failure(manifest_row: Dictionary, target_id: int, semantic: String, reason: String) -> void:
+	_increment_registry_counter("%s_failed" % semantic)
+	var failure: Dictionary = _target_failure(manifest_row, target_id, semantic, reason)
+	_native_target_resolution_failures[target_id] = failure
+	var failures: Array = _native_target_registry_summary.get("first_failures", [])
+	if failures.size() < 5:
+		failures.append(failure)
+	_native_target_registry_summary["first_failures"] = failures
+
+func _log_native_target_registry_summary_once() -> void:
+	print("[native-target-registry] imported_geometry_keys=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d empty_manifest_keys=%d duplicate_imported_keys=%d duplicate_manifest_target_ids=%d registration_timing_failures=%d first_failures=%s" % [
+		int(_native_target_registry_summary.get("imported_geometry_keys", 0)),
+		int(_native_target_registry_summary.get("pan_requested", 0)),
+		int(_native_target_registry_summary.get("pan_resolved", 0)),
+		int(_native_target_registry_summary.get("pan_failed", 0)),
+		int(_native_target_registry_summary.get("tilt_requested", 0)),
+		int(_native_target_registry_summary.get("tilt_resolved", 0)),
+		int(_native_target_registry_summary.get("tilt_failed", 0)),
+		int(_native_target_registry_summary.get("dimmer_requested", 0)),
+		int(_native_target_registry_summary.get("dimmer_resolved", 0)),
+		int(_native_target_registry_summary.get("dimmer_failed", 0)),
+		int(_native_target_registry_summary.get("empty_manifest_geometry_keys", 0)),
+		int(_native_target_registry_summary.get("duplicate_imported_geometry_keys", 0)),
+		int(_native_target_registry_summary.get("duplicate_manifest_target_ids", 0)),
+		int(_native_target_registry_summary.get("registration_timing_failures", 0)),
+		str(_native_target_registry_summary.get("first_failures", [])),
+	])
+
 func _find_node_by_geometry_key(nodes: Array, geometry_key: String) -> Node3D:
 	for node in nodes:
 		var node3d: Node3D = node as Node3D
@@ -1759,15 +1837,35 @@ func _find_node_by_geometry_key(nodes: Array, geometry_key: String) -> Node3D:
 	return null
 
 func _target_failure(manifest_row: Dictionary, target_id: int, semantic: String, reason: String) -> Dictionary:
+	var fixture_uuid: String = str(manifest_row.get("fixture_uuid", ""))
 	return {
-		"fixture_uuid": str(manifest_row.get("fixture_uuid", "")),
+		"fixture_uuid": fixture_uuid,
 		"fixture_id": int(manifest_row.get("fixture_id", 0)),
 		"target_id": target_id,
 		"geometry_id": int(manifest_row.get("%s_geometry_id" % semantic, 0)),
 		"geometry_key": str(manifest_row.get("%s_geometry_key" % semantic, "")),
+		"matching_imported_keys": _matching_imported_geometry_keys(fixture_uuid),
+		"fixture_root_path": _fixture_root_path(fixture_uuid),
 		"semantic": semantic,
 		"reason": reason,
 	}
+
+func _matching_imported_geometry_keys(fixture_uuid: String) -> Array:
+	var keys: Array = []
+	var prefix: String = fixture_uuid + "/"
+	for key in _native_geometry_targets_by_key.keys():
+		var candidate: String = str(key)
+		if candidate.begins_with(prefix):
+			keys.append(candidate)
+			if keys.size() >= 8:
+				break
+	return keys
+
+func _fixture_root_path(fixture_uuid: String) -> String:
+	if _scene_registry == null or fixture_uuid.is_empty():
+		return ""
+	var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid)
+	return str(fixture_node.get_path()) if fixture_node != null else ""
 
 func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	var pan_axis: Node3D = _native_pan_targets.get(pan_component_id, null) as Node3D
@@ -1777,13 +1875,15 @@ func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: i
 		pan_axis.rotation_degrees.y = pan_degrees
 		result["pan_applied"] = true
 	elif pan_component_id > 0:
-		_native_target_resolution_failures[pan_component_id] = "Missing cached Pan target"
+		if not _native_target_resolution_failures.has(pan_component_id):
+			_native_target_resolution_failures[pan_component_id] = {"target_id": pan_component_id, "semantic": "pan", "reason": "target never registered"}
 		result["failed"] = int(result["failed"]) + 1
 	if tilt_component_id > 0 and tilt_axis != null:
 		tilt_axis.rotation_degrees.x = tilt_degrees
 		result["tilt_applied"] = true
 	elif tilt_component_id > 0:
-		_native_target_resolution_failures[tilt_component_id] = "Missing cached Tilt target"
+		if not _native_target_resolution_failures.has(tilt_component_id):
+			_native_target_resolution_failures[tilt_component_id] = {"target_id": tilt_component_id, "semantic": "tilt", "reason": "target never registered"}
 		result["failed"] = int(result["failed"]) + 1
 	return result
 
@@ -1803,6 +1903,7 @@ func _get_native_target_registry_summary() -> Dictionary:
 		"pan_targets_resolved": _native_pan_targets.size(),
 		"tilt_targets_resolved": _native_tilt_targets.size(),
 		"dimmer_targets_resolved": _native_dimmer_targets.size(),
+		"registry_summary": _native_target_registry_summary.duplicate(true),
 		"target_resolution_failures": _native_target_resolution_failures.duplicate(true),
 	}
 
