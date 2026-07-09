@@ -3072,7 +3072,7 @@ func bridge_setup_dmx_controls() -> void:
 	_setup_dmx_controls()
 
 func _setup_dmx_fixture_runtime() -> void:
-	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, _fixture_row_provider)
+	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, self, _fixture_row_provider)
 
 func _refresh_dmx_fixture_bindings() -> void:
 	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings()

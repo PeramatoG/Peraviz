@@ -86,7 +86,8 @@ const COMPACT_PRISM_ROTATION_NORM: int = 26
 const COMPACT_HAS_STROBE: int = 27
 const COMPACT_STROBE_NORM: int = 28
 
-var _loader = null
+var _native_scene_loader = null
+var _renderer_target_registry = null
 var _scene_registry: SceneRegistry = null
 var _bindings: Array = []
 var _unbound: Array = []
@@ -129,8 +130,9 @@ var _debug_force_full_apply: bool = false
 var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
 var _runtime_universe_offset: int = -1
 
-func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
-	_loader = loader
+func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_target_registry, fixture_row_provider: FixtureRowProvider = null) -> void:
+	_native_scene_loader = native_scene_loader
+	_renderer_target_registry = renderer_target_registry
 	_scene_registry = scene_registry
 	_fixture_row_provider = fixture_row_provider
 	_gobo_vectorization_cache = GoboVectorizationCacheScript.new()
@@ -184,7 +186,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			"unbound_preview": PackedStringArray(),
 		}
 
-	if _loader == null or _scene_registry == null:
+	if _native_scene_loader == null or _scene_registry == null:
 		return {
 			"bound": 0,
 			"unbound": 0,
@@ -193,7 +195,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 
 	_fixture_patch_lookup = _build_fixture_patch_lookup()
 
-	var result: Dictionary = _loader.build_fixture_dmx_bindings(universe_offset)
+	var result: Dictionary = _native_scene_loader.build_fixture_dmx_bindings(universe_offset)
 	_bindings = result.get("bindings", [])
 	_unbound = result.get("unbound", [])
 
@@ -215,8 +217,8 @@ func rebuild(universe_offset: int) -> Dictionary:
 			continue
 		_fixture_nodes[fixture_uuid] = fixture_node
 		_bound_fixture_ids[fixture_uuid] = true
-		if _loader.has_method("_prepare_fixture_node_cache"):
-			_loader._prepare_fixture_node_cache(fixture_uuid)
+		if _native_scene_loader.has_method("_prepare_fixture_node_cache"):
+			_native_scene_loader._prepare_fixture_node_cache(fixture_uuid)
 		_register_native_fixture_id(fixture_uuid)
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
@@ -542,22 +544,43 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_channel_values[fixture_uuid] = {}
 
 func _register_native_visual_runtime_bindings() -> void:
-	if _loader == null or not _loader.has_method("compile_visual_runtime_scene"):
+	if _native_scene_loader == null or not _native_scene_loader.has_method("compile_visual_runtime_scene"):
 		_native_bindings_count = 0
 		return
-	var compiled_scene: Dictionary = _loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	var compiled_scene: Dictionary = _native_scene_loader.compile_visual_runtime_scene(_runtime_universe_offset)
 	_register_compiled_runtime_submission_metadata(compiled_scene)
 	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
-	if _loader.has_method("_register_native_runtime_targets"):
-		_loader._register_native_runtime_targets(compiled_scene.get("renderer_manifest", []))
-	if _loader.has_method("_get_native_target_registry_summary"):
-		_native_setup_summary["target_registry"] = _loader._get_native_target_registry_summary()
+	if not _install_renderer_manifest(compiled_scene.get("renderer_manifest", [])):
+		_native_bindings_count = 0
+		return
 	_native_bindings_count = int(compiled_scene.get("property_count", 0))
 	if _native_visual_runtime.has_method("install_compiled_scene"):
 		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 	_report_native_setup_summary()
+
+func _install_renderer_manifest(renderer_manifest: Array) -> bool:
+	if _renderer_target_registry == null:
+		push_error("Native DPT setup requires a renderer target registry; compiled scene was not installed.")
+		_native_setup_summary["target_registry_error"] = "missing renderer target registry"
+		return false
+	for method_name in ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_get_native_target_failure"]:
+		if not _renderer_target_registry.has_method(method_name):
+			push_error("Native DPT renderer target registry is missing required method: %s" % method_name)
+			_native_setup_summary["target_registry_error"] = "missing method %s" % method_name
+			return false
+	_renderer_target_registry._register_native_runtime_targets(renderer_manifest)
+	_native_setup_summary["target_registry"] = _renderer_target_registry._get_native_target_registry_summary()
+	var registry_summary: Dictionary = _native_setup_summary.get("target_registry", {}).get("registry_summary", {})
+	for semantic in ["pan", "tilt", "dimmer"]:
+		var requested: int = int(registry_summary.get("%s_requested" % semantic, 0))
+		var resolved: int = int(registry_summary.get("%s_resolved" % semantic, 0))
+		if requested > 0 and resolved == 0:
+			push_error("Native DPT renderer target registry resolved zero %s targets from %d requested targets." % [semantic, requested])
+			_native_setup_summary["target_registry_error"] = "zero %s targets resolved" % semantic
+			return false
+	return true
 
 func _report_native_setup_summary() -> void:
 	var summary: Dictionary = _native_setup_summary.duplicate(true)
@@ -613,8 +636,8 @@ func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
 		if fixture_node != null:
 			_fixture_nodes[fixture_uuid] = fixture_node
 			_bound_fixture_ids[fixture_uuid] = true
-			if _loader != null and _loader.has_method("_prepare_fixture_node_cache"):
-				_loader._prepare_fixture_node_cache(fixture_uuid)
+			if _native_scene_loader != null and _native_scene_loader.has_method("_prepare_fixture_node_cache"):
+				_native_scene_loader._prepare_fixture_node_cache(fixture_uuid)
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -1414,10 +1437,10 @@ func _resolve_fixture_display_label(row: Dictionary, patch: Dictionary, fixture_
 
 func _build_fixture_patch_lookup() -> Dictionary:
 	var lookup: Dictionary = {}
-	if _loader == null or not _loader.has_method("get_fixtures_patch"):
+	if _native_scene_loader == null or not _native_scene_loader.has_method("get_fixtures_patch"):
 		return lookup
 
-	var patches: Array = _loader.get_fixtures_patch()
+	var patches: Array = _native_scene_loader.get_fixtures_patch()
 	for patch_value in patches:
 		if patch_value is not Dictionary:
 			continue
@@ -1528,4 +1551,5 @@ func _build_summary(universe_offset: int) -> Dictionary:
 		"unbound": get_unbound_count(),
 		"unbound_preview": get_unbound_preview(),
 		"universe_offset": universe_offset,
+		"native_setup_summary": _native_setup_summary.duplicate(true),
 	}

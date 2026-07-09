@@ -2,6 +2,7 @@ extends SceneTree
 
 const SectionedVisualFrameApplierScript = preload("res://scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd")
 const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_light_apply_service.gd")
+const DmxFixtureRuntimeScript = preload("res://scripts/dmx_fixture_runtime.gd")
 
 class FakeLoader:
 	extends Node
@@ -54,6 +55,34 @@ class FakeLoader:
 	func _collect_fixture_emissive_materials(_fixture_uuid: String, _geometry_nodes: Array) -> Array:
 		return []
 
+class FakeNativeSceneLoader:
+	extends Node
+
+	func compile_visual_runtime_scene(_universe_offset: int) -> Dictionary:
+		return {"renderer_manifest": [], "property_count": 0, "setup_summary": {}}
+
+class FakeRendererTargetRegistry:
+	extends Node
+	var install_calls: int = 0
+
+	func _register_native_runtime_targets(_renderer_manifest: Array) -> void:
+		install_calls += 1
+
+	func _get_native_target_registry_summary() -> Dictionary:
+		return {"registry_summary": {}}
+
+	func _apply_native_transform_targets(_pan_component_id: int, _tilt_component_id: int, _pan_degrees: float, _tilt_degrees: float) -> Dictionary:
+		return {}
+
+	func _has_native_dimmer_target(_dimmer_target_id: int) -> bool:
+		return false
+
+	func _get_native_dimmer_target_record(_dimmer_target_id: int) -> Dictionary:
+		return {}
+
+	func _get_native_target_failure(_target_id: int) -> Variant:
+		return null
+
 func _init() -> void:
 	var applier = SectionedVisualFrameApplierScript.new()
 	applier.install_schema({"sections": [
@@ -74,4 +103,13 @@ func _init() -> void:
 	loader.dimmer_valid = false
 	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	assert(int(failed.get("skipped", 0)) > 0)
+	var runtime = DmxFixtureRuntimeScript.new()
+	var native_loader := FakeNativeSceneLoader.new()
+	var renderer_registry := FakeRendererTargetRegistry.new()
+	runtime.configure(native_loader, null, renderer_registry, null)
+	assert(runtime._install_renderer_manifest([]))
+	assert(renderer_registry.install_calls == 1)
+	var missing_registry_runtime = DmxFixtureRuntimeScript.new()
+	missing_registry_runtime.configure(native_loader, null, null, null)
+	assert(not missing_registry_runtime._install_renderer_manifest([]))
 	quit(0)
