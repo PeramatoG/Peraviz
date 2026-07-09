@@ -366,6 +366,8 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
         node.node_id = geometry_id;
         node.parent_id = geometry_parent_id;
         node.name = geometry_name;
+        node.gdtf_geometry_key = request.fixture_node_id + "/" + geometry_name;
+        node.gdtf_geometry_path = geometry_name;
         node.type = "fixture_geometry";
         node.node_class = "fixture_geometry";
         node.is_fixture = true;

@@ -50,7 +50,7 @@ The live frame format is intentionally sectioned rather than one universal fixed
 
 The native visual runtime no longer exposes the old `set_fixture_bindings(Array<Dictionary>)` or `set_fixture_render_params(Dictionary)` setup methods. The runtime core no longer uses `FixtureChannelBinding`, magic numeric `channel_type` mappings, or a legacy semantic translation table to install production visual programs.
 
-Godot registers the native renderer manifest once during structural setup, resolves native component/render-target IDs to cached scene targets, and applies live Transform and Intensity rows through those IDs. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
+Godot registers the native renderer manifest once during structural setup, resolves native component/render-target IDs to cached scene targets by canonical GDTF geometry keys, and applies live Transform and Intensity rows through those IDs. Compiled-scene used universes, not legacy flattened bindings, own Dimmer/Pan/Tilt frame submission to the native runtime. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
 
 ## Verified GDTF/runtime coverage
 

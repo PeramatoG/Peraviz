@@ -104,20 +104,21 @@ func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_fr
 func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_degrees: float, tilt_degrees: float) -> void:
 	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
-func apply_transform_targets(loader: Node, fixture_uuid: String, pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> void:
+func apply_transform_targets(loader: Node, fixture_uuid: String, pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	if loader.has_method("_apply_native_transform_targets"):
-		loader._apply_native_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
+		return loader._apply_native_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
+	return {"failed": 1, "reason": "Native transform target registry is unavailable."}
 
-func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_id: int, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_id: int, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> Dictionary:
 	if dimmer_target_id <= 0 or (loader.has_method("_has_native_dimmer_target") and not loader._has_native_dimmer_target(dimmer_target_id)):
-		return
+		return {"dimmer_requested": dimmer_target_id > 0, "dimmer_applied": false, "failed": 1}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_intensity_state(fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
 	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
 	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
 	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
 		_warn_visual_once(fixture_uuid + ":no_visual_nodes", "Fixture %s has dimmer %.3f but no geometry or emitter nodes." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001)
-		return
+		return {"dimmer_requested": true, "dimmer_applied": false, "failed": 1}
 	var beam_color: Color = _fixture_render_color(fixture_uuid)
 	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
 	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
@@ -136,6 +137,7 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 			visible_beams += 1
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
+	return {"dimmer_requested": true, "dimmer_applied": true, "failed": 0}
 
 func apply_emitter_color(loader: Node, fixture_uuid: String, beam_color: Color) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1

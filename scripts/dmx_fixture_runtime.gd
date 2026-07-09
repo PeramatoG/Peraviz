@@ -116,6 +116,10 @@ var _last_universe_counters: Dictionary = {}
 var _cached_universe_frames: Dictionary = {}
 var _universe_interest_offsets: Dictionary = {}
 var _last_universe_interest_hashes: Dictionary = {}
+var _compiled_used_universes: Dictionary = {}
+var _compiled_relevant_offsets_by_universe: Dictionary = {}
+var _native_setup_summary: Dictionary = {}
+var _native_live_diagnostics: Dictionary = {}
 var _fixture_time_tick_flags: Dictionary = {}
 var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
@@ -163,6 +167,10 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_cached_universe_frames.clear()
 	_universe_interest_offsets.clear()
 	_last_universe_interest_hashes.clear()
+	_compiled_used_universes.clear()
+	_compiled_relevant_offsets_by_universe.clear()
+	_native_setup_summary.clear()
+	_native_live_diagnostics.clear()
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -362,26 +370,24 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var pending_controls: Array = []
+	var submitted_universes: int = 0
 	for universe_key in changed_frames.keys():
 		var universe_id: int = int(universe_key)
+		if not _compiled_used_universes.has(universe_id):
+			continue
 		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
 		var frame: PackedByteArray = frame_entry.get("data", PackedByteArray())
 		if frame.is_empty():
 			continue
 		_cached_universe_frames[universe_id] = frame
-		var interest_hash: int = int(frame_entry.get("interest_hash", -1))
-		if interest_hash < 0:
-			interest_hash = _compute_universe_interest_hash(universe_id, frame)
 		_last_universe_counters[universe_id] = {
 			"counter": int(frame_entry.get("counter", -1)),
 			"content_hash": int(frame_entry.get("content_hash", -1)),
-			"interest_hash": interest_hash,
-			"interest_offsets": _get_universe_interest_offsets_array(universe_id),
+			"interest_hash": -1,
+			"interest_offsets": _compiled_relevant_offsets_by_universe.get(universe_id, PackedInt32Array()),
 		}
-		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
-			continue
-		_last_universe_interest_hashes[universe_id] = interest_hash
 		_native_visual_runtime.submit_universe_frame(universe_id, frame)
+		submitted_universes += 1
 
 	var visual_frame: Dictionary = _native_visual_runtime.consume_latest_visual_frame()
 	var visual_descriptors: PackedInt32Array = visual_frame.get("descriptors", PackedInt32Array())
@@ -398,6 +404,7 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
+		_native_live_diagnostics = compact_result.duplicate(true)
 
 	return {
 		"updated": updated,
@@ -411,6 +418,9 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		"visual_mask_counts": _last_visual_mask_counts.duplicate(false),
 		"visual_apply_counters": light_apply_service.get_visual_apply_counters() if light_apply_service != null else {},
 		"native_stats": _native_visual_runtime.get_stats() if _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
+		"native_setup_summary": _native_setup_summary.duplicate(true),
+		"native_live_diagnostics": _native_live_diagnostics.duplicate(true),
+		"universes_submitted_to_native": submitted_universes,
 	}
 
 
@@ -418,12 +428,11 @@ func _consume_dirty_universe_frames(receiver) -> Dictionary:
 	var changed_frames: Dictionary = {}
 	var dirty_universes: PackedInt32Array = receiver.get_dirty_universes()
 	for universe_id in dirty_universes:
-		if not _used_universes.has(int(universe_id)):
+		if not _compiled_used_universes.has(int(universe_id)):
 			continue
 		var frame: PackedByteArray = receiver.consume_universe(int(universe_id))
 		if frame.is_empty():
 			continue
-		var interest_hash: int = _compute_universe_interest_hash(int(universe_id), frame)
 		var previous_state: Variant = _last_universe_counters.get(int(universe_id), {})
 		var previous_counter: int = -1
 		if previous_state is Dictionary:
@@ -432,13 +441,13 @@ func _consume_dirty_universe_frames(receiver) -> Dictionary:
 			"data": frame,
 			"counter": previous_counter + 1,
 			"content_hash": _compute_snapshot_hash(frame),
-			"interest_hash": interest_hash,
+			"interest_hash": -1,
 		}
 	return changed_frames
 
 func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
 	var changed_frames: Dictionary = {}
-	for universe_key in _used_universes.keys():
+	for universe_key in _compiled_used_universes.keys():
 		var universe_id: int = int(universe_key)
 		var metadata: Dictionary = receiver.get_universe_metadata(universe_id) if receiver.has_method("get_universe_metadata") else {}
 		var counter: int = int(metadata.get("counter", -2))
@@ -509,14 +518,31 @@ func _register_native_visual_runtime_bindings() -> void:
 		_native_bindings_count = 0
 		return
 	var compiled_scene: Dictionary = _loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	_register_compiled_runtime_submission_metadata(compiled_scene)
 	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
 	if _loader.has_method("_register_native_runtime_targets"):
 		_loader._register_native_runtime_targets(compiled_scene.get("renderer_manifest", []))
+	if _loader.has_method("_get_native_target_registry_summary"):
+		_native_setup_summary["target_registry"] = _loader._get_native_target_registry_summary()
 	_native_bindings_count = int(compiled_scene.get("property_count", 0))
 	if _native_visual_runtime.has_method("install_compiled_scene"):
 		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
+
+func _register_compiled_runtime_submission_metadata(compiled_scene: Dictionary) -> void:
+	_compiled_used_universes.clear()
+	_compiled_relevant_offsets_by_universe.clear()
+	var used_universes: Dictionary = compiled_scene.get("used_universes", {})
+	for universe_key in used_universes.keys():
+		_compiled_used_universes[int(str(universe_key))] = true
+	var relevant_offsets: Dictionary = compiled_scene.get("relevant_offsets_by_universe", {})
+	for universe_key in relevant_offsets.keys():
+		var packed := PackedInt32Array()
+		for offset in relevant_offsets.get(universe_key, []):
+			packed.append(int(offset))
+		_compiled_relevant_offsets_by_universe[int(str(universe_key))] = packed
+	_native_setup_summary = compiled_scene.get("setup_summary", {}).duplicate(true)
 
 func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
 	for item in renderer_manifest:

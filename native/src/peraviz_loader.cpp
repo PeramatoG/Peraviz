@@ -164,6 +164,8 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
         d["asset_kind"] = String(node.asset_kind.c_str());
         d["asset_path"] = String(node.asset_path.c_str());
         d["primitive_type"] = String(node.primitive_type.c_str());
+        d["gdtf_geometry_key"] = String(node.gdtf_geometry_key.c_str());
+        d["gdtf_geometry_path"] = String(node.gdtf_geometry_path.c_str());
         d["primitive_size_x"] = node.primitive_size_x;
         d["primitive_size_y"] = node.primitive_size_y;
         d["primitive_size_z"] = node.primitive_size_z;
@@ -323,16 +325,19 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
                 entry["dimmer_target_id"] = property.render_target_id;
                 entry["dimmer_geometry_id"] = property.geometry_id;
                 entry["dimmer_geometry_name"] = String(property.geometry_name.c_str());
+                entry["dimmer_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
                 capability_flags |= 1;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
                 entry["pan_component_id"] = property.component_id;
                 entry["pan_geometry_id"] = property.geometry_id;
                 entry["pan_geometry_name"] = String(property.geometry_name.c_str());
+                entry["pan_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
                 capability_flags |= 2;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
                 entry["tilt_component_id"] = property.component_id;
                 entry["tilt_geometry_id"] = property.geometry_id;
                 entry["tilt_geometry_name"] = String(property.geometry_name.c_str());
+                entry["tilt_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
                 capability_flags |= 4;
             }
         }
@@ -343,6 +348,38 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     out["floats"] = floats;
     out["diagnostics"] = diagnostics;
     out["renderer_manifest"] = manifest;
+    Dictionary relevant_offsets_by_universe;
+    Dictionary used_universes;
+    int32_t dimmer_property_count = 0;
+    int32_t pan_property_count = 0;
+    int32_t tilt_property_count = 0;
+    for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) ++dimmer_property_count;
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) ++pan_property_count;
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) ++tilt_property_count;
+    }
+    for (const peraviz::runtime::CompiledDmxSourceProgram &program : scene.source_programs) {
+        for (const peraviz::runtime::CompiledDmxByteSource &source : program.sources) {
+            String universe_key = String::num_int64(source.universe_id);
+            used_universes[universe_key] = true;
+            Array offsets = relevant_offsets_by_universe.get(universe_key, Array());
+            offsets.push_back(source.address);
+            relevant_offsets_by_universe[universe_key] = offsets;
+        }
+    }
+    Dictionary setup_summary;
+    setup_summary["scene_fixture_count"] = static_cast<int32_t>(last_scene_model_.fixture_patches.size());
+    setup_summary["compiled_fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
+    setup_summary["dimmer_property_count"] = dimmer_property_count;
+    setup_summary["pan_property_count"] = pan_property_count;
+    setup_summary["tilt_property_count"] = tilt_property_count;
+    setup_summary["source_program_count"] = static_cast<int32_t>(scene.source_programs.size());
+    setup_summary["used_universes"] = used_universes;
+    setup_summary["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
+    setup_summary["manifest_fixture_count"] = static_cast<int32_t>(manifest.size());
+    out["setup_summary"] = setup_summary;
+    out["used_universes"] = used_universes;
+    out["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
     out["fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
     out["program_count"] = static_cast<int32_t>(scene.source_programs.size());
     out["property_count"] = static_cast<int32_t>(scene.properties.size());

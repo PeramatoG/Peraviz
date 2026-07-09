@@ -39,6 +39,8 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 	var counts: Dictionary = _new_counts()
 	var updated_fixtures: Dictionary = {}
 	var skipped: int = 0
+	var applied_rows: int = 0
+	var failed_rows: int = 0
 	for descriptor_base in range(0, descriptors.size(), DESCRIPTOR_STRIDE):
 		var section_type: int = descriptors[descriptor_base]
 		var row_count: int = descriptors[descriptor_base + 1]
@@ -58,11 +60,14 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 			if fixture_uuid.is_empty() or not bound_fixture_ids.has(fixture_uuid):
 				skipped += 1
 				continue
-			if not _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts):
+			var row_result: Dictionary = _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts)
+			if not bool(row_result.get("applied", false)):
 				skipped += 1
+				failed_rows += 1
 				continue
 			updated_fixtures[fixture_uuid] = true
-	return {"updated": updated_fixtures.size(), "skipped": skipped, "fixtures_considered": updated_fixtures.size() + skipped, "visual_mask_counts": counts}
+			applied_rows += 1
+	return {"updated": updated_fixtures.size(), "skipped": skipped, "fixtures_considered": updated_fixtures.size() + skipped, "visual_mask_counts": counts, "targets_applied": applied_rows, "targets_failed": failed_rows}
 
 func _new_counts() -> Dictionary:
 	return {
@@ -72,6 +77,8 @@ func _new_counts() -> Dictionary:
 		"changed_zoom_count": 0,
 		"changed_gobo_count": 0,
 		"changed_gobo_rotation_count": 0,
+		"transform_rows_generated": 0,
+		"intensity_rows_generated": 0,
 	}
 
 func _fixture_id_for_row(int_base: int, integers: PackedInt32Array) -> int:
@@ -79,39 +86,43 @@ func _fixture_id_for_row(int_base: int, integers: PackedInt32Array) -> int:
 		return 0
 	return integers[int_base]
 
-func _apply_section_row(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, frame_delta_sec: float, dmx_runtime: Object, counts: Dictionary) -> bool:
+func _apply_section_row(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, frame_delta_sec: float, dmx_runtime: Object, counts: Dictionary) -> Dictionary:
 	if int_base < 0 or int_base >= integers.size() or float_base < 0 or float_base > floats.size():
-		return false
+		return {"applied": false}
 	var changed_mask: int = _changed_mask_for_row(section_type, int_base, integers)
 	_record_changed_mask(changed_mask, counts)
 	match section_type:
 		SECTION_GEOMETRY_TRANSFORM:
-			if float_base + 1 >= floats.size(): return false
+			counts["transform_rows_generated"] += 1
+			if float_base + 1 >= floats.size(): return {"applied": false}
 			var pan_component_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
 			var tilt_component_id: int = integers[int_base + 2] if int_base + 2 < integers.size() else 0
-			light_apply_service.apply_transform_targets(loader, fixture_uuid, pan_component_id, tilt_component_id, floats[float_base], floats[float_base + 1])
+			var transform_result: Dictionary = light_apply_service.apply_transform_targets(loader, fixture_uuid, pan_component_id, tilt_component_id, floats[float_base], floats[float_base + 1])
+			return {"applied": bool(transform_result.get("pan_applied", false)) or bool(transform_result.get("tilt_applied", false))}
 		SECTION_EMITTER_INTENSITY:
-			if float_base + 4 >= floats.size(): return false
+			counts["intensity_rows_generated"] += 1
+			if float_base + 4 >= floats.size(): return {"applied": false}
 			var dimmer_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
-			light_apply_service.apply_emitter_intensity(loader, fixture_uuid, dimmer_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
+			var intensity_result: Dictionary = light_apply_service.apply_emitter_intensity(loader, fixture_uuid, dimmer_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
+			return {"applied": bool(intensity_result.get("dimmer_applied", false))}
 		SECTION_EMITTER_COLOR:
-			if float_base + 2 >= floats.size(): return false
+			if float_base + 2 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_emitter_color(loader, fixture_uuid, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))
 		SECTION_BEAM_OPTICS:
-			if float_base + 2 >= floats.size(): return false
+			if float_base + 2 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_beam_optics(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
 		SECTION_WHEEL_SELECTION:
-			if float_base >= floats.size(): return false
+			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_wheel_selection(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], dmx_runtime)
 		SECTION_WHEEL_MOTION:
-			if float_base + 1 >= floats.size(): return false
+			if float_base + 1 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_wheel_motion(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], floats[float_base + 1], dmx_runtime)
 		SECTION_TEMPORAL_OUTPUT:
-			if float_base >= floats.size(): return false
+			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_temporal_output(loader, fixture_uuid, floats[float_base], floats[float_base + 1] if float_base + 1 < floats.size() else 1.0)
 		_:
-			return false
-	return true
+			return {"applied": false}
+	return {"applied": true}
 
 func _changed_mask_for_row(section_type: int, int_base: int, integers: PackedInt32Array) -> int:
 	if section_type == SECTION_WHEEL_SELECTION and int_base + 4 < integers.size():
