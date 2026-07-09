@@ -2,6 +2,7 @@
 
 #include "dmx/gdtf_attribute_classifier.h"
 #include "dmx/gdtf_xml_reader.h"
+#include "gdtf_runtime/gdtf_geometry_identity.h"
 
 #include <algorithm>
 #include <cctype>
@@ -203,14 +204,14 @@ std::unordered_map<std::string, std::string> build_geometry_paths(tinyxml2::XMLE
             auto referenced = geometry_by_name.find(reference_name);
             if (referenced != geometry_by_name.end()) {
                 const std::string instance_name = dmx::trim_ascii(read_attr(geometry, "Name", "name"));
-                const std::string reference_path = parent_path.empty() ? instance_name : parent_path + "/" + instance_name;
+                const std::string reference_path = append_geometry_path(parent_path, instance_name);
                 visit(referenced->second, reference_path);
             }
             return;
         }
         const std::string name = dmx::trim_ascii(read_attr(geometry, "Name", "name"));
         if (name.empty()) return;
-        const std::string path = parent_path.empty() ? name : parent_path + "/" + name;
+        const std::string path = append_geometry_path(parent_path, name);
         paths[name] = path;
         for (tinyxml2::XMLElement *child = geometry->FirstChildElement(); child; child = child->NextSiblingElement()) {
             visit(child, path);

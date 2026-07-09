@@ -120,6 +120,7 @@ var _compiled_used_universes: Dictionary = {}
 var _compiled_relevant_offsets_by_universe: Dictionary = {}
 var _native_setup_summary: Dictionary = {}
 var _native_live_diagnostics: Dictionary = {}
+var _native_live_diagnostics_logged: bool = false
 var _fixture_time_tick_flags: Dictionary = {}
 var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
@@ -171,6 +172,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_compiled_relevant_offsets_by_universe.clear()
 	_native_setup_summary.clear()
 	_native_live_diagnostics.clear()
+	_native_live_diagnostics_logged = false
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -399,12 +401,13 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		if loader == null or light_apply_service == null:
 			push_error("PeravizVisualRuntime requires the visual-frame light applier for live DMX playback.")
 			return {"updated": updated, "skipped": skipped, "universes_changed": changed_frames.size(), "fixtures_considered": fixtures_considered, "controls": pending_controls}
-		compact_result = _sectioned_visual_frame_applier.apply_snapshot(visual_frame, loader, light_apply_service, frame_delta_sec, self, _native_fixture_uuids_by_id, _bound_fixture_ids)
+		compact_result = _sectioned_visual_frame_applier.apply_snapshot(visual_frame, loader, light_apply_service, frame_delta_sec, self, _native_fixture_uuids_by_id, _fixture_nodes)
 		_last_visual_mask_counts = compact_result.get("visual_mask_counts", {})
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
 		_native_live_diagnostics = compact_result.duplicate(true)
+		_log_native_live_diagnostics_once()
 
 	return {
 		"updated": updated,
@@ -422,6 +425,31 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		"native_live_diagnostics": _native_live_diagnostics.duplicate(true),
 		"universes_submitted_to_native": submitted_universes,
 	}
+
+func _log_native_live_diagnostics_once() -> void:
+	if _native_live_diagnostics_logged:
+		return
+	var skip_diagnostics: Dictionary = _native_live_diagnostics.get("skip_diagnostics", {})
+	if int(skip_diagnostics.get("rows_generated", 0)) <= 0:
+		return
+	_native_live_diagnostics_logged = true
+	print("[native-dpt-live] rows=%d unknown_fixture=%d missing_scene_fixture=%d legacy_bound_rejections=%d invalid_payload=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d first_failures=%s" % [
+		int(skip_diagnostics.get("rows_generated", 0)),
+		int(skip_diagnostics.get("unknown_fixture_id", 0)),
+		int(skip_diagnostics.get("missing_scene_fixture", 0)),
+		int(skip_diagnostics.get("legacy_bound_map_rejections", 0)),
+		int(skip_diagnostics.get("invalid_schema_payload", 0)),
+		int(skip_diagnostics.get("pan_requested", 0)),
+		int(skip_diagnostics.get("pan_mutated", 0)),
+		int(skip_diagnostics.get("pan_failed", 0)),
+		int(skip_diagnostics.get("tilt_requested", 0)),
+		int(skip_diagnostics.get("tilt_mutated", 0)),
+		int(skip_diagnostics.get("tilt_failed", 0)),
+		int(skip_diagnostics.get("dimmer_requested", 0)),
+		int(skip_diagnostics.get("dimmer_mutated", 0)),
+		int(skip_diagnostics.get("dimmer_failed", 0)),
+		str(skip_diagnostics.get("first_failures", [])),
+	])
 
 
 func _consume_dirty_universe_frames(receiver) -> Dictionary:

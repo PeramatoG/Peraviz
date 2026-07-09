@@ -102,6 +102,7 @@ add_library(peraviz_native SHARED
     src/mesh_3ds_loader.cpp
     src/peraviz_debug_runtime.cpp
     src/gdtf_scene_builder.cpp
+    src/gdtf_runtime/gdtf_geometry_identity.cpp
     src/mvr_scene_loader.cpp
     src/peraviz_loader.cpp
     src/gobo_vectorizer.cpp
@@ -254,6 +255,7 @@ if(BUILD_TESTING)
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/visual_frame_schema.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/dmx/fixture_dmx_binding.cpp
         src/dmx/gdtf_attribute_classifier.cpp
@@ -277,6 +279,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_gdtf_runtime_schema_tests
         tests/gdtf_runtime_schema_test.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
         src/dmx/gdtf_attribute_classifier.cpp

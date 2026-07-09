@@ -4,6 +4,7 @@
 #include "coordinate_mapper.h"
 #include "matrixutils.h"
 #include "peraviz_debug_runtime.h"
+#include "gdtf_runtime/gdtf_geometry_identity.h"
 
 #include <algorithm>
 #include <cctype>
@@ -356,7 +357,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
             }
             const std::string reference_name = safe_name(geometry, "geometry_reference");
             const std::string reference_path =
-                parent_geometry_path.empty() ? reference_name : parent_geometry_path + "/" + reference_name;
+                peraviz::gdtf_runtime::append_geometry_path(parent_geometry_path, reference_name);
             append_geometry(referenced_it->second, geometry_parent_id, geometry_parent_world,
                             reference_model ? reference_model : override_model, &local, parent_is_lens,
                             reference_path);
@@ -365,7 +366,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
 
         const std::string geometry_name = safe_name(geometry, "geometry");
         const std::string geometry_path =
-            parent_geometry_path.empty() ? geometry_name : parent_geometry_path + "/" + geometry_name;
+            peraviz::gdtf_runtime::append_geometry_path(parent_geometry_path, geometry_name);
         const std::string geometry_id = request.fixture_node_id + "/" + geometry_name +
                                         "#" + std::to_string(local_counter++);
 
@@ -373,7 +374,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
         node.node_id = geometry_id;
         node.parent_id = geometry_parent_id;
         node.name = geometry_name;
-        node.gdtf_geometry_key = request.fixture_node_id + "/" + geometry_path;
+        node.gdtf_geometry_key = peraviz::gdtf_runtime::make_fixture_geometry_key(request.fixture_node_id, geometry_path);
         node.gdtf_geometry_path = geometry_path;
         node.type = "fixture_geometry";
         node.node_class = "fixture_geometry";

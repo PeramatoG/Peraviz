@@ -104,7 +104,7 @@ func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_fr
 func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_degrees: float, tilt_degrees: float) -> void:
 	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
-func apply_transform_targets(loader: Node, fixture_uuid: String, pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
+func apply_transform_targets(loader: Node, pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	if loader.has_method("_apply_native_transform_targets"):
 		return loader._apply_native_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
 	return {"failed": 1, "reason": "Native transform target registry is unavailable."}

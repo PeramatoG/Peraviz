@@ -67,11 +67,11 @@ func _init() -> void:
 		"integers": PackedInt32Array([1, 101, 102, 1, 1, 201, 2]),
 		"floats": PackedFloat32Array([45.0, -30.0, 1.0, 20.0, 20.0, 1.0, 4.0]),
 	}
-	var result: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"}, {"fixture-a": true})
+	var result: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	assert(int(result.get("updated", 0)) == 1)
 	assert(is_equal_approx(loader.pan_node.rotation_degrees.y, 45.0))
 	assert(is_equal_approx(loader.tilt_node.rotation_degrees.x, -30.0))
 	loader.dimmer_valid = false
-	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"}, {"fixture-a": true})
+	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	assert(int(failed.get("skipped", 0)) > 0)
 	quit(0)

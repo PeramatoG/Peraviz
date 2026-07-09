@@ -7,6 +7,7 @@
 #ifdef PERAVIZ_ENABLE_DMX
 #include "dmx/fixture_dmx_binding.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
+#include "gdtf_runtime/gdtf_geometry_identity.h"
 #include "runtime/visual_runtime_types.h"
 #endif
 
@@ -325,21 +326,21 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
                 entry["dimmer_target_id"] = property.render_target_id;
                 entry["dimmer_geometry_id"] = property.geometry_id;
                 entry["dimmer_geometry_name"] = String(property.geometry_name.c_str());
-                entry["dimmer_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
+                entry["dimmer_geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
                 entry["dimmer_geometry_path"] = String(property.geometry_name.c_str());
                 capability_flags |= 1;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
                 entry["pan_component_id"] = property.component_id;
                 entry["pan_geometry_id"] = property.geometry_id;
                 entry["pan_geometry_name"] = String(property.geometry_name.c_str());
-                entry["pan_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
+                entry["pan_geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
                 entry["pan_geometry_path"] = String(property.geometry_name.c_str());
                 capability_flags |= 2;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
                 entry["tilt_component_id"] = property.component_id;
                 entry["tilt_geometry_id"] = property.geometry_id;
                 entry["tilt_geometry_name"] = String(property.geometry_name.c_str());
-                entry["tilt_geometry_key"] = String((fixture.fixture_uuid + "/" + property.geometry_name).c_str());
+                entry["tilt_geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
                 entry["tilt_geometry_path"] = String(property.geometry_name.c_str());
                 capability_flags |= 4;
             }
