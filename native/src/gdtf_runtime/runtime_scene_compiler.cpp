@@ -133,7 +133,9 @@ void append_property(runtime::CompiledRuntimeScene &scene,
     const std::string semantic_label = semantic == runtime::CompiledSemantic::Pan ? "pan" : semantic == runtime::CompiledSemantic::Tilt ? "tilt" : "dimmer";
     const int32_t component_id = stable_id(patch.fixture_uuid, semantic_label + ":component:" + geometry->path);
     const int32_t target_id = semantic == runtime::CompiledSemantic::Dimmer ? stable_id(patch.fixture_uuid, semantic_label + ":target:" + geometry->path) : component_id;
+    const int32_t property_id = stable_id(patch.fixture_uuid, semantic_label + ":property:" + geometry->path);
     runtime::CompiledComponentProperty property;
+    property.property_id = property_id;
     property.fixture_id = fixture_id;
     property.component_id = component_id;
     property.render_target_id = target_id;
@@ -196,8 +198,9 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         if (out.properties.size() == property_start) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
     }
     for (const auto &property : out.properties) {
+        check_generated_id(generated_ids, out, property.property_id, std::to_string(property.fixture_id));
         check_generated_id(generated_ids, out, property.component_id, std::to_string(property.fixture_id));
-        if (property.render_target_id != property.component_id) check_generated_id(generated_ids, out, property.render_target_id, std::to_string(property.fixture_id));
+        if (property.render_target_id != property.component_id && property.render_target_id != property.property_id) check_generated_id(generated_ids, out, property.render_target_id, std::to_string(property.fixture_id));
     }
     return out;
 }

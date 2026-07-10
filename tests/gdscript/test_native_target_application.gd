@@ -37,18 +37,18 @@ class FakeLoader:
 			return {
 				"geometry_nodes": [dimmer_node],
 				"emitter_nodes": [],
-				"emitter_lights": [],
-				"beam_resources": [],
-				"emissive_materials": [],
+				"emitter_anchors": [],
+				"beam_instances": [],
+				"lens_material_targets": [],
 				"emitter_photometrics": [],
 			}
 		last_dimmer_light = SpotLight3D.new()
 		return {
 			"geometry_nodes": [dimmer_node],
 			"emitter_nodes": [dimmer_node],
-			"emitter_lights": [last_dimmer_light],
-			"beam_resources": [last_dimmer_light],
-			"emissive_materials": [],
+			"emitter_anchors": [last_dimmer_light],
+			"beam_instances": [last_dimmer_light],
+			"lens_material_targets": [],
 			"emitter_photometrics": [],
 		}
 

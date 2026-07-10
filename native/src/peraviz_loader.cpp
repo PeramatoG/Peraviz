@@ -284,6 +284,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         }
     }
     for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+        integers.push_back(property.property_id);
         integers.push_back(property.fixture_id);
         integers.push_back(property.component_id);
         integers.push_back(property.render_target_id);
@@ -308,6 +309,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     }
     Array manifest;
     manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
+    Array renderer_targets;
     for (int64_t fixture_index = 0; fixture_index < static_cast<int64_t>(scene.fixtures.size()); ++fixture_index) {
         const peraviz::runtime::CompiledFixtureInstance &fixture = scene.fixtures[static_cast<size_t>(fixture_index)];
         Dictionary entry;
@@ -318,40 +320,53 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         entry["universe_id"] = fixture.universe_id;
         entry["start_address"] = fixture.start_address;
         int32_t capability_flags = 0;
+        Array targets;
         for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
             if (property.fixture_id != fixture.fixture_id) {
                 continue;
             }
+            String semantic;
+            int32_t target_id = 0;
             if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
-                entry["dimmer_target_id"] = property.render_target_id;
-                entry["dimmer_geometry_id"] = property.geometry_id;
-                entry["dimmer_geometry_name"] = String(property.geometry_name.c_str());
-                entry["dimmer_geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
-                entry["dimmer_geometry_path"] = String(property.geometry_name.c_str());
+                semantic = "dimmer";
+                target_id = property.render_target_id;
                 capability_flags |= 1;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
-                entry["pan_component_id"] = property.component_id;
-                entry["pan_geometry_id"] = property.geometry_id;
-                entry["pan_geometry_name"] = String(property.geometry_name.c_str());
-                entry["pan_geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
-                entry["pan_geometry_path"] = String(property.geometry_name.c_str());
+                semantic = "pan";
+                target_id = property.component_id;
                 capability_flags |= 2;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
-                entry["tilt_component_id"] = property.component_id;
-                entry["tilt_geometry_id"] = property.geometry_id;
-                entry["tilt_geometry_name"] = String(property.geometry_name.c_str());
-                entry["tilt_geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
-                entry["tilt_geometry_path"] = String(property.geometry_name.c_str());
+                semantic = "tilt";
+                target_id = property.component_id;
                 capability_flags |= 4;
             }
+            if (target_id <= 0 || semantic.is_empty()) {
+                continue;
+            }
+            Dictionary target;
+            target["fixture_id"] = fixture.fixture_id;
+            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["property_id"] = property.property_id;
+            target["component_id"] = property.component_id;
+            target["render_target_id"] = property.render_target_id;
+            target["target_id"] = target_id;
+            target["semantic"] = semantic;
+            target["geometry_id"] = property.geometry_id;
+            target["geometry_name"] = String(property.geometry_name.c_str());
+            target["geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
+            target["geometry_path"] = String(property.geometry_name.c_str());
+            targets.push_back(target);
+            renderer_targets.push_back(target);
         }
         entry["capability_flags"] = capability_flags;
+        entry["targets"] = targets;
         manifest[fixture_index] = entry;
     }
     out["integers"] = integers;
     out["floats"] = floats;
     out["diagnostics"] = diagnostics;
     out["renderer_manifest"] = manifest;
+    out["renderer_targets"] = renderer_targets;
     Dictionary relevant_offsets_by_universe;
     Dictionary used_universes;
     int32_t dimmer_property_count = 0;

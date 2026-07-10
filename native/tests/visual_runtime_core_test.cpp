@@ -46,9 +46,9 @@ peraviz::runtime::CompiledRuntimeScene make_scene() {
     scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "Dimmer"});
     scene.source_programs.push_back({2, CompiledSemantic::Pan, {{10, 1, 0}, {10, 3, 1}}, 0, 65535, -270.0, 270.0, "Pan", "Pan"});
     scene.source_programs.push_back({3, CompiledSemantic::Tilt, {{10, 2, 0}, {10, 4, 1}}, 0, 65535, -135.0, 135.0, "Tilt", "Tilt"});
-    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
-    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Pan, {{2, 1.0}}});
-    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Tilt, {{3, 1.0}}});
+    scene.properties.push_back({10001, 1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
+    scene.properties.push_back({10002, 1, 101, 1001, CompiledSemantic::Pan, {{2, 1.0}}});
+    scene.properties.push_back({10003, 1, 101, 1001, CompiledSemantic::Tilt, {{3, 1.0}}});
     return scene;
 }
 
@@ -102,7 +102,7 @@ int test_more_than_two_source_bytes() {
     CompiledRuntimeScene scene;
     scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
     scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}, {10, 2, 1}, {10, 4, 2}}, 0, 16777215, 0.0, 1.0, "Dimmer", "Dimmer24"});
-    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
+    scene.properties.push_back({10001, 1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
     PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> frame(8, 0xff);
@@ -120,7 +120,7 @@ int test_multiple_contributors() {
     scene.properties.clear();
     scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerA"});
     scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
-    scene.properties.push_back({1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}, {2, 3.0}}});
+    scene.properties.push_back({10004, 1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}, {2, 3.0}}});
     PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> frame(8, 0);
@@ -137,6 +137,48 @@ int test_multiple_contributors() {
     zero_runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     const auto zero_visual = zero_runtime.consume_latest_visual_frame();
     if (std::fabs(first_intensity_dimmer(zero_visual)) > 0.001f) return fail("Expected zero-weight contributor not to override the property value");
+    return 0;
+}
+
+
+// Counts rows in the emitter intensity section.
+int intensity_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+            return frame.descriptors[index + 1];
+        }
+    }
+    return 0;
+}
+
+// Verifies repeated Dimmer properties emit independent target rows without last-target-wins behavior.
+int test_independent_dimmer_targets() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 100.0, "Dimmer", "DimmerA"});
+    scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
+    scene.properties.push_back({20001, 1, 501, 1501, CompiledSemantic::Dimmer, {{1, 1.0}}});
+    scene.properties.push_back({20002, 1, 502, 1502, CompiledSemantic::Dimmer, {{2, 1.0}}});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(8, 0);
+    frame[0] = 128;
+    frame[1] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (intensity_row_count(visual) != 2) return fail("Expected one intensity row per Dimmer render target");
+    if (visual.integers.size() < 6 || visual.integers[1] == visual.integers[4]) return fail("Expected distinct Dimmer render target IDs");
+    if (visual.floats.size() < 10) return fail("Expected two Dimmer float payloads");
+    if (std::fabs(visual.floats[0] - (128.0f / 255.0f)) > 0.001f) return fail("Expected physical 0-100 Dimmer to emit normalized 0-1");
+    if (std::fabs(visual.floats[5] - 1.0f) > 0.001f) return fail("Expected second Dimmer target maximum normalized value");
+
+    frame[0] = 128;
+    frame[1] = 64;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const auto second = runtime.consume_latest_visual_frame();
+    if (intensity_row_count(second) != 1) return fail("Expected only the changed Dimmer target to emit a row");
+    if (second.integers.size() < 3 || second.integers[1] != 1502) return fail("Expected unchanged Dimmer target to remain clean");
     return 0;
 }
 
@@ -238,7 +280,7 @@ int test_full_resolution_ranges_and_function_selection() {
     runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
     const auto visual = runtime.consume_latest_visual_frame();
     const float dimmer = first_intensity_dimmer(visual);
-    if (std::fabs(dimmer - 0.751969f) > 0.001f) return fail("Expected high Dimmer ChannelFunction to be selected exactly");
+    if (std::fabs(dimmer - (64.0f / 127.0f)) > 0.001f) return fail("Expected high Dimmer ChannelFunction to emit local normalized intensity");
     return 0;
 }
 
@@ -285,6 +327,7 @@ int main() {
     if (test_non_adjacent_16_bit_value() != 0) return 1;
     if (test_more_than_two_source_bytes() != 0) return 1;
     if (test_multiple_contributors() != 0) return 1;
+    if (test_independent_dimmer_targets() != 0) return 1;
     if (test_parser_owned_runtime_scene() != 0) return 1;
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;

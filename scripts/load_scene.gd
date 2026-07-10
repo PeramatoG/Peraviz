@@ -59,6 +59,7 @@ var _native_tilt_targets: Dictionary = {}
 var _native_dimmer_targets: Dictionary = {}
 var _native_target_resolution_failures: Dictionary = {}
 var _native_geometry_targets_by_key: Dictionary = {}
+var _native_dimmer_emitter_owner_by_key: Dictionary = {}
 var _native_target_registry_summary: Dictionary = {}
 var _fixture_emitter_last_state: Dictionary = {}
 var _fixture_emitter_photometrics: Dictionary = {}
@@ -1674,19 +1675,41 @@ func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 	_native_dimmer_targets.clear()
 	_native_target_resolution_failures.clear()
 	_native_geometry_targets_by_key.clear()
+	_native_dimmer_emitter_owner_by_key.clear()
 	_native_target_registry_summary = _new_native_target_registry_summary()
 	_build_native_geometry_target_map(renderer_manifest)
 	for item in renderer_manifest:
 		if item is not Dictionary:
 			continue
 		var row: Dictionary = item
-		var fixture_uuid: String = str(row.get("fixture_uuid", ""))
-		if fixture_uuid.is_empty():
+		var targets: Array = row.get("targets", [])
+		if not targets.is_empty():
+			for target_item in targets:
+				if target_item is Dictionary:
+					_register_native_renderer_target(target_item)
 			continue
-		_register_native_axis_target(_native_pan_targets, row, int(row.get("pan_component_id", 0)), str(row.get("pan_geometry_key", "")), "pan")
-		_register_native_axis_target(_native_tilt_targets, row, int(row.get("tilt_component_id", 0)), str(row.get("tilt_geometry_key", "")), "tilt")
-		_register_native_dimmer_target(row, int(row.get("dimmer_target_id", 0)), fixture_uuid, str(row.get("dimmer_geometry_key", "")))
+		_register_native_legacy_manifest_row(row)
 	_log_native_target_registry_summary_once()
+
+
+func _register_native_legacy_manifest_row(row: Dictionary) -> void:
+	var fixture_uuid: String = str(row.get("fixture_uuid", ""))
+	if fixture_uuid.is_empty():
+		return
+	_register_native_axis_target(_native_pan_targets, row, int(row.get("pan_component_id", 0)), str(row.get("pan_geometry_key", "")), "pan")
+	_register_native_axis_target(_native_tilt_targets, row, int(row.get("tilt_component_id", 0)), str(row.get("tilt_geometry_key", "")), "tilt")
+	_register_native_dimmer_target(row, int(row.get("dimmer_target_id", 0)), fixture_uuid, str(row.get("dimmer_geometry_key", "")))
+
+func _register_native_renderer_target(target: Dictionary) -> void:
+	var semantic: String = str(target.get("semantic", "")).to_lower()
+	var fixture_uuid: String = str(target.get("fixture_uuid", ""))
+	var geometry_key: String = str(target.get("geometry_key", ""))
+	if semantic == "pan":
+		_register_native_axis_target(_native_pan_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "pan")
+	elif semantic == "tilt":
+		_register_native_axis_target(_native_tilt_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "tilt")
+	elif semantic == "dimmer":
+		_register_native_dimmer_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 
 func _new_native_target_registry_summary() -> Dictionary:
 	return {
@@ -1707,9 +1730,11 @@ func _new_native_target_registry_summary() -> Dictionary:
 		"dimmer_owner_geometries_resolved": 0,
 		"dimmer_targets_with_emitter_nodes": 0,
 		"dimmer_targets_with_lights": 0,
-		"dimmer_targets_with_beam_resources": 0,
-		"dimmer_targets_with_emissive_materials": 0,
+		"dimmer_targets_with_beam_instances": 0,
+		"dimmer_targets_with_lens_materials": 0,
+		"dimmer_targets_with_optional_spotlights": 0,
 		"dimmer_targets_with_no_mutable_resource": 0,
+		"dimmer_target_overlaps": 0,
 		"first_failures": [],
 	}
 
@@ -1774,47 +1799,127 @@ func _register_native_dimmer_target(manifest_row: Dictionary, target_id: int, fi
 		return
 	var target_nodes: Array = [target]
 	var emitter_nodes: Array = _collect_native_descendant_emitters(geometry_key)
+	emitter_nodes = _filter_native_dimmer_target_emitters(manifest_row, target_id, geometry_key, emitter_nodes)
 	var cache_key: String = "%s:%d" % [fixture_uuid, target_id]
-	var emitter_lights: Array = _collect_fixture_emitter_lights(cache_key, emitter_nodes)
-	var emissive_materials: Array = _collect_fixture_emissive_materials(cache_key, target_nodes + emitter_nodes)
-	var beam_resources: Array = _prepare_native_dimmer_beam_resources(emitter_lights)
+	var emitter_anchors: Array = _collect_fixture_emitter_lights(cache_key, emitter_nodes)
+	var lens_material_targets: Array = _prepare_native_dimmer_lens_materials(cache_key, target_nodes + emitter_nodes)
+	var beam_instances: Array = _prepare_native_dimmer_beam_instances(emitter_anchors)
 	_native_dimmer_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
+		"property_id": int(manifest_row.get("property_id", 0)),
+		"component_id": int(manifest_row.get("component_id", 0)),
+		"render_target_id": target_id,
 		"target_id": target_id,
 		"owner_geometry_key": geometry_key,
-		"node": target,
+		"owner_geometry_node": target,
 		"geometry_nodes": target_nodes,
 		"emitter_nodes": emitter_nodes,
-		"emitter_lights": emitter_lights,
-		"beam_resources": beam_resources,
-		"emissive_materials": emissive_materials,
+		"emitter_anchors": emitter_anchors,
+		"optional_spotlights": emitter_anchors,
+		"beam_instances": beam_instances,
+		"lens_material_targets": lens_material_targets,
 		"emitter_photometrics": _get_fixture_emitter_photometrics(fixture_uuid),
 	}
 	_increment_registry_counter("dimmer_owner_geometries_resolved")
 	if not emitter_nodes.is_empty():
 		_increment_registry_counter("dimmer_targets_with_emitter_nodes")
-	if not emitter_lights.is_empty():
+	if not emitter_anchors.is_empty():
 		_increment_registry_counter("dimmer_targets_with_lights")
-	if not beam_resources.is_empty():
-		_increment_registry_counter("dimmer_targets_with_beam_resources")
-	if not emissive_materials.is_empty():
-		_increment_registry_counter("dimmer_targets_with_emissive_materials")
-	if emitter_lights.is_empty() and beam_resources.is_empty() and emissive_materials.is_empty():
+		_increment_registry_counter("dimmer_targets_with_optional_spotlights")
+	if not beam_instances.is_empty():
+		_increment_registry_counter("dimmer_targets_with_beam_instances")
+	if not lens_material_targets.is_empty():
+		_increment_registry_counter("dimmer_targets_with_lens_materials")
+	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
 		_increment_registry_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_registry_counter("dimmer_resolved")
 
-func _prepare_native_dimmer_beam_resources(emitter_lights: Array) -> Array:
-	var resources: Array = []
-	for light in emitter_lights:
-		var spot: SpotLight3D = light as SpotLight3D
+func _prepare_native_dimmer_beam_instances(emitter_anchors: Array) -> Array:
+	var beam_instances: Array = []
+	for anchor in emitter_anchors:
+		var spot: SpotLight3D = anchor as SpotLight3D
 		if spot == null or not is_instance_valid(spot):
 			continue
 		spot.visible = false
 		spot.light_energy = 0.0
 		spot.set_meta("peraviz_beam_base_intensity", 0.0)
 		_ensure_beam_runtime_for_light(spot)
-		resources.append(spot)
-	return resources
+		var beam: MeshInstance3D = _get_beam_resource_for_light(spot)
+		if beam != null and is_instance_valid(beam):
+			beam.visible = false
+			beam_instances.append(beam)
+	return beam_instances
+
+func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
+	if _active_beam_renderer != null and _active_beam_renderer.has_method("get_beam_resource"):
+		return _active_beam_renderer.get_beam_resource(light) as MeshInstance3D
+	return null
+
+func _filter_native_dimmer_target_emitters(manifest_row: Dictionary, target_id: int, geometry_key: String, emitter_nodes: Array) -> Array:
+	var filtered: Array = []
+	for emitter_node in emitter_nodes:
+		var node3d: Node3D = emitter_node as Node3D
+		if node3d == null:
+			continue
+		var emitter_key: String = str(node3d.get_meta("peraviz_gdtf_geometry_key", ""))
+		if emitter_key.is_empty():
+			continue
+		if _native_dimmer_emitter_owner_by_key.has(emitter_key):
+			_increment_registry_counter("dimmer_target_overlaps")
+			_register_native_target_failure(manifest_row, target_id, "dimmer", "Emitter %s is already owned by Dimmer target %s." % [emitter_key, str(_native_dimmer_emitter_owner_by_key.get(emitter_key))])
+			continue
+		_native_dimmer_emitter_owner_by_key[emitter_key] = target_id
+		filtered.append(node3d)
+	return filtered
+
+func _prepare_native_dimmer_lens_materials(cache_key: String, geometry_nodes: Array) -> Array:
+	if _fixture_emissive_cache.has(cache_key):
+		return _fixture_emissive_cache.get(cache_key, [])
+	var targets: Array = []
+	for geometry_node in geometry_nodes:
+		_prepare_lens_material_targets_recursive(geometry_node, targets)
+	_fixture_emissive_cache[cache_key] = targets
+	return targets
+
+func _prepare_lens_material_targets_recursive(node: Node3D, output_targets: Array) -> void:
+	if node == null:
+		return
+	if node is MeshInstance3D:
+		_prepare_mesh_lens_material_targets(node as MeshInstance3D, output_targets)
+	for child in node.get_children():
+		if child is Node3D:
+			_prepare_lens_material_targets_recursive(child, output_targets)
+
+func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_targets: Array) -> void:
+	if not _is_emitter_lens_mesh(mesh_instance):
+		return
+	var surface_count: int = mesh_instance.get_surface_override_material_count()
+	if surface_count <= 0 and mesh_instance.mesh != null:
+		surface_count = mesh_instance.mesh.get_surface_count()
+	if surface_count <= 0:
+		return
+	for surface_index in range(surface_count):
+		var material: Material = mesh_instance.get_surface_override_material(surface_index)
+		if material == null and mesh_instance.mesh != null and surface_index < mesh_instance.mesh.get_surface_count():
+			material = mesh_instance.mesh.surface_get_material(surface_index)
+		var prepared: BaseMaterial3D = _prepare_lens_emissive_material(material)
+		if prepared == null:
+			continue
+		mesh_instance.set_surface_override_material(surface_index, prepared)
+		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared})
+
+func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
+	var prepared: BaseMaterial3D = null
+	if material is BaseMaterial3D:
+		prepared = (material as BaseMaterial3D).duplicate(true) as BaseMaterial3D
+	else:
+		prepared = StandardMaterial3D.new()
+	if prepared == null:
+		return null
+	prepared.emission_enabled = true
+	prepared.emission = Color.WHITE
+	prepared.emission_energy_multiplier = 0.0
+	return prepared
 
 func _collect_native_descendant_emitters(geometry_key: String) -> Array:
 	var nodes: Array = []
@@ -1859,8 +1964,8 @@ func _log_native_target_registry_summary_once() -> void:
 		int(_native_target_registry_summary.get("dimmer_owner_geometries_resolved", 0)),
 		int(_native_target_registry_summary.get("dimmer_targets_with_emitter_nodes", 0)),
 		int(_native_target_registry_summary.get("dimmer_targets_with_lights", 0)),
-		int(_native_target_registry_summary.get("dimmer_targets_with_beam_resources", 0)),
-		int(_native_target_registry_summary.get("dimmer_targets_with_emissive_materials", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_beam_instances", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_lens_materials", 0)),
 		int(_native_target_registry_summary.get("dimmer_targets_with_no_mutable_resource", 0)),
 		int(_native_target_registry_summary.get("empty_manifest_geometry_keys", 0)),
 		int(_native_target_registry_summary.get("duplicate_imported_geometry_keys", 0)),

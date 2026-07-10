@@ -20,12 +20,13 @@ These rules apply to the whole repository. Direct user instructions for the curr
 ## Current runtime facts
 
 1. The active live path uses a native sectioned visual frame with descriptors, integer payloads, and float payloads.
-2. The current setup bridge still uses `set_fixture_bindings(...)`, `FixtureChannelBinding`, magic numeric `channel_type` values, `set_fixture_render_params(...)`, and Godot `Array`/`Dictionary` setup data.
-3. `scripts/dmx_fixture_runtime.gd` still builds and registers fixture bindings.
-4. Transitional Godot-side gobo metadata and compatibility paths still exist.
-5. `CompiledGdtfFixtureType` is preliminary and does not yet feed the visual runtime directly.
+2. Dimmer, Pan, and Tilt use parser-owned selected-mode GDTF `ChannelFunction` data compiled into `CompiledRuntimeScene` and evaluated by the native visual runtime.
+3. Dimmer state is property/target-oriented; repeated Dimmer render targets must not collapse into one fixture-level scalar or manifest slot.
+4. Godot owns setup-time renderer target records and live renderer mutation, including Lightweight Prism beam resources and optional realtime spotlight state.
+5. Legacy fixture bindings may still exist for inspection or unsupported compatibility domains, but they must not be a Dimmer/Pan/Tilt live fallback.
+6. Transitional Godot-side gobo metadata and compatibility paths still exist.
 
-Do not document or test the current branch as if the transitional bridge has already been removed.
+Do not document or test unsupported native attributes as implemented.
 
 ## GDTF-first policy
 

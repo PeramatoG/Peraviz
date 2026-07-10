@@ -90,3 +90,11 @@ The next recommended vertical slice is color intensity/color-mixing through pars
 - `docs/godot_performance_guidelines.md` contains renderer and scene-tree performance guidance.
 - `docs/NATIVE_BUILD.md` documents native build steps.
 - `docs/MVR_XCHANGE.md` documents MVR-xchange behavior.
+
+### Native Dimmer/Pan/Tilt runtime contract
+
+The active Dimmer/Pan/Tilt path is parser-owned: MVR fixture patches select GDTF DMX modes, selected-mode `ChannelFunction` records compile into native source programs and component properties, and live Art-Net frames are evaluated by the native sectioned runtime. The evaluator preserves raw DMX, local normalized range position, and GDTF physical value separately. Pan and Tilt consume physical degrees; Dimmer consumes normalized 0–1 intensity even when the GDTF physical range is 0–100.
+
+Dimmer is target-oriented rather than fixture-oriented. Each compiled Dimmer property keeps its own property ID, component ID, render target ID, geometry key, contributors, cached state, dirty comparison, and emitted `EmitterIntensity` row. Fixtures with repeated emitters can therefore produce multiple changed intensity rows in one frame without last-target-wins overwrite.
+
+Godot resolves renderer targets during structural setup only. Dimmer target records cache exact owner geometry, emitter anchors, Lightweight Prism beam instances, lens material targets, optional spotlight anchors, and photometric data. Live Dimmer rows update those cached resources directly; they do not parse GDTF, search by fixture UUID, traverse descendants, rebuild prism topology for intensity-only updates, or use legacy fixture bindings. Realtime spotlights may remain disabled because the Lightweight Prism backend provides the acceptance beam output independently.

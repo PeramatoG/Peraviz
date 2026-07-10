@@ -11,7 +11,7 @@ Status values:
 
 | Official family / examples | Section | Status | Notes |
 | --- | --- | --- | --- |
-| Dimmer | EmitterIntensity | partial | Native runtime-scene compiler installs eligible selected-mode ChannelFunction records with preserved DMX/physical ranges and target IDs, then emits normalized intensity for render cooking. |
+| Dimmer | EmitterIntensity | native-complete for verified DPT slice | Selected-mode ChannelFunctions preserve raw/full-resolution DMX and physical ranges; native evaluation emits normalized 0–1 Dimmer rows per changed render target, and Godot applies them to cached Lightweight Prism/lens resources. Multi-emitter ownership is deterministic with overlap diagnostics for ambiguous targets. |
 | Pan, Tilt | GeometryTransform | partial | Native runtime-scene compiler installs eligible selected-mode ChannelFunction records with preserved DMX/physical ranges and component IDs, then emits physical degrees in the transform section. |
 | XYZ, Rotation, Scale | GeometryTransform | planned | Not part of the verified production slice. |
 | Cyan, Magenta, Yellow, RGB/ColorAdditive, filters | EmitterColor | planned | Must be reconnected through native compiled runtime programs before production support is claimed. |

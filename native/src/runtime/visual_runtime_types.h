@@ -58,6 +58,7 @@ struct CompiledPropertyContributor {
 };
 
 struct CompiledComponentProperty {
+    int32_t property_id = 0;
     int32_t fixture_id = 0;
     int32_t component_id = 0;
     int32_t render_target_id = 0;
