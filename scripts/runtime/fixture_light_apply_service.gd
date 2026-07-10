@@ -111,34 +111,37 @@ func apply_transform_targets(loader: Node, pan_component_id: int, tilt_component
 
 func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_id: int, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> Dictionary:
 	if dimmer_target_id <= 0 or (loader.has_method("_has_native_dimmer_target") and not loader._has_native_dimmer_target(dimmer_target_id)):
-		return {"dimmer_requested": dimmer_target_id > 0, "dimmer_applied": false, "failed": 1}
+		return {"dimmer_requested": dimmer_target_id > 0, "target_resolved": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target not registered"}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_intensity_state(fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
 	var target_record: Dictionary = loader._get_native_dimmer_target_record(dimmer_target_id) if loader.has_method("_get_native_dimmer_target_record") else {}
-	var geometry_nodes: Array = target_record.get("geometry_nodes", [])
-	var emitter_nodes: Array = target_record.get("emitter_nodes", [])
-	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
-		_warn_visual_once(fixture_uuid + ":no_visual_nodes", "Fixture %s has dimmer %.3f but no geometry or emitter nodes." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001)
-		return {"dimmer_requested": true, "dimmer_applied": false, "failed": 1}
 	var beam_color: Color = _fixture_render_color(fixture_uuid)
-	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
+	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, material_energy, target_record.get("emissive_materials", []), true)
 	var emitter_photometrics: Array = target_record.get("emitter_photometrics", [])
 	var emitter_lights: Array = target_record.get("emitter_lights", [])
 	var visible_beams: int = 0
 	var visible_lights: int = 0
+	var lights_mutated: int = 0
+	var beams_mutated: int = 0
 	for index in range(emitter_lights.size()):
 		var light: SpotLight3D = emitter_lights[index]
 		if light == null or not is_instance_valid(light):
 			continue
 		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
-		_apply_intensity_to_light(loader, fixture_uuid, light, photometric, changed_mask, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
+		var light_result: Dictionary = _apply_intensity_to_light(loader, fixture_uuid, light, photometric, changed_mask, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
+		lights_mutated += int(light_result.get("lights_mutated", 0))
+		beams_mutated += int(light_result.get("beams_mutated", 0))
 		if _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001):
 			visible_lights += 1
 		if _beam_is_visible(light, beam_intensity):
 			visible_beams += 1
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
-	return {"dimmer_requested": true, "dimmer_applied": true, "failed": 0}
+	var mutable_resources: int = emitter_lights.size() + int(target_record.get("beam_resources", []).size()) + int(target_record.get("emissive_materials", []).size())
+	var mutations: int = lights_mutated + beams_mutated + materials_mutated
+	if mutable_resources <= 0:
+		return {"dimmer_requested": true, "target_resolved": true, "lights_considered": 0, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "visible_output_after_apply": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target has no mutable Dimmer resources"}
+	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
 
 func apply_emitter_color(loader: Node, fixture_uuid: String, beam_color: Color) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
@@ -176,12 +179,14 @@ func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: flo
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_diagnostic_info_keys[key + ":temporal_state"] = {"strobe_norm": strobe_norm, "output_norm": output_norm}
 
-func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> Dictionary:
 	var visible: bool = dimmer_norm > 0.0001
 	var beam_color: Color = _fixture_render_color(fixture_uuid)
 	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
 	var light_energy: float = spot_energy if spot_energy > 0.0 else beam_energy
+	var previous_energy: float = light.light_energy
+	var previous_visible: bool = light.visible
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
 	light.light_energy = light_energy
 	light.spot_angle = beam_half_angle
@@ -193,6 +198,10 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_intensity, material_energy)
 	else:
 		_apply_visual_frame_beam(loader, light, changed_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
+	var lights_mutated: int = 1 if not is_equal_approx(previous_energy, light.light_energy) or previous_visible != light.visible else 0
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
+	var beams_mutated: int = 1 if not beam_params.is_empty() else 0
+	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated}
 
 func _fixture_lights(loader: Node, fixture_uuid: String) -> Array:
 	return loader._collect_fixture_emitter_lights(fixture_uuid, loader._get_fixture_emitter_nodes(fixture_uuid))
@@ -332,18 +341,21 @@ func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLig
 		_visual_apply_counters["gobo_texture_compositions"] = int(result.get("texture_compositions", _visual_apply_counters.get("gobo_texture_compositions", 0)))
 	return bool(result.get("topology_changed", false))
 
-func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, material_energy: float) -> void:
+func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, material_energy: float, cached_materials: Array = [], use_cached_materials: bool = false) -> int:
 	var material_phase_start: int = Time.get_ticks_usec()
-	var emissive_materials: Array = _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
+	var emissive_materials: Array = cached_materials if use_cached_materials else _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
+	var materials_mutated: int = 0
 	for material in emissive_materials:
 		if material is BaseMaterial3D:
 			var material_rid: RID = _get_cached_material_rid(material)
 			if material_rid.is_valid():
 				RenderingServer.material_set_param(material_rid, "emission", beam_color)
 				RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", material_energy)
+				materials_mutated += 1
 				_visual_apply_counters["materials_updated"] = int(_visual_apply_counters.get("materials_updated", 0)) + 1
 				_visual_apply_counters["rendering_server_calls"] = int(_visual_apply_counters.get("rendering_server_calls", 0)) + 2
 	_track_phase("material_apply", material_phase_start)
+	return materials_mutated
 
 func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> Dictionary:
 	var light_phase_start: int = Time.get_ticks_usec()

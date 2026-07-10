@@ -1704,6 +1704,12 @@ func _new_native_target_registry_summary() -> Dictionary:
 		"dimmer_requested": 0,
 		"dimmer_resolved": 0,
 		"dimmer_failed": 0,
+		"dimmer_owner_geometries_resolved": 0,
+		"dimmer_targets_with_emitter_nodes": 0,
+		"dimmer_targets_with_lights": 0,
+		"dimmer_targets_with_beam_resources": 0,
+		"dimmer_targets_with_emissive_materials": 0,
+		"dimmer_targets_with_no_mutable_resource": 0,
 		"first_failures": [],
 	}
 
@@ -1768,17 +1774,47 @@ func _register_native_dimmer_target(manifest_row: Dictionary, target_id: int, fi
 		return
 	var target_nodes: Array = [target]
 	var emitter_nodes: Array = _collect_native_descendant_emitters(geometry_key)
-	if emitter_nodes.is_empty():
-		emitter_nodes = target_nodes
+	var cache_key: String = "%s:%d" % [fixture_uuid, target_id]
+	var emitter_lights: Array = _collect_fixture_emitter_lights(cache_key, emitter_nodes)
+	var emissive_materials: Array = _collect_fixture_emissive_materials(cache_key, target_nodes + emitter_nodes)
+	var beam_resources: Array = _prepare_native_dimmer_beam_resources(emitter_lights)
 	_native_dimmer_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
+		"target_id": target_id,
+		"owner_geometry_key": geometry_key,
 		"node": target,
 		"geometry_nodes": target_nodes,
 		"emitter_nodes": emitter_nodes,
-		"emitter_lights": _collect_fixture_emitter_lights("%s:%d" % [fixture_uuid, target_id], emitter_nodes),
+		"emitter_lights": emitter_lights,
+		"beam_resources": beam_resources,
+		"emissive_materials": emissive_materials,
 		"emitter_photometrics": _get_fixture_emitter_photometrics(fixture_uuid),
 	}
+	_increment_registry_counter("dimmer_owner_geometries_resolved")
+	if not emitter_nodes.is_empty():
+		_increment_registry_counter("dimmer_targets_with_emitter_nodes")
+	if not emitter_lights.is_empty():
+		_increment_registry_counter("dimmer_targets_with_lights")
+	if not beam_resources.is_empty():
+		_increment_registry_counter("dimmer_targets_with_beam_resources")
+	if not emissive_materials.is_empty():
+		_increment_registry_counter("dimmer_targets_with_emissive_materials")
+	if emitter_lights.is_empty() and beam_resources.is_empty() and emissive_materials.is_empty():
+		_increment_registry_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_registry_counter("dimmer_resolved")
+
+func _prepare_native_dimmer_beam_resources(emitter_lights: Array) -> Array:
+	var resources: Array = []
+	for light in emitter_lights:
+		var spot: SpotLight3D = light as SpotLight3D
+		if spot == null or not is_instance_valid(spot):
+			continue
+		spot.visible = false
+		spot.light_energy = 0.0
+		spot.set_meta("peraviz_beam_base_intensity", 0.0)
+		_ensure_beam_runtime_for_light(spot)
+		resources.append(spot)
+	return resources
 
 func _collect_native_descendant_emitters(geometry_key: String) -> Array:
 	var nodes: Array = []
@@ -1809,7 +1845,7 @@ func _register_native_target_failure(manifest_row: Dictionary, target_id: int, s
 	_native_target_registry_summary["first_failures"] = failures
 
 func _log_native_target_registry_summary_once() -> void:
-	print("[native-target-registry] imported_geometry_keys=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d empty_manifest_keys=%d duplicate_imported_keys=%d duplicate_manifest_target_ids=%d registration_timing_failures=%d first_failures=%s" % [
+	print("[native-target-registry] imported_geometry_keys=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d dimmer_resources=owners:%d emitters:%d lights:%d beams:%d materials:%d empty:%d empty_manifest_keys=%d duplicate_imported_keys=%d duplicate_manifest_target_ids=%d registration_timing_failures=%d first_failures=%s" % [
 		int(_native_target_registry_summary.get("imported_geometry_keys", 0)),
 		int(_native_target_registry_summary.get("pan_requested", 0)),
 		int(_native_target_registry_summary.get("pan_resolved", 0)),
@@ -1820,6 +1856,12 @@ func _log_native_target_registry_summary_once() -> void:
 		int(_native_target_registry_summary.get("dimmer_requested", 0)),
 		int(_native_target_registry_summary.get("dimmer_resolved", 0)),
 		int(_native_target_registry_summary.get("dimmer_failed", 0)),
+		int(_native_target_registry_summary.get("dimmer_owner_geometries_resolved", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_emitter_nodes", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_lights", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_beam_resources", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_emissive_materials", 0)),
+		int(_native_target_registry_summary.get("dimmer_targets_with_no_mutable_resource", 0)),
 		int(_native_target_registry_summary.get("empty_manifest_geometry_keys", 0)),
 		int(_native_target_registry_summary.get("duplicate_imported_geometry_keys", 0)),
 		int(_native_target_registry_summary.get("duplicate_manifest_target_ids", 0)),

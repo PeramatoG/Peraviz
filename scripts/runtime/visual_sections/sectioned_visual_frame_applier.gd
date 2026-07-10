@@ -72,10 +72,10 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 				_record_failure(skip_diagnostics, {"reason": "fixture not present in SceneRegistry", "fixture_id": fixture_id, "fixture_uuid": fixture_uuid, "section_type": section_type})
 				continue
 			var row_result: Dictionary = _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts)
+			_merge_application_result(skip_diagnostics, row_result)
 			if not bool(row_result.get("applied", false)):
 				skipped += 1
 				failed_rows += 1
-				_merge_application_result(skip_diagnostics, row_result)
 				continue
 			updated_fixtures[fixture_uuid] = true
 			applied_rows += 1
@@ -112,6 +112,9 @@ func _new_skip_diagnostics() -> Dictionary:
 		"dimmer_resolved": 0,
 		"dimmer_failed": 0,
 		"dimmer_mutated": 0,
+		"dimmer_lights_mutated": 0,
+		"dimmer_beams_mutated": 0,
+		"dimmer_materials_mutated": 0,
 		"first_failures": [],
 	}
 
@@ -122,7 +125,7 @@ func _record_failure(skip_diagnostics: Dictionary, failure: Dictionary) -> void:
 	skip_diagnostics["first_failures"] = failures
 
 func _merge_application_result(skip_diagnostics: Dictionary, row_result: Dictionary) -> void:
-	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated"]:
+	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated"]:
 		skip_diagnostics[key] = int(skip_diagnostics.get(key, 0)) + int(row_result.get(key, 0))
 	if row_result.has("failure"):
 		_record_failure(skip_diagnostics, row_result.get("failure", {}))
@@ -186,12 +189,17 @@ func _categorized_transform_result(loader: Node, fixture_uuid: String, pan_compo
 	return result
 
 func _categorized_dimmer_result(loader: Node, fixture_uuid: String, dimmer_target_id: int, result: Dictionary) -> Dictionary:
+	var target_resolved: bool = bool(result.get("target_resolved", false))
+	var dimmer_applied: bool = bool(result.get("dimmer_applied", false))
 	result["dimmer_requested"] = 1 if dimmer_target_id > 0 else 0
-	result["dimmer_mutated"] = 1 if bool(result.get("dimmer_applied", false)) else 0
-	result["dimmer_resolved"] = result["dimmer_mutated"]
-	result["dimmer_failed"] = 1 if dimmer_target_id > 0 and not bool(result.get("dimmer_applied", false)) else 0
+	result["dimmer_resolved"] = 1 if target_resolved else 0
+	result["dimmer_mutated"] = 1 if dimmer_applied else 0
+	result["dimmer_lights_mutated"] = int(result.get("lights_mutated", 0))
+	result["dimmer_beams_mutated"] = int(result.get("beams_mutated", 0))
+	result["dimmer_materials_mutated"] = int(result.get("materials_mutated", 0))
+	result["dimmer_failed"] = 1 if dimmer_target_id > 0 and not dimmer_applied else 0
 	if not bool(result.get("applied", false)):
-		result["failure"] = {"reason": "dimmer target not mutated", "fixture_uuid": fixture_uuid, "dimmer_target_id": dimmer_target_id, "target_failure": _target_failure_for(loader, dimmer_target_id)}
+		result["failure"] = {"reason": str(result.get("failure_reason", "dimmer target not mutated")), "fixture_uuid": fixture_uuid, "dimmer_target_id": dimmer_target_id, "target_failure": _target_failure_for(loader, dimmer_target_id), "lights_considered": int(result.get("lights_considered", 0)), "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0))}
 	return result
 
 func _target_failure_for(loader: Node, target_id: int) -> Variant:

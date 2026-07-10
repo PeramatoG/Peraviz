@@ -435,7 +435,7 @@ func _log_native_live_diagnostics_once() -> void:
 	if int(skip_diagnostics.get("rows_generated", 0)) <= 0:
 		return
 	_native_live_diagnostics_logged = true
-	print("[native-dpt-live] rows=%d unknown_fixture=%d missing_scene_fixture=%d legacy_bound_rejections=%d invalid_payload=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d first_failures=%s" % [
+	print("[native-dpt-live] rows=%d unknown_fixture=%d missing_scene_fixture=%d legacy_bound_rejections=%d invalid_payload=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d dimmer_resources=lights:%d beams:%d materials:%d first_failures=%s" % [
 		int(skip_diagnostics.get("rows_generated", 0)),
 		int(skip_diagnostics.get("unknown_fixture_id", 0)),
 		int(skip_diagnostics.get("missing_scene_fixture", 0)),
@@ -450,6 +450,9 @@ func _log_native_live_diagnostics_once() -> void:
 		int(skip_diagnostics.get("dimmer_requested", 0)),
 		int(skip_diagnostics.get("dimmer_mutated", 0)),
 		int(skip_diagnostics.get("dimmer_failed", 0)),
+		int(skip_diagnostics.get("dimmer_lights_mutated", 0)),
+		int(skip_diagnostics.get("dimmer_beams_mutated", 0)),
+		int(skip_diagnostics.get("dimmer_materials_mutated", 0)),
 		str(skip_diagnostics.get("first_failures", [])),
 	])
 

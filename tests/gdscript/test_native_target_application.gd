@@ -10,6 +10,8 @@ class FakeLoader:
 	var tilt_node := Node3D.new()
 	var dimmer_node := Node3D.new()
 	var dimmer_valid: bool = true
+	var dimmer_has_resources: bool = true
+	var last_dimmer_light: SpotLight3D = null
 
 	func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 		var result: Dictionary = {"pan_requested": pan_component_id > 0, "pan_applied": false, "tilt_requested": tilt_component_id > 0, "tilt_applied": false, "failed": 0}
@@ -31,11 +33,22 @@ class FakeLoader:
 	func _get_native_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
 		if not dimmer_valid or dimmer_target_id != 201:
 			return {}
-		var light := SpotLight3D.new()
+		if not dimmer_has_resources:
+			return {
+				"geometry_nodes": [dimmer_node],
+				"emitter_nodes": [],
+				"emitter_lights": [],
+				"beam_resources": [],
+				"emissive_materials": [],
+				"emitter_photometrics": [],
+			}
+		last_dimmer_light = SpotLight3D.new()
 		return {
 			"geometry_nodes": [dimmer_node],
 			"emitter_nodes": [dimmer_node],
-			"emitter_lights": [light],
+			"emitter_lights": [last_dimmer_light],
+			"beam_resources": [last_dimmer_light],
+			"emissive_materials": [],
 			"emitter_photometrics": [],
 		}
 
@@ -100,6 +113,18 @@ func _init() -> void:
 	assert(int(result.get("updated", 0)) == 1)
 	assert(is_equal_approx(loader.pan_node.rotation_degrees.y, 45.0))
 	assert(is_equal_approx(loader.tilt_node.rotation_degrees.x, -30.0))
+	assert(loader.last_dimmer_light != null)
+	assert(loader.last_dimmer_light.light_energy > 0.0)
+	var diagnostics: Dictionary = result.get("skip_diagnostics", {})
+	assert(int(diagnostics.get("dimmer_requested", 0)) == 1)
+	assert(int(diagnostics.get("dimmer_mutated", 0)) == 1)
+	assert(int(diagnostics.get("dimmer_lights_mutated", 0)) >= 1)
+	loader.dimmer_has_resources = false
+	var no_resource: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
+	assert(int(no_resource.get("skipped", 0)) > 0)
+	var no_resource_diagnostics: Dictionary = no_resource.get("skip_diagnostics", {})
+	assert(int(no_resource_diagnostics.get("dimmer_failed", 0)) == 1)
+	loader.dimmer_has_resources = true
 	loader.dimmer_valid = false
 	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	assert(int(failed.get("skipped", 0)) > 0)
