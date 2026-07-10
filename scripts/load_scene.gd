@@ -1855,7 +1855,7 @@ func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
 		return _active_beam_renderer.get_beam_resource(light) as MeshInstance3D
 	return null
 
-func _filter_native_dimmer_target_emitters(manifest_row: Dictionary, target_id: int, geometry_key: String, emitter_nodes: Array) -> Array:
+func _filter_native_dimmer_target_emitters(manifest_row: Dictionary, target_id: int, _geometry_key: String, emitter_nodes: Array) -> Array:
 	var filtered: Array = []
 	for emitter_node in emitter_nodes:
 		var node3d: Node3D = emitter_node as Node3D

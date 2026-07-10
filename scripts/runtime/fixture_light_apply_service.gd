@@ -358,9 +358,13 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 	var emissive_materials: Array = cached_materials if use_cached_materials else _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
 	var materials_mutated: int = 0
 	for material_entry in emissive_materials:
-		var material: BaseMaterial3D = material_entry as BaseMaterial3D
+		var material: BaseMaterial3D = null
 		if material_entry is Dictionary:
-			material = (material_entry as Dictionary).get("material", null) as BaseMaterial3D
+			var cached_material: Variant = (material_entry as Dictionary).get("material", null)
+			if cached_material is BaseMaterial3D:
+				material = cached_material
+		elif material_entry is BaseMaterial3D:
+			material = material_entry
 		if material is BaseMaterial3D:
 			var material_rid: RID = _get_cached_material_rid(material)
 			if material_rid.is_valid():
