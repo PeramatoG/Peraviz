@@ -339,6 +339,10 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
                 semantic = "tilt";
                 target_id = property.component_id;
                 capability_flags |= 4;
+            } else if (property.semantic == peraviz::runtime::CompiledSemantic::Zoom) {
+                semantic = "zoom";
+                target_id = property.render_target_id;
+                capability_flags |= 8;
             }
             if (target_id <= 0 || semantic.is_empty()) {
                 continue;
@@ -372,10 +376,12 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     int32_t dimmer_property_count = 0;
     int32_t pan_property_count = 0;
     int32_t tilt_property_count = 0;
+    int32_t zoom_property_count = 0;
     for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
         if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) ++dimmer_property_count;
         if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) ++pan_property_count;
         if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) ++tilt_property_count;
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Zoom) ++zoom_property_count;
     }
     for (const peraviz::runtime::CompiledDmxSourceProgram &program : scene.source_programs) {
         for (const peraviz::runtime::CompiledDmxByteSource &source : program.sources) {
@@ -399,6 +405,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["dimmer_program_count"] = scene.dimmer_program_count;
     setup_summary["pan_program_count"] = scene.pan_program_count;
     setup_summary["tilt_program_count"] = scene.tilt_program_count;
+    setup_summary["zoom_program_count"] = scene.zoom_program_count;
     setup_summary["unique_dimmer_programs_per_fixture_type"] = scene.dimmer_program_count;
     setup_summary["unique_pan_programs_per_fixture_type"] = scene.pan_program_count;
     setup_summary["unique_tilt_programs_per_fixture_type"] = scene.tilt_program_count;
@@ -406,6 +413,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["dimmer_property_count"] = dimmer_property_count;
     setup_summary["pan_property_count"] = pan_property_count;
     setup_summary["tilt_property_count"] = tilt_property_count;
+    setup_summary["zoom_property_count"] = zoom_property_count;
     setup_summary["source_program_count"] = static_cast<int32_t>(scene.source_programs.size());
     setup_summary["installed_native_properties"] = static_cast<int32_t>(scene.properties.size());
     setup_summary["fixture_instance_properties"] = static_cast<int32_t>(scene.properties.size());

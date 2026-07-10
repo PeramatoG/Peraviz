@@ -25,6 +25,7 @@ enum class CompiledSemantic : int32_t {
     Pan,
     Tilt,
     Dimmer,
+    Zoom,
 };
 
 struct CompiledDmxByteSource {
@@ -100,6 +101,7 @@ struct CompiledRuntimeScene {
     int32_t dimmer_program_count = 0;
     int32_t pan_program_count = 0;
     int32_t tilt_program_count = 0;
+    int32_t zoom_program_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;
@@ -133,6 +135,8 @@ struct VisualFrameStats {
     uint64_t changed_gobo_rotation = 0;
     uint64_t gobo_topology_updates = 0;
     uint64_t gobo_parametric_updates = 0;
+    uint64_t beam_optics_rows = 0;
+    uint64_t beam_optics_parametric_updates = 0;
 };
 
 } // namespace peraviz::runtime

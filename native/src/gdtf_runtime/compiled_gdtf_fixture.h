@@ -68,6 +68,7 @@ struct CompiledGdtfFixtureType {
     int32_t dimmer_program_count = 0;
     int32_t pan_program_count = 0;
     int32_t tilt_program_count = 0;
+    int32_t zoom_program_count = 0;
     std::vector<AttributeIdentity> attributes;
     std::vector<GeometryInstance> geometries;
     std::vector<ComponentBinding> components;

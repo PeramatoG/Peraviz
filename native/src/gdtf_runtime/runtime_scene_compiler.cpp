@@ -30,10 +30,12 @@ runtime::CompiledSemantic semantic_for_attribute(const AttributeIdentity &attrib
     if (attribute.canonical_family == "Dimmer") return runtime::CompiledSemantic::Dimmer;
     if (attribute.canonical_family == "Pan") return runtime::CompiledSemantic::Pan;
     if (attribute.canonical_family == "Tilt") return runtime::CompiledSemantic::Tilt;
+    if (attribute.canonical_family == "Zoom") return runtime::CompiledSemantic::Zoom;
     const dmx::ParsedAttribute parsed = dmx::parse_attribute_name(attribute.name);
     if (parsed.role == dmx::AttributeRole::kDimmer) return runtime::CompiledSemantic::Dimmer;
     if (parsed.role == dmx::AttributeRole::kPan) return runtime::CompiledSemantic::Pan;
     if (parsed.role == dmx::AttributeRole::kTilt) return runtime::CompiledSemantic::Tilt;
+    if (parsed.role == dmx::AttributeRole::kZoom) return runtime::CompiledSemantic::Zoom;
     return runtime::CompiledSemantic::Unknown;
 }
 
@@ -69,6 +71,7 @@ void apply_physical_fallback(runtime::CompiledRuntimeScene &scene,
     if (program.physical_from != 0.0 || program.physical_to != 1.0 || semantic == runtime::CompiledSemantic::Dimmer) return;
     if (semantic == runtime::CompiledSemantic::Pan) { program.physical_from = -270.0; program.physical_to = 270.0; }
     if (semantic == runtime::CompiledSemantic::Tilt) { program.physical_from = -135.0; program.physical_to = 135.0; }
+    if (semantic == runtime::CompiledSemantic::Zoom) { program.physical_from = 8.0; program.physical_to = 40.0; }
     scene.diagnostics.push_back({"PVZ-GDTF-PHYSICAL-FALLBACK", "warning", "ChannelFunction is missing a valid physical range; using explicit runtime fallback.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " attribute=" + program.attribute_name + " function=" + program.function_name});
 }
 
@@ -113,6 +116,7 @@ void add_fixture_type_counters(runtime::CompiledRuntimeScene &out, const Compile
     out.dimmer_program_count += fixture_type.dimmer_program_count;
     out.pan_program_count += fixture_type.pan_program_count;
     out.tilt_program_count += fixture_type.tilt_program_count;
+    out.zoom_program_count += fixture_type.zoom_program_count;
 }
 
 // Appends one runtime property containing all ChannelFunction programs for the same component.
@@ -130,9 +134,9 @@ void append_property(runtime::CompiledRuntimeScene &scene,
     if (!attribute || !geometry) return;
     const runtime::CompiledSemantic semantic = semantic_for_attribute(*attribute);
     if (semantic == runtime::CompiledSemantic::Unknown) return;
-    const std::string semantic_label = semantic == runtime::CompiledSemantic::Pan ? "pan" : semantic == runtime::CompiledSemantic::Tilt ? "tilt" : "dimmer";
+    const std::string semantic_label = semantic == runtime::CompiledSemantic::Pan ? "pan" : semantic == runtime::CompiledSemantic::Tilt ? "tilt" : semantic == runtime::CompiledSemantic::Zoom ? "zoom" : "dimmer";
     const int32_t component_id = stable_id(patch.fixture_uuid, semantic_label + ":component:" + geometry->path);
-    const int32_t target_id = semantic == runtime::CompiledSemantic::Dimmer ? stable_id(patch.fixture_uuid, semantic_label + ":target:" + geometry->path) : component_id;
+    const int32_t target_id = (semantic == runtime::CompiledSemantic::Dimmer || semantic == runtime::CompiledSemantic::Zoom) ? stable_id(patch.fixture_uuid, semantic_label + ":target:" + geometry->path) : component_id;
     const int32_t property_id = stable_id(patch.fixture_uuid, semantic_label + ":property:" + geometry->path);
     runtime::CompiledComponentProperty property;
     property.property_id = property_id;
@@ -195,7 +199,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         for (const ChannelProgram &program : fixture_type.channel_programs) programs_by_component[program.component_id].push_back(&program);
         const size_t property_start = out.properties.size();
         for (const ComponentBinding &component : fixture_type.components) append_property(out, patch, fixture_type, component, programs_by_component[component.component_id], artnet_universe, fixture_id, next_program_id);
-        if (out.properties.size() == property_start) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
+        if (out.properties.size() == property_start) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
     }
     for (const auto &property : out.properties) {
         check_generated_id(generated_ids, out, property.property_id, std::to_string(property.fixture_id));

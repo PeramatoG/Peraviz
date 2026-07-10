@@ -196,10 +196,11 @@ int test_parser_owned_runtime_scene() {
     model.fixture_patches.push_back({"fixture-a", 10, 1, "Standard", gdtf_path.string()});
     model.fixture_patches.push_back({"fixture-b", 10, 101, "Standard", gdtf_path.string()});
     const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
-    if (scene.fixtures.size() != 2 || scene.properties.size() < 6) return fail("Expected two compiled fixtures with Dimmer/Pan/Tilt properties");
+    if (scene.fixtures.size() != 2 || scene.properties.size() < 8) return fail("Expected two compiled fixtures with Dimmer/Pan/Tilt/Zoom properties");
     bool saw_pan = false;
     bool saw_tilt = false;
     bool saw_dimmer = false;
+    bool saw_zoom = false;
     for (const auto &program : scene.source_programs) {
         if (program.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
             saw_dimmer = true;
@@ -212,6 +213,11 @@ int test_parser_owned_runtime_scene() {
             if (program.dmx_from != 0 || program.dmx_to != 65535) return fail("Unexpected Pan full-resolution DMX range");
             if (std::fabs(program.physical_from + 270.0) > 0.001 || std::fabs(program.physical_to - 270.0) > 0.001) return fail("Unexpected Pan physical range");
         }
+        if (program.semantic == peraviz::runtime::CompiledSemantic::Zoom) {
+            saw_zoom = true;
+            if (program.dmx_from != 0 || program.dmx_to != 255) return fail("Unexpected Zoom DMX range");
+            if (std::fabs(program.physical_from - 10.0) > 0.001 || std::fabs(program.physical_to - 40.0) > 0.001) return fail("Unexpected Zoom physical range");
+        }
         if (program.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
             saw_tilt = true;
             if (program.sources.size() < 2 || ((program.sources[0].address != 5 || program.sources[1].address != 6) && (program.sources[0].address != 105 || program.sources[1].address != 106))) return fail("Unexpected Tilt coarse/fine source addresses");
@@ -219,7 +225,7 @@ int test_parser_owned_runtime_scene() {
             if (std::fabs(program.physical_from + 135.0) > 0.001 || std::fabs(program.physical_to - 135.0) > 0.001) return fail("Unexpected Tilt physical range");
         }
     }
-    if (!saw_dimmer || !saw_pan || !saw_tilt) return fail("Expected real Dimmer/Pan/Tilt ChannelFunction programs");
+    if (!saw_dimmer || !saw_pan || !saw_tilt || !saw_zoom) return fail("Expected real Dimmer/Pan/Tilt/Zoom ChannelFunction programs");
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> dmx(160, 0);
@@ -230,14 +236,16 @@ int test_parser_owned_runtime_scene() {
     dmx[6] = 0x00;
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     const auto visual = runtime.consume_latest_visual_frame();
-    if (visual.descriptors.size() != peraviz::runtime::kVisualSectionDescriptorStride * 2) return fail("Expected only Transform and Intensity sections");
+    if (visual.descriptors.size() != peraviz::runtime::kVisualSectionDescriptorStride * 3) return fail("Expected Transform, Intensity, and BeamOptics sections");
     bool has_transform = false;
     bool has_intensity = false;
+    bool has_optics = false;
     for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= visual.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
         has_transform = has_transform || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GeometryTransform);
         has_intensity = has_intensity || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity);
+        has_optics = has_optics || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::BeamOptics);
     }
-    if (!has_transform || !has_intensity) return fail("Expected transform and intensity output sections");
+    if (!has_transform || !has_intensity || !has_optics) return fail("Expected transform, intensity, and optics output sections");
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged relevant DMX to produce no dirty rows");
     return 0;

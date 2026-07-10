@@ -139,3 +139,10 @@ When a renderer path uses shader-side gobo masking, keep a minimum transmission 
 For volumetric beams, also ensure beam alpha is explicitly intensity-aware so beam visibility tracks dimmer/beam intensity changes.
 
 For two-sided volumetric cones (`cull_disabled`), view alignment should use absolute normal alignment (`abs(dot(NORMAL, VIEW))`) to avoid face-orientation cancellations that can make the beam disappear from many camera angles.
+## Native BeamOptics foundation
+
+Peraviz now starts the first native BeamOptics vertical. The selected-mode native compiler recognizes the canonical GDTF `Zoom` attribute alongside Dimmer, Pan, and Tilt and preserves ChannelFunction DMX ranges, ordered source bytes, and physical angle ranges in the compiled runtime. Live Zoom changes emit target-oriented `BeamOptics` rows with fixture ID, render target ID, changed mask, physical beam angle, half angle, and the current Zoom value so Godot can apply cached renderer resources by integer target ID.
+
+Static Beam geometry fields remain setup-time optical profile inputs: `BeamType`, `BeamAngle`, `FieldAngle`, `BeamRadius`, `ThrowRatio`, `RectangleRatio`, `LuminousFlux`, `ColorTemperature`, and preserved emitter spectrum metadata. Official Beam geometry data has priority over Zoom, setup-time Peraviz aperture inference, documented fallback profiles, and the final safe circular fallback. Spot is treated as a hard-edged circular cone/frustum; Wash, PC, and Fresnel are circular cone/frustum baselines with softened field intent; Rectangle is reserved for rectangular pyramid/frustum output using `RectangleRatio`; None and Glow do not request a projected prism.
+
+The live path is intentionally parametric: Dimmer rows mutate intensity/material state, while Zoom rows mutate the cached optics target and do not mark beam topology dirty. Setup-time target registration resolves optics targets and emitter anchors through canonical geometry keys; live application uses only numeric target IDs and cached records.

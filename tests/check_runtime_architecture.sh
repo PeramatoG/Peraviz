@@ -79,6 +79,10 @@ require_pattern 'normalized_value.*physical_value|physical_value.*normalized_val
 reject_pattern '"beam_resources"|beam_resources' 'Godot Dimmer target records must not label anchor lights as beam resources.' scripts/load_scene.gd scripts/runtime tests/gdscript
 require_pattern 'LegacyConeBeamRenderer' 'Renderer-target regression coverage must exercise the Lightweight Prism backend.' tests/gdscript scripts/beam_renderers
 require_pattern 'NativeRendererTargetRegistry' 'Native renderer target registry must be extracted into a focused runtime service.' scripts/runtime/native_renderer_target_registry.gd scripts/load_scene.gd
+require_pattern 'CompiledSemantic::Zoom|CompiledSemantic::Zoom' 'Zoom must be part of the compiled native semantic path.' native/src/gdtf_runtime/runtime_scene_compiler.cpp native/src/runtime/peraviz_visual_runtime.cpp native/src/runtime/visual_runtime_types.h
+require_pattern 'VisualSectionType::BeamOptics' 'BeamOptics rows must remain a native sectioned visual-frame path.' native/src/runtime/peraviz_visual_runtime.cpp native/src/runtime/visual_frame_schema.cpp
+require_pattern 'apply_beam_optics\(loader, fixture_uuid, optics_target_id' 'BeamOptics application must use cached target IDs rather than fixture-wide traversal.' scripts/runtime/fixture_light_apply_service.gd scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd
+reject_pattern 'VisualChangeZoom \| VisualChangeBeamTopology' 'Zoom-only changes must not be marked as topology rebuilds.' native/src/runtime/peraviz_visual_runtime.cpp scripts/runtime/fixture_light_apply_service.gd
 reject_pattern 'var _native_(pan|tilt|dimmer|geometry)_|var _native_target_resolution|var _native_target_registry_summary|func _register_native_axis_target|func _register_native_dimmer_target|func _build_native_geometry_target_map' 'load_scene.gd must delegate native target registry ownership to the focused service.' scripts/load_scene.gd
 
 if [[ "$failures" -ne 0 ]]; then

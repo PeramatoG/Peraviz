@@ -91,6 +91,7 @@ func _new_counts() -> Dictionary:
 		"changed_gobo_rotation_count": 0,
 		"transform_rows_generated": 0,
 		"intensity_rows_generated": 0,
+		"beam_optics_rows_generated": 0,
 	}
 
 func _new_skip_diagnostics() -> Dictionary:
@@ -115,6 +116,10 @@ func _new_skip_diagnostics() -> Dictionary:
 		"dimmer_lights_mutated": 0,
 		"dimmer_beams_mutated": 0,
 		"dimmer_materials_mutated": 0,
+		"optics_requested": 0,
+		"optics_resolved": 0,
+		"optics_failed": 0,
+		"optics_mutated": 0,
 		"first_failures": [],
 	}
 
@@ -125,7 +130,7 @@ func _record_failure(skip_diagnostics: Dictionary, failure: Dictionary) -> void:
 	skip_diagnostics["first_failures"] = failures
 
 func _merge_application_result(skip_diagnostics: Dictionary, row_result: Dictionary) -> void:
-	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated"]:
+	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated", "optics_requested", "optics_resolved", "optics_failed", "optics_mutated"]:
 		skip_diagnostics[key] = int(skip_diagnostics.get(key, 0)) + int(row_result.get(key, 0))
 	if row_result.has("failure"):
 		_record_failure(skip_diagnostics, row_result.get("failure", {}))
@@ -160,8 +165,12 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 			if float_base + 2 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_emitter_color(loader, fixture_uuid, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))
 		SECTION_BEAM_OPTICS:
+			counts["beam_optics_rows_generated"] += 1
 			if float_base + 2 >= floats.size(): return {"applied": false}
-			light_apply_service.apply_beam_optics(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
+			var optics_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
+			var optics_result: Dictionary = light_apply_service.apply_beam_optics(loader, fixture_uuid, optics_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2])
+			optics_result["applied"] = bool(optics_result.get("optics_applied", false))
+			return optics_result
 		SECTION_WHEEL_SELECTION:
 			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_wheel_selection(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], dmx_runtime)

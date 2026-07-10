@@ -107,10 +107,12 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         }
         if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
+        if (parameter == SemanticParameter::Zoom) render_params_by_fixture_[property.fixture_id].has_zoom = true;
         const uint32_t installed_mask = visual_mask_for_parameter(parameter);
         installed_visual_mask_by_fixture_[property.fixture_id] |= installed_mask;
         capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
         capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
+        capabilities.has_optics = capabilities.has_optics || parameter == SemanticParameter::Zoom;
         UniverseState &universe = universes_[property_universe];
         universe.properties.push_back({property, parameter});
         for (const CompiledPropertyContributor &contributor : property.contributors) {
@@ -122,7 +124,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         ++installed_properties;
     }
     if (installed_properties == 0) {
-        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported Dimmer/Pan/Tilt properties.", "CompiledRuntimeScene"});
+        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported Dimmer/Pan/Tilt/Zoom properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
@@ -182,7 +184,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 continue;
             }
             const float semantic_value = program.parameter == SemanticParameter::Dimmer ? evaluated.normalized_value : evaluated.physical_value;
-            if (program.parameter == SemanticParameter::Dimmer) {
+            if (program.parameter == SemanticParameter::Dimmer || program.parameter == SemanticParameter::Zoom) {
                 ComponentState state;
                 auto existing = property_state_by_property_.find(program.property.property_id);
                 if (existing != property_state_by_property_.end()) {
@@ -254,6 +256,18 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         append_descriptor(frame, VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
     }
 
+    const int32_t optics_count = section_count_for(VisualChangeZoom);
+    if (optics_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & VisualChangeZoom) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.render_target_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.state.beam_half_angle, row.state.beam_angle, row.state.zoom});
+        }
+        append_descriptor(frame, VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
+    }
+
     frame.stats = stats_;
     return frame;
 }
@@ -270,6 +284,7 @@ SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(Comp
         case CompiledSemantic::Pan: return SemanticParameter::Pan;
         case CompiledSemantic::Tilt: return SemanticParameter::Tilt;
         case CompiledSemantic::Dimmer: return SemanticParameter::Dimmer;
+        case CompiledSemantic::Zoom: return SemanticParameter::Zoom;
         case CompiledSemantic::Unknown: return SemanticParameter::Unknown;
     }
     return SemanticParameter::Unknown;
@@ -395,7 +410,7 @@ uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter p
         case SemanticParameter::Dimmer: return VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology;
         case SemanticParameter::Pan:
         case SemanticParameter::Tilt: return VisualChangeTransform;
-        case SemanticParameter::Zoom: return VisualChangeZoom | VisualChangeBeamTopology;
+        case SemanticParameter::Zoom: return VisualChangeZoom;
         case SemanticParameter::Cyan:
         case SemanticParameter::Magenta:
         case SemanticParameter::Yellow: return VisualChangeColor | VisualChangeMaterial;
@@ -440,10 +455,13 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
     constexpr double cmy_epsilon = 0.0001;
     double beam_angle = std::clamp(params.beam_angle_default, 0.1, max_beam_angle);
     if (params.has_zoom) {
-        double zoom_min = params.zoom_min_deg >= 0.0 ? params.zoom_min_deg : default_zoom_min;
-        double zoom_max = params.zoom_max_deg >= 0.0 ? params.zoom_max_deg : max_beam_angle;
-        if (zoom_max < zoom_min) std::swap(zoom_min, zoom_max);
-        beam_angle = std::clamp(zoom_min + ((zoom_max - zoom_min) * state.zoom), 0.1, max_beam_angle);
+        if (state.zoom > 0.0f) {
+            beam_angle = std::clamp(static_cast<double>(state.zoom), 0.1, max_beam_angle);
+        } else {
+            double zoom_min = params.zoom_min_deg >= 0.0 ? params.zoom_min_deg : default_zoom_min;
+            double zoom_max = params.zoom_max_deg >= 0.0 ? params.zoom_max_deg : max_beam_angle;
+            beam_angle = std::clamp(zoom_min + ((zoom_max - zoom_min) * state.zoom), 0.1, max_beam_angle);
+        }
     }
     state.red = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.cyan : 1.0f;
     state.green = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.magenta : 1.0f;
@@ -468,6 +486,7 @@ void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
     if ((visual_mask & VisualChangeZoom) != 0U) ++stats_.changed_zoom;
     if ((visual_mask & VisualChangeGobo) != 0U) { ++stats_.changed_gobo; ++stats_.gobo_topology_updates; }
     if ((visual_mask & VisualChangeGoboRotation) != 0U) { ++stats_.changed_gobo_rotation; ++stats_.gobo_parametric_updates; }
+    if ((visual_mask & VisualChangeZoom) != 0U) { ++stats_.beam_optics_rows; ++stats_.beam_optics_parametric_updates; }
 }
 
 // Updates cached transform state and returns the semantic render domains that changed.
@@ -498,10 +517,11 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_pr
     if (!previous.initialized) {
         result.changed_visual_mask = installed_mask;
     } else {
-        if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Dimmer);
+        if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer);
+        if (!nearly_equal(previous.zoom, next_state.zoom, kAngleEpsilon) || !nearly_equal(previous.beam_angle, next_state.beam_angle, kAngleEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Zoom);
         const bool previous_visible = previous.dimmer > kDefaultEpsilon;
         const bool current_visible = next_state.dimmer > kDefaultEpsilon;
-        if (previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;
+        if ((installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer)) != 0U && previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;
         result.changed = result.changed_visual_mask != VisualChangeNone;
     }
     result.changed_visual_mask &= installed_mask;

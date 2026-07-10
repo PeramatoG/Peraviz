@@ -378,6 +378,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (dmx::lower_ascii(attribute_name) == "dimmer") ++fixture.dimmer_program_count;
                 if (dmx::lower_ascii(attribute_name) == "pan") ++fixture.pan_program_count;
                 if (dmx::lower_ascii(attribute_name) == "tilt") ++fixture.tilt_program_count;
+                if (dmx::lower_ascii(attribute_name) == "zoom") ++fixture.zoom_program_count;
             }
         }
     }
@@ -385,7 +386,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         fixture.diagnostics.push_back({"PVZ-GDTF-DMXCHANNELS-MISSING", "error", "Selected DMX mode contains no DMXChannel records after scoped parser traversal.", dmx_mode_name});
     }
     if (!dmx_channels.empty() && fixture.channel_programs.empty()) {
-        fixture.diagnostics.push_back({"PVZ-GDTF-DPT-PROGRAMS-MISSING", "error", "Selected DMX mode produced no compiled Dimmer/Pan/Tilt ChannelFunction programs.", dmx_mode_name});
+        fixture.diagnostics.push_back({"PVZ-GDTF-DPT-PROGRAMS-MISSING", "error", "Selected DMX mode produced no compiled Dimmer/Pan/Tilt/Zoom ChannelFunction programs.", dmx_mode_name});
     }
     return fixture;
 }
