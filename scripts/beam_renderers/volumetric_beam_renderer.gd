@@ -175,6 +175,12 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
 	return true
 
+func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
+	if not light.has_meta(BEAM_META_KEY):
+		return null
+	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
+	return beam if beam != null and is_instance_valid(beam) else null
+
 func cleanup_beam(light: SpotLight3D) -> void:
 	if not light.has_meta(BEAM_META_KEY):
 		return

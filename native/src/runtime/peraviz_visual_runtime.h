@@ -49,6 +49,14 @@ private:
         bool has_hash = false;
     };
 
+    struct EvaluationResult {
+        uint32_t raw_value = 0;
+        float normalized_value = 0.0f;
+        float physical_value = 0.0f;
+        int32_t active_program_id = 0;
+        bool valid = false;
+    };
+
     struct ComponentState {
         float pan = 0.0f;
         float tilt = 0.0f;
@@ -81,23 +89,26 @@ private:
     };
 
     static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
-    static float read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
-    float evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property);
+    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
+    static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
+    EvaluationResult evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property);
     static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
     static void cook_render_state(ComponentState &state, const FixtureRenderParams &params);
     static bool nearly_equal(float a, float b, float epsilon);
     void add_visual_mask_stats(uint32_t visual_mask);
-    FixtureChangeResult merge_component_state(int fixture_id, const ComponentState &next_state);
+    FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
+    FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);
 
     std::unordered_map<int, UniverseState> universes_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
     std::vector<CompiledRuntimeDiagnostic> diagnostics_;
-    std::unordered_map<int, ComponentState> component_state_by_fixture_;
+    std::unordered_map<int, ComponentState> transform_state_by_fixture_;
+    std::unordered_map<int32_t, ComponentState> property_state_by_property_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
-    std::unordered_map<int, int32_t> dimmer_target_id_by_fixture_;
+    std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
     std::unordered_map<int32_t, CompiledDmxSourceProgram> source_programs_by_id_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;

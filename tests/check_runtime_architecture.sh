@@ -54,6 +54,7 @@ require_path "peraviz.gdextension" file
 require_path "native/src/runtime" directory
 require_path "scripts/runtime/visual_sections" directory
 require_path "scripts/dmx_fixture_runtime.gd" file
+require_path "scripts/runtime/native_renderer_target_registry.gd" file
 require_path "native/src/register_types.cpp" file
 
 if [[ "$failures" -ne 0 ]]; then
@@ -72,6 +73,13 @@ reject_pattern 'visual_frame_buffers\.h|struct VisualFrame\b' 'Obsolete fixed na
 reject_pattern 'kVisualChannelCount|VisualChannel|std::array<float,\s*kVisualChannelCount>|kRuntimeControlCount|enum RuntimeControl|control_index_for_channel_type' 'Fixed native visual row/control layouts must not return.' native/src/runtime
 reject_pattern 'LEGACY_|apply_visual_frame_to_fixture|update_live_visual_gobo_from_section|_apply_visual_frame_lighting\(' 'Section appliers must not reconstruct the removed universal fixed row.' scripts/runtime/visual_sections
 reject_pattern 'PackedFloat32Array = _native_visual_runtime\.consume_latest_visual_frame|visual_frame\[0\]' 'Legacy fixed-row live GDScript consume path must stay removed.' scripts/dmx_fixture_runtime.gd scripts/runtime
+reject_pattern 'dimmer_target_id_by_fixture_|component_state_by_fixture_' 'Native Dimmer state must not collapse component properties by fixture.' native/src/runtime/peraviz_visual_runtime.cpp native/src/runtime/peraviz_visual_runtime.h
+reject_pattern 'entry\["dimmer_target_id"\]' 'Renderer manifest must expose target collections instead of one overwritable Dimmer field per fixture.' native/src/peraviz_loader.cpp
+require_pattern 'normalized_value.*physical_value|physical_value.*normalized_value' 'Native runtime must keep normalized and physical evaluation values distinct.' native/src/runtime/peraviz_visual_runtime.h native/src/runtime/peraviz_visual_runtime.cpp
+reject_pattern '"beam_resources"|beam_resources' 'Godot Dimmer target records must not label anchor lights as beam resources.' scripts/load_scene.gd scripts/runtime tests/gdscript
+require_pattern 'LegacyConeBeamRenderer' 'Renderer-target regression coverage must exercise the Lightweight Prism backend.' tests/gdscript scripts/beam_renderers
+require_pattern 'NativeRendererTargetRegistry' 'Native renderer target registry must be extracted into a focused runtime service.' scripts/runtime/native_renderer_target_registry.gd scripts/load_scene.gd
+reject_pattern 'var _native_(pan|tilt|dimmer|geometry)_|var _native_target_resolution|var _native_target_registry_summary|func _register_native_axis_target|func _register_native_dimmer_target|func _build_native_geometry_target_map' 'load_scene.gd must delegate native target registry ownership to the focused service.' scripts/load_scene.gd
 
 if [[ "$failures" -ne 0 ]]; then
   echo "[runtime-architecture] Found $failures violation(s)." >&2

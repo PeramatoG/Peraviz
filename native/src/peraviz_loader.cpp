@@ -7,6 +7,7 @@
 #ifdef PERAVIZ_ENABLE_DMX
 #include "dmx/fixture_dmx_binding.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
+#include "gdtf_runtime/gdtf_geometry_identity.h"
 #include "runtime/visual_runtime_types.h"
 #endif
 
@@ -164,6 +165,8 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
         d["asset_kind"] = String(node.asset_kind.c_str());
         d["asset_path"] = String(node.asset_path.c_str());
         d["primitive_type"] = String(node.primitive_type.c_str());
+        d["gdtf_geometry_key"] = String(node.gdtf_geometry_key.c_str());
+        d["gdtf_geometry_path"] = String(node.gdtf_geometry_path.c_str());
         d["primitive_size_x"] = node.primitive_size_x;
         d["primitive_size_y"] = node.primitive_size_y;
         d["primitive_size_z"] = node.primitive_size_z;
@@ -281,6 +284,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         }
     }
     for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+        integers.push_back(property.property_id);
         integers.push_back(property.fixture_id);
         integers.push_back(property.component_id);
         integers.push_back(property.render_target_id);
@@ -305,6 +309,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     }
     Array manifest;
     manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
+    Array renderer_targets;
     for (int64_t fixture_index = 0; fixture_index < static_cast<int64_t>(scene.fixtures.size()); ++fixture_index) {
         const peraviz::runtime::CompiledFixtureInstance &fixture = scene.fixtures[static_cast<size_t>(fixture_index)];
         Dictionary entry;
@@ -315,28 +320,129 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         entry["universe_id"] = fixture.universe_id;
         entry["start_address"] = fixture.start_address;
         int32_t capability_flags = 0;
+        Array targets;
         for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
             if (property.fixture_id != fixture.fixture_id) {
                 continue;
             }
+            String semantic;
+            int32_t target_id = 0;
             if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
-                entry["dimmer_target_id"] = property.render_target_id;
+                semantic = "dimmer";
+                target_id = property.render_target_id;
                 capability_flags |= 1;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) {
-                entry["pan_component_id"] = property.component_id;
+                semantic = "pan";
+                target_id = property.component_id;
                 capability_flags |= 2;
             } else if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
-                entry["tilt_component_id"] = property.component_id;
+                semantic = "tilt";
+                target_id = property.component_id;
                 capability_flags |= 4;
             }
+            if (target_id <= 0 || semantic.is_empty()) {
+                continue;
+            }
+            Dictionary target;
+            target["fixture_id"] = fixture.fixture_id;
+            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["property_id"] = property.property_id;
+            target["component_id"] = property.component_id;
+            target["render_target_id"] = property.render_target_id;
+            target["target_id"] = target_id;
+            target["semantic"] = semantic;
+            target["geometry_id"] = property.geometry_id;
+            target["geometry_name"] = String(property.geometry_name.c_str());
+            target["geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
+            target["geometry_path"] = String(property.geometry_name.c_str());
+            targets.push_back(target);
+            renderer_targets.push_back(target);
         }
         entry["capability_flags"] = capability_flags;
+        entry["targets"] = targets;
         manifest[fixture_index] = entry;
     }
     out["integers"] = integers;
     out["floats"] = floats;
     out["diagnostics"] = diagnostics;
     out["renderer_manifest"] = manifest;
+    out["renderer_targets"] = renderer_targets;
+    Dictionary relevant_offsets_by_universe;
+    Dictionary used_universes;
+    int32_t dimmer_property_count = 0;
+    int32_t pan_property_count = 0;
+    int32_t tilt_property_count = 0;
+    for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) ++dimmer_property_count;
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) ++pan_property_count;
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) ++tilt_property_count;
+    }
+    for (const peraviz::runtime::CompiledDmxSourceProgram &program : scene.source_programs) {
+        for (const peraviz::runtime::CompiledDmxByteSource &source : program.sources) {
+            String universe_key = String::num_int64(source.universe_id);
+            used_universes[universe_key] = true;
+            Array offsets = relevant_offsets_by_universe.get(universe_key, Array());
+            offsets.push_back(source.address);
+            relevant_offsets_by_universe[universe_key] = offsets;
+        }
+    }
+    Dictionary setup_summary;
+    setup_summary["mvr_fixture_patches"] = scene.mvr_fixture_patches;
+    setup_summary["scene_fixture_count"] = static_cast<int32_t>(last_scene_model_.fixture_patches.size());
+    setup_summary["gdtf_files_opened"] = scene.gdtf_files_opened;
+    setup_summary["unique_fixture_types_compiled"] = scene.gdtf_files_opened;
+    setup_summary["selected_modes_found"] = scene.selected_modes_found;
+    setup_summary["dmxchannels_found"] = scene.dmxchannels_containers_found;
+    setup_summary["dmxchannel_records_found"] = scene.dmxchannel_records_found;
+    setup_summary["logical_channels_found"] = scene.logical_channels_found;
+    setup_summary["channel_functions_found"] = scene.channel_functions_found;
+    setup_summary["dimmer_program_count"] = scene.dimmer_program_count;
+    setup_summary["pan_program_count"] = scene.pan_program_count;
+    setup_summary["tilt_program_count"] = scene.tilt_program_count;
+    setup_summary["unique_dimmer_programs_per_fixture_type"] = scene.dimmer_program_count;
+    setup_summary["unique_pan_programs_per_fixture_type"] = scene.pan_program_count;
+    setup_summary["unique_tilt_programs_per_fixture_type"] = scene.tilt_program_count;
+    setup_summary["compiled_fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
+    setup_summary["dimmer_property_count"] = dimmer_property_count;
+    setup_summary["pan_property_count"] = pan_property_count;
+    setup_summary["tilt_property_count"] = tilt_property_count;
+    setup_summary["source_program_count"] = static_cast<int32_t>(scene.source_programs.size());
+    setup_summary["installed_native_properties"] = static_cast<int32_t>(scene.properties.size());
+    setup_summary["fixture_instance_properties"] = static_cast<int32_t>(scene.properties.size());
+    setup_summary["used_universes"] = used_universes;
+    setup_summary["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
+    setup_summary["manifest_fixture_count"] = static_cast<int32_t>(manifest.size());
+    out["setup_summary"] = setup_summary;
+    Array fixture_results;
+    fixture_results.resize(static_cast<int64_t>(last_scene_model_.fixture_patches.size()));
+    for (int64_t patch_index = 0; patch_index < static_cast<int64_t>(last_scene_model_.fixture_patches.size()); ++patch_index) {
+        const auto &patch = last_scene_model_.fixture_patches[static_cast<size_t>(patch_index)];
+        Dictionary result;
+        result["fixture_uuid"] = String(patch.fixture_uuid.c_str());
+        result["gdtf_path"] = String(patch.gdtf_path.c_str());
+        result["dmx_mode"] = String(patch.dmx_mode.c_str());
+        result["mvr_universe"] = patch.mvr_universe;
+        result["mvr_address"] = patch.mvr_address;
+        int32_t fixture_id = 0;
+        for (const auto &fixture : scene.fixtures) {
+            if (fixture.fixture_uuid == patch.fixture_uuid) {
+                fixture_id = fixture.fixture_id;
+                break;
+            }
+        }
+        int32_t property_count = 0;
+        for (const auto &property : scene.properties) {
+            if (property.fixture_id == fixture_id) ++property_count;
+        }
+        result["manifest_included"] = fixture_id > 0;
+        result["fixture_id"] = fixture_id;
+        result["supported_dpt_property_count"] = property_count;
+        result["exclusion_reason"] = fixture_id <= 0 ? String("invalid patch or missing mode/GDTF") : property_count <= 0 ? String("no supported DPT property") : String("");
+        fixture_results[patch_index] = result;
+    }
+    out["fixture_compilation_results"] = fixture_results;
+    out["used_universes"] = used_universes;
+    out["relevant_offsets_by_universe"] = relevant_offsets_by_universe;
     out["fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
     out["program_count"] = static_cast<int32_t>(scene.source_programs.size());
     out["property_count"] = static_cast<int32_t>(scene.properties.size());

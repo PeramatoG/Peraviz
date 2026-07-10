@@ -4,6 +4,7 @@
 #include "coordinate_mapper.h"
 #include "matrixutils.h"
 #include "peraviz_debug_runtime.h"
+#include "gdtf_runtime/gdtf_geometry_identity.h"
 
 #include <algorithm>
 #include <cctype>
@@ -323,11 +324,12 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
 
     int local_counter = 0;
     std::function<void(tinyxml2::XMLElement *, const std::string &, const Matrix &, const char *,
-                       const Matrix *, bool)>
+                       const Matrix *, bool, const std::string &)>
         append_geometry;
     append_geometry = [&](tinyxml2::XMLElement *geometry, const std::string &geometry_parent_id,
                           const Matrix &geometry_parent_world, const char *override_model,
-                          const Matrix *prepend_local, bool parent_is_lens) {
+                          const Matrix *prepend_local, bool parent_is_lens,
+                          const std::string &parent_geometry_path) {
         const std::string geometry_tag = geometry->Name() ? geometry->Name() : "";
         Matrix local = parse_local_matrix(geometry);
         if (prepend_local) {
@@ -353,12 +355,18 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
             if (!reference_model) {
                 reference_model = geometry->Attribute("model");
             }
+            const std::string reference_name = safe_name(geometry, "geometry_reference");
+            const std::string reference_path =
+                peraviz::gdtf_runtime::append_geometry_path(parent_geometry_path, reference_name);
             append_geometry(referenced_it->second, geometry_parent_id, geometry_parent_world,
-                            reference_model ? reference_model : override_model, &local, parent_is_lens);
+                            reference_model ? reference_model : override_model, &local, parent_is_lens,
+                            reference_path);
             return;
         }
 
         const std::string geometry_name = safe_name(geometry, "geometry");
+        const std::string geometry_path =
+            peraviz::gdtf_runtime::append_geometry_path(parent_geometry_path, geometry_name);
         const std::string geometry_id = request.fixture_node_id + "/" + geometry_name +
                                         "#" + std::to_string(local_counter++);
 
@@ -366,6 +374,8 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
         node.node_id = geometry_id;
         node.parent_id = geometry_parent_id;
         node.name = geometry_name;
+        node.gdtf_geometry_key = peraviz::gdtf_runtime::make_fixture_geometry_key(request.fixture_node_id, geometry_path);
+        node.gdtf_geometry_path = geometry_path;
         node.type = "fixture_geometry";
         node.node_class = "fixture_geometry";
         node.is_fixture = true;
@@ -435,11 +445,11 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
             if (!is_supported_geometry_tag(child_tag)) {
                 continue;
             }
-            append_geometry(child, geometry_id, world, nullptr, nullptr, node.is_lens);
+            append_geometry(child, geometry_id, world, nullptr, nullptr, node.is_lens, geometry_path);
         }
     };
 
-    append_geometry(root_geometry, parent_id, parent_world, nullptr, nullptr, false);
+    append_geometry(root_geometry, parent_id, parent_world, nullptr, nullptr, false, "");
     extracted_asset_count += gdtf_cache.extracted_assets();
     return nodes;
 }

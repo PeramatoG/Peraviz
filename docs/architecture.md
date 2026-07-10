@@ -31,14 +31,18 @@ Current Godot runtime responsibilities include:
 ## Current live data flow
 
 ```text
-MVR scene and parsed GDTF data
-  -> selected DMX mode
+MVR fixture patch
+  -> parser-owned selected GDTF DMX mode model
+  -> scoped DMXChannel records under the selected mode, including standard DMXChannels wrappers and harmless vendor wrappers
+  -> LogicalChannel / ChannelFunction records with inferred or explicit full-resolution DMX ranges
+  -> CompiledGdtfFixtureType
   -> native compiled runtime scene
   -> native fixture instances, patch, source programs, and contributors
   -> submitted universe snapshots
   -> relevant-slot filtering and native DMX evaluation
   -> dirty SectionedVisualFrame descriptors + integer payloads + float payloads
   -> Godot sectioned frame applier
+  -> exact cached native target IDs resolved from full imported-node canonical GDTF geometry-instance keys
   -> cached renderer nodes, materials, lights, and beams
 ```
 
@@ -48,22 +52,22 @@ The live frame format is intentionally sectioned rather than one universal fixed
 
 The native visual runtime no longer exposes the old `set_fixture_bindings(Array<Dictionary>)` or `set_fixture_render_params(Dictionary)` setup methods. The runtime core no longer uses `FixtureChannelBinding`, magic numeric `channel_type` mappings, or a legacy semantic translation table to install production visual programs.
 
-The remaining GDScript renderer-side compatibility code should be treated as orchestration and section-consumption surface area, not as the authoritative semantic runtime. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
+Godot registers the native renderer manifest once during structural setup, resolves native component/render-target IDs to cached scene targets by canonical GDTF geometry keys, and applies live Transform and Intensity rows through those IDs. Compiled-scene used universes, not legacy flattened bindings, own Dimmer/Pan/Tilt frame submission to the native runtime. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
 
 ## Verified GDTF/runtime coverage
 
-- Dimmer: 8-bit source values are assembled and normalized in native compiled programs.
-- Pan: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
-- Tilt: 16-bit coarse/fine source values are assembled from explicit byte locations and mapped through the compiled physical range.
+- Dimmer: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and render-target ownership for native evaluation.
+- Pan: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
+- Tilt: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
 - The generic source reader accepts one to four ordered bytes, so 8-bit, 16-bit, 24-bit, and 32-bit source layouts are supported by the runtime model.
-- One resolved component property can reference multiple weighted compiled source contributors.
+- One resolved component property can contain multiple ChannelFunction ranges; native evaluation selects the active range from the assembled raw DMX value.
 - Transform section rows use integer payloads `[fixture_id, pan_component_id, tilt_component_id, changed_mask]` and float payloads `[pan_degrees, tilt_degrees]`.
 - Transform section Pan/Tilt values are physical degrees, not normalized values.
 - The technical DMX monitor is on-demand: hidden windows perform no grid refresh work, and visible windows copy the selected universe only when metadata changes.
 
 ## Known unsupported GDTF semantics
 
-ModeMaster, Relations, virtual attributes, complex ChannelSet selection, color mixing, gobos, prisms, strobe curves, repeated emitters, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
+ModeMaster, Relations, virtual attributes, complex ChannelSet selection, CMY/RGB/color wheels/CTO, gobos, prisms, strobe curves, repeated emitters, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
 
 ## Runtime invariants
 
@@ -86,3 +90,13 @@ The next recommended vertical slice is color intensity/color-mixing through pars
 - `docs/godot_performance_guidelines.md` contains renderer and scene-tree performance guidance.
 - `docs/NATIVE_BUILD.md` documents native build steps.
 - `docs/MVR_XCHANGE.md` documents MVR-xchange behavior.
+
+### Native Dimmer/Pan/Tilt runtime contract
+
+The active Dimmer/Pan/Tilt path is parser-owned: MVR fixture patches select GDTF DMX modes, selected-mode `ChannelFunction` records compile into native source programs and component properties, and live Art-Net frames are evaluated by the native sectioned runtime. The evaluator preserves raw DMX, local normalized range position, and GDTF physical value separately. Pan and Tilt consume physical degrees; Dimmer consumes normalized 0–1 intensity even when the GDTF physical range is 0–100.
+
+Dimmer is target-oriented rather than fixture-oriented. Each compiled Dimmer property keeps its own property ID, component ID, render target ID, geometry key, contributors, cached state, dirty comparison, and emitted `EmitterIntensity` row. Fixtures with repeated emitters can therefore produce multiple changed intensity rows in one frame without last-target-wins overwrite.
+
+Godot resolves renderer targets during structural setup only through the focused `NativeRendererTargetRegistry` service. `load_scene.gd` remains the scene lifecycle coordinator, but the registry owns canonical geometry-key indexing, Pan/Tilt component targets, Dimmer render-target records, duplicate/overlap diagnostics, and cached renderer resource summaries. Dimmer target records cache exact owner geometry, emitter anchors, Lightweight Prism beam instances, lens material targets, optional spotlight anchors, and photometric data. Live Dimmer rows update those cached resources directly; they do not parse GDTF, search by fixture UUID, traverse descendants, rebuild prism topology for intensity-only updates, or use legacy fixture bindings. Realtime spotlights may remain disabled because the Lightweight Prism backend provides the acceptance beam output independently.
+
+This checkpoint has been visually verified in the Windows/Godot application for native Pan, Tilt, and Dimmer response through native target IDs. The Lightweight Prism output is intentionally accepted only as the current visible checkpoint: in the tested scene the beam currently appears cylindrical rather than as an optically correct cone. Beam topology, near/far radii, GDTF beam-angle/range propagation into topology, gobo-shaped prism geometry, footprint alignment, and advanced volumetric quality are deferred to a follow-up branch.

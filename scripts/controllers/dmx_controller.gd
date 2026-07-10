@@ -122,9 +122,9 @@ func setup_controls() -> void:
 
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 
-func setup_fixture_runtime(loader: Variant, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider) -> void:
+func setup_fixture_runtime(native_scene_loader: Variant, scene_registry: SceneRegistry, renderer_target_registry: Variant, fixture_row_provider: FixtureRowProvider) -> void:
 	_dmx_fixture_runtime = DmxFixtureRuntimeScript.new()
-	_dmx_fixture_runtime.configure(loader, scene_registry, fixture_row_provider)
+	_dmx_fixture_runtime.configure(native_scene_loader, scene_registry, renderer_target_registry, fixture_row_provider)
 	_dmx_fixture_runtime.set_debug_force_full_apply(_debug_force_full_apply)
 
 func set_debug_force_full_apply(enabled: bool) -> void:

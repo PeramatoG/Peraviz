@@ -64,8 +64,9 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         }
         scene.source_programs.push_back(program);
     }
-    for (int index = 0; index < property_count && cursor + 5 <= integers.size(); ++index) {
+    for (int index = 0; index < property_count && cursor + 6 <= integers.size(); ++index) {
         peraviz::runtime::CompiledComponentProperty property;
+        property.property_id = integers[cursor++];
         property.fixture_id = integers[cursor++];
         property.component_id = integers[cursor++];
         property.render_target_id = integers[cursor++];

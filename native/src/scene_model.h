@@ -33,6 +33,8 @@ struct SceneNode {
     std::string asset_kind;
     std::string asset_path;
     std::string primitive_type;
+    std::string gdtf_geometry_key;
+    std::string gdtf_geometry_path;
     float primitive_size_x = 0.1F;
     float primitive_size_y = 0.1F;
     float primitive_size_z = 0.1F;

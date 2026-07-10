@@ -128,6 +128,12 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
 	return true
 
+func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
+	if not light.has_meta(MAIN_KEY):
+		return null
+	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
+	return prism if prism != null and is_instance_valid(prism) else null
+
 func cleanup_beam(light: SpotLight3D) -> void:
 	if light.has_meta(MAIN_KEY):
 		var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D

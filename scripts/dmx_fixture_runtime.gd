@@ -86,7 +86,8 @@ const COMPACT_PRISM_ROTATION_NORM: int = 26
 const COMPACT_HAS_STROBE: int = 27
 const COMPACT_STROBE_NORM: int = 28
 
-var _loader = null
+var _native_scene_loader = null
+var _renderer_target_registry = null
 var _scene_registry: SceneRegistry = null
 var _bindings: Array = []
 var _unbound: Array = []
@@ -116,6 +117,11 @@ var _last_universe_counters: Dictionary = {}
 var _cached_universe_frames: Dictionary = {}
 var _universe_interest_offsets: Dictionary = {}
 var _last_universe_interest_hashes: Dictionary = {}
+var _compiled_used_universes: Dictionary = {}
+var _compiled_relevant_offsets_by_universe: Dictionary = {}
+var _native_setup_summary: Dictionary = {}
+var _native_live_diagnostics: Dictionary = {}
+var _native_live_diagnostics_logged: bool = false
 var _fixture_time_tick_flags: Dictionary = {}
 var _fixture_row_provider: FixtureRowProvider = null
 var _time_tick_fixture_ids := PackedStringArray()
@@ -124,8 +130,9 @@ var _debug_force_full_apply: bool = false
 var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
 var _runtime_universe_offset: int = -1
 
-func configure(loader, scene_registry: SceneRegistry, fixture_row_provider: FixtureRowProvider = null) -> void:
-	_loader = loader
+func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_target_registry, fixture_row_provider: FixtureRowProvider = null) -> void:
+	_native_scene_loader = native_scene_loader
+	_renderer_target_registry = renderer_target_registry
 	_scene_registry = scene_registry
 	_fixture_row_provider = fixture_row_provider
 	_gobo_vectorization_cache = GoboVectorizationCacheScript.new()
@@ -163,6 +170,11 @@ func rebuild(universe_offset: int) -> Dictionary:
 	_cached_universe_frames.clear()
 	_universe_interest_offsets.clear()
 	_last_universe_interest_hashes.clear()
+	_compiled_used_universes.clear()
+	_compiled_relevant_offsets_by_universe.clear()
+	_native_setup_summary.clear()
+	_native_live_diagnostics.clear()
+	_native_live_diagnostics_logged = false
 	_fixture_time_tick_flags.clear()
 	_time_tick_fixture_ids = PackedStringArray()
 
@@ -174,7 +186,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 			"unbound_preview": PackedStringArray(),
 		}
 
-	if _loader == null or _scene_registry == null:
+	if _native_scene_loader == null or _scene_registry == null:
 		return {
 			"bound": 0,
 			"unbound": 0,
@@ -183,7 +195,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 
 	_fixture_patch_lookup = _build_fixture_patch_lookup()
 
-	var result: Dictionary = _loader.build_fixture_dmx_bindings(universe_offset)
+	var result: Dictionary = _native_scene_loader.build_fixture_dmx_bindings(universe_offset)
 	_bindings = result.get("bindings", [])
 	_unbound = result.get("unbound", [])
 
@@ -205,8 +217,8 @@ func rebuild(universe_offset: int) -> Dictionary:
 			continue
 		_fixture_nodes[fixture_uuid] = fixture_node
 		_bound_fixture_ids[fixture_uuid] = true
-		if _loader.has_method("_prepare_fixture_node_cache"):
-			_loader._prepare_fixture_node_cache(fixture_uuid)
+		if _native_scene_loader.has_method("_prepare_fixture_node_cache"):
+			_native_scene_loader._prepare_fixture_node_cache(fixture_uuid)
 		_register_native_fixture_id(fixture_uuid)
 		_fixture_apply_plans[fixture_uuid] = _build_fixture_apply_plan(binding)
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
@@ -362,26 +374,24 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var pending_controls: Array = []
+	var submitted_universes: int = 0
 	for universe_key in changed_frames.keys():
 		var universe_id: int = int(universe_key)
+		if not _compiled_used_universes.has(universe_id):
+			continue
 		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
 		var frame: PackedByteArray = frame_entry.get("data", PackedByteArray())
 		if frame.is_empty():
 			continue
 		_cached_universe_frames[universe_id] = frame
-		var interest_hash: int = int(frame_entry.get("interest_hash", -1))
-		if interest_hash < 0:
-			interest_hash = _compute_universe_interest_hash(universe_id, frame)
 		_last_universe_counters[universe_id] = {
 			"counter": int(frame_entry.get("counter", -1)),
 			"content_hash": int(frame_entry.get("content_hash", -1)),
-			"interest_hash": interest_hash,
-			"interest_offsets": _get_universe_interest_offsets_array(universe_id),
+			"interest_hash": -1,
+			"interest_offsets": _compiled_relevant_offsets_by_universe.get(universe_id, PackedInt32Array()),
 		}
-		if not _debug_force_full_apply and int(_last_universe_interest_hashes.get(universe_id, -1)) == interest_hash:
-			continue
-		_last_universe_interest_hashes[universe_id] = interest_hash
 		_native_visual_runtime.submit_universe_frame(universe_id, frame)
+		submitted_universes += 1
 
 	var visual_frame: Dictionary = _native_visual_runtime.consume_latest_visual_frame()
 	var visual_descriptors: PackedInt32Array = visual_frame.get("descriptors", PackedInt32Array())
@@ -393,11 +403,13 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		if loader == null or light_apply_service == null:
 			push_error("PeravizVisualRuntime requires the visual-frame light applier for live DMX playback.")
 			return {"updated": updated, "skipped": skipped, "universes_changed": changed_frames.size(), "fixtures_considered": fixtures_considered, "controls": pending_controls}
-		compact_result = _sectioned_visual_frame_applier.apply_snapshot(visual_frame, loader, light_apply_service, frame_delta_sec, self, _native_fixture_uuids_by_id, _bound_fixture_ids)
+		compact_result = _sectioned_visual_frame_applier.apply_snapshot(visual_frame, loader, light_apply_service, frame_delta_sec, self, _native_fixture_uuids_by_id, _fixture_nodes)
 		_last_visual_mask_counts = compact_result.get("visual_mask_counts", {})
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
+		_native_live_diagnostics = compact_result.duplicate(true)
+		_log_native_live_diagnostics_once()
 
 	return {
 		"updated": updated,
@@ -411,19 +423,49 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		"visual_mask_counts": _last_visual_mask_counts.duplicate(false),
 		"visual_apply_counters": light_apply_service.get_visual_apply_counters() if light_apply_service != null else {},
 		"native_stats": _native_visual_runtime.get_stats() if _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
+		"native_setup_summary": _native_setup_summary.duplicate(true),
+		"native_live_diagnostics": _native_live_diagnostics.duplicate(true),
+		"universes_submitted_to_native": submitted_universes,
 	}
+
+func _log_native_live_diagnostics_once() -> void:
+	if _native_live_diagnostics_logged:
+		return
+	var skip_diagnostics: Dictionary = _native_live_diagnostics.get("skip_diagnostics", {})
+	if int(skip_diagnostics.get("rows_generated", 0)) <= 0:
+		return
+	_native_live_diagnostics_logged = true
+	print("[native-dpt-live] rows=%d unknown_fixture=%d missing_scene_fixture=%d legacy_bound_rejections=%d invalid_payload=%d pan=%d/%d/%d tilt=%d/%d/%d dimmer=%d/%d/%d dimmer_resources=lights:%d beams:%d materials:%d first_failures=%s" % [
+		int(skip_diagnostics.get("rows_generated", 0)),
+		int(skip_diagnostics.get("unknown_fixture_id", 0)),
+		int(skip_diagnostics.get("missing_scene_fixture", 0)),
+		int(skip_diagnostics.get("legacy_bound_map_rejections", 0)),
+		int(skip_diagnostics.get("invalid_schema_payload", 0)),
+		int(skip_diagnostics.get("pan_requested", 0)),
+		int(skip_diagnostics.get("pan_mutated", 0)),
+		int(skip_diagnostics.get("pan_failed", 0)),
+		int(skip_diagnostics.get("tilt_requested", 0)),
+		int(skip_diagnostics.get("tilt_mutated", 0)),
+		int(skip_diagnostics.get("tilt_failed", 0)),
+		int(skip_diagnostics.get("dimmer_requested", 0)),
+		int(skip_diagnostics.get("dimmer_mutated", 0)),
+		int(skip_diagnostics.get("dimmer_failed", 0)),
+		int(skip_diagnostics.get("dimmer_lights_mutated", 0)),
+		int(skip_diagnostics.get("dimmer_beams_mutated", 0)),
+		int(skip_diagnostics.get("dimmer_materials_mutated", 0)),
+		str(skip_diagnostics.get("first_failures", [])),
+	])
 
 
 func _consume_dirty_universe_frames(receiver) -> Dictionary:
 	var changed_frames: Dictionary = {}
 	var dirty_universes: PackedInt32Array = receiver.get_dirty_universes()
 	for universe_id in dirty_universes:
-		if not _used_universes.has(int(universe_id)):
+		if not _compiled_used_universes.has(int(universe_id)):
 			continue
 		var frame: PackedByteArray = receiver.consume_universe(int(universe_id))
 		if frame.is_empty():
 			continue
-		var interest_hash: int = _compute_universe_interest_hash(int(universe_id), frame)
 		var previous_state: Variant = _last_universe_counters.get(int(universe_id), {})
 		var previous_counter: int = -1
 		if previous_state is Dictionary:
@@ -432,13 +474,13 @@ func _consume_dirty_universe_frames(receiver) -> Dictionary:
 			"data": frame,
 			"counter": previous_counter + 1,
 			"content_hash": _compute_snapshot_hash(frame),
-			"interest_hash": interest_hash,
+			"interest_hash": -1,
 		}
 	return changed_frames
 
 func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
 	var changed_frames: Dictionary = {}
-	for universe_key in _used_universes.keys():
+	for universe_key in _compiled_used_universes.keys():
 		var universe_id: int = int(universe_key)
 		var metadata: Dictionary = receiver.get_universe_metadata(universe_id) if receiver.has_method("get_universe_metadata") else {}
 		var counter: int = int(metadata.get("counter", -2))
@@ -505,16 +547,80 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_channel_values[fixture_uuid] = {}
 
 func _register_native_visual_runtime_bindings() -> void:
-	if _loader == null or not _loader.has_method("compile_visual_runtime_scene"):
+	if _native_scene_loader == null or not _native_scene_loader.has_method("compile_visual_runtime_scene"):
 		_native_bindings_count = 0
 		return
-	var compiled_scene: Dictionary = _loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	var compiled_scene: Dictionary = _native_scene_loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	_register_compiled_runtime_submission_metadata(compiled_scene)
 	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
+	if not _install_renderer_manifest(compiled_scene.get("renderer_manifest", [])):
+		_native_bindings_count = 0
+		return
 	_native_bindings_count = int(compiled_scene.get("property_count", 0))
 	if _native_visual_runtime.has_method("install_compiled_scene"):
 		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
+	_report_native_setup_summary()
+
+func _install_renderer_manifest(renderer_manifest: Array) -> bool:
+	if _renderer_target_registry == null:
+		push_error("Native DPT setup requires a renderer target registry; compiled scene was not installed.")
+		_native_setup_summary["target_registry_error"] = "missing renderer target registry"
+		return false
+	for method_name in ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_get_native_target_failure"]:
+		if not _renderer_target_registry.has_method(method_name):
+			push_error("Native DPT renderer target registry is missing required method: %s" % method_name)
+			_native_setup_summary["target_registry_error"] = "missing method %s" % method_name
+			return false
+	_renderer_target_registry._register_native_runtime_targets(renderer_manifest)
+	_native_setup_summary["target_registry"] = _renderer_target_registry._get_native_target_registry_summary()
+	var registry_summary: Dictionary = _native_setup_summary.get("target_registry", {}).get("registry_summary", {})
+	for semantic in ["pan", "tilt", "dimmer"]:
+		var requested: int = int(registry_summary.get("%s_requested" % semantic, 0))
+		var resolved: int = int(registry_summary.get("%s_resolved" % semantic, 0))
+		if requested > 0 and resolved == 0:
+			push_error("Native DPT renderer target registry resolved zero %s targets from %d requested targets." % [semantic, requested])
+			_native_setup_summary["target_registry_error"] = "zero %s targets resolved" % semantic
+			return false
+	return true
+
+func _report_native_setup_summary() -> void:
+	var summary: Dictionary = _native_setup_summary.duplicate(true)
+	var dpt_count: int = int(summary.get("dimmer_property_count", 0)) + int(summary.get("pan_property_count", 0)) + int(summary.get("tilt_property_count", 0))
+	print("[native-dpt-setup] mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offsets=%s manifest_fixtures=%d installed_native_properties=%d" % [
+		int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))),
+		int(summary.get("gdtf_files_opened", 0)),
+		int(summary.get("selected_modes_found", 0)),
+		int(summary.get("dmxchannels_found", 0)),
+		int(summary.get("dmxchannel_records_found", 0)),
+		int(summary.get("logical_channels_found", 0)),
+		int(summary.get("channel_functions_found", 0)),
+		int(summary.get("dimmer_program_count", 0)),
+		int(summary.get("pan_program_count", 0)),
+		int(summary.get("tilt_program_count", 0)),
+		int(_native_bindings_count),
+		str(summary.get("used_universes", {})),
+		str(summary.get("relevant_offsets_by_universe", {})),
+		int(summary.get("manifest_fixture_count", 0)),
+		int(summary.get("installed_native_properties", _native_bindings_count)),
+	])
+	if int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))) > 0 and dpt_count == 0:
+		push_error("Native Dimmer/Pan/Tilt runtime installed zero properties for patched fixtures; live DMX visualization will not produce DPT rows.")
+
+func _register_compiled_runtime_submission_metadata(compiled_scene: Dictionary) -> void:
+	_compiled_used_universes.clear()
+	_compiled_relevant_offsets_by_universe.clear()
+	var used_universes: Dictionary = compiled_scene.get("used_universes", {})
+	for universe_key in used_universes.keys():
+		_compiled_used_universes[int(str(universe_key))] = true
+	var relevant_offsets: Dictionary = compiled_scene.get("relevant_offsets_by_universe", {})
+	for universe_key in relevant_offsets.keys():
+		var packed := PackedInt32Array()
+		for offset in relevant_offsets.get(universe_key, []):
+			packed.append(int(offset))
+		_compiled_relevant_offsets_by_universe[int(str(universe_key))] = packed
+	_native_setup_summary = compiled_scene.get("setup_summary", {}).duplicate(true)
 
 func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
 	for item in renderer_manifest:
@@ -529,6 +635,12 @@ func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
 		_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
 		if not _native_channel_values.has(fixture_uuid):
 			_native_channel_values[fixture_uuid] = {}
+		var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid) if _scene_registry != null else null
+		if fixture_node != null:
+			_fixture_nodes[fixture_uuid] = fixture_node
+			_bound_fixture_ids[fixture_uuid] = true
+			if _native_scene_loader != null and _native_scene_loader.has_method("_prepare_fixture_node_cache"):
+				_native_scene_loader._prepare_fixture_node_cache(fixture_uuid)
 
 func _append_native_bindings_for_fixture(native_bindings: Array, binding: Dictionary) -> void:
 	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -1328,10 +1440,10 @@ func _resolve_fixture_display_label(row: Dictionary, patch: Dictionary, fixture_
 
 func _build_fixture_patch_lookup() -> Dictionary:
 	var lookup: Dictionary = {}
-	if _loader == null or not _loader.has_method("get_fixtures_patch"):
+	if _native_scene_loader == null or not _native_scene_loader.has_method("get_fixtures_patch"):
 		return lookup
 
-	var patches: Array = _loader.get_fixtures_patch()
+	var patches: Array = _native_scene_loader.get_fixtures_patch()
 	for patch_value in patches:
 		if patch_value is not Dictionary:
 			continue
@@ -1442,4 +1554,5 @@ func _build_summary(universe_offset: int) -> Dictionary:
 		"unbound": get_unbound_count(),
 		"unbound_preview": get_unbound_preview(),
 		"universe_offset": universe_offset,
+		"native_setup_summary": _native_setup_summary.duplicate(true),
 	}

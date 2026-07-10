@@ -24,10 +24,11 @@ void append_descriptor(SectionedVisualFrame &frame, VisualSectionType type, int3
 void PeravizVisualRuntimeCore::clear() {
     universes_.clear();
     render_params_by_fixture_.clear();
-    component_state_by_fixture_.clear();
+    transform_state_by_fixture_.clear();
+    property_state_by_property_.clear();
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
-    dimmer_target_id_by_fixture_.clear();
+    installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
@@ -37,10 +38,11 @@ void PeravizVisualRuntimeCore::clear() {
 void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene &scene) {
     universes_.clear();
     render_params_by_fixture_.clear();
-    component_state_by_fixture_.clear();
+    transform_state_by_fixture_.clear();
+    property_state_by_property_.clear();
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
-    dimmer_target_id_by_fixture_.clear();
+    installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
     diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
@@ -69,8 +71,8 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     int installed_properties = 0;
     for (const CompiledComponentProperty &property : scene.properties) {
         const SemanticParameter parameter = semantic_parameter_for_compiled(property.semantic);
-        if (property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PROPERTY", "warning", "Compiled property is missing fixture, semantic, or contributors.", std::to_string(property.fixture_id)});
+        if (property.property_id <= 0 || property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PROPERTY", "warning", "Compiled property is missing property ID, fixture, semantic, or contributors.", std::to_string(property.fixture_id)});
             continue;
         }
         int property_universe = -1;
@@ -105,7 +107,8 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         }
         if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
-        if (parameter == SemanticParameter::Dimmer) dimmer_target_id_by_fixture_[property.fixture_id] = property.render_target_id;
+        const uint32_t installed_mask = visual_mask_for_parameter(parameter);
+        installed_visual_mask_by_fixture_[property.fixture_id] |= installed_mask;
         capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
         capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
         UniverseState &universe = universes_[property_universe];
@@ -151,6 +154,9 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
     frame.schema_generation = schema_.schema_generation;
     struct PendingRow {
         int fixture_id = 0;
+        int32_t property_id = 0;
+        int32_t component_id = 0;
+        int32_t render_target_id = 0;
         uint32_t changed_visual_mask = 0;
         ComponentState state;
     };
@@ -169,27 +175,52 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         universe.has_hash = true;
         universe.interest_hash = interest_hash;
 
-        std::unordered_map<int, ComponentState> pending_by_fixture;
+        std::unordered_map<int, ComponentState> pending_transform_by_fixture;
         for (const CompiledPropertyProgram &program : universe.properties) {
-            ComponentState &state = pending_by_fixture[program.property.fixture_id];
-            auto existing = component_state_by_fixture_.find(program.property.fixture_id);
-            if (!state.initialized && existing != component_state_by_fixture_.end()) {
+            const EvaluationResult evaluated = evaluate_property_value(universe.latest_frame, program.property);
+            if (!evaluated.valid) {
+                continue;
+            }
+            const float semantic_value = program.parameter == SemanticParameter::Dimmer ? evaluated.normalized_value : evaluated.physical_value;
+            if (program.parameter == SemanticParameter::Dimmer) {
+                ComponentState state;
+                auto existing = property_state_by_property_.find(program.property.property_id);
+                if (existing != property_state_by_property_.end()) {
+                    state = existing->second;
+                }
+                apply_semantic_value(state, program.parameter, semantic_value);
+                const auto params_it = render_params_by_fixture_.find(program.property.fixture_id);
+                cook_render_state(state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
+                const FixtureChangeResult change = merge_property_state(program.property.property_id, state, visual_mask_for_parameter(program.parameter));
+                if (!change.changed) {
+                    ++stats_.fixtures_skipped;
+                    continue;
+                }
+                add_visual_mask_stats(change.changed_visual_mask);
+                ++stats_.fixtures_dirty;
+                rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, program.property.render_target_id, change.changed_visual_mask, state});
+                continue;
+            }
+
+            ComponentState &state = pending_transform_by_fixture[program.property.fixture_id];
+            auto existing = transform_state_by_fixture_.find(program.property.fixture_id);
+            if (!state.initialized && existing != transform_state_by_fixture_.end()) {
                 state = existing->second;
             }
-            apply_semantic_value(state, program.parameter, evaluate_property_value(universe.latest_frame, program.property));
+            apply_semantic_value(state, program.parameter, semantic_value);
         }
 
-        for (auto &[fixture_id, next_state] : pending_by_fixture) {
+        for (auto &[fixture_id, next_state] : pending_transform_by_fixture) {
             const auto params_it = render_params_by_fixture_.find(fixture_id);
             cook_render_state(next_state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
-            const FixtureChangeResult change = merge_component_state(fixture_id, next_state);
+            const FixtureChangeResult change = merge_transform_state(fixture_id, next_state);
             if (!change.changed) {
                 ++stats_.fixtures_skipped;
                 continue;
             }
             add_visual_mask_stats(change.changed_visual_mask);
             ++stats_.fixtures_dirty;
-            rows.push_back({fixture_id, change.changed_visual_mask, next_state});
+            rows.push_back({fixture_id, 0, 0, 0, change.changed_visual_mask, next_state});
         }
     }
 
@@ -217,74 +248,10 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & (VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology)) == 0U) continue;
-            const int32_t target_id = dimmer_target_id_by_fixture_.count(row.fixture_id) != 0 ? dimmer_target_id_by_fixture_[row.fixture_id] : row.fixture_id;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, target_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.render_target_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.dimmer, row.state.beam_energy, row.state.spot_energy, row.state.beam_intensity, row.state.material_energy});
         }
         append_descriptor(frame, VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
-    }
-
-    const int32_t color_count = section_count_for(VisualChangeColor | VisualChangeMaterial);
-    if (color_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeColor | VisualChangeMaterial)) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 5, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.red, row.state.green, row.state.blue});
-        }
-        append_descriptor(frame, VisualSectionType::EmitterColor, color_count, int_offset, float_offset);
-    }
-
-    const int32_t optics_count = section_count_for(VisualChangeZoom | VisualChangeBeamTopology);
-    if (optics_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeZoom | VisualChangeBeamTopology)) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 4, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.beam_half_angle, row.state.beam_angle, row.state.zoom});
-        }
-        append_descriptor(frame, VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
-    }
-
-    const int32_t wheel_selection_count = section_count_for(VisualChangeGobo | VisualChangePrism);
-    if (wheel_selection_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeGobo | VisualChangePrism)) == 0U) continue;
-            const int32_t wheel_id = (row.changed_visual_mask & VisualChangeGobo) != 0U ? 10 : 20;
-            const int32_t resolved_slot = static_cast<int32_t>(std::round(std::clamp(row.state.gobo_select, 0.0f, 1.0f) * 6.0f));
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, wheel_id, row.fixture_id * 1000 + wheel_id, resolved_slot, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.push_back(row.state.gobo_select);
-        }
-        append_descriptor(frame, VisualSectionType::WheelSelection, wheel_selection_count, int_offset, float_offset);
-    }
-
-    const int32_t wheel_motion_count = section_count_for(VisualChangeGoboRotation | VisualChangePrism);
-    if (wheel_motion_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & (VisualChangeGoboRotation | VisualChangePrism)) == 0U) continue;
-            const int32_t wheel_id = (row.changed_visual_mask & VisualChangeGoboRotation) != 0U ? 10 : 20;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, wheel_id, static_cast<int32_t>(row.changed_visual_mask), 0});
-            frame.floats.insert(frame.floats.end(), {row.state.gobo_index, row.state.gobo_rotation, 0.0f});
-        }
-        append_descriptor(frame, VisualSectionType::WheelMotion, wheel_motion_count, int_offset, float_offset);
-    }
-
-    const int32_t temporal_count = section_count_for(VisualChangeStrobe);
-    if (temporal_count > 0) {
-        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
-        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
-        for (const PendingRow &row : rows) {
-            if ((row.changed_visual_mask & VisualChangeStrobe) == 0U) continue;
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.fixture_id * 1000 + 13, 0, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.strobe, row.state.dimmer});
-        }
-        append_descriptor(frame, VisualSectionType::TemporalOutput, temporal_count, int_offset, float_offset);
     }
 
     frame.stats = stats_;
@@ -308,34 +275,48 @@ SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(Comp
     return SemanticParameter::Unknown;
 }
 
-// Reads a compiled DMX program by assembling ordered source bytes before normalization.
-float PeravizVisualRuntimeCore::read_normalized_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
+// Reads a compiled DMX program by assembling ordered source bytes into a raw integer value.
+uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
     if (program.sources.empty() || program.sources.size() > 4) {
         if (diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program_id)});
-        return 0.0f;
+        return 0U;
     }
     std::vector<CompiledDmxByteSource> ordered = program.sources;
     std::sort(ordered.begin(), ordered.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
     uint32_t raw_value = 0;
-    uint32_t max_value = 0;
     for (const CompiledDmxByteSource &source : ordered) {
         const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
         if (!valid && diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program_id)});
         const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
         raw_value = (raw_value << 8U) | value;
+    }
+    return raw_value;
+}
+
+// Evaluates one source program into raw, local normalized, and physical representations.
+PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
+    uint32_t max_value = 0;
+    for (size_t index = 0; index < program.sources.size() && index < 4; ++index) {
         max_value = (max_value << 8U) | 0xffU;
     }
-    const double normalized = max_value > 0 ? static_cast<double>(raw_value) / static_cast<double>(max_value) : 0.0;
+    const uint32_t raw_value = read_raw_value(frame, program, diagnostics);
     const double dmx_span = program.dmx_to > program.dmx_from ? static_cast<double>(program.dmx_to - program.dmx_from) : static_cast<double>(max_value);
-    const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.dmx_from)) / dmx_span, 0.0, 1.0) : normalized;
+    const double full_range_normalized = max_value > 0 ? static_cast<double>(raw_value) / static_cast<double>(max_value) : 0.0;
+    const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.dmx_from)) / dmx_span, 0.0, 1.0) : full_range_normalized;
     const double physical = program.physical_from + ((program.physical_to - program.physical_from) * local);
-    return static_cast<float>(physical);
+    return {raw_value, static_cast<float>(local), static_cast<float>(physical), program.program_id, true};
 }
 
 // Resolves all contributors for one property into a single deterministic value.
-float PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property) {
-    double weighted_sum = 0.0;
+PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property) {
+    double weighted_normalized_sum = 0.0;
+    double weighted_physical_sum = 0.0;
     double total_weight = 0.0;
+    const CompiledDmxSourceProgram *active_program = nullptr;
+    bool has_range_selector = false;
+    bool has_reference_range = false;
+    uint32_t reference_from = 0;
+    uint32_t reference_to = 0;
     for (const CompiledPropertyContributor &contributor : property.contributors) {
         if (contributor.operation != CompiledContributorOperation::WeightedAdd) {
             diagnostics_.push_back({"PVZ-RUNTIME-UNSUPPORTED-CONTRIBUTOR", "warning", "Compiled contributor operation is not supported.", std::to_string(contributor.source_program_id)});
@@ -346,11 +327,53 @@ float PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_
             diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled contributor references a missing source program.", std::to_string(contributor.source_program_id)});
             continue;
         }
+        const CompiledDmxSourceProgram &program = program_it->second;
+        if (!has_reference_range) {
+            reference_from = program.dmx_from;
+            reference_to = program.dmx_to;
+            has_reference_range = true;
+        } else if (program.dmx_from != reference_from || program.dmx_to != reference_to) {
+            has_range_selector = true;
+        }
+        const uint32_t raw_value = read_raw_value(frame, program, &diagnostics_);
+        if (raw_value >= program.dmx_from && raw_value <= program.dmx_to) {
+            if (active_program != nullptr) diagnostics_.push_back({"PVZ-RUNTIME-OVERLAPPING-FUNCTIONS", "warning", "Multiple ChannelFunctions matched the same raw DMX value; using the first match.", std::to_string(property.fixture_id)});
+            if (active_program == nullptr) active_program = &program;
+        }
+    }
+    if (property.contributors.size() > 1 && has_range_selector) {
+        if (active_program == nullptr) {
+            diagnostics_.push_back({"PVZ-RUNTIME-NO-ACTIVE-FUNCTION", "warning", "No ChannelFunction range matched the assembled raw DMX value.", std::to_string(property.fixture_id)});
+            return {};
+        }
+        return evaluate_source_program(frame, *active_program, &diagnostics_);
+    }
+    EvaluationResult result;
+    for (const CompiledPropertyContributor &contributor : property.contributors) {
+        auto program_it = source_programs_by_id_.find(contributor.source_program_id);
+        if (program_it == source_programs_by_id_.end()) {
+            continue;
+        }
         const double weight = contributor.weight;
-        weighted_sum += static_cast<double>(read_normalized_value(frame, program_it->second, &diagnostics_)) * weight;
+        const EvaluationResult program_value = evaluate_source_program(frame, program_it->second, &diagnostics_);
+        if (!program_value.valid) {
+            continue;
+        }
+        if (!result.valid) {
+            result.raw_value = program_value.raw_value;
+            result.active_program_id = program_value.active_program_id;
+            result.valid = true;
+        }
+        weighted_normalized_sum += static_cast<double>(program_value.normalized_value) * weight;
+        weighted_physical_sum += static_cast<double>(program_value.physical_value) * weight;
         total_weight += weight;
     }
-    return total_weight != 0.0 ? static_cast<float>(weighted_sum / total_weight) : 0.0f;
+    if (total_weight == 0.0 || !result.valid) {
+        return {};
+    }
+    result.normalized_value = static_cast<float>(weighted_normalized_sum / total_weight);
+    result.physical_value = static_cast<float>(weighted_physical_sum / total_weight);
+    return result;
 }
 
 // Computes a native hash over only patched DMX offsets for a universe.
@@ -369,7 +392,7 @@ uint64_t PeravizVisualRuntimeCore::compute_interest_hash(const std::vector<uint8
 // Maps a semantic parameter to the render domains it can dirty.
 uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter parameter) {
     switch (parameter) {
-        case SemanticParameter::Dimmer: return VisualChangeDimmer | VisualChangeMaterial;
+        case SemanticParameter::Dimmer: return VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology;
         case SemanticParameter::Pan:
         case SemanticParameter::Tilt: return VisualChangeTransform;
         case SemanticParameter::Zoom: return VisualChangeZoom | VisualChangeBeamTopology;
@@ -447,27 +470,42 @@ void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
     if ((visual_mask & VisualChangeGoboRotation) != 0U) { ++stats_.changed_gobo_rotation; ++stats_.gobo_parametric_updates; }
 }
 
-// Updates cached component state and returns the semantic render domains that changed.
-PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_component_state(int fixture_id, const ComponentState &next_state) {
-    ComponentState &previous = component_state_by_fixture_[fixture_id];
+// Updates cached transform state and returns the semantic render domains that changed.
+PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_transform_state(int fixture_id, const ComponentState &next_state) {
+    ComponentState &previous = transform_state_by_fixture_[fixture_id];
     FixtureChangeResult result;
     result.changed = !previous.initialized;
     if (!previous.initialized) {
-        result.changed_visual_mask = VisualChangeTransform | VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology;
+        const auto mask_it = installed_visual_mask_by_fixture_.find(fixture_id);
+        const uint32_t installed_mask = mask_it != installed_visual_mask_by_fixture_.end() ? mask_it->second : VisualChangeNone;
+        result.changed_visual_mask = installed_mask & VisualChangeTransform;
     } else {
-        if (!nearly_equal(previous.pan, next_state.pan, kDefaultEpsilon) || !nearly_equal(previous.tilt, next_state.tilt, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Pan);
+        if (!nearly_equal(previous.pan, next_state.pan, kDefaultEpsilon) || !nearly_equal(previous.tilt, next_state.tilt, kDefaultEpsilon)) result.changed_visual_mask |= VisualChangeTransform;
+        result.changed = result.changed_visual_mask != VisualChangeNone;
+    }
+    result.changed_visual_mask &= VisualChangeTransform;
+    result.changed = result.changed_visual_mask != VisualChangeNone;
+    previous = next_state;
+    previous.initialized = true;
+    return result;
+}
+
+// Updates cached property state and returns target-local render domains that changed.
+PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask) {
+    ComponentState &previous = property_state_by_property_[property_id];
+    FixtureChangeResult result;
+    result.changed = !previous.initialized;
+    if (!previous.initialized) {
+        result.changed_visual_mask = installed_mask;
+    } else {
         if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Dimmer);
-        if (!nearly_equal(previous.zoom, next_state.zoom, kDefaultEpsilon) || !nearly_equal(previous.beam_angle, next_state.beam_angle, kAngleEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Zoom);
-        if (!nearly_equal(previous.cyan, next_state.cyan, kDefaultEpsilon) || !nearly_equal(previous.magenta, next_state.magenta, kDefaultEpsilon) || !nearly_equal(previous.yellow, next_state.yellow, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Cyan);
-        if (!nearly_equal(previous.gobo_select, next_state.gobo_select, kDefaultEpsilon) || !nearly_equal(previous.gobo_index, next_state.gobo_index, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::GoboSelect);
-        if (!nearly_equal(previous.gobo_rotation, next_state.gobo_rotation, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::GoboRotation);
-        if (!nearly_equal(previous.prism_select, next_state.prism_select, kDefaultEpsilon) || !nearly_equal(previous.prism_rotation, next_state.prism_rotation, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::PrismSelect);
-        if (!nearly_equal(previous.strobe, next_state.strobe, kDefaultEpsilon)) result.changed_visual_mask |= visual_mask_for_parameter(SemanticParameter::Strobe);
         const bool previous_visible = previous.dimmer > kDefaultEpsilon;
         const bool current_visible = next_state.dimmer > kDefaultEpsilon;
         if (previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;
         result.changed = result.changed_visual_mask != VisualChangeNone;
     }
+    result.changed_visual_mask &= installed_mask;
+    result.changed = result.changed_visual_mask != VisualChangeNone;
     previous = next_state;
     previous.initialized = true;
     return result;

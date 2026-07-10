@@ -30,15 +30,18 @@ func install_schema(schema: Dictionary) -> void:
 				"floats": int(section.get("row_stride_floats", 0)),
 			}
 
-func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, bound_fixture_ids: Dictionary) -> Dictionary:
+func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, scene_fixture_uuids: Dictionary = {}) -> Dictionary:
 	var descriptors: PackedInt32Array = snapshot.get("descriptors", PackedInt32Array())
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
 	if descriptors.is_empty() or descriptors.size() % DESCRIPTOR_STRIDE != 0:
-		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}}
+		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}, "skip_diagnostics": _new_skip_diagnostics()}
 	var counts: Dictionary = _new_counts()
+	var skip_diagnostics: Dictionary = _new_skip_diagnostics()
 	var updated_fixtures: Dictionary = {}
 	var skipped: int = 0
+	var applied_rows: int = 0
+	var failed_rows: int = 0
 	for descriptor_base in range(0, descriptors.size(), DESCRIPTOR_STRIDE):
 		var section_type: int = descriptors[descriptor_base]
 		var row_count: int = descriptors[descriptor_base + 1]
@@ -49,20 +52,34 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 		var float_stride: int = int(strides.get("floats", 0))
 		if int_stride <= 0 or float_stride < 0:
 			skipped += row_count
+			skip_diagnostics["invalid_schema_payload"] = int(skip_diagnostics.get("invalid_schema_payload", 0)) + row_count
+			_record_failure(skip_diagnostics, {"reason": "invalid schema stride", "section_type": section_type})
 			continue
 		for row_index in range(row_count):
+			skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1
 			var row_int_base: int = int_offset + (row_index * int_stride)
 			var row_float_base: int = float_offset + (row_index * float_stride)
 			var fixture_id: int = _fixture_id_for_row(row_int_base, integers)
 			var fixture_uuid: String = str(fixture_uuids_by_id.get(fixture_id, ""))
-			if fixture_uuid.is_empty() or not bound_fixture_ids.has(fixture_uuid):
+			if fixture_uuid.is_empty():
 				skipped += 1
+				skip_diagnostics["unknown_fixture_id"] = int(skip_diagnostics.get("unknown_fixture_id", 0)) + 1
+				_record_failure(skip_diagnostics, {"reason": "unknown fixture ID", "fixture_id": fixture_id, "section_type": section_type})
 				continue
-			if not _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts):
+			if not scene_fixture_uuids.is_empty() and not scene_fixture_uuids.has(fixture_uuid):
 				skipped += 1
+				skip_diagnostics["missing_scene_fixture"] = int(skip_diagnostics.get("missing_scene_fixture", 0)) + 1
+				_record_failure(skip_diagnostics, {"reason": "fixture not present in SceneRegistry", "fixture_id": fixture_id, "fixture_uuid": fixture_uuid, "section_type": section_type})
+				continue
+			var row_result: Dictionary = _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts)
+			_merge_application_result(skip_diagnostics, row_result)
+			if not bool(row_result.get("applied", false)):
+				skipped += 1
+				failed_rows += 1
 				continue
 			updated_fixtures[fixture_uuid] = true
-	return {"updated": updated_fixtures.size(), "skipped": skipped, "fixtures_considered": updated_fixtures.size() + skipped, "visual_mask_counts": counts}
+			applied_rows += 1
+	return {"updated": updated_fixtures.size(), "skipped": skipped, "fixtures_considered": updated_fixtures.size() + skipped, "visual_mask_counts": counts, "targets_applied": applied_rows, "targets_failed": failed_rows, "skip_diagnostics": skip_diagnostics}
 
 func _new_counts() -> Dictionary:
 	return {
@@ -72,43 +89,123 @@ func _new_counts() -> Dictionary:
 		"changed_zoom_count": 0,
 		"changed_gobo_count": 0,
 		"changed_gobo_rotation_count": 0,
+		"transform_rows_generated": 0,
+		"intensity_rows_generated": 0,
 	}
+
+func _new_skip_diagnostics() -> Dictionary:
+	return {
+		"rows_generated": 0,
+		"unknown_fixture_id": 0,
+		"missing_scene_fixture": 0,
+		"legacy_bound_map_rejections": 0,
+		"invalid_schema_payload": 0,
+		"pan_requested": 0,
+		"pan_resolved": 0,
+		"pan_failed": 0,
+		"pan_mutated": 0,
+		"tilt_requested": 0,
+		"tilt_resolved": 0,
+		"tilt_failed": 0,
+		"tilt_mutated": 0,
+		"dimmer_requested": 0,
+		"dimmer_resolved": 0,
+		"dimmer_failed": 0,
+		"dimmer_mutated": 0,
+		"dimmer_lights_mutated": 0,
+		"dimmer_beams_mutated": 0,
+		"dimmer_materials_mutated": 0,
+		"first_failures": [],
+	}
+
+func _record_failure(skip_diagnostics: Dictionary, failure: Dictionary) -> void:
+	var failures: Array = skip_diagnostics.get("first_failures", [])
+	if failures.size() < 5:
+		failures.append(failure)
+	skip_diagnostics["first_failures"] = failures
+
+func _merge_application_result(skip_diagnostics: Dictionary, row_result: Dictionary) -> void:
+	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated"]:
+		skip_diagnostics[key] = int(skip_diagnostics.get(key, 0)) + int(row_result.get(key, 0))
+	if row_result.has("failure"):
+		_record_failure(skip_diagnostics, row_result.get("failure", {}))
 
 func _fixture_id_for_row(int_base: int, integers: PackedInt32Array) -> int:
 	if int_base < 0 or int_base >= integers.size():
 		return 0
 	return integers[int_base]
 
-func _apply_section_row(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, frame_delta_sec: float, dmx_runtime: Object, counts: Dictionary) -> bool:
+func _apply_section_row(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, frame_delta_sec: float, dmx_runtime: Object, counts: Dictionary) -> Dictionary:
 	if int_base < 0 or int_base >= integers.size() or float_base < 0 or float_base > floats.size():
-		return false
+		return {"applied": false}
 	var changed_mask: int = _changed_mask_for_row(section_type, int_base, integers)
 	_record_changed_mask(changed_mask, counts)
 	match section_type:
 		SECTION_GEOMETRY_TRANSFORM:
-			if float_base + 1 >= floats.size(): return false
-			light_apply_service._apply_visual_frame_pan_tilt(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
+			counts["transform_rows_generated"] += 1
+			if float_base + 1 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid transform payload", "fixture_uuid": fixture_uuid}}
+			var pan_component_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
+			var tilt_component_id: int = integers[int_base + 2] if int_base + 2 < integers.size() else 0
+			var transform_result: Dictionary = light_apply_service.apply_transform_targets(loader, pan_component_id, tilt_component_id, floats[float_base], floats[float_base + 1])
+			transform_result["applied"] = bool(transform_result.get("pan_applied", false)) or bool(transform_result.get("tilt_applied", false))
+			return _categorized_transform_result(loader, fixture_uuid, pan_component_id, tilt_component_id, transform_result)
 		SECTION_EMITTER_INTENSITY:
-			if float_base + 4 >= floats.size(): return false
-			light_apply_service.apply_emitter_intensity(loader, fixture_uuid, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
+			counts["intensity_rows_generated"] += 1
+			if float_base + 4 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid intensity payload", "fixture_uuid": fixture_uuid}}
+			var dimmer_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
+			var intensity_result: Dictionary = light_apply_service.apply_emitter_intensity(loader, fixture_uuid, dimmer_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
+			intensity_result["applied"] = bool(intensity_result.get("dimmer_applied", false))
+			return _categorized_dimmer_result(loader, fixture_uuid, dimmer_target_id, intensity_result)
 		SECTION_EMITTER_COLOR:
-			if float_base + 2 >= floats.size(): return false
+			if float_base + 2 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_emitter_color(loader, fixture_uuid, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))
 		SECTION_BEAM_OPTICS:
-			if float_base + 2 >= floats.size(): return false
+			if float_base + 2 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_beam_optics(loader, fixture_uuid, floats[float_base], floats[float_base + 1])
 		SECTION_WHEEL_SELECTION:
-			if float_base >= floats.size(): return false
+			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_wheel_selection(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], dmx_runtime)
 		SECTION_WHEEL_MOTION:
-			if float_base + 1 >= floats.size(): return false
+			if float_base + 1 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_wheel_motion(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], floats[float_base + 1], dmx_runtime)
 		SECTION_TEMPORAL_OUTPUT:
-			if float_base >= floats.size(): return false
+			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_temporal_output(loader, fixture_uuid, floats[float_base], floats[float_base + 1] if float_base + 1 < floats.size() else 1.0)
 		_:
-			return false
-	return true
+			return {"applied": false}
+	return {"applied": true}
+
+func _categorized_transform_result(loader: Node, fixture_uuid: String, pan_component_id: int, tilt_component_id: int, result: Dictionary) -> Dictionary:
+	result["pan_requested"] = 1 if pan_component_id > 0 else 0
+	result["tilt_requested"] = 1 if tilt_component_id > 0 else 0
+	result["pan_mutated"] = 1 if bool(result.get("pan_applied", false)) else 0
+	result["tilt_mutated"] = 1 if bool(result.get("tilt_applied", false)) else 0
+	result["pan_resolved"] = result["pan_mutated"]
+	result["tilt_resolved"] = result["tilt_mutated"]
+	result["pan_failed"] = 1 if pan_component_id > 0 and not bool(result.get("pan_applied", false)) else 0
+	result["tilt_failed"] = 1 if tilt_component_id > 0 and not bool(result.get("tilt_applied", false)) else 0
+	if not bool(result.get("applied", false)):
+		result["failure"] = {"reason": "transform target not mutated", "fixture_uuid": fixture_uuid, "pan_component_id": pan_component_id, "tilt_component_id": tilt_component_id, "pan_target_failure": _target_failure_for(loader, pan_component_id), "tilt_target_failure": _target_failure_for(loader, tilt_component_id)}
+	return result
+
+func _categorized_dimmer_result(loader: Node, fixture_uuid: String, dimmer_target_id: int, result: Dictionary) -> Dictionary:
+	var target_resolved: bool = bool(result.get("target_resolved", false))
+	var dimmer_applied: bool = bool(result.get("dimmer_applied", false))
+	result["dimmer_requested"] = 1 if dimmer_target_id > 0 else 0
+	result["dimmer_resolved"] = 1 if target_resolved else 0
+	result["dimmer_mutated"] = 1 if dimmer_applied else 0
+	result["dimmer_lights_mutated"] = int(result.get("lights_mutated", 0))
+	result["dimmer_beams_mutated"] = int(result.get("beams_mutated", 0))
+	result["dimmer_materials_mutated"] = int(result.get("materials_mutated", 0))
+	result["dimmer_failed"] = 1 if dimmer_target_id > 0 and not dimmer_applied else 0
+	if not bool(result.get("applied", false)):
+		result["failure"] = {"reason": str(result.get("failure_reason", "dimmer target not mutated")), "fixture_uuid": fixture_uuid, "dimmer_target_id": dimmer_target_id, "target_failure": _target_failure_for(loader, dimmer_target_id), "lights_considered": int(result.get("lights_considered", 0)), "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0))}
+	return result
+
+func _target_failure_for(loader: Node, target_id: int) -> Variant:
+	if target_id <= 0 or not loader.has_method("_get_native_target_failure"):
+		return null
+	return loader._get_native_target_failure(target_id)
 
 func _changed_mask_for_row(section_type: int, int_base: int, integers: PackedInt32Array) -> int:
 	if section_type == SECTION_WHEEL_SELECTION and int_base + 4 < integers.size():

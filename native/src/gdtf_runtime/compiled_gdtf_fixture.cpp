@@ -1,6 +1,14 @@
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 
+#include "dmx/gdtf_attribute_classifier.h"
+#include "dmx/gdtf_xml_reader.h"
+#include "gdtf_runtime/gdtf_geometry_identity.h"
+
+#include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <functional>
+#include <unordered_map>
 
 namespace peraviz::gdtf_runtime {
 namespace {
@@ -65,6 +73,176 @@ bool match_official_pattern(const std::string &name, const AttributePattern &pat
     return offset == name.size();
 }
 
+// Returns a case-insensitive XML attribute value from parser-owned GDTF traversal.
+std::string read_attr(tinyxml2::XMLElement *element, const char *upper, const char *lower) {
+    return dmx::read_attr_ci(element, upper, lower);
+}
+
+// Reads a float XML attribute with common GDTF casing variants.
+bool read_float_attr(tinyxml2::XMLElement *element, const char *upper, const char *lower, double &out) {
+    float value = 0.0F;
+    if (element && (element->QueryFloatAttribute(upper, &value) == tinyxml2::XML_SUCCESS || element->QueryFloatAttribute(lower, &value) == tinyxml2::XML_SUCCESS)) {
+        out = static_cast<double>(value);
+        return true;
+    }
+    return false;
+}
+
+// Returns the maximum raw value for a source byte count.
+uint32_t max_for_source_count(size_t source_count) {
+    uint32_t max_value = 0;
+    for (size_t index = 0; index < source_count && index < 4; ++index) {
+        max_value = (max_value << 8U) | 0xffU;
+    }
+    return max_value;
+}
+
+// Parses a full-resolution GDTF DMX value and converts it to the compiled source width.
+bool parse_dmx_value(const std::string &raw, size_t source_count, uint32_t &out) {
+    std::string value = dmx::trim_ascii(raw);
+    if (value.empty()) return false;
+    int declared_bytes = 1;
+    const size_t slash = value.find('/');
+    if (slash != std::string::npos) {
+        const std::string resolution = dmx::trim_ascii(value.substr(slash + 1));
+        value = dmx::trim_ascii(value.substr(0, slash));
+        if (!resolution.empty()) {
+            char *end = nullptr;
+            const long parsed = std::strtol(resolution.c_str(), &end, 10);
+            if (end != resolution.c_str() && parsed > 0L) declared_bytes = static_cast<int>(std::clamp(parsed, 1L, 4L));
+        }
+    }
+    char *end = nullptr;
+    const unsigned long long parsed = std::strtoull(value.c_str(), &end, 10);
+    if (end == value.c_str()) return false;
+    const uint32_t declared_max = max_for_source_count(static_cast<size_t>(declared_bytes));
+    const uint32_t target_max = max_for_source_count(std::max<size_t>(source_count, 1));
+    const uint32_t clamped = static_cast<uint32_t>(std::min<unsigned long long>(parsed, declared_max));
+    out = declared_max == target_max ? clamped : static_cast<uint32_t>((static_cast<unsigned long long>(clamped) * target_max + declared_max / 2U) / declared_max);
+    return true;
+}
+
+// Finds the selected DMX mode element by name.
+tinyxml2::XMLElement *find_mode(tinyxml2::XMLElement *root, const std::string &dmx_mode_name) {
+    const std::string trimmed_name = dmx::trim_ascii(dmx_mode_name);
+    for (tinyxml2::XMLElement *mode : dmx::collect_elements_by_name(root, "dmxmode")) {
+        if (dmx::trim_ascii(read_attr(mode, "Name", "name")) == trimmed_name) return mode;
+    }
+    const std::string expected = dmx::lower_ascii(trimmed_name);
+    for (tinyxml2::XMLElement *mode : dmx::collect_elements_by_name(root, "dmxmode")) {
+        if (dmx::lower_ascii(dmx::trim_ascii(read_attr(mode, "Name", "name"))) == expected) return mode;
+    }
+    return nullptr;
+}
+
+// Collects all DMXChannel descendants scoped to the selected DMXMode while ignoring nested modes.
+std::vector<tinyxml2::XMLElement *> collect_mode_dmx_channels(tinyxml2::XMLElement *selected_mode) {
+    std::vector<tinyxml2::XMLElement *> channels;
+    std::function<void(tinyxml2::XMLElement *)> visit = [&](tinyxml2::XMLElement *element) {
+        if (!element) return;
+        const std::string name = dmx::lower_ascii(element->Name() ? element->Name() : "");
+        if (element != selected_mode && name == "dmxmode") return;
+        if (name == "dmxchannel") {
+            channels.push_back(element);
+            return;
+        }
+        for (tinyxml2::XMLElement *child = element->FirstChildElement(); child; child = child->NextSiblingElement()) visit(child);
+    };
+    visit(selected_mode);
+    return channels;
+}
+
+// Collects ChannelFunction descendants for a logical channel without leaving the selected DMXChannel scope.
+std::vector<tinyxml2::XMLElement *> collect_logical_channel_functions(tinyxml2::XMLElement *logical) {
+    std::vector<tinyxml2::XMLElement *> functions;
+    std::function<void(tinyxml2::XMLElement *)> visit = [&](tinyxml2::XMLElement *element) {
+        if (!element) return;
+        const std::string name = dmx::lower_ascii(element->Name() ? element->Name() : "");
+        if (name == "channelfunction") {
+            functions.push_back(element);
+            return;
+        }
+        for (tinyxml2::XMLElement *child = element->FirstChildElement(); child; child = child->NextSiblingElement()) visit(child);
+    };
+    visit(logical);
+    return functions;
+}
+
+// Counts direct DMXChannels containers for setup diagnostics.
+int32_t count_mode_dmxchannels_containers(tinyxml2::XMLElement *selected_mode) {
+    int32_t count = 0;
+    for (tinyxml2::XMLElement *child = selected_mode ? selected_mode->FirstChildElement() : nullptr; child; child = child->NextSiblingElement()) {
+        if (dmx::lower_ascii(child->Name() ? child->Name() : "") == "dmxchannels") ++count;
+    }
+    return count;
+}
+
+// Builds a best-effort geometry-name to hierarchical path map from the parsed GDTF geometry tree.
+std::unordered_map<std::string, std::string> build_geometry_paths(tinyxml2::XMLElement *root, const std::string &root_geometry_name) {
+    std::unordered_map<std::string, tinyxml2::XMLElement *> geometry_by_name;
+    std::function<void(tinyxml2::XMLElement *)> collect = [&](tinyxml2::XMLElement *element) {
+        if (!element) return;
+        const std::string name = dmx::trim_ascii(read_attr(element, "Name", "name"));
+        if (!name.empty()) geometry_by_name[name] = element;
+        for (tinyxml2::XMLElement *child = element->FirstChildElement(); child; child = child->NextSiblingElement()) collect(child);
+    };
+    for (tinyxml2::XMLElement *geometries : dmx::collect_elements_by_name(root, "geometries")) {
+        for (tinyxml2::XMLElement *geometry = geometries->FirstChildElement(); geometry; geometry = geometry->NextSiblingElement()) collect(geometry);
+    }
+    tinyxml2::XMLElement *root_geometry = nullptr;
+    if (!root_geometry_name.empty()) {
+        auto it = geometry_by_name.find(root_geometry_name);
+        if (it != geometry_by_name.end()) root_geometry = it->second;
+    }
+    if (!root_geometry && !geometry_by_name.empty()) root_geometry = geometry_by_name.begin()->second;
+    std::unordered_map<std::string, std::string> paths;
+    std::function<void(tinyxml2::XMLElement *, const std::string &)> visit = [&](tinyxml2::XMLElement *geometry, const std::string &parent_path) {
+        if (!geometry) return;
+        const std::string tag = dmx::lower_ascii(geometry->Name() ? geometry->Name() : "");
+        if (tag == "geometryreference") {
+            const std::string reference_name = dmx::trim_ascii(read_attr(geometry, "Geometry", "geometry"));
+            auto referenced = geometry_by_name.find(reference_name);
+            if (referenced != geometry_by_name.end()) {
+                const std::string instance_name = dmx::trim_ascii(read_attr(geometry, "Name", "name"));
+                const std::string reference_path = append_geometry_path(parent_path, instance_name);
+                visit(referenced->second, reference_path);
+            }
+            return;
+        }
+        const std::string name = dmx::trim_ascii(read_attr(geometry, "Name", "name"));
+        if (name.empty()) return;
+        const std::string path = append_geometry_path(parent_path, name);
+        paths[name] = path;
+        for (tinyxml2::XMLElement *child = geometry->FirstChildElement(); child; child = child->NextSiblingElement()) {
+            visit(child, path);
+        }
+    };
+    visit(root_geometry, "");
+    return paths;
+}
+
+// Returns an existing attribute ID or creates a new parser-owned identity.
+int32_t attribute_id_for(CompiledGdtfFixtureType &fixture, std::unordered_map<std::string, int32_t> &ids, const std::string &attribute_name) {
+    auto it = ids.find(attribute_name);
+    if (it != ids.end()) return it->second;
+    const int32_t id = static_cast<int32_t>(fixture.attributes.size() + 1);
+    ids[attribute_name] = id;
+    fixture.attributes.push_back(normalize_attribute_identity(id, attribute_name));
+    return id;
+}
+
+// Returns an existing geometry ID or creates a new parser-owned geometry identity.
+int32_t geometry_id_for(CompiledGdtfFixtureType &fixture, std::unordered_map<std::string, int32_t> &ids, const std::string &geometry_name, const std::string &geometry_path) {
+    const std::string name = geometry_name.empty() ? "Fixture" : geometry_name;
+    const std::string path = geometry_path.empty() ? name : geometry_path;
+    auto it = ids.find(name);
+    if (it != ids.end()) return it->second;
+    const int32_t id = static_cast<int32_t>(fixture.geometries.size() + 1);
+    ids[name] = id;
+    fixture.geometries.push_back({id, 0, name, path, "Geometry"});
+    return id;
+}
+
 } // namespace
 
 // Produces the canonical serialization-neutral identity used by Peraviz and Perastage test vectors.
@@ -90,6 +268,128 @@ AttributeIdentity normalize_attribute_identity(int32_t id, const std::string &at
     return identity;
 }
 
+// Compiles one selected GDTF DMX mode into a parser-owned fixture type model.
+CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, const std::string &dmx_mode_name) {
+    CompiledGdtfFixtureType fixture;
+    fixture.fixture_type_name = gdtf_path;
+    fixture.dmx_mode_name = dmx_mode_name;
+    const std::string xml_content = dmx::read_gdtf_description_xml(gdtf_path);
+    if (xml_content.empty()) {
+        fixture.diagnostics.push_back({"PVZ-GDTF-XML-MISSING", "warning", "GDTF description.xml not found.", gdtf_path});
+        return fixture;
+    }
+    fixture.gdtf_files_opened = 1;
+    tinyxml2::XMLDocument doc;
+    if (doc.Parse(xml_content.c_str()) != tinyxml2::XML_SUCCESS || doc.RootElement() == nullptr) {
+        fixture.diagnostics.push_back({"PVZ-GDTF-XML-PARSE", "warning", "GDTF description.xml could not be parsed.", gdtf_path});
+        return fixture;
+    }
+    tinyxml2::XMLElement *selected_mode = find_mode(doc.RootElement(), dmx_mode_name);
+    if (!selected_mode) {
+        fixture.diagnostics.push_back({"PVZ-GDTF-MODE-MISSING", "warning", "Selected DMX mode was not found in the parsed GDTF.", dmx_mode_name});
+        return fixture;
+    }
+    fixture.selected_modes_found = 1;
+    fixture.dmxchannels_containers_found = count_mode_dmxchannels_containers(selected_mode);
+    const std::unordered_map<std::string, std::string> geometry_paths =
+        build_geometry_paths(doc.RootElement(), dmx::trim_ascii(read_attr(selected_mode, "Geometry", "geometry")));
+    std::unordered_map<std::string, int32_t> attribute_ids;
+    std::unordered_map<std::string, int32_t> geometry_ids;
+    int32_t next_component_id = 1;
+    int32_t next_program_id = 1;
+    std::unordered_map<std::string, int32_t> component_by_key;
+    const std::vector<tinyxml2::XMLElement *> dmx_channels = collect_mode_dmx_channels(selected_mode);
+    fixture.dmxchannel_records_found = static_cast<int32_t>(dmx_channels.size());
+    for (tinyxml2::XMLElement *channel : dmx_channels) {
+        const std::vector<int> offsets = dmx::parse_offsets(read_attr(channel, "Offset", "offset").c_str());
+        if (offsets.empty()) continue;
+        const std::string geometry_name = dmx::trim_ascii(read_attr(channel, "Geometry", "geometry"));
+        const auto geometry_path_it = geometry_paths.find(geometry_name);
+        const std::string geometry_path = geometry_path_it == geometry_paths.end() ? geometry_name : geometry_path_it->second;
+        const int32_t geometry_id = geometry_id_for(fixture, geometry_ids, geometry_name, geometry_path);
+        for (tinyxml2::XMLElement *logical : dmx::collect_direct_children_by_name(channel, "logicalchannel")) {
+            ++fixture.logical_channels_found;
+            const std::string logical_attribute = dmx::trim_ascii(read_attr(logical, "Attribute", "attribute"));
+            std::vector<tinyxml2::XMLElement *> functions = collect_logical_channel_functions(logical);
+            std::sort(functions.begin(), functions.end(), [&](tinyxml2::XMLElement *lhs, tinyxml2::XMLElement *rhs) {
+                uint32_t lhs_from = 0;
+                uint32_t rhs_from = 0;
+                parse_dmx_value(read_attr(lhs, "DMXFrom", "dmxfrom"), offsets.size(), lhs_from);
+                parse_dmx_value(read_attr(rhs, "DMXFrom", "dmxfrom"), offsets.size(), rhs_from);
+                return lhs_from < rhs_from;
+            });
+            uint32_t previous_to = 0;
+            bool has_previous = false;
+            for (size_t function_index = 0; function_index < functions.size(); ++function_index) {
+                tinyxml2::XMLElement *fn = functions[function_index];
+                ++fixture.channel_functions_found;
+                std::string attribute_name = dmx::trim_ascii(read_attr(fn, "Attribute", "attribute"));
+                if (attribute_name.empty()) attribute_name = logical_attribute;
+                if (attribute_name.empty()) continue;
+                const int32_t attribute_id = attribute_id_for(fixture, attribute_ids, attribute_name);
+                const std::string component_key = std::to_string(geometry_id) + ":" + std::to_string(attribute_id);
+                int32_t component_id = component_by_key[component_key];
+                if (component_id == 0) {
+                    component_id = next_component_id++;
+                    component_by_key[component_key] = component_id;
+                    fixture.components.push_back({component_id, geometry_id, attribute_id, 0, component_id});
+                }
+                uint32_t dmx_from = 0;
+                if (!parse_dmx_value(read_attr(fn, "DMXFrom", "dmxfrom"), offsets.size(), dmx_from)) dmx_from = 0;
+                uint32_t dmx_to = max_for_source_count(offsets.size());
+                if (!parse_dmx_value(read_attr(fn, "DMXTo", "dmxto"), offsets.size(), dmx_to)) {
+                    if (function_index + 1 < functions.size()) {
+                        uint32_t next_from = 0;
+                        if (parse_dmx_value(read_attr(functions[function_index + 1], "DMXFrom", "dmxfrom"), offsets.size(), next_from) && next_from > 0) {
+                            dmx_to = next_from - 1U;
+                        }
+                    }
+                }
+                if (dmx_to < dmx_from) {
+                    fixture.diagnostics.push_back({"PVZ-GDTF-DMX-RANGE-INVALID", "warning", "ChannelFunction DMXTo is smaller than DMXFrom.", attribute_name});
+                    continue;
+                }
+                if (has_previous && dmx_from <= previous_to) {
+                    fixture.diagnostics.push_back({"PVZ-GDTF-DMX-RANGE-OVERLAP", "warning", "Overlapping ChannelFunction ranges are not compiled for the verified DPT runtime slice.", attribute_name});
+                    continue;
+                }
+                previous_to = dmx_to;
+                has_previous = true;
+                double physical_from = 0.0;
+                double physical_to = 1.0;
+                const bool has_physical = read_float_attr(fn, "PhysicalFrom", "physicalfrom", physical_from) && read_float_attr(fn, "PhysicalTo", "physicalto", physical_to);
+                if (!has_physical) fixture.diagnostics.push_back({"PVZ-GDTF-PHYSICAL-MISSING", "warning", "ChannelFunction is missing PhysicalFrom/PhysicalTo.", attribute_name});
+                const std::string read_function_name = dmx::trim_ascii(read_attr(fn, "Name", "name"));
+                const std::string function_name = read_function_name.empty() ? attribute_name : read_function_name;
+                ChannelProgram program;
+                program.id = next_program_id++;
+                for (int offset : offsets) program.dmx_offsets_1_based.push_back(offset);
+                program.bit_depth = static_cast<int32_t>(std::min<size_t>(offsets.size(), 4) * 8U);
+                program.attribute_id = attribute_id;
+                program.geometry_instance_id = geometry_id;
+                program.component_id = component_id;
+                program.dmx_from = dmx_from;
+                program.dmx_to = dmx_to;
+                program.physical_from = physical_from;
+                program.physical_to = physical_to;
+                program.attribute_name = attribute_name;
+                program.function_name = function_name;
+                fixture.channel_programs.push_back(program);
+                if (dmx::lower_ascii(attribute_name) == "dimmer") ++fixture.dimmer_program_count;
+                if (dmx::lower_ascii(attribute_name) == "pan") ++fixture.pan_program_count;
+                if (dmx::lower_ascii(attribute_name) == "tilt") ++fixture.tilt_program_count;
+            }
+        }
+    }
+    if (fixture.dmxchannel_records_found == 0) {
+        fixture.diagnostics.push_back({"PVZ-GDTF-DMXCHANNELS-MISSING", "error", "Selected DMX mode contains no DMXChannel records after scoped parser traversal.", dmx_mode_name});
+    }
+    if (!dmx_channels.empty() && fixture.channel_programs.empty()) {
+        fixture.diagnostics.push_back({"PVZ-GDTF-DPT-PROGRAMS-MISSING", "error", "Selected DMX mode produced no compiled Dimmer/Pan/Tilt ChannelFunction programs.", dmx_mode_name});
+    }
+    return fixture;
+}
+
 // Builds a small fixture model that proves repeated GDTF wheel families remain independent.
 CompiledGdtfFixtureType make_two_gobo_wheel_regression_fixture() {
     CompiledGdtfFixtureType fixture;
@@ -98,14 +398,14 @@ CompiledGdtfFixtureType make_two_gobo_wheel_regression_fixture() {
     fixture.attributes.push_back(normalize_attribute_identity(1, "Dimmer"));
     fixture.attributes.push_back(normalize_attribute_identity(2, "Gobo1"));
     fixture.attributes.push_back(normalize_attribute_identity(3, "Gobo2"));
-    fixture.geometries.push_back({1, 0, "Base", "Geometry"});
-    fixture.geometries.push_back({2, 1, "Head", "Beam"});
+    fixture.geometries.push_back({1, 0, "Base", "Base", "Geometry"});
+    fixture.geometries.push_back({2, 1, "Head", "Head", "Beam"});
     fixture.components.push_back({1, 2, 1, 0, 1});
     fixture.components.push_back({2, 2, 2, 1, 2});
     fixture.components.push_back({3, 2, 3, 2, 3});
-    fixture.channel_programs.push_back({1, 0, 8, 1, 2, 1, 0, 255, 0.0, 1.0});
-    fixture.channel_programs.push_back({2, 1, 8, 2, 2, 2, 0, 127, 0.0, 6.0});
-    fixture.channel_programs.push_back({3, 2, 8, 3, 2, 3, 128, 255, 0.0, 6.0});
+    fixture.channel_programs.push_back({1, {1}, 8, 1, 2, 1, 0, 255, 0.0, 1.0, "Dimmer", "Dimmer"});
+    fixture.channel_programs.push_back({2, {2}, 8, 2, 2, 2, 0, 127, 0.0, 6.0, "Gobo1", "Gobo1"});
+    fixture.channel_programs.push_back({3, {3}, 8, 3, 2, 3, 128, 255, 0.0, 6.0, "Gobo2", "Gobo2"});
     fixture.diagnostics.push_back({"PVZ-GDTF-UNKNOWN-PRESERVED", "info", "Unknown and custom attributes are retained in the semantic model before runtime compilation.", "AttributeDefinitions"});
     return fixture;
 }

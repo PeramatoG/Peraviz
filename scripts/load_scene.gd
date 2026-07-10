@@ -166,6 +166,7 @@ const NodeFactoryScript = preload("res://scripts/scene_loading/node_factory.gd")
 const FixtureBindingServiceScript = preload("res://scripts/scene_loading/fixture_binding_service.gd")
 const DebugOverlayServiceScript = preload("res://scripts/scene_loading/debug_overlay_service.gd")
 const FixtureRowProviderScript = preload("res://scripts/scene_loading/fixture_row_provider.gd")
+const NativeRendererTargetRegistryScript = preload("res://scripts/runtime/native_renderer_target_registry.gd")
 
 var _scene_import_service := SceneImportServiceScript.new()
 var _project_archive := PeravizProjectArchiveScript.new()
@@ -173,6 +174,7 @@ var _node_factory := NodeFactoryScript.new()
 var _fixture_binding_service := FixtureBindingServiceScript.new()
 var _debug_overlay_service := DebugOverlayServiceScript.new()
 var _fixture_row_provider := FixtureRowProviderScript.new()
+var _native_target_registry := NativeRendererTargetRegistryScript.new()
 var _status_presenter: StatusPresenter
 var _user_preferences: UserPreferences
 var _debug_properties_applied: int = 0
@@ -269,6 +271,7 @@ func _ready() -> void:
 	_apply_imported_content_scale()
 	_scene_registry.configure(proxies_root)
 	_fixture_row_provider.configure(_loader, _scene_registry)
+	_configure_native_target_registry()
 	manual_fixture_toggle.toggled.connect(_on_manual_fixture_toggle)
 	show_advanced_controls_toggle.toggled.connect(_on_show_advanced_controls_toggled)
 	if auto_load_last_project_toggle != null:
@@ -1564,6 +1567,7 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 func _clear_scene() -> void:
 	_clear_fixture_inspection_panel()
 	_clear_fixture_node_cache()
+	_native_target_registry.clear()
 	_fixture_row_provider.clear()
 	_scene_import_service.clear_scene(
 		_scene_registry,
@@ -1661,6 +1665,42 @@ func _apply_pan_tilt_components_to_fixture(fixture_uuid: String,
 		pan_axis.rotation_degrees.y = pan_degrees
 	if has_tilt and tilt_axis != null:
 		tilt_axis.rotation_degrees.x = tilt_degrees
+
+func _configure_native_target_registry() -> void:
+	_native_target_registry.configure({
+		"node_index": _node_index,
+		"scene_registry": _scene_registry,
+		"callbacks": {
+			"collect_emitter_lights": Callable(self, "_collect_fixture_emitter_lights"),
+			"get_emitter_photometrics": Callable(self, "_get_fixture_emitter_photometrics"),
+			"ensure_beam_runtime": Callable(self, "_ensure_beam_runtime_for_light"),
+			"get_beam_resource": Callable(self, "_get_beam_resource_for_light"),
+			"is_emitter_lens_mesh": Callable(self, "_is_emitter_lens_mesh"),
+		},
+	})
+
+func _register_native_runtime_targets(renderer_manifest: Array) -> void:
+	_native_target_registry.install_manifest(renderer_manifest)
+
+func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
+	return _native_target_registry.apply_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
+
+func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
+	return _native_target_registry.has_dimmer_target(dimmer_target_id)
+
+func _get_native_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
+	return _native_target_registry.get_dimmer_target_record(dimmer_target_id)
+
+func _get_native_target_failure(target_id: int) -> Variant:
+	return _native_target_registry.get_target_failure(target_id)
+
+func _get_native_target_registry_summary() -> Dictionary:
+	return _native_target_registry.get_summary()
+
+func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
+	if _active_beam_renderer != null and _active_beam_renderer.has_method("get_beam_resource"):
+		return _active_beam_renderer.get_beam_resource(light) as MeshInstance3D
+	return null
 
 func _find_axis_for_role(axis_nodes: Array, role: String) -> Node3D:
 	if axis_nodes.is_empty():
@@ -2827,7 +2867,7 @@ func bridge_setup_dmx_controls() -> void:
 	_setup_dmx_controls()
 
 func _setup_dmx_fixture_runtime() -> void:
-	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, _fixture_row_provider)
+	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, self, _fixture_row_provider)
 
 func _refresh_dmx_fixture_bindings() -> void:
 	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings()
