@@ -24,7 +24,8 @@ These rules apply to the whole repository. Direct user instructions for the curr
 3. Dimmer state is property/target-oriented; repeated Dimmer render targets must not collapse into one fixture-level scalar or manifest slot.
 4. Godot owns setup-time renderer target records through `NativeRendererTargetRegistry` and live renderer mutation, including Lightweight Prism beam resources and optional realtime spotlight state.
 5. Legacy fixture bindings may still exist for inspection or unsupported compatibility domains, but they must not be a Dimmer/Pan/Tilt live fallback.
-6. Transitional Godot-side gobo metadata and compatibility paths still exist.
+6. Native BeamOptics now installs setup-time Beam profiles and target-oriented Zoom rows for Lightweight Prism parametric aperture/spread updates.
+7. Transitional Godot-side gobo metadata and compatibility paths still exist.
 
 Do not document or test unsupported native attributes as implemented.
 

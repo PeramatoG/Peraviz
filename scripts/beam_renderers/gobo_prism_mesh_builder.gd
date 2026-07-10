@@ -46,6 +46,29 @@ func build_beam_mesh(gobo_texture: Texture2D, near_radius: float, far_radius: fl
 	_mesh_cache[geometry_key] = mesh
 	return mesh
 
+func build_aperture_beam_mesh(aperture_profile: Dictionary, beam_height: float) -> ArrayMesh:
+	var shape: String = str(aperture_profile.get("shape", "circle")).to_lower()
+	if shape == "no_projected_beam":
+		return null
+	var ratio: float = max(float(aperture_profile.get("rectangle_ratio", 1.0)), 0.01)
+	var key: String = "__aperture_%s_%.3f_%.4f" % [shape, ratio, beam_height]
+	if _mesh_cache.has(key):
+		return _mesh_cache[key] as ArrayMesh
+	var polygons: Array[PackedVector2Array] = []
+	if shape == "rectangle":
+		polygons = [_build_normalized_rectangle(ratio)]
+	else:
+		polygons = [_build_fallback_circle()]
+	var mesh: ArrayMesh = _build_extruded_mesh(polygons, 1.0, 1.0, max(beam_height, 0.001))
+	_mesh_cache[key] = mesh
+	return mesh
+
+func _build_normalized_rectangle(rectangle_ratio: float) -> PackedVector2Array:
+	var safe_ratio: float = max(rectangle_ratio, 0.01)
+	var half_width: float = sqrt(safe_ratio)
+	var half_height: float = 1.0 / max(half_width, 0.01)
+	return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(half_width, -half_height), Vector2(half_width, half_height), Vector2(-half_width, half_height)])
+
 func _get_or_build_shape_base(gobo_texture: Texture2D, gobo_scale: float, apply_edge_mask_correction: bool) -> Array[PackedVector2Array]:
 	var shape_key: String = _shape_cache_key(gobo_texture, gobo_scale, apply_edge_mask_correction)
 	if _shape_cache.has(shape_key):

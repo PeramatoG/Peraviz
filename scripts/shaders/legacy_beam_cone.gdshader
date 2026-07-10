@@ -13,6 +13,8 @@ instance uniform float lateral_emission_boost = 0.16;
 instance uniform float volumetric_noise_strength = 0.06;
 instance uniform float volumetric_noise_scale = 14.0;
 instance uniform float gobo_projection_radius = 1.0;
+instance uniform float beam_near_radius = 0.03;
+instance uniform float beam_far_radius = 1.0;
 instance uniform float radial_falloff = 1.1;
 instance uniform float longitudinal_falloff = 1.0;
 instance uniform float gobo_scale = 1.0;
@@ -32,6 +34,8 @@ varying vec3 beam_local;
 void vertex() {
 	float normalized_y = (VERTEX.y / max(cone_height, 0.0001)) + 0.5;
 	beam_axial = clamp(normalized_y, 0.0, 1.0);
+	float beam_radius = mix(max(beam_near_radius, 0.0001), max(beam_far_radius, 0.0001), beam_axial);
+	VERTEX.xz *= beam_radius;
 	beam_local = VERTEX;
 }
 

@@ -79,6 +79,12 @@ require_pattern 'normalized_value.*physical_value|physical_value.*normalized_val
 reject_pattern '"beam_resources"|beam_resources' 'Godot Dimmer target records must not label anchor lights as beam resources.' scripts/load_scene.gd scripts/runtime tests/gdscript
 require_pattern 'LegacyConeBeamRenderer' 'Renderer-target regression coverage must exercise the Lightweight Prism backend.' tests/gdscript scripts/beam_renderers
 require_pattern 'NativeRendererTargetRegistry' 'Native renderer target registry must be extracted into a focused runtime service.' scripts/runtime/native_renderer_target_registry.gd scripts/load_scene.gd
+require_pattern 'func apply_beam_optics' 'Production beam renderers must expose a real BeamOptics API.' scripts/beam_renderers/beam_renderer_base.gd scripts/beam_renderers/legacy_cone_beam_renderer.gd
+require_pattern 'CompiledBeamOpticalProfile' 'Static Beam optical profiles must be compiled in native setup data.' native/src/runtime/visual_runtime_types.h native/src/gdtf_runtime/runtime_scene_compiler.cpp
+require_pattern 'beam_near_radius|beam_far_radius' 'Lightweight Prism shader must expose parametric near/far optics deformation.' scripts/shaders/legacy_beam_cone.gdshader scripts/beam_renderers/legacy_cone_beam_renderer.gd
+require_path "tests/gdscript/test_lightweight_prism_beam_optics.gd" file
+reject_pattern 'source_beam_radius.*lens_radius = max\(source_beam_radius' 'BeamRadius must not unconditionally overwrite measured lens radius.' scripts/load_scene.gd
+reject_pattern 'VISUAL_CHANGE_ZOOM \| VISUAL_CHANGE_BEAM_TOPOLOGY' 'Zoom-only changes must not force topology rebuilds.' native/src/runtime/peraviz_visual_runtime.cpp scripts/runtime/fixture_light_apply_service.gd
 require_pattern 'CompiledSemantic::Zoom|CompiledSemantic::Zoom' 'Zoom must be part of the compiled native semantic path.' native/src/gdtf_runtime/runtime_scene_compiler.cpp native/src/runtime/peraviz_visual_runtime.cpp native/src/runtime/visual_runtime_types.h
 require_pattern 'VisualSectionType::BeamOptics' 'BeamOptics rows must remain a native sectioned visual-frame path.' native/src/runtime/peraviz_visual_runtime.cpp native/src/runtime/visual_frame_schema.cpp
 require_pattern 'apply_beam_optics\(loader, fixture_uuid, optics_target_id' 'BeamOptics application must use cached target IDs rather than fixture-wide traversal.' scripts/runtime/fixture_light_apply_service.gd scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd

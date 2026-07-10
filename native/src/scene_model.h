@@ -59,6 +59,15 @@ struct SceneNode {
     bool has_beam_radius = false;
     float beam_radius = 0.05F;
 
+    bool has_beam_type = false;
+    std::string beam_type = "Spot";
+
+    bool has_throw_ratio = false;
+    float throw_ratio = 1.0F;
+
+    bool has_rectangle_ratio = false;
+    float rectangle_ratio = 1.0F;
+
     bool has_dominant_wavelength = false;
     float dominant_wavelength = 0.0F;
 };

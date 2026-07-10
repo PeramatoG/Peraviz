@@ -191,6 +191,10 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                     state = existing->second;
                 }
                 apply_semantic_value(state, program.parameter, semantic_value);
+                if (program.parameter == SemanticParameter::Zoom) {
+                    state.zoom_normalized = evaluated.normalized_value;
+                    state.has_zoom_physical = true;
+                }
                 const auto params_it = render_params_by_fixture_.find(program.property.fixture_id);
                 cook_render_state(state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
                 const FixtureChangeResult change = merge_property_state(program.property.property_id, state, visual_mask_for_parameter(program.parameter));
@@ -263,7 +267,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & VisualChangeZoom) == 0U) continue;
             frame.integers.insert(frame.integers.end(), {row.fixture_id, row.render_target_id, static_cast<int32_t>(row.changed_visual_mask)});
-            frame.floats.insert(frame.floats.end(), {row.state.beam_half_angle, row.state.beam_angle, row.state.zoom});
+            frame.floats.insert(frame.floats.end(), {row.state.beam_half_angle, row.state.beam_angle, row.state.zoom_normalized});
         }
         append_descriptor(frame, VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
     }
@@ -455,12 +459,12 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
     constexpr double cmy_epsilon = 0.0001;
     double beam_angle = std::clamp(params.beam_angle_default, 0.1, max_beam_angle);
     if (params.has_zoom) {
-        if (state.zoom > 0.0f) {
-            beam_angle = std::clamp(static_cast<double>(state.zoom), 0.1, max_beam_angle);
+        if (state.has_zoom_physical) {
+            beam_angle = std::clamp(static_cast<double>(state.zoom), 0.0, max_beam_angle);
         } else {
             double zoom_min = params.zoom_min_deg >= 0.0 ? params.zoom_min_deg : default_zoom_min;
             double zoom_max = params.zoom_max_deg >= 0.0 ? params.zoom_max_deg : max_beam_angle;
-            beam_angle = std::clamp(zoom_min + ((zoom_max - zoom_min) * state.zoom), 0.1, max_beam_angle);
+            beam_angle = std::clamp(zoom_min + ((zoom_max - zoom_min) * state.zoom_normalized), 0.0, max_beam_angle);
         }
     }
     state.red = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.cyan : 1.0f;
@@ -518,7 +522,7 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_pr
         result.changed_visual_mask = installed_mask;
     } else {
         if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer);
-        if (!nearly_equal(previous.zoom, next_state.zoom, kAngleEpsilon) || !nearly_equal(previous.beam_angle, next_state.beam_angle, kAngleEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Zoom);
+        if (previous.has_zoom_physical != next_state.has_zoom_physical || !nearly_equal(previous.zoom, next_state.zoom, kAngleEpsilon) || !nearly_equal(previous.zoom_normalized, next_state.zoom_normalized, kDefaultEpsilon) || !nearly_equal(previous.beam_angle, next_state.beam_angle, kAngleEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Zoom);
         const bool previous_visible = previous.dimmer > kDefaultEpsilon;
         const bool current_visible = next_state.dimmer > kDefaultEpsilon;
         if ((installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer)) != 0U && previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;

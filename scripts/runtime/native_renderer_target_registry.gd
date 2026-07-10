@@ -115,7 +115,7 @@ func _register_renderer_target(target: Dictionary) -> void:
 		_register_axis_target(_tilt_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "tilt")
 	elif semantic == "dimmer":
 		_register_dimmer_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
-	elif semantic == "zoom":
+	elif semantic == "zoom" or semantic == "beam_profile":
 		_register_optics_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 
 func _new_summary() -> Dictionary:
@@ -252,7 +252,12 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 		_register_target_failure(manifest_row, target_id, "optics", "Manifest target has an empty canonical geometry key.")
 		return
 	if _optics_targets.has(target_id):
-		_register_target_failure(manifest_row, target_id, "optics", "Duplicate native BeamOptics target handle in renderer manifest.")
+		var existing: Dictionary = _optics_targets.get(target_id, {})
+		var profile: Dictionary = manifest_row.get("beam_optical_profile", {})
+		if not profile.is_empty():
+			existing["beam_optical_profile"] = profile
+			_apply_initial_optics_profile(existing.get("emitter_anchors", []), profile)
+			_optics_targets[target_id] = existing
 		return
 	var target: Node3D = _geometry_targets_by_key.get(geometry_key, null) as Node3D
 	if target == null:
@@ -262,6 +267,8 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 	var cache_key: String = "%s:%d:optics" % [fixture_uuid, target_id]
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
+	var optical_profile: Dictionary = manifest_row.get("beam_optical_profile", {})
+	_apply_initial_optics_profile(emitter_anchors, optical_profile)
 	_optics_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
 		"property_id": int(manifest_row.get("property_id", 0)),
@@ -273,8 +280,34 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 		"emitter_nodes": emitter_nodes,
 		"emitter_anchors": emitter_anchors,
 		"beam_instances": beam_instances,
+		"beam_optical_profile": optical_profile,
 	}
 	_increment_counter("optics_resolved")
+
+func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dictionary) -> void:
+	if optical_profile.is_empty():
+		return
+	for anchor in emitter_anchors:
+		var light: SpotLight3D = anchor as SpotLight3D
+		if light == null or not is_instance_valid(light):
+			continue
+		var render_radius: float = max(float(optical_profile.get("render_near_radius_m", optical_profile.get("official_beam_radius_m", 0.03))), 0.001)
+		var params: Dictionary = {
+			"beam_type": str(optical_profile.get("beam_type", "Spot")),
+			"beam_angle": float(optical_profile.get("beam_angle", 25.0)),
+			"field_angle": float(optical_profile.get("field_angle", 25.0)),
+			"lens_radius": render_radius,
+			"render_near_radius_m": render_radius,
+			"rectangle_ratio": float(optical_profile.get("rectangle_ratio", 1.0)),
+			"beam_range": 15.0,
+			"scaled_intensity": 0.0,
+			"beam_intensity": 0.0,
+			"normalized_dimmer": 0.0,
+		}
+		light.set_meta("peraviz_beam_last_params", params)
+		var callback: Callable = _callbacks.get("apply_beam_optics", Callable())
+		if callback.is_valid():
+			callback.call(light, params)
 
 func _prepare_beam_instances(emitter_anchors: Array) -> Array:
 	var beam_instances: Array = []
