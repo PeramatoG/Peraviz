@@ -54,6 +54,7 @@ require_path "peraviz.gdextension" file
 require_path "native/src/runtime" directory
 require_path "scripts/runtime/visual_sections" directory
 require_path "scripts/dmx_fixture_runtime.gd" file
+require_path "scripts/runtime/native_renderer_target_registry.gd" file
 require_path "native/src/register_types.cpp" file
 
 if [[ "$failures" -ne 0 ]]; then
@@ -77,6 +78,8 @@ reject_pattern 'entry\["dimmer_target_id"\]' 'Renderer manifest must expose targ
 require_pattern 'normalized_value.*physical_value|physical_value.*normalized_value' 'Native runtime must keep normalized and physical evaluation values distinct.' native/src/runtime/peraviz_visual_runtime.h native/src/runtime/peraviz_visual_runtime.cpp
 reject_pattern '"beam_resources"|beam_resources' 'Godot Dimmer target records must not label anchor lights as beam resources.' scripts/load_scene.gd scripts/runtime tests/gdscript
 require_pattern 'LegacyConeBeamRenderer' 'Renderer-target regression coverage must exercise the Lightweight Prism backend.' tests/gdscript scripts/beam_renderers
+require_pattern 'NativeRendererTargetRegistry' 'Native renderer target registry must be extracted into a focused runtime service.' scripts/runtime/native_renderer_target_registry.gd scripts/load_scene.gd
+reject_pattern 'var _native_(pan|tilt|dimmer|geometry)_|var _native_target_resolution|var _native_target_registry_summary|func _register_native_axis_target|func _register_native_dimmer_target|func _build_native_geometry_target_map' 'load_scene.gd must delegate native target registry ownership to the focused service.' scripts/load_scene.gd
 
 if [[ "$failures" -ne 0 ]]; then
   echo "[runtime-architecture] Found $failures violation(s)." >&2
