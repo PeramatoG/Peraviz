@@ -28,6 +28,12 @@ func _init() -> void:
 	var first_state: Dictionary = renderer.get_beam_optics_state(light)
 	_check(abs(float(first_state.get("near_radius", 0.0)) - 0.02) < 0.001, "Near radius should preserve selected render radius")
 	_check(float(first_state.get("far_radius", 0.0)) > 0.02, "Spot beam should be a frustum instead of a cylinder")
+	_check(float(first_state.get("near_axial", -1.0)) == 1.0, "Lens-side mesh end should keep beam_axial 1.0 for near falloff")
+	_check(float(first_state.get("far_axial", -1.0)) == 0.0, "Distant mesh end should keep beam_axial 0.0")
+	var near_world: Vector3 = first_state.get("near_world_position", Vector3.INF)
+	var far_world: Vector3 = first_state.get("far_world_position", Vector3.INF)
+	_check(near_world.distance_to(light.global_position) < 0.01, "Renderer rotation/translation should place the near end at the light/lens")
+	_check(far_world.z < near_world.z, "Distant end should extend along negative local/global Z in the default test orientation")
 	params["beam_angle"] = 40.0
 	var result: Dictionary = renderer.apply_beam_optics(light, params)
 	var zoom_state: Dictionary = renderer.get_beam_optics_state(light)
@@ -36,6 +42,7 @@ func _init() -> void:
 	_check(first_material == beam.material_override, "Zoom should keep the same material")
 	_check(first_mesh == beam.mesh, "Zoom should reuse topology for the same aperture")
 	_check(float(zoom_state.get("far_radius", 0.0)) > float(first_state.get("far_radius", 0.0)), "Zoom angle should change far spread")
+	_check(abs(float(zoom_state.get("near_radius", 0.0)) - 0.02) < 0.001, "Zoom should not change the selected near aperture")
 	params["beam_type"] = "Rectangle"
 	params["rectangle_ratio"] = 2.0
 	renderer.apply_beam_optics(light, params)

@@ -27,10 +27,10 @@ Status values:
 
 ## Runtime architecture status
 
-- Active native compiled runtime slice: Dimmer, Pan, and Tilt from parser-owned fixture patches, selected GDTF DMXModes, scoped DMXChannel traversal, and real ChannelFunction records into `CompiledRuntimeScene` and sectioned visual output.
+- Active native compiled runtime slice: Dimmer, Pan, Tilt, and Zoom from parser-owned fixture patches, selected GDTF DMXModes, scoped DMXChannel traversal, and real ChannelFunction records into `CompiledRuntimeScene` and sectioned visual output.
 - Supported source widths for the slice: 8-bit, 16-bit, 24-bit, and 32-bit ordered source bytes, including non-adjacent byte addresses.
 - Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion. Transform rows carry separate Pan and Tilt component IDs, Intensity rows carry a Dimmer render-target ID, and setup resolves those IDs through `NativeRendererTargetRegistry` by full imported-node canonical GDTF geometry-instance keys; missing targets are categorized diagnostics, not successful fallback application.
-- Known renderer limitation: verified Dimmer output currently preserves the visible Lightweight Prism checkpoint, but the tested beam shape can appear cylindrical. Optically correct cone topology, GDTF beam-angle/range topology propagation, gobo-shaped prism geometry, footprint alignment, and advanced volumetric quality are deferred.
+- Lightweight Prism BeamOptics now applies setup-time Beam profiles and corrects the lens-side/far-end radius mapping so normal Spot beams use a small near aperture and expand toward the far end. Active gobo-shaped prism masking, footprint alignment, and advanced volumetric quality remain deferred.
 - Unsupported or diagnostic-only: full ChannelSet selection, ModeMaster evaluation, Relations, DMXProfiles, ColorSpaces, Gamuts, emitters/filters beyond current visual needs, and complete wheel-slot resource selection. Multiple ChannelFunctions on one Dimmer/Pan/Tilt logical property are selected by raw DMX range.
 
 ## Native BeamOptics foundation

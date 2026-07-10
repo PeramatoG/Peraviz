@@ -34,7 +34,7 @@ varying vec3 beam_local;
 void vertex() {
 	float normalized_y = (VERTEX.y / max(cone_height, 0.0001)) + 0.5;
 	beam_axial = clamp(normalized_y, 0.0, 1.0);
-	float beam_radius = mix(max(beam_near_radius, 0.0001), max(beam_far_radius, 0.0001), beam_axial);
+	float beam_radius = mix(max(beam_far_radius, 0.0001), max(beam_near_radius, 0.0001), beam_axial);
 	VERTEX.xz *= beam_radius;
 	beam_local = VERTEX;
 }

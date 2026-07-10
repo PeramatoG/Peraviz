@@ -190,7 +190,7 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 
 func _beam_params_from_target_record(target_record: Dictionary, beam_angle: float, beam_color: Color, dimmer_norm: float, beam_intensity: float) -> Dictionary:
 	var profile: Dictionary = target_record.get("beam_optical_profile", {})
-	var beam_range: float = max(float(profile.get("beam_range", 15.0)), 0.1)
+	var beam_range: float = max(float(profile.get("beam_range", 1.0)), 0.1)
 	var near_radius: float = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
 	return {
 		"beam_angle": beam_angle,
@@ -198,8 +198,8 @@ func _beam_params_from_target_record(target_record: Dictionary, beam_angle: floa
 		"beam_color": beam_color,
 		"lens_radius": near_radius,
 		"render_near_radius_m": near_radius,
-		"beam_type": str(profile.get("beam_type", "Spot")),
-		"rectangle_ratio": float(profile.get("rectangle_ratio", 1.0)),
+		"beam_type": str(profile.get("beam_type", "Wash")),
+		"rectangle_ratio": float(profile.get("rectangle_ratio", 1.7777)),
 		"normalized_dimmer": dimmer_norm,
 		"scaled_intensity": beam_intensity,
 		"beam_intensity": beam_intensity,

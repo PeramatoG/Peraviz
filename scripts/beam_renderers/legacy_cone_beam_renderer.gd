@@ -62,7 +62,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 	var beam_half_angle_deg: float = beam_angle * 0.5
 	var radius: float = tan(deg_to_rad(beam_half_angle_deg)) * beam_range
-	var bottom_radius: float = clamp(radius, 0.03, EMITTER_CONE_MAX_BASE_RADIUS_M)
+	var bottom_radius: float = clamp(lens_radius + radius, lens_radius, EMITTER_CONE_MAX_BASE_RADIUS_M)
 	if bool(params.get("beam_debug_optics", false)):
 		print("[PeravizBeamOptics] angle_deg=", beam_angle, " range_m=", beam_range, " radius_end_m=", bottom_radius)
 
@@ -83,7 +83,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var aperture_profile: Dictionary = _aperture_profile_from_params(params)
 	if str(aperture_profile.get("shape", "")) == "no_projected_beam":
 		prism.visible = false
-		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
+		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, 0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
 		return
 	var prism_mesh: ArrayMesh = _mesh_builder.build_aperture_beam_mesh(aperture_profile, beam_range)
 	light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
@@ -102,7 +102,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
 	_apply_prism_optics_parameters(prism, lens_radius, bottom_radius)
-	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(lens_radius, bottom_radius, beam_range, beam_angle, aperture_profile, false, true))
+	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, lens_radius, bottom_radius, beam_range, beam_angle, aperture_profile, false, true))
 
 
 func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
@@ -151,7 +151,7 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	var aperture_profile: Dictionary = _aperture_profile_from_params(params)
 	if str(aperture_profile.get("shape", "")) == "no_projected_beam":
 		prism.visible = false
-		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
+		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, 0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
 		return {"applied": true, "beam_instance_resolved": true, "optics_state_changed": true, "parametric_update_performed": false, "topology_rebuilt": false}
 	var needs_topology: bool = prism.mesh == null or str((light.get_meta("peraviz_beam_optics_state", {}) as Dictionary).get("shape", "")) != str(aperture_profile.get("shape", "circle"))
 	if needs_topology:
@@ -160,7 +160,7 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 			prism.mesh = mesh
 	_apply_prism_optics_parameters(prism, near_radius, far_radius)
 	prism.extra_cull_margin = max(far_radius, near_radius) + beam_range
-	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(near_radius, far_radius, beam_range, beam_angle, aperture_profile, needs_topology and previous_mesh != prism.mesh, true))
+	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, near_radius, far_radius, beam_range, beam_angle, aperture_profile, needs_topology and previous_mesh != prism.mesh, true))
 	return {
 		"applied": true,
 		"beam_instance_resolved": true,
@@ -179,11 +179,11 @@ func get_beam_optics_state(light: SpotLight3D) -> Dictionary:
 	return light.get_meta("peraviz_beam_optics_state", {}) as Dictionary
 
 func _aperture_profile_from_params(params: Dictionary) -> Dictionary:
-	var beam_type: String = str(params.get("beam_type", "Spot")).to_lower()
+	var beam_type: String = str(params.get("beam_type", "Wash")).to_lower()
 	if beam_type == "none" or beam_type == "glow":
 		return {"shape": "no_projected_beam"}
 	if beam_type == "rectangle":
-		return {"shape": "rectangle", "rectangle_ratio": max(float(params.get("rectangle_ratio", 1.0)), 0.01), "source": "official_beam_type"}
+		return {"shape": "rectangle", "rectangle_ratio": max(float(params.get("rectangle_ratio", 1.7777)), 0.01), "source": "official_beam_type"}
 	return {"shape": "circle", "source": "official_beam_type"}
 
 func _far_radius_for_angle(near_radius: float, beam_angle: float, beam_range: float) -> float:
@@ -194,16 +194,25 @@ func _apply_prism_optics_parameters(prism: MeshInstance3D, near_radius: float, f
 	prism.set_instance_shader_parameter("beam_near_radius", max(near_radius, 0.001))
 	prism.set_instance_shader_parameter("beam_far_radius", max(far_radius, 0.001))
 
-func _beam_optics_state(near_radius: float, far_radius: float, beam_range: float, beam_angle: float, aperture_profile: Dictionary, topology_rebuilt: bool, parametric_update: bool) -> Dictionary:
+func _beam_optics_state(prism: MeshInstance3D, near_radius: float, far_radius: float, beam_range: float, beam_angle: float, aperture_profile: Dictionary, topology_rebuilt: bool, parametric_update: bool) -> Dictionary:
+	var half_height: float = beam_range * 0.5
+	var near_world: Vector3 = prism.to_global(Vector3(0.0, half_height, 0.0)) if prism != null else Vector3.ZERO
+	var far_world: Vector3 = prism.to_global(Vector3(0.0, -half_height, 0.0)) if prism != null else Vector3.ZERO
 	return {
 		"near_radius": near_radius,
 		"far_radius": far_radius,
 		"beam_range": beam_range,
 		"beam_angle": beam_angle,
 		"shape": str(aperture_profile.get("shape", "circle")),
-		"rectangle_ratio": float(aperture_profile.get("rectangle_ratio", 1.0)),
+		"rectangle_ratio": float(aperture_profile.get("rectangle_ratio", 1.7777)),
 		"topology_rebuilt": topology_rebuilt,
 		"parametric_update": parametric_update,
+		"near_local_y": half_height,
+		"far_local_y": -half_height,
+		"near_world_position": near_world,
+		"far_world_position": far_world,
+		"near_axial": 1.0,
+		"far_axial": 0.0,
 	}
 
 func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:

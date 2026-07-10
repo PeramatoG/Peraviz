@@ -43,6 +43,7 @@ struct SceneNode {
     bool is_axis = false;
     bool is_emitter = false;
     bool is_lens = false;
+    bool is_beam = false;
 
     bool has_luminous_flux = false;
     float luminous_flux = 10000.0F;
@@ -60,13 +61,13 @@ struct SceneNode {
     float beam_radius = 0.05F;
 
     bool has_beam_type = false;
-    std::string beam_type = "Spot";
+    std::string beam_type = "Wash";
 
     bool has_throw_ratio = false;
     float throw_ratio = 1.0F;
 
     bool has_rectangle_ratio = false;
-    float rectangle_ratio = 1.0F;
+    float rectangle_ratio = 1.7777F;
 
     bool has_dominant_wavelength = false;
     float dominant_wavelength = 0.0F;

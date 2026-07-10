@@ -90,12 +90,12 @@ struct CompiledBeamOpticalProfile {
     std::string geometry_path;
     std::string geometry_key;
     int32_t render_target_id = 0;
-    std::string beam_type = "Spot";
+    std::string beam_type = "Wash";
     double beam_angle_deg = 25.0;
     double field_angle_deg = 25.0;
     double beam_radius_m = 0.05;
     double throw_ratio = 1.0;
-    double rectangle_ratio = 1.0;
+    double rectangle_ratio = 1.7777;
     double luminous_flux = 10000.0;
     double color_temperature = 6000.0;
     std::string beam_angle_source = "fallback";

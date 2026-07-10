@@ -292,14 +292,15 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		if light == null or not is_instance_valid(light):
 			continue
 		var render_radius: float = max(float(optical_profile.get("render_near_radius_m", optical_profile.get("official_beam_radius_m", 0.03))), 0.001)
+		var beam_range: float = max(light.spot_range, 0.1)
 		var params: Dictionary = {
-			"beam_type": str(optical_profile.get("beam_type", "Spot")),
+			"beam_type": str(optical_profile.get("beam_type", "Wash")),
 			"beam_angle": float(optical_profile.get("beam_angle", 25.0)),
 			"field_angle": float(optical_profile.get("field_angle", 25.0)),
 			"lens_radius": render_radius,
 			"render_near_radius_m": render_radius,
-			"rectangle_ratio": float(optical_profile.get("rectangle_ratio", 1.0)),
-			"beam_range": 15.0,
+			"rectangle_ratio": float(optical_profile.get("rectangle_ratio", 1.7777)),
+			"beam_range": beam_range,
 			"scaled_intensity": 0.0,
 			"beam_intensity": 0.0,
 			"normalized_dimmer": 0.0,

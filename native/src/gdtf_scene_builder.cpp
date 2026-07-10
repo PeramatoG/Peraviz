@@ -382,6 +382,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
         node.is_axis = looks_like_axis(geometry->Name(), geometry_name);
         node.is_lens = looks_like_lens_geometry(geometry_tag, geometry_name, parent_is_lens);
         node.is_emitter = looks_like_emitter(geometry->Name(), geometry_name, node.is_lens);
+        node.is_beam = lower_ascii(geometry_tag) == "beam";
         node.local_transform = peraviz::coordinate_mapper::to_godot_transform(local);
 
         if (lower_ascii(geometry_tag) == "beam") {

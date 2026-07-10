@@ -110,21 +110,21 @@ std::string normalize_beam_type(const std::string &beam_type) {
     if (lower == "rectangle") return "Rectangle";
     if (lower == "none") return "None";
     if (lower == "glow") return "Glow";
-    return "Spot";
+    return "Wash";
 }
 
 // Appends setup-time Beam profiles for exact GDTF Beam geometry nodes in one fixture patch.
 void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &scene, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
     const std::string prefix = patch.fixture_uuid + "/";
     for (const SceneNode &node : scene.nodes) {
-        if (!node.is_emitter || node.gdtf_geometry_key.rfind(prefix, 0) != 0) continue;
+        if (!node.is_beam || node.gdtf_geometry_key.rfind(prefix, 0) != 0) continue;
         runtime::CompiledBeamOpticalProfile profile;
         profile.fixture_id = fixture_id;
         profile.fixture_uuid = patch.fixture_uuid;
         profile.geometry_path = node.gdtf_geometry_path;
         profile.geometry_key = node.gdtf_geometry_key;
         profile.render_target_id = stable_id(patch.fixture_uuid, "beam:target:" + node.gdtf_geometry_path);
-        profile.beam_type = normalize_beam_type(node.has_beam_type ? node.beam_type : "Spot");
+        profile.beam_type = normalize_beam_type(node.has_beam_type ? node.beam_type : "Wash");
         profile.beam_angle_deg = node.has_beam_angle ? node.beam_angle : profile.beam_angle_deg;
         profile.field_angle_deg = node.has_field_angle ? node.field_angle : profile.field_angle_deg;
         profile.beam_radius_m = node.has_beam_radius ? node.beam_radius : profile.beam_radius_m;

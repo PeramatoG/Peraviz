@@ -174,6 +174,7 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
         d["is_axis"] = node.is_axis;
         d["is_emitter"] = node.is_emitter;
         d["is_lens"] = node.is_lens;
+        d["is_beam"] = node.is_beam;
         d["has_luminous_flux"] = node.has_luminous_flux;
         d["luminous_flux"] = node.luminous_flux;
         d["has_color_temperature"] = node.has_color_temperature;
