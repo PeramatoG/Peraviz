@@ -126,6 +126,11 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/gdtf_physical_ranges.cpp
         src/dmx/gdtf_gobo_catalog.cpp
         src/dmx/gdtf_control_offsets_resolver.cpp
+        src/dmx/gdtf_color_cie.cpp
+        src/dmx/gdtf_wheel_catalog.cpp
+        src/dmx/gdtf_archive_resource_reader.cpp
+        src/dmx/gdtf_dmx_inspector.cpp
+        src/gui/gdtf/gdtf_resource_bitmap_cache.cpp
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
@@ -294,6 +299,25 @@ if(BUILD_TESTING)
         libzip::zip
     )
     add_test(NAME peraviz_native_gdtf_runtime_schema_tests COMMAND peraviz_native_gdtf_runtime_schema_tests)
+
+
+    add_executable(peraviz_native_gdtf_wheel_attribute_inspector_tests
+        tests/gdtf_wheel_attribute_inspector_test.cpp
+        src/archive/zip_archive.cpp
+        src/dmx/gdtf_xml_reader.cpp
+        src/dmx/gdtf_color_cie.cpp
+        src/dmx/gdtf_wheel_catalog.cpp
+        src/dmx/gdtf_archive_resource_reader.cpp
+        src/dmx/gdtf_dmx_inspector.cpp
+    )
+    target_include_directories(peraviz_native_gdtf_wheel_attribute_inspector_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(peraviz_native_gdtf_wheel_attribute_inspector_tests PRIVATE
+        tinyxml2::tinyxml2
+        libzip::zip
+    )
+    add_test(NAME peraviz_native_gdtf_wheel_attribute_inspector_tests COMMAND peraviz_native_gdtf_wheel_attribute_inspector_tests)
 
     add_executable(peraviz_native_runtime_table_tests
         tests/runtime_table_model_test.cpp
