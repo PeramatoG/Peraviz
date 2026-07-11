@@ -291,20 +291,26 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		var light: SpotLight3D = anchor as SpotLight3D
 		if light == null or not is_instance_valid(light):
 			continue
-		var render_radius: float = max(float(optical_profile.get("render_near_radius_m", optical_profile.get("official_beam_radius_m", 0.03))), 0.001)
-		var beam_range: float = max(light.spot_range, 0.1)
-		var params: Dictionary = {
-			"beam_type": str(optical_profile.get("beam_type", "Wash")),
-			"beam_angle": float(optical_profile.get("beam_angle", 25.0)),
-			"field_angle": float(optical_profile.get("field_angle", 25.0)),
-			"lens_radius": render_radius,
-			"render_near_radius_m": render_radius,
-			"rectangle_ratio": float(optical_profile.get("rectangle_ratio", 1.7777)),
-			"beam_range": beam_range,
-			"scaled_intensity": 0.0,
-			"beam_intensity": 0.0,
-			"normalized_dimmer": 0.0,
-		}
+		var existing_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
+		var measured_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.0)), 0.0)
+		var render_radius: float = max(float(existing_params.get("render_near_radius_m", existing_params.get("lens_radius", measured_radius))), 0.0)
+		if render_radius <= 0.0:
+			render_radius = max(float(optical_profile.get("render_near_radius_m", optical_profile.get("official_beam_radius_m", 0.03))), 0.001)
+		var beam_range: float = max(float(existing_params.get("beam_range", light.spot_range)), 0.1)
+		var params: Dictionary = existing_params.duplicate(false)
+		params["beam_type"] = str(optical_profile.get("beam_type", params.get("beam_type", "Wash")))
+		params["beam_angle"] = float(optical_profile.get("beam_angle", params.get("beam_angle", 25.0)))
+		params["field_angle"] = float(optical_profile.get("field_angle", params.get("field_angle", 25.0)))
+		params["lens_radius"] = render_radius
+		params["render_near_radius_m"] = render_radius
+		params["official_beam_radius_m"] = float(optical_profile.get("official_beam_radius_m", params.get("official_beam_radius_m", 0.0)))
+		params["measured_model_aperture_radius_m"] = measured_radius
+		params["render_near_radius_source"] = str(params.get("render_near_radius_source", "measured_model_lens" if measured_radius > 0.0 else "official_beam_radius_no_model"))
+		params["rectangle_ratio"] = float(optical_profile.get("rectangle_ratio", params.get("rectangle_ratio", 1.7777)))
+		params["beam_range"] = beam_range
+		params["scaled_intensity"] = float(params.get("scaled_intensity", 0.0))
+		params["beam_intensity"] = float(params.get("beam_intensity", 0.0))
+		params["normalized_dimmer"] = float(params.get("normalized_dimmer", 0.0))
 		light.set_meta("peraviz_beam_last_params", params)
 		var callback: Callable = _callbacks.get("apply_beam_optics", Callable())
 		if callback.is_valid():

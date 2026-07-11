@@ -2172,23 +2172,17 @@ func _select_render_near_radius(photometric: Dictionary, measured_lens_radius: f
 	var official_radius: float = max(float(photometric.get("official_beam_radius_m", photometric.get("beam_radius", 0.0))), 0.0)
 	var has_explicit_official: bool = bool(photometric.get("beam_radius_from_gdtf", false)) and official_radius > 0.0
 	var measured_radius: float = max(measured_lens_radius, 0.0)
-	var selected_radius: float = max(measured_radius, 0.005)
-	var source: String = "measured_model"
+	var selected_radius: float = 0.03
+	var source: String = "safe_fallback"
 	var mismatch_ratio: float = 1.0
 	if has_explicit_official and measured_radius > 0.0:
 		mismatch_ratio = max(official_radius, measured_radius) / max(min(official_radius, measured_radius), 0.0001)
-		if mismatch_ratio <= 2.5:
-			selected_radius = max(official_radius, 0.005)
-			source = "official_beam_radius"
-		else:
-			selected_radius = max(min(official_radius, measured_radius), 0.005)
-			source = "conservative_official_model_mismatch"
+	if measured_radius > 0.0:
+		selected_radius = max(measured_radius, 0.005)
+		source = "measured_model_lens"
 	elif has_explicit_official:
 		selected_radius = max(official_radius, 0.005)
-		source = "official_beam_radius"
-	elif measured_radius <= 0.0:
-		selected_radius = 0.03
-		source = "safe_fallback"
+		source = "official_beam_radius_no_model"
 	return {
 		"official_beam_radius_m": official_radius,
 		"measured_model_aperture_radius_m": measured_radius,

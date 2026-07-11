@@ -174,7 +174,7 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 		spot.set_meta("peraviz_native_zoom_norm", zoom_norm)
 		var last_params: Dictionary = spot.get_meta("peraviz_beam_last_params", {}) if spot.has_meta("peraviz_beam_last_params") else {}
 		if last_params.is_empty():
-			last_params = _beam_params_from_target_record(target_record, beam_angle, _fixture_render_color(fixture_uuid), _fixture_dimmer(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
+			last_params = _beam_params_from_target_record(spot, target_record, beam_angle, _fixture_render_color(fixture_uuid), _fixture_dimmer(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
 		last_params["beam_angle"] = beam_angle
 		last_params["normalized_dimmer"] = _fixture_dimmer(fixture_uuid)
 		last_params["scaled_intensity"] = _fixture_beam_intensity(fixture_uuid)
@@ -188,16 +188,24 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 	_visual_apply_counters["beam_optics_parametric_updates"] = int(_visual_apply_counters.get("beam_optics_parametric_updates", 0)) + mutations
 	return {"optics_requested": true, "target_resolved": true, "optics_resolved": 1, "optics_mutated": mutations, "optics_applied": mutations > 0, "optics_failed": 0 if mutations > 0 else 1}
 
-func _beam_params_from_target_record(target_record: Dictionary, beam_angle: float, beam_color: Color, dimmer_norm: float, beam_intensity: float) -> Dictionary:
+func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictionary, beam_angle: float, beam_color: Color, dimmer_norm: float, beam_intensity: float) -> Dictionary:
 	var profile: Dictionary = target_record.get("beam_optical_profile", {})
-	var beam_range: float = max(float(profile.get("beam_range", 1.0)), 0.1)
-	var near_radius: float = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
+	var diagnostics: Dictionary = light.get_meta("peraviz_beam_radius_diagnostics", {}) if light != null and light.has_meta("peraviz_beam_radius_diagnostics") else {}
+	var beam_range: float = max(float(profile.get("beam_range", light.spot_range if light != null else 1.0)), 0.1)
+	var measured_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.0)), 0.0) if light != null else 0.0
+	var near_radius: float = max(float(diagnostics.get("render_near_radius_m", measured_radius)), 0.0)
+	if near_radius <= 0.0:
+		near_radius = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
 	return {
 		"beam_angle": beam_angle,
 		"beam_range": beam_range,
 		"beam_color": beam_color,
 		"lens_radius": near_radius,
 		"render_near_radius_m": near_radius,
+		"official_beam_radius_m": float(profile.get("official_beam_radius_m", diagnostics.get("official_beam_radius_m", 0.0))),
+		"measured_model_aperture_radius_m": float(diagnostics.get("measured_model_aperture_radius_m", measured_radius)),
+		"render_near_radius_source": str(diagnostics.get("render_near_radius_source", "measured_model_lens" if measured_radius > 0.0 else "official_beam_radius_no_model")),
+		"radius_mismatch_ratio": float(diagnostics.get("radius_mismatch_ratio", 1.0)),
 		"beam_type": str(profile.get("beam_type", "Wash")),
 		"rectangle_ratio": float(profile.get("rectangle_ratio", 1.7777)),
 		"normalized_dimmer": dimmer_norm,
@@ -493,13 +501,19 @@ func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int
 
 func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible: bool, dimmer_norm: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
 	loader._ensure_beam_runtime_for_light(light)
-	var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
-	var beam_defaults: Dictionary = loader.get("_cached_beam_defaults") if loader.get("_cached_beam_defaults") is Dictionary else {}
-	var beam_params: Dictionary = loader._build_cached_beam_params(light, beam_angle, beam_color, dimmer_norm, beam_intensity, lens_radius, beam_defaults)
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}).duplicate(false) if light.has_meta("peraviz_beam_last_params") else {}
+	if beam_params.is_empty():
+		var diagnostics: Dictionary = light.get_meta("peraviz_beam_radius_diagnostics", {}) if light.has_meta("peraviz_beam_radius_diagnostics") else {}
+		var lens_radius: float = max(float(diagnostics.get("render_near_radius_m", light.get_meta("peraviz_lens_radius", 0.03))), 0.005)
+		var beam_defaults: Dictionary = loader.get("_cached_beam_defaults") if loader.get("_cached_beam_defaults") is Dictionary else {}
+		beam_params = loader._build_cached_beam_params(light, beam_angle, beam_color, dimmer_norm, beam_intensity, lens_radius, beam_defaults)
+	beam_params["beam_angle"] = beam_angle
+	beam_params["beam_color"] = beam_color
 	beam_params["normalized_dimmer"] = dimmer_norm
 	beam_params["scaled_intensity"] = beam_intensity
 	beam_params["beam_intensity"] = beam_intensity
 	beam_params["intensity_max"] = float(loader.get("BEAM_INTENSITY_MAX")) if loader.get("BEAM_INTENSITY_MAX") != null else 50.0
+	light.set_meta("peraviz_beam_last_params", beam_params)
 	loader._update_beam_for_light(light, beam_params)
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
 	_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1
