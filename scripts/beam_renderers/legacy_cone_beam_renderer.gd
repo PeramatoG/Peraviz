@@ -73,7 +73,6 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var gobo_texture: Texture2D = null
 	if light.has_meta(GOBO_TEXTURE_META_KEY):
 		gobo_texture = light.get_meta(GOBO_TEXTURE_META_KEY) as Texture2D
-	var gobo_scale: float = max(float(params.get("gobo_scale", 1.0)), 0.05)
 	var alignment_rotation_deg: float = float(params.get("beam_gobo_alignment_rotation_deg", 0.0))
 	# The light node already carries gobo wheel/index rotation via FixtureGoboProjector.
 	# Keep only local alignment on the prism node to avoid double-rotating versus the footprint.
@@ -191,8 +190,7 @@ func _far_radius_for_angle(near_radius: float, beam_angle: float, beam_range: fl
 	return clamp(near_radius + tan(deg_to_rad(half_angle_deg)) * beam_range, near_radius, EMITTER_CONE_MAX_BASE_RADIUS_M)
 
 func _apply_prism_optics_parameters(prism: MeshInstance3D, near_radius: float, far_radius: float) -> void:
-	prism.set_instance_shader_parameter("beam_near_radius", max(near_radius, 0.001))
-	prism.set_instance_shader_parameter("beam_far_radius", max(far_radius, 0.001))
+	prism.set_instance_shader_parameter("beam_radius_params", Vector2(max(near_radius, 0.001), max(far_radius, 0.001)))
 
 func _beam_optics_state(prism: MeshInstance3D, near_radius: float, far_radius: float, beam_range: float, beam_angle: float, aperture_profile: Dictionary, topology_rebuilt: bool, parametric_update: bool) -> Dictionary:
 	var half_height: float = beam_range * 0.5

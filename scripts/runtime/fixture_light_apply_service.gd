@@ -157,7 +157,7 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, beam_color: Color) 
 		if light.has_meta("peraviz_beam_last_params"):
 			_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_COLOR, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), beam_color, _fixture_beam_intensity(fixture_uuid))
 
-func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int, changed_mask: int, beam_half_angle: float, beam_angle: float, zoom_norm: float) -> Dictionary:
+func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int, _changed_mask: int, beam_half_angle: float, beam_angle: float, zoom_norm: float) -> Dictionary:
 	if optics_target_id <= 0 or (loader.has_method("_has_native_optics_target") and not loader._has_native_optics_target(optics_target_id)):
 		return {"optics_requested": optics_target_id > 0, "target_resolved": false, "optics_applied": false, "optics_failed": 1, "failure_reason": "target not registered"}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
