@@ -225,6 +225,7 @@ func _build_visual_node(data: Dictionary, item_type: String, item_class: String,
 		var loaded: Variant = _load_3d_asset(asset_path, loader, asset_cache, asset_kind, flip_orientation)
 		if loaded is Node3D:
 			var loaded_node: Node3D = loaded
+			_apply_gdtf_model_size_scale(data, loaded_node)
 			_force_double_sided_materials(loaded_node)
 			return loaded_node
 		print("[Peraviz] Asset fallback for missing/invalid model: ", asset_path, " type=", item_type, " class=", item_class, " asset_kind=", asset_kind)
@@ -239,6 +240,72 @@ func _build_visual_node(data: Dictionary, item_type: String, item_class: String,
 	var dummy_mesh: Node3D = _create_dummy_mesh(is_fixture, visual_scale_hint, asset_cache)
 	_force_double_sided_materials(dummy_mesh)
 	return dummy_mesh
+
+func _apply_gdtf_model_size_scale(data: Dictionary, node: Node3D) -> void:
+	if node == null:
+		return
+	var target_size: Vector3 = _gdtf_model_size_to_godot(data)
+	if target_size.x <= 0.0 or target_size.y <= 0.0 or target_size.z <= 0.0:
+		return
+	var source_bounds: AABB = _local_visual_bounds(node)
+	if source_bounds.size.x <= 0.0001 or source_bounds.size.y <= 0.0001 or source_bounds.size.z <= 0.0001:
+		return
+	var scale_factor := Vector3(
+		target_size.x / source_bounds.size.x,
+		target_size.y / source_bounds.size.y,
+		target_size.z / source_bounds.size.z
+	)
+	if not is_finite(scale_factor.x) or not is_finite(scale_factor.y) or not is_finite(scale_factor.z):
+		return
+	if scale_factor.distance_to(Vector3.ONE) < 0.001:
+		return
+	node.scale = Vector3(node.scale.x * scale_factor.x, node.scale.y * scale_factor.y, node.scale.z * scale_factor.z)
+	node.set_meta("peraviz_gdtf_model_size_scale", scale_factor)
+	node.set_meta("peraviz_gdtf_model_declared_size_m", target_size)
+	node.set_meta("peraviz_gdtf_model_source_size_m", source_bounds.size)
+
+func _gdtf_model_size_to_godot(data: Dictionary) -> Vector3:
+	var length_m: float = max(float(data.get("primitive_size_x", 0.0)), 0.0)
+	var width_m: float = max(float(data.get("primitive_size_y", 0.0)), 0.0)
+	var height_m: float = max(float(data.get("primitive_size_z", 0.0)), 0.0)
+	return Vector3(length_m, height_m, width_m)
+
+func _local_visual_bounds(root: Node3D) -> AABB:
+	var has_bounds: bool = false
+	var bounds := AABB()
+	for child in root.get_children():
+		if child is Node3D:
+			var child_bounds: Dictionary = _local_visual_bounds_recursive(root, child as Node3D)
+			if bool(child_bounds.get("has_bounds", false)):
+				var aabb: AABB = child_bounds.get("bounds", AABB())
+				if has_bounds:
+					bounds = bounds.merge(aabb)
+				else:
+					bounds = aabb
+					has_bounds = true
+	if root is MeshInstance3D:
+		var mesh_bounds: AABB = (root as MeshInstance3D).get_aabb()
+		if mesh_bounds.size != Vector3.ZERO:
+			bounds = mesh_bounds if not has_bounds else bounds.merge(mesh_bounds)
+			has_bounds = true
+	return bounds if has_bounds else AABB()
+
+func _local_visual_bounds_recursive(root: Node3D, node: Node3D) -> Dictionary:
+	var has_bounds: bool = false
+	var bounds := AABB()
+	if node is MeshInstance3D:
+		var mesh_bounds: AABB = (node as MeshInstance3D).get_aabb()
+		if mesh_bounds.size != Vector3.ZERO:
+			bounds = root.global_transform.affine_inverse() * (node.global_transform * mesh_bounds)
+			has_bounds = true
+	for child in node.get_children():
+		if child is Node3D:
+			var child_bounds: Dictionary = _local_visual_bounds_recursive(root, child as Node3D)
+			if bool(child_bounds.get("has_bounds", false)):
+				var aabb: AABB = child_bounds.get("bounds", AABB())
+				bounds = bounds.merge(aabb) if has_bounds else aabb
+				has_bounds = true
+	return {"has_bounds": has_bounds, "bounds": bounds}
 
 func _force_double_sided_materials(root: Node) -> void:
 	if root == null:
