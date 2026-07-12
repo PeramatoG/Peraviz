@@ -441,11 +441,13 @@ int test_photometric_fallback_and_exclusions() {
 int test_master_dimmer_distributes_beam_energy() {
     using namespace peraviz::runtime;
     CompiledRuntimeScene scene = make_scene();
+    scene.properties[0].geometry_name = "Head";
     scene.beam_profiles.clear();
     for (int index = 0; index < 50; ++index) {
         CompiledBeamOpticalProfile profile;
         profile.fixture_id = 1;
         profile.render_target_id = 5000 + index;
+        profile.geometry_path = "Head/Beam" + std::to_string(index);
         profile.luminous_flux = 320.0;
         profile.fixture_projected_flux_lm = 16000.0;
         profile.target_flux_fraction = 0.02;
@@ -466,6 +468,31 @@ int test_master_dimmer_distributes_beam_energy() {
     return 0;
 }
 
+// Verifies Dimmer ownership is compiled by geometry path instead of fixture-wide fan-out.
+int test_dimmer_ownership_limits_beam_targets() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerA"});
+    scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
+    scene.properties.push_back({30001, 1, 601, 1601, CompiledSemantic::Dimmer, {{1, 1.0}}, 0, "Head/CellA"});
+    scene.properties.push_back({30002, 1, 602, 1602, CompiledSemantic::Dimmer, {{2, 1.0}}, 0, "Head/CellB"});
+    scene.beam_profiles.push_back({1, "fixture-1", 0, "Head/CellA/Beam", "fixture-1/Head/CellA/Beam", 7001, "Wash", "", "Wash", "explicit", true, 25.0, 25.0, 0.05, 1.0, 1.7777, 500.0, 1000.0, 0.5, 6000.0, "fallback", "fallback", "fallback", "official_beam_type", "gdtf_luminous_flux", true, true});
+    scene.beam_profiles.push_back({1, "fixture-1", 0, "Head/CellB/Beam", "fixture-1/Head/CellB/Beam", 7002, "Wash", "", "Wash", "explicit", true, 25.0, 25.0, 0.05, 1.0, 1.7777, 500.0, 1000.0, 0.5, 6000.0, "fallback", "fallback", "fallback", "official_beam_type", "gdtf_luminous_flux", true, true});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(4, 0);
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    runtime.consume_latest_visual_frame();
+    frame[0] = 255;
+    frame[1] = 0;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (intensity_row_count(visual) != 1) return fail("Expected one Beam target row for the changed cell Dimmer");
+    if (visual.integers.size() < 2 || visual.integers[1] != 7001) return fail("Expected CellA Dimmer to update only CellA Beam target");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -482,5 +509,6 @@ int main() {
     if (test_projected_beam_photometric_fractions() != 0) return 1;
     if (test_photometric_fallback_and_exclusions() != 0) return 1;
     if (test_master_dimmer_distributes_beam_energy() != 0) return 1;
+    if (test_dimmer_ownership_limits_beam_targets() != 0) return 1;
     return 0;
 }

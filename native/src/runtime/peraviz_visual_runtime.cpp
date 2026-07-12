@@ -31,6 +31,7 @@ void PeravizVisualRuntimeCore::clear() {
     installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
     beam_targets_by_fixture_.clear();
+    beam_targets_by_dimmer_property_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
@@ -46,6 +47,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
     beam_targets_by_fixture_.clear();
+    beam_targets_by_dimmer_property_.clear();
     diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
     if (scene.fixtures.empty()) {
@@ -72,7 +74,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     }
     for (const CompiledBeamOpticalProfile &profile : scene.beam_profiles) {
         if (profile.fixture_id <= 0 || profile.render_target_id <= 0 || !profile.has_projected_beam) continue;
-        beam_targets_by_fixture_[profile.fixture_id].push_back({profile.render_target_id, profile.luminous_flux, profile.fixture_projected_flux_lm, profile.target_flux_fraction});
+        beam_targets_by_fixture_[profile.fixture_id].push_back({profile.render_target_id, profile.geometry_path, profile.luminous_flux, profile.fixture_projected_flux_lm, profile.target_flux_fraction});
     }
     int installed_properties = 0;
     for (const CompiledComponentProperty &property : scene.properties) {
@@ -114,6 +116,14 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Zoom) render_params_by_fixture_[property.fixture_id].has_zoom = true;
+        if (parameter == SemanticParameter::Dimmer) {
+            const auto targets_it = beam_targets_by_fixture_.find(property.fixture_id);
+            if (targets_it != beam_targets_by_fixture_.end()) {
+                for (const BeamPhotometricTarget &target : targets_it->second) {
+                    if (beam_target_belongs_to_property(target, property)) beam_targets_by_dimmer_property_[property.property_id].push_back(target);
+                }
+            }
+        }
         const uint32_t installed_mask = visual_mask_for_parameter(parameter);
         installed_visual_mask_by_fixture_[property.fixture_id] |= installed_mask;
         capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
@@ -211,8 +221,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 add_visual_mask_stats(change.changed_visual_mask);
                 ++stats_.fixtures_dirty;
                 if (program.parameter == SemanticParameter::Dimmer) {
-                    const auto targets_it = beam_targets_by_fixture_.find(program.property.fixture_id);
-                    if (targets_it != beam_targets_by_fixture_.end() && !targets_it->second.empty()) {
+                    const auto targets_it = beam_targets_by_dimmer_property_.find(program.property.property_id);
+                    if (targets_it != beam_targets_by_dimmer_property_.end() && !targets_it->second.empty()) {
                         for (const BeamPhotometricTarget &target : targets_it->second) {
                             rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, target.render_target_id, change.changed_visual_mask, scale_state_for_beam_target(state, target)});
                         }
@@ -505,6 +515,14 @@ PeravizVisualRuntimeCore::ComponentState PeravizVisualRuntimeCore::scale_state_f
     scaled.spot_energy = static_cast<float>(scaled.spot_energy * fraction);
     scaled.beam_intensity = static_cast<float>(scaled.beam_intensity * fraction);
     return scaled;
+}
+
+// Checks whether a compiled Beam target is owned by a compiled property geometry path.
+bool PeravizVisualRuntimeCore::beam_target_belongs_to_property(const BeamPhotometricTarget &target, const CompiledComponentProperty &property) {
+    if (target.geometry_path.empty() || property.geometry_name.empty()) return false;
+    if (target.geometry_path == property.geometry_name) return true;
+    const std::string prefix = property.geometry_name + "/";
+    return target.geometry_path.rfind(prefix, 0) == 0;
 }
 
 // Compares two component values using section-appropriate tolerances.

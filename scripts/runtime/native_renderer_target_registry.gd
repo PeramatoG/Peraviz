@@ -44,7 +44,10 @@ func install_manifest(renderer_manifest: Array) -> void:
 		var targets: Array = row.get("targets", [])
 		if not targets.is_empty():
 			for target_item in targets:
-				if target_item is Dictionary:
+				if target_item is Dictionary and str((target_item as Dictionary).get("semantic", "")).to_lower() == "beam_profile":
+					_register_renderer_target(target_item)
+			for target_item in targets:
+				if target_item is Dictionary and str((target_item as Dictionary).get("semantic", "")).to_lower() != "beam_profile":
 					_register_renderer_target(target_item)
 			continue
 		_register_legacy_manifest_row(row)
@@ -117,7 +120,11 @@ func _register_renderer_target(target: Dictionary) -> void:
 		_register_axis_target(_tilt_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "tilt")
 	elif semantic == "dimmer":
 		_register_dimmer_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
-	elif semantic == "zoom" or semantic == "beam_profile":
+	elif semantic == "beam_profile":
+		var target_id: int = int(target.get("render_target_id", target.get("target_id", 0)))
+		_register_dimmer_target(target, target_id, fixture_uuid, geometry_key)
+		_register_optics_target(target, target_id, fixture_uuid, geometry_key)
+	elif semantic == "zoom":
 		_register_optics_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 
 func _new_summary() -> Dictionary:

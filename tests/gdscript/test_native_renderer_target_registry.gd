@@ -126,4 +126,11 @@ func _init() -> void:
 	var overlap_summary: Dictionary = registry.get_summary().get("registry_summary", {})
 	assert(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1)
 	assert(registry.get_target_failure(202) is Dictionary)
+
+	var beam_profile_target: Dictionary = _target("fixture-a", "beam_profile", 301, "fixture-a/Base/EmitterLens")
+	beam_profile_target["beam_optical_profile"] = {"beam_type": "Wash", "has_projected_beam": true}
+	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base"), beam_profile_target]}])
+	assert(registry.has_dimmer_target(301))
+	assert(registry.has_optics_target(301))
+	assert(registry.get_dimmer_target_record(301).get("emitter_anchors", []).size() == 1)
 	quit(0)
