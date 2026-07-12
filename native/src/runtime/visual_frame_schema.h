@@ -25,7 +25,6 @@ enum class VisualSectionType : int32_t {
     EnvironmentOutput = 11,
     GenericVisualParameter = 12,
     DiagnosticNonVisual = 13,
-    BeamEmitterIntensity = 14,
 };
 
 enum VisualSectionFlags : int32_t {
@@ -38,8 +37,6 @@ enum EmitterIntensityIntField : int32_t { EmitterIntensityFixtureId = 0, Emitter
 enum EmitterIntensityFloatField : int32_t { EmitterIntensityDimmerNorm = 0, EmitterIntensityEnergy = 1, EmitterIntensitySpotEnergy = 2, EmitterIntensityBeamIntensity = 3, EmitterIntensityMaterialEnergy = 4 };
 enum EmitterColorIntField : int32_t { EmitterColorFixtureId = 0, EmitterColorTargetId = 1, EmitterColorChangedMask = 2 };
 enum EmitterColorFloatField : int32_t { EmitterColorRed = 0, EmitterColorGreen = 1, EmitterColorBlue = 2 };
-enum BeamEmitterIntensityIntField : int32_t { BeamEmitterIntensityFixtureId = 0, BeamEmitterIntensityTargetId = 1, BeamEmitterIntensityChangedMask = 2 };
-enum BeamEmitterIntensityFloatField : int32_t { BeamEmitterIntensityDimmerNorm = 0, BeamEmitterIntensityTargetLuminousFlux = 1, BeamEmitterIntensityTargetFluxFraction = 2, BeamEmitterIntensitySurfaceEnergy = 3, BeamEmitterIntensityVisibleBeamIntensity = 4, BeamEmitterIntensityMaterialEnergy = 5 };
 enum BeamOpticsIntField : int32_t { BeamOpticsFixtureId = 0, BeamOpticsTargetId = 1, BeamOpticsChangedMask = 2 };
 enum BeamOpticsFloatField : int32_t { BeamOpticsHalfAngle = 0, BeamOpticsAngle = 1, BeamOpticsZoomNorm = 2 };
 enum WheelSelectionIntField : int32_t { WheelSelectionFixtureId = 0, WheelSelectionWheelId = 1, WheelSelectionTargetId = 2, WheelSelectionSlotIndex = 3, WheelSelectionChangedMask = 4 };
@@ -68,7 +65,6 @@ struct VisualFrameSchemaCapabilities {
     bool has_intensity = false;
     bool has_color = false;
     bool has_optics = false;
-    bool has_beam_emitter_intensity = false;
     bool has_wheel_selection = false;
     bool has_wheel_motion = false;
     bool has_temporal = false;

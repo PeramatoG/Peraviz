@@ -3,7 +3,6 @@
 #include "runtime/visual_frame_schema.h"
 
 #include <cstdint>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -86,14 +85,6 @@ private:
         bool initialized = false;
     };
 
-    struct BeamPhotometricTarget {
-        int32_t render_target_id = 0;
-        std::string geometry_path;
-        double target_luminous_flux_lm = 10000.0;
-        double fixture_projected_flux_lm = 10000.0;
-        double target_flux_fraction = 1.0;
-    };
-
     struct FixtureChangeResult {
         bool changed = false;
         uint32_t changed_visual_mask = 0;
@@ -107,8 +98,6 @@ private:
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
     static void cook_render_state(ComponentState &state, const FixtureRenderParams &params);
-    static ComponentState scale_state_for_beam_target(const ComponentState &state, const BeamPhotometricTarget &target);
-    static bool beam_target_belongs_to_property(const BeamPhotometricTarget &target, const CompiledComponentProperty &property);
     static bool nearly_equal(float a, float b, float epsilon);
     void add_visual_mask_stats(uint32_t visual_mask);
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
@@ -123,8 +112,6 @@ private:
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
     std::unordered_map<int32_t, CompiledDmxSourceProgram> source_programs_by_id_;
-    std::unordered_map<int, std::vector<BeamPhotometricTarget>> beam_targets_by_fixture_;
-    std::unordered_map<int32_t, std::vector<BeamPhotometricTarget>> beam_targets_by_dimmer_property_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;

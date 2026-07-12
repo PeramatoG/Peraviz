@@ -11,7 +11,6 @@ var _pan_targets: Dictionary = {}
 var _tilt_targets: Dictionary = {}
 var _dimmer_targets: Dictionary = {}
 var _optics_targets: Dictionary = {}
-var _beam_intensity_targets: Dictionary = {}
 var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
 var _dimmer_emitter_owner_by_key: Dictionary = {}
@@ -29,7 +28,6 @@ func clear() -> void:
 	_tilt_targets.clear()
 	_dimmer_targets.clear()
 	_optics_targets.clear()
-	_beam_intensity_targets.clear()
 	_target_resolution_failures.clear()
 	_geometry_targets_by_key.clear()
 	_dimmer_emitter_owner_by_key.clear()
@@ -46,10 +44,7 @@ func install_manifest(renderer_manifest: Array) -> void:
 		var targets: Array = row.get("targets", [])
 		if not targets.is_empty():
 			for target_item in targets:
-				if target_item is Dictionary and str((target_item as Dictionary).get("semantic", "")).to_lower() == "beam_profile":
-					_register_renderer_target(target_item)
-			for target_item in targets:
-				if target_item is Dictionary and str((target_item as Dictionary).get("semantic", "")).to_lower() != "beam_profile":
+				if target_item is Dictionary:
 					_register_renderer_target(target_item)
 			continue
 		_register_legacy_manifest_row(row)
@@ -81,9 +76,6 @@ func has_dimmer_target(dimmer_target_id: int) -> bool:
 func has_optics_target(optics_target_id: int) -> bool:
 	return optics_target_id > 0 and _optics_targets.has(optics_target_id)
 
-func has_beam_intensity_target(beam_target_id: int) -> bool:
-	return beam_target_id > 0 and _beam_intensity_targets.has(beam_target_id)
-
 func get_optics_target_record(optics_target_id: int) -> Dictionary:
 	if optics_target_id <= 0:
 		return {}
@@ -94,11 +86,6 @@ func get_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
 		return {}
 	return _dimmer_targets.get(dimmer_target_id, {})
 
-func get_beam_intensity_target_record(beam_target_id: int) -> Dictionary:
-	if beam_target_id <= 0:
-		return {}
-	return _beam_intensity_targets.get(beam_target_id, {})
-
 func get_target_failure(target_id: int) -> Variant:
 	return _target_resolution_failures.get(target_id, null)
 
@@ -108,7 +95,6 @@ func get_summary() -> Dictionary:
 		"tilt_targets_resolved": _tilt_targets.size(),
 		"dimmer_targets_resolved": _dimmer_targets.size(),
 		"optics_targets_resolved": _optics_targets.size(),
-		"beam_intensity_targets_resolved": _beam_intensity_targets.size(),
 		"registry_summary": _summary.duplicate(true),
 		"target_resolution_failures": _target_resolution_failures.duplicate(true),
 	}
@@ -131,11 +117,7 @@ func _register_renderer_target(target: Dictionary) -> void:
 		_register_axis_target(_tilt_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "tilt")
 	elif semantic == "dimmer":
 		_register_dimmer_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
-	elif semantic == "beam_profile":
-		var target_id: int = int(target.get("render_target_id", target.get("target_id", 0)))
-		_register_beam_intensity_target(target, target_id, fixture_uuid, geometry_key)
-		_register_optics_target(target, target_id, fixture_uuid, geometry_key)
-	elif semantic == "zoom":
+	elif semantic == "zoom" or semantic == "beam_profile":
 		_register_optics_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 
 func _new_summary() -> Dictionary:
@@ -234,6 +216,8 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
 	var lens_material_targets: Array = _prepare_lens_materials(cache_key, target_nodes + emitter_nodes)
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
+	var beam_photometric_targets: Array = manifest_row.get("beam_photometric_targets", [])
+	var emitter_records: Array = _build_photometric_emitter_records(emitter_anchors, beam_instances, beam_photometric_targets)
 	_dimmer_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
 		"property_id": int(manifest_row.get("property_id", 0)),
@@ -247,6 +231,8 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 		"emitter_anchors": emitter_anchors,
 		"optional_spotlights": emitter_anchors,
 		"beam_instances": beam_instances,
+		"emitter_records": emitter_records,
+		"beam_photometric_targets": beam_photometric_targets,
 		"lens_material_targets": lens_material_targets,
 		"emitter_photometrics": _call_array("get_emitter_photometrics", [fixture_uuid]),
 	}
@@ -263,45 +249,6 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
 		_increment_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_counter("dimmer_resolved")
-
-
-func _register_beam_intensity_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
-	if target_id <= 0:
-		return
-	_increment_counter("beam_intensity_requested")
-	if geometry_key.is_empty():
-		_register_target_failure(manifest_row, target_id, "beam_intensity", "Manifest target has an empty canonical geometry key.")
-		return
-	if _beam_intensity_targets.has(target_id):
-		_increment_counter("duplicate_manifest_target_ids")
-		_register_target_failure(manifest_row, target_id, "beam_intensity", "Duplicate native Beam intensity target handle in renderer manifest.")
-		return
-	var target: Node3D = _geometry_targets_by_key.get(geometry_key, null) as Node3D
-	if target == null:
-		_register_target_failure(manifest_row, target_id, "beam_intensity", "No imported geometry node has canonical geometry key %s" % geometry_key)
-		return
-	var emitter_nodes: Array = _collect_descendant_emitters(geometry_key)
-	var cache_key: String = "%s:%d:beam_intensity" % [fixture_uuid, target_id]
-	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
-	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
-	var lens_material_targets: Array = _prepare_lens_materials(cache_key, [target] + emitter_nodes)
-	_beam_intensity_targets[target_id] = {
-		"fixture_uuid": fixture_uuid,
-		"render_target_id": target_id,
-		"target_id": target_id,
-		"owner_geometry_key": geometry_key,
-		"owner_geometry_node": target,
-		"emitter_nodes": emitter_nodes,
-		"emitter_anchors": emitter_anchors,
-		"optional_spotlights": emitter_anchors,
-		"beam_instances": beam_instances,
-		"lens_material_targets": lens_material_targets,
-		"beam_optical_profile": manifest_row.get("beam_optical_profile", {}),
-	}
-	if not emitter_anchors.is_empty() or not beam_instances.is_empty():
-		_increment_counter("beam_intensity_resolved")
-	else:
-		_register_target_failure(manifest_row, target_id, "beam_intensity", "Beam intensity target has no cached light or beam resources.")
 
 func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:
@@ -380,6 +327,40 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		var callback: Callable = _callbacks.get("apply_beam_optics", Callable())
 		if callback.is_valid():
 			callback.call(light, params)
+
+func _build_photometric_emitter_records(emitter_anchors: Array, beam_instances: Array, beam_photometric_targets: Array) -> Array:
+	var photometrics_by_key: Dictionary = {}
+	for item in beam_photometric_targets:
+		if item is not Dictionary:
+			continue
+		var photometric: Dictionary = item
+		var key: String = str(photometric.get("geometry_key", ""))
+		if not key.is_empty():
+			photometrics_by_key[key] = photometric
+	var records: Array = []
+	var fallback_weight: float = 1.0 / float(max(emitter_anchors.size(), 1))
+	for index in range(emitter_anchors.size()):
+		var light: SpotLight3D = emitter_anchors[index] as SpotLight3D
+		if light == null or not is_instance_valid(light):
+			continue
+		var key: String = str(light.get_meta("peraviz_gdtf_geometry_key", ""))
+		if key.is_empty() and light.get_parent() is Node3D:
+			key = str((light.get_parent() as Node3D).get_meta("peraviz_gdtf_geometry_key", ""))
+		var photometric: Dictionary = photometrics_by_key.get(key, {})
+		var weight: float = float(photometric.get("target_flux_fraction", fallback_weight))
+		if weight < 0.0:
+			weight = 0.0
+		var beam_instance: MeshInstance3D = null
+		if index < beam_instances.size():
+			beam_instance = beam_instances[index] as MeshInstance3D
+		records.append({
+			"geometry_key": key,
+			"light": light,
+			"beam_instance": beam_instance,
+			"photometric": photometric,
+			"target_flux_fraction": weight,
+		})
+	return records
 
 func _prepare_beam_instances(emitter_anchors: Array) -> Array:
 	var beam_instances: Array = []

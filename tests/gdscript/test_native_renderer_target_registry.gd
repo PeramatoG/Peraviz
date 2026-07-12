@@ -37,6 +37,7 @@ class RegistryHarness:
 				continue
 			var light := SpotLight3D.new()
 			light.name = "PeravizEmitterLight"
+			light.set_meta("peraviz_gdtf_geometry_key", str(node3d.get_meta("peraviz_gdtf_geometry_key", "")))
 			node3d.add_child(light)
 			lights.append(light)
 		light_cache[cache_key] = lights
@@ -110,10 +111,25 @@ func _init() -> void:
 	var record: Dictionary = registry.get_dimmer_target_record(201)
 	assert(record.get("emitter_anchors", []).size() == 1)
 	assert(record.get("beam_instances", []).size() == 1)
+	assert(record.get("emitter_records", []).size() == 1)
 	assert(record.get("lens_material_targets", []).size() >= 1)
 	assert(not (record.get("beam_instances", [])[0] as MeshInstance3D).visible)
 	registry.clear()
 	assert(not registry.has_dimmer_target(201))
+	var weighted_target: Dictionary = _target("fixture-a", "dimmer", 203, "fixture-a/Base")
+	weighted_target["beam_photometric_targets"] = [{
+		"geometry_key": "fixture-a/Base/EmitterLens",
+		"beam_render_target_id": 303,
+		"target_luminous_flux_lm": 320.0,
+		"owner_projected_flux_lm": 16000.0,
+		"target_flux_fraction": 0.02,
+		"photometric_weight_source": "dimmer_owner_gdtf_luminous_flux",
+	}]
+	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [weighted_target]}])
+	var weighted_record: Dictionary = registry.get_dimmer_target_record(203)
+	var emitter_records: Array = weighted_record.get("emitter_records", [])
+	assert(emitter_records.size() == 1)
+	assert(is_equal_approx(float((emitter_records[0] as Dictionary).get("target_flux_fraction", 0.0)), 0.02))
 
 	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Missing")]}])
 	assert(registry.get_target_failure(101) is Dictionary)
@@ -126,12 +142,4 @@ func _init() -> void:
 	var overlap_summary: Dictionary = registry.get_summary().get("registry_summary", {})
 	assert(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1)
 	assert(registry.get_target_failure(202) is Dictionary)
-
-	var beam_profile_target: Dictionary = _target("fixture-a", "beam_profile", 301, "fixture-a/Base/EmitterLens")
-	beam_profile_target["beam_optical_profile"] = {"beam_type": "Wash", "has_projected_beam": true}
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base"), beam_profile_target]}])
-	assert(not registry.has_dimmer_target(301))
-	assert(registry.has_beam_intensity_target(301))
-	assert(registry.has_optics_target(301))
-	assert(registry.get_beam_intensity_target_record(301).get("emitter_anchors", []).size() == 1)
 	quit(0)

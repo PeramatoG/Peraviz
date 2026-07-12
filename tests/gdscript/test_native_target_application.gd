@@ -11,10 +11,9 @@ class FakeLoader:
 	var dimmer_node := Node3D.new()
 	var dimmer_valid: bool = true
 	var dimmer_has_resources: bool = true
+	var weighted_records_enabled: bool = false
+	var weighted_lights: Array = []
 	var last_dimmer_light: SpotLight3D = null
-	var beam_valid: bool = true
-	var beam_light := SpotLight3D.new()
-	var beam_mesh := MeshInstance3D.new()
 
 	func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 		var result: Dictionary = {"pan_requested": pan_component_id > 0, "pan_applied": false, "tilt_requested": tilt_component_id > 0, "tilt_applied": false, "failed": 0}
@@ -33,32 +32,6 @@ class FakeLoader:
 	func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
 		return dimmer_valid and dimmer_target_id == 201
 
-	func _has_native_beam_intensity_target(beam_target_id: int) -> bool:
-		return beam_valid and beam_target_id == 301
-
-	func _get_native_beam_intensity_target_record(beam_target_id: int) -> Dictionary:
-		if not beam_valid or beam_target_id != 301:
-			return {}
-		return {"emitter_anchors": [beam_light], "beam_instances": [beam_mesh], "lens_material_targets": [], "beam_optical_profile": {"luminous_flux": 320.0, "beam_angle": 25.0}}
-
-	func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
-		return beam_mesh if light == beam_light else null
-
-	func _apply_emitter_light_state(light: SpotLight3D, _photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
-		var values: PackedFloat32Array = controls.get("render_ready_values", PackedFloat32Array())
-		var intensity: float = values[7] if values.size() >= 8 else normalized_dimmer * 20.0
-		light.light_energy = values[0] if values.size() >= 1 else normalized_dimmer
-		light.set_meta("peraviz_beam_last_params", {"scaled_intensity": intensity, "beam_intensity": intensity, "intensity_visibility_threshold": 0.015, "intensity_max": 50.0})
-		beam_mesh.visible = intensity > 0.015
-
-	func _update_beam_intensity_for_light(light: SpotLight3D, _normalized_dimmer: float, _beam_color: Color, scaled_intensity_override: float = -1.0) -> bool:
-		if light != beam_light:
-			return false
-		var intensity: float = scaled_intensity_override if scaled_intensity_override >= 0.0 else 0.0
-		beam_mesh.visible = intensity > 0.015
-		light.set_meta("peraviz_beam_last_params", {"scaled_intensity": intensity, "beam_intensity": intensity, "intensity_visibility_threshold": 0.015, "intensity_max": 50.0})
-		return true
-
 	func _get_native_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
 		if not dimmer_valid or dimmer_target_id != 201:
 			return {}
@@ -70,6 +43,20 @@ class FakeLoader:
 				"beam_instances": [],
 				"lens_material_targets": [],
 				"emitter_photometrics": [],
+			}
+		if weighted_records_enabled:
+			weighted_lights = [SpotLight3D.new(), SpotLight3D.new()]
+			return {
+				"geometry_nodes": [dimmer_node],
+				"emitter_nodes": [dimmer_node],
+				"emitter_anchors": weighted_lights,
+				"beam_instances": weighted_lights,
+				"lens_material_targets": [],
+				"emitter_photometrics": [],
+				"emitter_records": [
+					{"light": weighted_lights[0], "target_flux_fraction": 0.25, "photometric": {"target_luminous_flux_lm": 250.0}},
+					{"light": weighted_lights[1], "target_flux_fraction": 0.75, "photometric": {"target_luminous_flux_lm": 750.0}},
+				],
 			}
 		last_dimmer_light = SpotLight3D.new()
 		return {
@@ -130,7 +117,6 @@ func _init() -> void:
 	applier.install_schema({"sections": [
 		{"section_type": 1, "row_stride_ints": 4, "row_stride_floats": 2},
 		{"section_type": 2, "row_stride_ints": 3, "row_stride_floats": 5},
-		{"section_type": 14, "row_stride_ints": 3, "row_stride_floats": 6},
 	]})
 	var loader := FakeLoader.new()
 	var light_apply_service = FixtureLightApplyServiceScript.new()
@@ -149,29 +135,12 @@ func _init() -> void:
 	assert(int(diagnostics.get("dimmer_requested", 0)) == 1)
 	assert(int(diagnostics.get("dimmer_mutated", 0)) == 1)
 	assert(int(diagnostics.get("dimmer_lights_mutated", 0)) >= 1)
-	var beam_snapshot: Dictionary = {
-		"descriptors": PackedInt32Array([14, 1, 0, 0, 0]),
-		"integers": PackedInt32Array([1, 301, 2]),
-		"floats": PackedFloat32Array([1.0, 320.0, 0.02, 6.4, 0.4, 0.0]),
-	}
-	var beam_result: Dictionary = applier.apply_snapshot(beam_snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
-	var beam_diagnostics: Dictionary = beam_result.get("skip_diagnostics", {})
-	assert(int(beam_diagnostics.get("beam_target_rows", 0)) == 1)
-	assert(int(beam_diagnostics.get("beam_targets_resolved", 0)) == 1)
-	assert(int(beam_diagnostics.get("beams_updated", 0)) >= 1)
-	assert(loader.beam_mesh.visible)
-	var beam_zero: Dictionary = {
-		"descriptors": PackedInt32Array([14, 1, 0, 0, 0]),
-		"integers": PackedInt32Array([1, 301, 2]),
-		"floats": PackedFloat32Array([0.0, 320.0, 0.02, 0.0, 0.0, 0.0]),
-	}
-	var zero_result: Dictionary = applier.apply_snapshot(beam_zero, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
-	assert(int(zero_result.get("skip_diagnostics", {}).get("beam_targets_failed", 0)) == 0)
-	assert(not loader.beam_mesh.visible)
-	loader.beam_valid = false
-	var missing_beam: Dictionary = applier.apply_snapshot(beam_snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
-	assert(int(missing_beam.get("skip_diagnostics", {}).get("beam_targets_failed", 0)) == 1)
-	loader.beam_valid = true
+	loader.weighted_records_enabled = true
+	var weighted_result: Dictionary = light_apply_service.apply_emitter_intensity(loader, "fixture-a", 201, 2, 1.0, 20.0, 20.0, 40.0, 4.0)
+	assert(int(weighted_result.get("lights_considered", 0)) == 2)
+	assert(is_equal_approx(float(loader.weighted_lights[0].get_meta("peraviz_beam_base_intensity", 0.0)), 10.0))
+	assert(is_equal_approx(float(loader.weighted_lights[1].get_meta("peraviz_beam_base_intensity", 0.0)), 30.0))
+	loader.weighted_records_enabled = false
 	loader.dimmer_has_resources = false
 	var no_resource: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	assert(int(no_resource.get("skipped", 0)) > 0)

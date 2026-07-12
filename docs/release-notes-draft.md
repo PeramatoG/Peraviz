@@ -28,6 +28,6 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
-- Corrected multi-emitter Beam photometric weighting so fixtures with many projected Beam geometries distribute their declared luminous flux through a dedicated Beam intensity target contract instead of applying full fixture energy to every emitter or routing Beam IDs through Dimmer target records.
+- Corrected multi-emitter Beam photometric weighting so fixtures with many projected Beam geometries distribute declared luminous flux through the existing Dimmer target path, preserving the main beam-rendering pipeline while preventing full fixture energy from being applied to every emitter.
 - Reduced overly verbose DMX diagnostics in normal logs and compacted inline monitor summaries so diagnostic text no longer stretches panels across the viewer.
 - Corrected visible beam geometry so the near aperture uses GDTF BeamRadius or exact Beam-owned lens measurement, long beams use an explicit 75 m visual length by default, and Lightweight/Volumetric renderers share the same full-angle far-spread contract without changing fixture or scene scale.

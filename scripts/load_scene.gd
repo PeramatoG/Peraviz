@@ -1713,12 +1713,6 @@ func _has_native_optics_target(optics_target_id: int) -> bool:
 func _get_native_optics_target_record(optics_target_id: int) -> Dictionary:
 	return _native_target_registry.get_optics_target_record(optics_target_id)
 
-func _has_native_beam_intensity_target(beam_target_id: int) -> bool:
-	return _native_target_registry.has_beam_intensity_target(beam_target_id)
-
-func _get_native_beam_intensity_target_record(beam_target_id: int) -> Dictionary:
-	return _native_target_registry.get_beam_intensity_target_record(beam_target_id)
-
 func _get_native_target_failure(target_id: int) -> Variant:
 	return _native_target_registry.get_target_failure(target_id)
 

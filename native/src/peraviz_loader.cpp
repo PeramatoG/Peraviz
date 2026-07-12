@@ -243,6 +243,71 @@ Dictionary PeravizLoader::load_3ds_mesh_data(const String &path) const {
     return out;
 }
 
+
+#ifdef PERAVIZ_ENABLE_DMX
+// Returns true when a Beam profile is owned by a compiled Dimmer geometry.
+bool beam_profile_matches_dimmer_property(const peraviz::runtime::CompiledBeamOpticalProfile &profile, const peraviz::runtime::CompiledComponentProperty &property) {
+    if (!profile.has_projected_beam || profile.render_target_id <= 0 || property.geometry_name.empty()) {
+        return false;
+    }
+    const std::string &beam_path = profile.geometry_path;
+    const std::string &owner_path = property.geometry_name;
+    if (beam_path == owner_path) {
+        return true;
+    }
+    if (beam_path.rfind(owner_path + "/", 0) == 0) {
+        return true;
+    }
+    return beam_path.find("/" + owner_path + "/") != std::string::npos || beam_path.size() > owner_path.size() + 1 && beam_path.compare(beam_path.size() - owner_path.size() - 1, owner_path.size() + 1, "/" + owner_path) == 0;
+}
+
+// Builds setup-time Beam photometric records for one Dimmer target.
+godot::Array build_dimmer_beam_photometric_targets(const peraviz::runtime::CompiledRuntimeScene &scene, const peraviz::runtime::CompiledFixtureInstance &fixture, const peraviz::runtime::CompiledComponentProperty &property, int32_t fixture_dimmer_count) {
+    std::vector<const peraviz::runtime::CompiledBeamOpticalProfile *> fixture_profiles;
+    std::vector<const peraviz::runtime::CompiledBeamOpticalProfile *> matched_profiles;
+    for (const peraviz::runtime::CompiledBeamOpticalProfile &profile : scene.beam_profiles) {
+        if (profile.fixture_id != fixture.fixture_id || !profile.has_projected_beam || profile.render_target_id <= 0) {
+            continue;
+        }
+        fixture_profiles.push_back(&profile);
+        if (beam_profile_matches_dimmer_property(profile, property)) {
+            matched_profiles.push_back(&profile);
+        }
+    }
+    if (matched_profiles.empty() && fixture_dimmer_count == 1) {
+        matched_profiles = fixture_profiles;
+    }
+    godot::Array targets;
+    if (matched_profiles.empty()) {
+        return targets;
+    }
+    double positive_flux_sum = 0.0;
+    int32_t positive_count = 0;
+    for (const peraviz::runtime::CompiledBeamOpticalProfile *profile : matched_profiles) {
+        if (profile->luminous_flux > 0.0) {
+            positive_flux_sum += profile->luminous_flux;
+            ++positive_count;
+        }
+    }
+    const bool use_flux = positive_count == static_cast<int32_t>(matched_profiles.size()) && positive_flux_sum > 0.0;
+    const double owner_flux = use_flux ? positive_flux_sum : static_cast<double>(matched_profiles.size()) * 10000.0;
+    const double equal_fraction = 1.0 / static_cast<double>(matched_profiles.size());
+    for (const peraviz::runtime::CompiledBeamOpticalProfile *profile : matched_profiles) {
+        godot::Dictionary target;
+        const double fraction = use_flux ? profile->luminous_flux / positive_flux_sum : equal_fraction;
+        target["beam_render_target_id"] = profile->render_target_id;
+        target["geometry_key"] = godot::String(profile->geometry_key.c_str());
+        target["geometry_path"] = godot::String(profile->geometry_path.c_str());
+        target["target_luminous_flux_lm"] = use_flux ? profile->luminous_flux : owner_flux * equal_fraction;
+        target["owner_projected_flux_lm"] = owner_flux;
+        target["target_flux_fraction"] = fraction;
+        target["photometric_weight_source"] = godot::String((use_flux ? "dimmer_owner_gdtf_luminous_flux" : "dimmer_owner_equal_weight_fallback"));
+        targets.push_back(target);
+    }
+    return targets;
+}
+#endif
+
 // Returns cached fixture patch metadata from the loaded scene.
 Array PeravizLoader::get_fixtures_patch() const {
     return serialize_fixture_patches(last_scene_model_);
@@ -327,6 +392,12 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         entry["universe_id"] = fixture.universe_id;
         entry["start_address"] = fixture.start_address;
         int32_t capability_flags = 0;
+        int32_t fixture_dimmer_count = 0;
+        for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+            if (property.fixture_id == fixture.fixture_id && property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
+                ++fixture_dimmer_count;
+            }
+        }
         Array targets;
         for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
             if (property.fixture_id != fixture.fixture_id) {
@@ -366,6 +437,9 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             target["geometry_name"] = String(property.geometry_name.c_str());
             target["geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
             target["geometry_path"] = String(property.geometry_name.c_str());
+            if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) {
+                target["beam_photometric_targets"] = build_dimmer_beam_photometric_targets(scene, fixture, property, fixture_dimmer_count);
+            }
             targets.push_back(target);
             renderer_targets.push_back(target);
         }

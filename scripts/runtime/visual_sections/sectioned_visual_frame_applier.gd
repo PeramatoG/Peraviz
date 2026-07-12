@@ -8,7 +8,6 @@ const SECTION_BEAM_OPTICS: int = 4
 const SECTION_WHEEL_SELECTION: int = 5
 const SECTION_WHEEL_MOTION: int = 6
 const SECTION_TEMPORAL_OUTPUT: int = 8
-const SECTION_BEAM_EMITTER_INTENSITY: int = 14
 const DESCRIPTOR_STRIDE: int = 5
 
 const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
@@ -93,7 +92,6 @@ func _new_counts() -> Dictionary:
 		"transform_rows_generated": 0,
 		"intensity_rows_generated": 0,
 		"beam_optics_rows_generated": 0,
-		"beam_target_rows_generated": 0,
 	}
 
 func _new_skip_diagnostics() -> Dictionary:
@@ -118,12 +116,6 @@ func _new_skip_diagnostics() -> Dictionary:
 		"dimmer_lights_mutated": 0,
 		"dimmer_beams_mutated": 0,
 		"dimmer_materials_mutated": 0,
-		"beam_target_rows": 0,
-		"beam_targets_resolved": 0,
-		"beam_targets_failed": 0,
-		"lights_updated": 0,
-		"beams_updated": 0,
-		"materials_updated": 0,
 		"optics_requested": 0,
 		"optics_resolved": 0,
 		"optics_failed": 0,
@@ -138,7 +130,7 @@ func _record_failure(skip_diagnostics: Dictionary, failure: Dictionary) -> void:
 	skip_diagnostics["first_failures"] = failures
 
 func _merge_application_result(skip_diagnostics: Dictionary, row_result: Dictionary) -> void:
-	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated", "beam_target_rows", "beam_targets_resolved", "beam_targets_failed", "lights_updated", "beams_updated", "materials_updated", "optics_requested", "optics_resolved", "optics_failed", "optics_mutated"]:
+	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated", "optics_requested", "optics_resolved", "optics_failed", "optics_mutated"]:
 		skip_diagnostics[key] = int(skip_diagnostics.get(key, 0)) + int(row_result.get(key, 0))
 	if row_result.has("failure"):
 		_record_failure(skip_diagnostics, row_result.get("failure", {}))
@@ -172,13 +164,6 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 		SECTION_EMITTER_COLOR:
 			if float_base + 2 >= floats.size(): return {"applied": false}
 			light_apply_service.apply_emitter_color(loader, fixture_uuid, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))
-		SECTION_BEAM_EMITTER_INTENSITY:
-			counts["beam_target_rows_generated"] += 1
-			if float_base + 5 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid beam intensity payload", "fixture_uuid": fixture_uuid}}
-			var beam_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
-			var beam_result: Dictionary = light_apply_service.apply_beam_emitter_intensity(loader, fixture_uuid, beam_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4], floats[float_base + 5])
-			beam_result["applied"] = bool(beam_result.get("beam_intensity_applied", false)) or bool(beam_result.get("surface_energy_applied", false))
-			return _categorized_beam_intensity_result(loader, fixture_uuid, beam_target_id, beam_result)
 		SECTION_BEAM_OPTICS:
 			counts["beam_optics_rows_generated"] += 1
 			if float_base + 2 >= floats.size(): return {"applied": false}
@@ -224,20 +209,6 @@ func _categorized_dimmer_result(loader: Node, fixture_uuid: String, dimmer_targe
 	result["dimmer_failed"] = 1 if dimmer_target_id > 0 and not dimmer_applied else 0
 	if not bool(result.get("applied", false)):
 		result["failure"] = {"reason": str(result.get("failure_reason", "dimmer target not mutated")), "fixture_uuid": fixture_uuid, "dimmer_target_id": dimmer_target_id, "target_failure": _target_failure_for(loader, dimmer_target_id), "lights_considered": int(result.get("lights_considered", 0)), "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0))}
-	return result
-
-
-func _categorized_beam_intensity_result(loader: Node, fixture_uuid: String, beam_target_id: int, result: Dictionary) -> Dictionary:
-	var target_resolved: bool = bool(result.get("target_resolved", false))
-	var beam_applied: bool = bool(result.get("beam_intensity_applied", false)) or bool(result.get("surface_energy_applied", false))
-	result["beam_target_rows"] = 1 if beam_target_id > 0 else 0
-	result["beam_targets_resolved"] = 1 if target_resolved else 0
-	result["beam_targets_failed"] = 1 if beam_target_id > 0 and not beam_applied else 0
-	result["lights_updated"] = int(result.get("lights_updated", 0))
-	result["beams_updated"] = int(result.get("beams_updated", 0))
-	result["materials_updated"] = int(result.get("materials_applied", 0))
-	if not bool(result.get("applied", false)):
-		result["failure"] = {"reason": str(result.get("failure_reason", "beam target not mutated")), "fixture_uuid": fixture_uuid, "beam_target_id": beam_target_id, "target_failure": _target_failure_for(loader, beam_target_id), "beam_resource_resolved": bool(result.get("beam_resource_resolved", false)), "light_resource_resolved": bool(result.get("light_resource_resolved", false))}
 	return result
 
 func _target_failure_for(loader: Node, target_id: int) -> Variant:
