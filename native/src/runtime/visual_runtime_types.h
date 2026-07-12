@@ -91,6 +91,10 @@ struct CompiledBeamOpticalProfile {
     std::string geometry_key;
     int32_t render_target_id = 0;
     std::string beam_type = "Wash";
+    std::string beam_type_raw;
+    std::string beam_type_effective = "Wash";
+    std::string beam_type_source = "official_default";
+    bool beam_type_valid = true;
     double beam_angle_deg = 25.0;
     double field_angle_deg = 25.0;
     double beam_radius_m = 0.05;

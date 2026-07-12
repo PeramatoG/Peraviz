@@ -1,6 +1,8 @@
 extends RefCounted
 class_name FixtureLightApplyService
 
+const BeamOpticsControllerScript = preload("res://scripts/beam_optics_controller.gd")
+
 const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
 const VISUAL_CHANGE_DIMMER: int = 1 << 1
 const VISUAL_CHANGE_COLOR: int = 1 << 2
@@ -196,7 +198,7 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 	var near_radius: float = max(float(diagnostics.get("render_near_radius_m", measured_radius)), 0.0)
 	if near_radius <= 0.0:
 		near_radius = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
-	return {
+	var params := {
 		"beam_angle": beam_angle,
 		"beam_visual_length_m": beam_range,
 		"beam_range": beam_range,
@@ -207,13 +209,23 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		"measured_model_aperture_radius_m": float(diagnostics.get("measured_model_aperture_radius_m", measured_radius)),
 		"render_near_radius_source": str(diagnostics.get("render_near_radius_source", "measured_model_lens" if measured_radius > 0.0 else "official_beam_radius_no_model")),
 		"radius_mismatch_ratio": float(diagnostics.get("radius_mismatch_ratio", 1.0)),
-		"beam_type": str(profile.get("beam_type", "Wash")),
+		"beam_type": str(profile.get("beam_type_effective", profile.get("beam_type", "Wash"))),
+		"beam_type_effective": str(profile.get("beam_type_effective", profile.get("beam_type", "Wash"))),
+		"beam_type_raw": str(profile.get("beam_type_raw", "")),
+		"beam_type_source": str(profile.get("beam_type_source", "official_default")),
+		"beam_type_valid": bool(profile.get("beam_type_valid", true)),
+		"field_angle": float(profile.get("field_angle", beam_angle)),
+		"field_angle_deg": float(profile.get("field_angle", beam_angle)),
 		"rectangle_ratio": float(profile.get("rectangle_ratio", 1.7777)),
 		"normalized_dimmer": dimmer_norm,
 		"scaled_intensity": beam_intensity,
 		"beam_intensity": beam_intensity,
 		"intensity_max": 50.0,
 	}
+	var loader: Node = light.get_tree().current_scene if light != null and light.get_tree() != null else null
+	var settings_value: Variant = loader.get("_visual_settings") if loader != null else {}
+	var settings: Dictionary = settings_value if settings_value is Dictionary else {}
+	return BeamOpticsControllerScript.FinalizeBeamParams(params, settings)
 
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1

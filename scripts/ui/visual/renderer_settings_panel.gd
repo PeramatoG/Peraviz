@@ -33,6 +33,9 @@ func _build_ui() -> void:
 	_add_slider_row("Light fog energy", "light_volumetric_fog_energy", 0.0, 100.0, 0.5)
 	_add_option_row("Beam rendering", "beam_render_mode", ["Volumetric (default)", "Lightweight (legacy)"])
 	_add_option_row("Beam quality", "beam_quality", ["Low", "Medium", "High"])
+	_add_option_row("Surface light falloff", "surface_light_falloff_mode", ["Balanced", "Physical inverse-square"])
+	_add_slider_row("Beam extinction", "beam_extinction_multiplier", 0.0, 3.0, 0.05)
+	_add_slider_row("Far beam visibility", "beam_far_visibility_multiplier", 0.0, 2.0, 0.05)
 	_add_color_row("Background color", "background_color")
 
 func set_advanced_mode(enabled: bool) -> void:

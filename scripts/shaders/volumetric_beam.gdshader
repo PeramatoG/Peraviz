@@ -36,6 +36,13 @@ instance uniform float beam_overdrive : hint_range(0.0, 1.0) = 0.0;
 instance uniform float beam_visibility : hint_range(0.0, 1.0) = 1.0;
 uniform bool gobo_mirror_x = true;
 uniform bool gobo_mirror_z = false;
+uniform vec2 appearance_core_field = vec2(0.7, 1.0);
+uniform vec2 appearance_edge_exp = vec2(0.1, 1.1);
+uniform vec2 appearance_gain_floor = vec2(1.0, 0.08);
+uniform vec4 appearance_extinction = vec4(0.01, 1.0, 1.0, 0.12);
+uniform int appearance_shape = 0;
+uniform vec2 appearance_rect_half_extents = vec2(1.0, 1.0);
+
 
 
 varying vec3 v_view;
@@ -65,22 +72,38 @@ vec2 project_gobo_uv(vec3 local_pos) {
 }
 
 
-float radial_profile_from_local(vec3 local_pos) {
+float normalized_radius_from_local(vec3 local_pos) {
 	float source_y = 0.5 * cone_height;
-	float axial_dist = max(abs(source_y - local_pos.y), 0.001);
-	float projection_scale = cone_height / axial_dist;
-	float projection_radius = max(gobo_projection_radius, 0.001);
-	float local_radius = projection_radius / max(projection_scale, 0.0001);
-	float radius_norm = clamp(length(local_pos.xz) / max(local_radius, 0.0001), 0.0, 1.0);
+	float axial_progress = clamp((source_y - local_pos.y) / max(cone_height, 0.0001), 0.0, 1.0);
+	float projection_scale = cone_height / max(axial_progress * cone_height, 0.001);
+	float local_radius = max(gobo_projection_radius, 0.001) / max(projection_scale, 0.0001);
+	if (appearance_shape == 1) {
+		return max(abs(local_pos.x) / max(local_radius * appearance_rect_half_extents.x, 0.0001), abs(local_pos.z) / max(local_radius * appearance_rect_half_extents.y, 0.0001));
+	}
+	return length(local_pos.xz) / max(local_radius, 0.0001);
+}
 
-	// Keep a wider bright center and apply most softening near the outer rim only.
-	float broad_core = 1.0 - smoothstep(0.0, 0.78, radius_norm);
-	float shoulder_profile = 1.0 - smoothstep(0.52, 0.92, radius_norm);
-	float radial_profile = mix(shoulder_profile, 1.0, 0.92 * broad_core);
+float radial_profile_from_local(vec3 local_pos) {
+	float radius_norm = clamp(normalized_radius_from_local(local_pos), 0.0, 1.0);
+	float core = clamp(appearance_core_field.x, 0.0, 0.98);
+	float field = clamp(max(appearance_core_field.y, core + 0.01), core + 0.01, 1.0);
+	float softness = clamp(appearance_edge_exp.x, 0.01, 0.9);
+	float transition_start = clamp(min(core, field - softness), 0.0, field - 0.005);
+	float transition_t = smoothstep(transition_start, field, radius_norm);
+	float center_gain = mix(max(appearance_gain_floor.x, 1.0), 1.0, transition_t);
+	float envelope = mix(1.0, clamp(appearance_gain_floor.y, 0.0, 0.5), transition_t);
+	float edge_gate = 1.0 - smoothstep(field, 1.0, radius_norm);
+	if (radius_norm >= 1.0) {
+		edge_gate = 0.0;
+	}
+	return max(pow(clamp(envelope * edge_gate, 0.0, 1.0), max(appearance_edge_exp.y, 0.05)) * center_gain, 0.0);
+}
 
-	// Outer feather only in the final rim band to avoid inner-cone look.
-	float edge_feather = 1.0 - smoothstep(0.9, 1.0, radius_norm);
-	return radial_profile * mix(1.0, edge_feather, 0.82);
+float longitudinal_visibility_from_axial(float axial_progress) {
+	float distance_m = clamp(axial_progress, 0.0, 1.0) * max(cone_height, 0.0001);
+	float transmittance = exp(-max(appearance_extinction.x, 0.0) * distance_m);
+	float shaped = pow(clamp(transmittance, 0.0, 1.0), max(appearance_extinction.y, 0.05)) * max(appearance_extinction.z, 0.0);
+	return clamp(max(shaped, clamp(appearance_extinction.w, 0.0, 0.5)), 0.0, 1.0);
 }
 
 float sample_gobo_mask(vec2 uv) {
@@ -114,11 +137,11 @@ void fragment() {
 	float dist = length(v_view);
 	float near_alpha = smoothstep(near_fade_start, near_fade_end, dist);
 	float far_alpha = 1.0 - smoothstep(far_fade_start, far_fade_end, dist);
-	float dist_fade = max(near_alpha * far_alpha, 0.35);
+	float dist_fade = clamp(near_alpha * far_alpha, 0.0, 1.0);
 
 	float source_y = 0.5 * cone_height;
 	float axial_progress = clamp((source_y - v_local.y) / max(cone_height, 0.0001), 0.0, 1.0);
-	float apex_fade = pow(max(1.0 - axial_progress, 0.001), max(falloff_power * longitudinal_falloff, 0.1));
+	float apex_fade = longitudinal_visibility_from_axial(axial_progress);
 	float base_brightness = base_color.a * apex_fade;
 
 	vec3 n = normalize(NORMAL);
@@ -150,8 +173,8 @@ void fragment() {
 	float visibility = clamp(beam_visibility, 0.0, 1.0);
 	float overdrive_alpha_gain = 1.0 + (2.6 * beam_overdrive);
 	float physical_alpha = feather_alpha * radial_profile * depth_mult * dist_fade * max(haze_density, 0.2) * intensity_alpha * overdrive_alpha_gain * visibility;
-	float radial_alpha_floor = 0.04 * visibility * mix(0.25, 1.0, pow(clamp(radial_profile, 0.0, 1.0), 1.2)) * mix(1.0, 1.6, beam_overdrive);
-	float final_alpha = max(physical_alpha, radial_alpha_floor);
+	float radial_alpha_floor = 0.04 * visibility * radial_profile * apex_fade * mix(1.0, 1.6, beam_overdrive);
+	float final_alpha = physical_alpha + radial_alpha_floor;
 
 	float gobo_mask = 1.0;
 	if (use_gobo) {
@@ -160,6 +183,6 @@ void fragment() {
 	}
 
 	ALBEDO = base_color.rgb * brightness * gobo_mask;
-	ALPHA = clamp(final_alpha * max(gobo_mask, 0.8), 0.0, 1.0);
+	ALPHA = clamp(final_alpha * gobo_mask, 0.0, 1.0);
 	EMISSION = ALBEDO * (1.6 + (8.0 * clamp(beam_intensity, 0.0, 1.0)) + (34.0 * beam_overdrive));
 }

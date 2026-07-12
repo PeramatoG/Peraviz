@@ -2,6 +2,8 @@ extends RefCounted
 
 class_name NativeRendererTargetRegistry
 
+const BeamOpticsControllerScript = preload("res://scripts/beam_optics_controller.gd")
+
 var _node_index: Dictionary = {}
 var _scene_registry: Object = null
 var _callbacks: Dictionary = {}
@@ -298,7 +300,11 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 			render_radius = max(float(optical_profile.get("render_near_radius_m", optical_profile.get("official_beam_radius_m", 0.03))), 0.001)
 		var beam_range: float = clamp(float(existing_params.get("beam_visual_length_m", existing_params.get("beam_range", light.spot_range))), 1.0, 150.0)
 		var params: Dictionary = existing_params.duplicate(false)
-		params["beam_type"] = str(optical_profile.get("beam_type", params.get("beam_type", "Wash")))
+		params["beam_type"] = str(optical_profile.get("beam_type_effective", optical_profile.get("beam_type", params.get("beam_type", "Wash"))))
+		params["beam_type_effective"] = params["beam_type"]
+		params["beam_type_raw"] = str(optical_profile.get("beam_type_raw", params.get("beam_type_raw", "")))
+		params["beam_type_source"] = str(optical_profile.get("beam_type_source", params.get("beam_type_source", "official_default")))
+		params["beam_type_valid"] = bool(optical_profile.get("beam_type_valid", params.get("beam_type_valid", true)))
 		params["beam_angle"] = float(optical_profile.get("beam_angle", params.get("beam_angle", 25.0)))
 		params["field_angle"] = float(optical_profile.get("field_angle", params.get("field_angle", 25.0)))
 		params["lens_radius"] = render_radius
@@ -312,6 +318,7 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		params["scaled_intensity"] = float(params.get("scaled_intensity", 0.0))
 		params["beam_intensity"] = float(params.get("beam_intensity", 0.0))
 		params["normalized_dimmer"] = float(params.get("normalized_dimmer", 0.0))
+		params = BeamOpticsControllerScript.FinalizeBeamParams(params, params)
 		light.set_meta("peraviz_beam_last_params", params)
 		var callback: Callable = _callbacks.get("apply_beam_optics", Callable())
 		if callback.is_valid():

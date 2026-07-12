@@ -101,16 +101,42 @@ void check_generated_id(std::unordered_set<int32_t> &ids, runtime::CompiledRunti
 }
 
 
-// Normalizes official GDTF BeamType values into renderer-facing profile labels.
+// Normalizes explicit official GDTF BeamType values into renderer-facing labels.
 std::string normalize_beam_type(const std::string &beam_type) {
     const std::string lower = dmx::lower_ascii(dmx::trim_ascii(beam_type));
     if (lower == "wash") return "Wash";
+    if (lower == "spot") return "Spot";
     if (lower == "pc") return "PC";
     if (lower == "fresnel") return "Fresnel";
     if (lower == "rectangle") return "Rectangle";
     if (lower == "none") return "None";
     if (lower == "glow") return "Glow";
-    return "Wash";
+    return "";
+}
+
+// Resolves BeamType provenance while preserving the official missing-value Wash default.
+void resolve_beam_type(runtime::CompiledBeamOpticalProfile &profile, runtime::CompiledRuntimeScene &out, const SceneNode &node, const SceneModel::FixturePatch &patch) {
+    profile.beam_type_raw = node.has_beam_type ? node.beam_type : "";
+    if (!node.has_beam_type) {
+        profile.beam_type = "Wash";
+        profile.beam_type_effective = "Wash";
+        profile.beam_type_source = "official_default";
+        profile.beam_type_valid = true;
+        return;
+    }
+    const std::string normalized = normalize_beam_type(node.beam_type);
+    if (!normalized.empty()) {
+        profile.beam_type = normalized;
+        profile.beam_type_effective = normalized;
+        profile.beam_type_source = "explicit";
+        profile.beam_type_valid = true;
+        return;
+    }
+    profile.beam_type = "Spot";
+    profile.beam_type_effective = "Spot";
+    profile.beam_type_source = "invalid_fallback";
+    profile.beam_type_valid = false;
+    out.diagnostics.push_back({"PVZ-GDTF-BEAMTYPE-UNKNOWN", "warning", "Unknown GDTF BeamType uses a conservative Spot appearance fallback.", patch.fixture_uuid + " geometry=" + node.gdtf_geometry_path + " beam_type=" + node.beam_type});
 }
 
 // Appends setup-time Beam profiles for exact GDTF Beam geometry nodes in one fixture patch.
@@ -124,7 +150,7 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
         profile.geometry_path = node.gdtf_geometry_path;
         profile.geometry_key = node.gdtf_geometry_key;
         profile.render_target_id = stable_id(patch.fixture_uuid, "beam:target:" + node.gdtf_geometry_path);
-        profile.beam_type = normalize_beam_type(node.has_beam_type ? node.beam_type : "Wash");
+        resolve_beam_type(profile, out, node, patch);
         profile.beam_angle_deg = node.has_beam_angle ? node.beam_angle : profile.beam_angle_deg;
         profile.field_angle_deg = node.has_field_angle ? node.field_angle : profile.field_angle_deg;
         profile.beam_radius_m = node.has_beam_radius ? node.beam_radius : profile.beam_radius_m;
@@ -135,7 +161,7 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
         profile.beam_angle_source = node.has_beam_angle ? "explicit" : "fallback";
         profile.field_angle_source = node.has_field_angle ? "explicit" : "fallback";
         profile.beam_radius_source = node.has_beam_radius ? "explicit" : "fallback";
-        profile.has_projected_beam = profile.beam_type != "None" && profile.beam_type != "Glow";
+        profile.has_projected_beam = profile.beam_type_effective != "None" && profile.beam_type_effective != "Glow";
         if (profile.beam_radius_m <= 0.0 || profile.beam_angle_deg < 0.0 || profile.rectangle_ratio <= 0.0) {
             profile.valid = false;
             out.diagnostics.push_back({"PVZ-GDTF-BEAM-PROFILE-INVALID", "warning", "Beam geometry profile contains invalid optical values.", patch.fixture_uuid + " geometry=" + node.gdtf_geometry_path});

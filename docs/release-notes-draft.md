@@ -7,6 +7,7 @@ Changes since the previous Peraviz release.
 - Improved documentation reliability by consolidating the runtime architecture guidance into one concise source of truth.
 
 ## Improvements
+- Added a Beam Appearance Baseline that preserves GDTF BeamType provenance, uses the official missing-value Wash default, applies visible core/field beam resources for hard or soft edges, keeps long-beam extinction readable, and separates surface-light falloff modes.
 
 - Added a 1 m reference cube toggle in the viewer toolbar so MVR scene scale can be checked directly in Godot.
 - Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.

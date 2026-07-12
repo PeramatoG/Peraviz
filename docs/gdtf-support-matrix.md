@@ -45,3 +45,9 @@ Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters
 
 
 See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.
+
+## Beam appearance baseline
+
+Peraviz uses official GDTF `BeamType` values to select conservative renderer defaults: Spot and Rectangle are hard-edged, Wash/PC/Fresnel are soft-edged, and None/Glow do not draw projected visible beams. FieldAngle may influence only the visual envelope for soft BeamTypes when it is valid and larger than BeamAngle; it does not change geometry.
+
+BeamType provenance is preserved for native Beam profiles. Missing BeamType uses the official GDTF default `Wash`; explicit supported values are preserved; unknown non-empty values are diagnosed separately and use a conservative Peraviz fallback.
