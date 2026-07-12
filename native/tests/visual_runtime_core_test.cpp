@@ -151,6 +151,17 @@ int intensity_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
     return 0;
 }
 
+
+// Finds the integer payload offset for the emitter intensity section.
+int intensity_int_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+            return frame.descriptors[index + 2];
+        }
+    }
+    return -1;
+}
+
 // Finds the float payload offset for the emitter intensity section.
 int intensity_float_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
     for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
@@ -475,8 +486,8 @@ int test_dimmer_ownership_limits_beam_targets() {
     scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
     scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerA"});
     scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
-    scene.properties.push_back({30001, 1, 601, 1601, CompiledSemantic::Dimmer, {{1, 1.0}}, 0, "Head/CellA"});
-    scene.properties.push_back({30002, 1, 602, 1602, CompiledSemantic::Dimmer, {{2, 1.0}}, 0, "Head/CellB"});
+    scene.properties.push_back({30001, 1, 601, 1601, CompiledSemantic::Dimmer, {{1, 1.0}}, 0, "CellA"});
+    scene.properties.push_back({30002, 1, 602, 1602, CompiledSemantic::Dimmer, {{2, 1.0}}, 0, "CellB"});
     scene.beam_profiles.push_back({1, "fixture-1", 0, "Head/CellA/Beam", "fixture-1/Head/CellA/Beam", 7001, "Wash", "", "Wash", "explicit", true, 25.0, 25.0, 0.05, 1.0, 1.7777, 500.0, 1000.0, 0.5, 6000.0, "fallback", "fallback", "fallback", "official_beam_type", "gdtf_luminous_flux", true, true});
     scene.beam_profiles.push_back({1, "fixture-1", 0, "Head/CellB/Beam", "fixture-1/Head/CellB/Beam", 7002, "Wash", "", "Wash", "explicit", true, 25.0, 25.0, 0.05, 1.0, 1.7777, 500.0, 1000.0, 0.5, 6000.0, "fallback", "fallback", "fallback", "official_beam_type", "gdtf_luminous_flux", true, true});
     PeravizVisualRuntimeCore runtime;
@@ -490,6 +501,36 @@ int test_dimmer_ownership_limits_beam_targets() {
     const auto visual = runtime.consume_latest_visual_frame();
     if (intensity_row_count(visual) != 1) return fail("Expected one Beam target row for the changed cell Dimmer");
     if (visual.integers.size() < 2 || visual.integers[1] != 7001) return fail("Expected CellA Dimmer to update only CellA Beam target");
+    return 0;
+}
+
+// Verifies a single master Dimmer falls back to all fixture Beam targets when GDTF paths cannot be directly matched.
+int test_single_master_dimmer_uses_fixture_beams_when_paths_do_not_match() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene = make_scene();
+    scene.properties[0].geometry_name = "DimmerMaster";
+    scene.beam_profiles.clear();
+    for (int index = 0; index < 3; ++index) {
+        CompiledBeamOpticalProfile profile;
+        profile.fixture_id = 1;
+        profile.render_target_id = 8100 + index;
+        profile.geometry_path = "Clamp/Yoke/Body/Pixel" + std::to_string(index) + "/Beam";
+        profile.luminous_flux = 100.0;
+        profile.fixture_projected_flux_lm = 300.0;
+        profile.target_flux_fraction = 1.0 / 3.0;
+        profile.has_projected_beam = true;
+        scene.beam_profiles.push_back(profile);
+    }
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(8, 0);
+    frame[0] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (intensity_row_count(visual) != 3) return fail("Expected unmatched single master Dimmer to emit all fixture Beam targets");
+    const int int_offset = intensity_int_offset(visual);
+    if (int_offset < 0 || visual.integers.size() < static_cast<size_t>(int_offset + 8)) return fail("Expected intensity integer payloads for fallback master Dimmer");
+    if (visual.integers[static_cast<size_t>(int_offset + 1)] != 8100 || visual.integers[static_cast<size_t>(int_offset + 4)] != 8101 || visual.integers[static_cast<size_t>(int_offset + 7)] != 8102) return fail("Expected fallback master Dimmer rows to use Beam render target IDs");
     return 0;
 }
 
@@ -510,5 +551,6 @@ int main() {
     if (test_photometric_fallback_and_exclusions() != 0) return 1;
     if (test_master_dimmer_distributes_beam_energy() != 0) return 1;
     if (test_dimmer_ownership_limits_beam_targets() != 0) return 1;
+    if (test_single_master_dimmer_uses_fixture_beams_when_paths_do_not_match() != 0) return 1;
     return 0;
 }

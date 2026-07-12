@@ -77,6 +77,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         beam_targets_by_fixture_[profile.fixture_id].push_back({profile.render_target_id, profile.geometry_path, profile.luminous_flux, profile.fixture_projected_flux_lm, profile.target_flux_fraction});
     }
     int installed_properties = 0;
+    std::unordered_map<int, std::vector<int32_t>> dimmer_property_ids_by_fixture;
     for (const CompiledComponentProperty &property : scene.properties) {
         const SemanticParameter parameter = semantic_parameter_for_compiled(property.semantic);
         if (property.property_id <= 0 || property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
@@ -117,6 +118,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Zoom) render_params_by_fixture_[property.fixture_id].has_zoom = true;
         if (parameter == SemanticParameter::Dimmer) {
+            dimmer_property_ids_by_fixture[property.fixture_id].push_back(property.property_id);
             const auto targets_it = beam_targets_by_fixture_.find(property.fixture_id);
             if (targets_it != beam_targets_by_fixture_.end()) {
                 for (const BeamPhotometricTarget &target : targets_it->second) {
@@ -141,6 +143,18 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     }
     if (installed_properties == 0) {
         diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported Dimmer/Pan/Tilt/Zoom properties.", "CompiledRuntimeScene"});
+    }
+    for (const auto &[fixture_id, target_records] : beam_targets_by_fixture_) {
+        const auto properties_it = dimmer_property_ids_by_fixture.find(fixture_id);
+        if (properties_it == dimmer_property_ids_by_fixture.end() || properties_it->second.empty()) continue;
+        bool has_assigned_target = false;
+        for (int32_t property_id : properties_it->second) {
+            const auto assigned_it = beam_targets_by_dimmer_property_.find(property_id);
+            has_assigned_target = has_assigned_target || (assigned_it != beam_targets_by_dimmer_property_.end() && !assigned_it->second.empty());
+        }
+        if (!has_assigned_target && properties_it->second.size() == 1U) {
+            beam_targets_by_dimmer_property_[properties_it->second.front()] = target_records;
+        }
     }
     for (auto &[_, universe] : universes_) {
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
@@ -522,7 +536,11 @@ bool PeravizVisualRuntimeCore::beam_target_belongs_to_property(const BeamPhotome
     if (target.geometry_path.empty() || property.geometry_name.empty()) return false;
     if (target.geometry_path == property.geometry_name) return true;
     const std::string prefix = property.geometry_name + "/";
-    return target.geometry_path.rfind(prefix, 0) == 0;
+    if (target.geometry_path.rfind(prefix, 0) == 0) return true;
+    const std::string infix = "/" + property.geometry_name + "/";
+    if (target.geometry_path.find(infix) != std::string::npos) return true;
+    const std::string suffix = "/" + property.geometry_name;
+    return target.geometry_path.size() > suffix.size() && target.geometry_path.compare(target.geometry_path.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
 // Compares two component values using section-appropriate tolerances.
