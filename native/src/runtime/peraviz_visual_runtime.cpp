@@ -30,6 +30,7 @@ void PeravizVisualRuntimeCore::clear() {
     tilt_component_id_by_fixture_.clear();
     installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
+    beam_targets_by_fixture_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
@@ -44,6 +45,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     tilt_component_id_by_fixture_.clear();
     installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
+    beam_targets_by_fixture_.clear();
     diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
     if (scene.fixtures.empty()) {
@@ -67,6 +69,10 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         params.spot_multiplier = fixture.spot_multiplier;
         params.beam_multiplier = fixture.beam_multiplier;
         render_params_by_fixture_[fixture.fixture_id] = params;
+    }
+    for (const CompiledBeamOpticalProfile &profile : scene.beam_profiles) {
+        if (profile.fixture_id <= 0 || profile.render_target_id <= 0 || !profile.has_projected_beam) continue;
+        beam_targets_by_fixture_[profile.fixture_id].push_back({profile.render_target_id, profile.luminous_flux, profile.fixture_projected_flux_lm, profile.target_flux_fraction});
     }
     int installed_properties = 0;
     for (const CompiledComponentProperty &property : scene.properties) {
@@ -204,7 +210,18 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 }
                 add_visual_mask_stats(change.changed_visual_mask);
                 ++stats_.fixtures_dirty;
-                rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, program.property.render_target_id, change.changed_visual_mask, state});
+                if (program.parameter == SemanticParameter::Dimmer) {
+                    const auto targets_it = beam_targets_by_fixture_.find(program.property.fixture_id);
+                    if (targets_it != beam_targets_by_fixture_.end() && !targets_it->second.empty()) {
+                        for (const BeamPhotometricTarget &target : targets_it->second) {
+                            rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, target.render_target_id, change.changed_visual_mask, scale_state_for_beam_target(state, target)});
+                        }
+                    } else {
+                        rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, program.property.render_target_id, change.changed_visual_mask, state});
+                    }
+                } else {
+                    rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, program.property.render_target_id, change.changed_visual_mask, state});
+                }
                 continue;
             }
 
@@ -477,6 +494,17 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
     state.beam_angle = static_cast<float>(beam_angle);
     state.beam_intensity = static_cast<float>(std::clamp(state.dimmer * params.beam_multiplier, 0.0, beam_intensity_max));
     state.material_energy = state.dimmer * 4.0f;
+}
+
+// Applies setup-time Beam photometric weights to one emitted target row.
+PeravizVisualRuntimeCore::ComponentState PeravizVisualRuntimeCore::scale_state_for_beam_target(const ComponentState &state, const BeamPhotometricTarget &target) {
+    constexpr double energy_scale = 0.02;
+    ComponentState scaled = state;
+    const double fraction = std::clamp(target.target_flux_fraction, 0.0, 1.0);
+    scaled.beam_energy = static_cast<float>(std::max(target.target_luminous_flux_lm, 0.0) * scaled.dimmer * energy_scale);
+    scaled.spot_energy = static_cast<float>(scaled.spot_energy * fraction);
+    scaled.beam_intensity = static_cast<float>(scaled.beam_intensity * fraction);
+    return scaled;
 }
 
 // Compares two component values using section-appropriate tolerances.

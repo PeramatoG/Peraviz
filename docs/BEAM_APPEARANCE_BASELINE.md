@@ -65,3 +65,8 @@ The first baseline attempted to evaluate radial energy on a hollow cone shell. T
 Volumetric mode uses the same bounded layered-volume fallback until a full analytic ray integration is introduced. The field and core resources are created once and reused; Low/Medium/High quality settings keep their existing shader cost and do not add CPU raymarching.
 
 `edge_softness` is now part of the radial envelope. The transition starts at `min(core_radius_ratio, field_radius_ratio - edge_softness)` and ends at `field_radius_ratio`; larger softness therefore begins the center-to-edge transition earlier without changing geometry. Visibility floors are multiplied by the radial and longitudinal envelopes instead of being applied as a constant final alpha, so they no longer erase Spot/Wash edge differences or fill closed gobo regions uniformly.
+
+
+### Projected Beam photometric weighting
+
+Peraviz computes projected Beam target luminous-flux totals and target fractions during native scene compilation. Runtime Dimmer updates consume these immutable target records and emit target-oriented intensity rows, so multi-emitter fixtures distribute declared Beam energy across projected targets instead of applying full fixture energy to every Beam geometry. BeamType `None` and `Glow` are excluded from projected-beam totals, and missing Beam photometry falls back to deterministic equal weighting.

@@ -101,11 +101,14 @@ struct CompiledBeamOpticalProfile {
     double throw_ratio = 1.0;
     double rectangle_ratio = 1.7777;
     double luminous_flux = 10000.0;
+    double fixture_projected_flux_lm = 10000.0;
+    double target_flux_fraction = 1.0;
     double color_temperature = 6000.0;
     std::string beam_angle_source = "fallback";
     std::string field_angle_source = "fallback";
     std::string beam_radius_source = "fallback";
     std::string aperture_source = "official_beam_type";
+    std::string photometric_weight_source = "fallback";
     bool has_projected_beam = true;
     bool valid = true;
 };

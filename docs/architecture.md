@@ -119,3 +119,8 @@ See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for th
 Beam appearance is resolved in Godot from the native transported Beam profile and cached as renderer parameters. Native/parser-owned BeamType, BeamAngle, FieldAngle, BeamRadius, RectangleRatio, and target identity remain authoritative; the renderer does not parse GDTF XML or infer fixture names during live playback.
 
 Native BeamOptics profiles now carry BeamType provenance (`raw`, effective value, source, validity) into renderer target records. Godot finalizes one Beam render parameter dictionary after BeamType, FieldAngle, RectangleRatio, visual length, aperture, intensity, and visual settings are known.
+
+
+### Projected Beam photometric weighting
+
+Peraviz computes projected Beam target luminous-flux totals and target fractions during native scene compilation. Runtime Dimmer updates consume these immutable target records and emit target-oriented intensity rows, so multi-emitter fixtures distribute declared Beam energy across projected targets instead of applying full fixture energy to every Beam geometry. BeamType `None` and `Glow` are excluded from projected-beam totals, and missing Beam photometry falls back to deterministic equal weighting.

@@ -51,3 +51,8 @@ See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for th
 Peraviz uses official GDTF `BeamType` values to select conservative renderer defaults: Spot and Rectangle are hard-edged, Wash/PC/Fresnel are soft-edged, and None/Glow do not draw projected visible beams. FieldAngle may influence only the visual envelope for soft BeamTypes when it is valid and larger than BeamAngle; it does not change geometry.
 
 BeamType provenance is preserved for native Beam profiles. Missing BeamType uses the official GDTF default `Wash`; explicit supported values are preserved; unknown non-empty values are diagnosed separately and use a conservative Peraviz fallback.
+
+
+### Projected Beam photometric weighting
+
+Peraviz computes projected Beam target luminous-flux totals and target fractions during native scene compilation. Runtime Dimmer updates consume these immutable target records and emit target-oriented intensity rows, so multi-emitter fixtures distribute declared Beam energy across projected targets instead of applying full fixture energy to every Beam geometry. BeamType `None` and `Glow` are excluded from projected-beam totals, and missing Beam photometry falls back to deterministic equal weighting.

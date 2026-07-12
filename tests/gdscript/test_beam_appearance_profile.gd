@@ -2,6 +2,7 @@ extends SceneTree
 
 const BeamAppearanceProfileScript = preload("res://scripts/beam_appearance_profile.gd")
 const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+const LegacyConeBeamRendererScript = preload("res://scripts/beam_renderers/legacy_cone_beam_renderer.gd")
 
 var failures := 0
 
@@ -66,3 +67,4 @@ func _run() -> void:
 	_check(BeamAppearanceProfileScript.radial_energy(spot, 0.96) != BeamAppearanceProfileScript.radial_energy(wash, 0.96), "Visibility floors should not alias Spot and Wash edge samples")
 	_check_close(BeamAppearanceProfileScript.surface_attenuation_exponent(0), 1.0, 0.0001, "Balanced surface falloff should use practical exponent")
 	_check_close(BeamAppearanceProfileScript.surface_attenuation_exponent(1), 2.0, 0.0001, "Physical surface falloff should use inverse-square exponent")
+	_check_close(LegacyConeBeamRendererScript.FIELD_LAYER_ENERGY_FRACTION + LegacyConeBeamRendererScript.CORE_LAYER_ENERGY_FRACTION, 1.0, 0.0001, "Field and core layers should conserve target visual energy")

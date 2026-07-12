@@ -151,6 +151,16 @@ int intensity_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
     return 0;
 }
 
+// Finds the float payload offset for the emitter intensity section.
+int intensity_float_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+            return frame.descriptors[index + 3];
+        }
+    }
+    return -1;
+}
+
 // Verifies repeated Dimmer properties emit independent target rows without last-target-wins behavior.
 int test_independent_dimmer_targets() {
     using namespace peraviz::runtime;
@@ -358,6 +368,104 @@ int test_beam_type_defaults_and_provenance() {
     return 0;
 }
 
+// Builds a scene model with synthetic Beam geometry photometrics.
+peraviz::SceneModel make_photometric_model(int beam_count, float luminous_flux, const std::string &beam_type = "Wash") {
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"fixture-a", 1, 1, "Mode", "fixture.gdtf"});
+    for (int index = 0; index < beam_count; ++index) {
+        peraviz::SceneNode beam;
+        beam.is_beam = true;
+        beam.gdtf_geometry_path = "Head/Beam" + std::to_string(index);
+        beam.gdtf_geometry_key = "fixture-a/" + beam.gdtf_geometry_path;
+        beam.has_beam_type = true;
+        beam.beam_type = beam_type;
+        if (luminous_flux >= 0.0f) {
+            beam.has_luminous_flux = true;
+            beam.luminous_flux = luminous_flux;
+        }
+        model.nodes.push_back(beam);
+    }
+    return model;
+}
+
+// Verifies setup-time projected Beam flux fractions for common single and multi-emitter fixtures.
+int test_projected_beam_photometric_fractions() {
+    const auto single = peraviz::gdtf_runtime::compile_runtime_scene(make_photometric_model(1, 20000.0f), -1);
+    if (single.beam_profiles.size() != 1) return fail("Expected one Beam photometric profile");
+    if (std::fabs(single.beam_profiles[0].fixture_projected_flux_lm - 20000.0) > 0.001) return fail("Expected single Beam total flux to remain 20000 lm");
+    if (std::fabs(single.beam_profiles[0].target_flux_fraction - 1.0) > 0.001) return fail("Expected single Beam fraction 1.0");
+
+    const auto quantum = peraviz::gdtf_runtime::compile_runtime_scene(make_photometric_model(50, 320.0f), -1);
+    if (quantum.beam_profiles.size() != 50) return fail("Expected fifty Beam photometric profiles");
+    double fraction_sum = 0.0;
+    for (const auto &profile : quantum.beam_profiles) {
+        if (std::fabs(profile.fixture_projected_flux_lm - 16000.0) > 0.001) return fail("Expected fifty 320 lm beams to total 16000 lm");
+        if (std::fabs(profile.target_flux_fraction - 0.02) > 0.0001) return fail("Expected fifty 320 lm beams to receive 0.02 fraction each");
+        fraction_sum += profile.target_flux_fraction;
+    }
+    if (std::fabs(fraction_sum - 1.0) > 0.0001) return fail("Expected fifty Beam fractions to sum to 1.0");
+
+    const auto spiider = peraviz::gdtf_runtime::compile_runtime_scene(make_photometric_model(20, 579.0f), -1);
+    fraction_sum = 0.0;
+    for (const auto &profile : spiider.beam_profiles) {
+        if (std::fabs(profile.fixture_projected_flux_lm - 11580.0) > 0.001) return fail("Expected twenty 579 lm beams to total 11580 lm");
+        if (std::fabs(profile.target_flux_fraction - 0.05) > 0.0001) return fail("Expected twenty 579 lm beams to receive 0.05 fraction each");
+        fraction_sum += profile.target_flux_fraction;
+    }
+    if (std::fabs(fraction_sum - 1.0) > 0.0001) return fail("Expected twenty Beam fractions to sum to 1.0");
+    return 0;
+}
+
+// Verifies fallback and non-projected BeamType handling preserves total target weighting.
+int test_photometric_fallback_and_exclusions() {
+    auto fallback = peraviz::gdtf_runtime::compile_runtime_scene(make_photometric_model(4, -1.0f), -1);
+    double fraction_sum = 0.0;
+    for (const auto &profile : fallback.beam_profiles) fraction_sum += profile.target_flux_fraction;
+    if (std::fabs(fraction_sum - 1.0) > 0.0001) return fail("Expected equal fallback fractions to sum to 1.0");
+    if (std::fabs(fallback.beam_profiles[0].target_flux_fraction - 0.25) > 0.0001) return fail("Expected equal fallback fraction for missing flux");
+
+    peraviz::SceneModel model = make_photometric_model(2, 100.0f);
+    model.nodes[0].beam_type = "None";
+    model.nodes[1].beam_type = "Glow";
+    const auto excluded = peraviz::gdtf_runtime::compile_runtime_scene(model, -1);
+    for (const auto &profile : excluded.beam_profiles) {
+        if (profile.has_projected_beam) return fail("Expected None and Glow to be excluded from projected Beam totals");
+    }
+
+    auto references = peraviz::gdtf_runtime::compile_runtime_scene(make_photometric_model(2, 500.0f), -1);
+    if (references.beam_profiles.size() != 2 || references.beam_profiles[0].render_target_id == references.beam_profiles[1].render_target_id) return fail("Expected repeated Beam instances to keep independent render targets");
+    return 0;
+}
+
+// Verifies a master Dimmer distributes Beam energy instead of replicating complete fixture energy per target.
+int test_master_dimmer_distributes_beam_energy() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene = make_scene();
+    scene.beam_profiles.clear();
+    for (int index = 0; index < 50; ++index) {
+        CompiledBeamOpticalProfile profile;
+        profile.fixture_id = 1;
+        profile.render_target_id = 5000 + index;
+        profile.luminous_flux = 320.0;
+        profile.fixture_projected_flux_lm = 16000.0;
+        profile.target_flux_fraction = 0.02;
+        profile.has_projected_beam = true;
+        scene.beam_profiles.push_back(profile);
+    }
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(8, 0);
+    frame[0] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const auto visual = runtime.consume_latest_visual_frame();
+    if (intensity_row_count(visual) != 50) return fail("Expected one target-oriented intensity row per compiled Beam target");
+    const int float_offset = intensity_float_offset(visual);
+    if (float_offset < 0 || visual.floats.size() < static_cast<size_t>(float_offset + 5)) return fail("Expected intensity float payloads");
+    if (std::fabs(visual.floats[static_cast<size_t>(float_offset + 1)] - 6.4f) > 0.001f) return fail("Expected target surface energy to use 320 lm instead of full fixture flux");
+    if (std::fabs(visual.floats[static_cast<size_t>(float_offset + 3)] - 0.4f) > 0.001f) return fail("Expected target visible Beam intensity to be fixture intensity times 0.02");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -371,5 +479,8 @@ int main() {
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;
     if (test_beam_type_defaults_and_provenance() != 0) return 1;
+    if (test_projected_beam_photometric_fractions() != 0) return 1;
+    if (test_photometric_fallback_and_exclusions() != 0) return 1;
+    if (test_master_dimmer_distributes_beam_energy() != 0) return 1;
     return 0;
 }

@@ -20,6 +20,8 @@ const FALLBACK_GOBO_META_KEY: String = "peraviz_is_vector_fallback_gobo"
 const DEBUG_AXIS_KEY: String = "peraviz_beam_debug_axis"
 const LEGACY_MID_KEY: String = "peraviz_beam_cone_mid"
 const LEGACY_CORE_KEY: String = "peraviz_beam_cone_core"
+const FIELD_LAYER_ENERGY_FRACTION: float = 0.65
+const CORE_LAYER_ENERGY_FRACTION: float = 0.35
 const DEFAULT_MIRROR_BEAM_SHAPE_X: bool = true
 const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = true
 
@@ -117,10 +119,10 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
 	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
-	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+	_update_prism_material(prism, color_alpha, scaled_intensity * FIELD_LAYER_ENERGY_FRACTION, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	_apply_prism_optics_parameters(prism, lens_radius, bottom_radius)
 	if core_prism != null:
-		_update_prism_material(core_prism, color_alpha, scaled_intensity * 0.55, intensity_max, beam_range, max(bottom_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+		_update_prism_material(core_prism, color_alpha, scaled_intensity * CORE_LAYER_ENERGY_FRACTION, intensity_max, beam_range, max(bottom_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 		_apply_prism_optics_parameters(core_prism, max(lens_radius * core_ratio, 0.001), max(bottom_radius * core_ratio, 0.001))
 	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, lens_radius, bottom_radius, beam_range, beam_angle, aperture_profile, false, true))
 
@@ -158,9 +160,9 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
 	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
-	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity * FIELD_LAYER_ENERGY_FRACTION, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	if core_prism != null:
-		_update_prism_material(core_prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity * 0.55, intensity_max, beam_range, max(gobo_projection_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+		_update_prism_material(core_prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity * CORE_LAYER_ENERGY_FRACTION, intensity_max, beam_range, max(gobo_projection_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	return true
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:

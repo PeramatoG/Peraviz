@@ -141,6 +141,7 @@ void resolve_beam_type(runtime::CompiledBeamOpticalProfile &profile, runtime::Co
 
 // Appends setup-time Beam profiles for exact GDTF Beam geometry nodes in one fixture patch.
 void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &scene, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
+    const size_t first_profile = out.beam_profiles.size();
     const std::string prefix = patch.fixture_uuid + "/";
     for (const SceneNode &node : scene.nodes) {
         if (!node.is_beam || node.gdtf_geometry_key.rfind(prefix, 0) != 0) continue;
@@ -167,6 +168,44 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
             out.diagnostics.push_back({"PVZ-GDTF-BEAM-PROFILE-INVALID", "warning", "Beam geometry profile contains invalid optical values.", patch.fixture_uuid + " geometry=" + node.gdtf_geometry_path});
         }
         out.beam_profiles.push_back(profile);
+    }
+    std::vector<size_t> projected_indices;
+    double positive_flux_sum = 0.0;
+    int positive_count = 0;
+    for (size_t index = first_profile; index < out.beam_profiles.size(); ++index) {
+        const auto &profile = out.beam_profiles[index];
+        if (!profile.has_projected_beam) continue;
+        projected_indices.push_back(index);
+        if (profile.luminous_flux > 0.0) {
+            positive_flux_sum += profile.luminous_flux;
+            ++positive_count;
+        }
+    }
+    if (projected_indices.empty()) return;
+    if (projected_indices.size() == 1U) {
+        auto &profile = out.beam_profiles[projected_indices.front()];
+        profile.fixture_projected_flux_lm = std::max(profile.luminous_flux, 0.0);
+        profile.target_flux_fraction = 1.0;
+        profile.photometric_weight_source = profile.luminous_flux > 0.0 ? "single_projected_beam_flux" : "single_projected_beam_fallback";
+        return;
+    }
+    const bool all_positive = positive_count == static_cast<int>(projected_indices.size());
+    const bool some_positive = positive_count > 0;
+    const double fixture_flux = some_positive ? positive_flux_sum : static_cast<double>(projected_indices.size()) * 10000.0;
+    for (size_t index : projected_indices) {
+        auto &profile = out.beam_profiles[index];
+        profile.fixture_projected_flux_lm = fixture_flux;
+        if (all_positive) {
+            profile.target_flux_fraction = profile.luminous_flux / fixture_flux;
+            profile.photometric_weight_source = "gdtf_luminous_flux";
+        } else if (some_positive) {
+            profile.target_flux_fraction = profile.luminous_flux > 0.0 ? profile.luminous_flux / fixture_flux : 0.0;
+            profile.photometric_weight_source = profile.luminous_flux > 0.0 ? "partial_gdtf_luminous_flux" : "missing_flux_zero_weight";
+        } else {
+            profile.luminous_flux = fixture_flux / static_cast<double>(projected_indices.size());
+            profile.target_flux_fraction = 1.0 / static_cast<double>(projected_indices.size());
+            profile.photometric_weight_source = "equal_weight_fallback";
+        }
     }
 }
 
