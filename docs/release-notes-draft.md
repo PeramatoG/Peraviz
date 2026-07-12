@@ -8,6 +8,7 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Added a 1 m reference cube toggle in the viewer toolbar so MVR scene scale can be checked directly in Godot.
 - Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.
 - Simplified contributor and agent guidance so maintainers can focus on enforceable rules and current workflows.
 

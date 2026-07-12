@@ -40,6 +40,8 @@ extends Node3D
 @onready var dmx_controls_mount: VBoxContainer = $UIRoot/RootVBox/ContentRow/SidePanel/SidePanelMargin/ModulesVBox/User/DMXControlsMount
 @onready var topbar_row: HBoxContainer = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow
 
+var _scale_reference_controller
+
 var _loader := PeravizLoader.new()
 var _scene_registry := SceneRegistry.new()
 var _loaded_bounds: AABB
@@ -158,6 +160,7 @@ const FixtureDebugControllerScript = preload("res://scripts/controllers/fixture_
 const StatusPresenterScript = preload("res://scripts/ui/status_presenter.gd")
 const UserPreferencesScript = preload("res://scripts/ui/user_preferences.gd")
 const MvrXchangePanelScript = preload("res://scripts/ui/mvr_xchange_panel.gd")
+const ScaleReferenceToggleScript = preload("res://scripts/ui/scale_reference_toggle.gd")
 
 const SUPPORTED_LAST_FILE_TYPES := ["mvr", "pvz"]
 
@@ -272,6 +275,8 @@ func _ready() -> void:
 	_scene_registry.configure(proxies_root)
 	_fixture_row_provider.configure(_loader, _scene_registry)
 	_configure_native_target_registry()
+	_scale_reference_controller = ScaleReferenceToggleScript.new()
+	_scale_reference_controller.configure(self, topbar_row, load_button)
 	manual_fixture_toggle.toggled.connect(_on_manual_fixture_toggle)
 	show_advanced_controls_toggle.toggled.connect(_on_show_advanced_controls_toggled)
 	if auto_load_last_project_toggle != null:
