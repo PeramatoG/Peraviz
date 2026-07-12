@@ -66,7 +66,7 @@ static func radial_energy(profile: Dictionary, normalized_radius: float) -> floa
 	var core: float = float(p["core_radius_ratio"])
 	var field: float = max(float(p["field_radius_ratio"]), core + 0.01)
 	var t: float = smoothstep(core, field, r)
-	var envelope: float = mix(1.0, float(p["edge_intensity_floor"]), t)
+	var envelope: float = lerpf(1.0, float(p["edge_intensity_floor"]), t)
 	if r > field:
 		envelope *= 1.0 - smoothstep(field, 1.0, r)
 	return max(pow(clamp(envelope, 0.0, 1.0), float(p["radial_exponent"])) * float(p["center_intensity_gain"]), 0.0)
