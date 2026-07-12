@@ -44,3 +44,7 @@ Malformed official values are preserved for diagnostics. For example, `BeamRadiu
 ## Safety limits
 
 Renderer safety handling rejects non-finite values, clamps visual length to 1-150 m, and guards only mathematically invalid or extreme resource cases. The guard is not a visual tuning factor and valid 75 m or 100 m beams are not narrowed to hide their physical spread.
+
+## Appearance is not geometry
+
+The Beam Appearance Baseline consumes the corrected near and far geometry as normalized local coordinates. It does not change the selected aperture radius, full-angle far-radius equation, `beam_visual_length_m`, RectangleRatio geometry, Beam-local direction, or fixture/scene scale.

@@ -152,3 +152,9 @@ Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters
 
 
 See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.
+
+## Beam Appearance Baseline
+
+Lightweight and Volumetric beams now share a centralized GDTF BeamType appearance profile. The profile changes radial energy, hard/soft edge behavior, and visible in-air exponential extinction without changing the corrected near/far geometry, `beam_visual_length_m`, aperture selection, or Zoom spread.
+
+Surface lighting remains separate: Balanced keeps Peraviz's practical falloff, while Physical inverse-square sets Godot `SpotLight3D.spot_attenuation` to `2.0` and does not alter custom visible beam alpha.

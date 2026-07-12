@@ -113,3 +113,7 @@ Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters
 
 
 See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.
+
+## Beam appearance ownership
+
+Beam appearance is resolved in Godot from the native transported Beam profile and cached as renderer parameters. Native/parser-owned BeamType, BeamAngle, FieldAngle, BeamRadius, RectangleRatio, and target identity remain authoritative; the renderer does not parse GDTF XML or infer fixture names during live playback.

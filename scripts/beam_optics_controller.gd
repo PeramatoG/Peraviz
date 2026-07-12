@@ -2,11 +2,15 @@ extends RefCounted
 class_name BeamOpticsController
 
 const GoboShakeLimitsScript = preload("res://scripts/gobo_shake_limits.gd")
+const BeamAppearanceProfileScript = preload("res://scripts/beam_appearance_profile.gd")
 
 const DEFAULT_MASTER_OPTICS := {
 	"beam_softness": 0.32,
 	"beam_radial_falloff": 1.25,
 	"beam_longitudinal_falloff": 1.1,
+	"beam_extinction_multiplier": 1.0,
+	"beam_far_visibility_multiplier": 1.0,
+	"surface_light_falloff_mode": 0,
 	"haze_density_multiplier": 0.22,
 	"gobo_scale": 1.0,
 	"gobo_rotation_deg": 0.0,
@@ -52,10 +56,15 @@ static func BuildBeamParams(light: SpotLight3D, beam_angle_deg: float, beam_colo
 		"lens_shift_x": float(visual_settings.get("lens_shift_x", merged_defaults.get("lens_shift_x", 0.0))),
 		"lens_shift_y": float(visual_settings.get("lens_shift_y", merged_defaults.get("lens_shift_y", 0.0))),
 		"beam_debug_optics": bool(visual_settings.get("beam_debug_optics", false)),
+		"field_angle": float(visual_settings.get("field_angle", beam_angle_deg)),
+		"beam_extinction_multiplier": float(visual_settings.get("beam_extinction_multiplier", merged_defaults.get("beam_extinction_multiplier", 1.0))),
+		"beam_far_visibility_multiplier": float(visual_settings.get("beam_far_visibility_multiplier", merged_defaults.get("beam_far_visibility_multiplier", 1.0))),
+		"surface_light_falloff_mode": int(visual_settings.get("surface_light_falloff_mode", merged_defaults.get("surface_light_falloff_mode", 0))),
 		"spot_range": light.spot_range,
 		"spot_angle_half_deg": light.spot_angle,
 		"beam_angle_source": "gdtf_full_angle_deg",
 	}
+	params["appearance_profile"] = BeamAppearanceProfileScript.resolve(params, visual_settings)
 	return params
 
 static func BuildGoboControls(controls: Dictionary, visual_settings: Dictionary, defaults: Dictionary) -> Dictionary:

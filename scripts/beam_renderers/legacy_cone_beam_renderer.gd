@@ -2,6 +2,7 @@ extends BeamRendererBase
 class_name LegacyConeBeamRenderer
 
 const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+const BeamAppearanceProfileScript = preload("res://scripts/beam_appearance_profile.gd")
 
 const EMITTER_CONE_FADE_END_RATIO: float = 0.82
 const EMITTER_CONE_NEAR_ALPHA: float = 0.16
@@ -98,7 +99,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
-	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
+	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
+	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	_apply_prism_optics_parameters(prism, lens_radius, bottom_radius)
 	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, lens_radius, bottom_radius, beam_range, beam_angle, aperture_profile, false, true))
 
@@ -131,7 +133,8 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
-	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
+	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
+	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	return true
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
@@ -175,6 +178,12 @@ func get_beam_optics_state(light: SpotLight3D) -> Dictionary:
 	if light == null or not light.has_meta("peraviz_beam_optics_state"):
 		return {}
 	return light.get_meta("peraviz_beam_optics_state", {}) as Dictionary
+
+func _appearance_profile_from_params(params: Dictionary) -> Dictionary:
+	var profile_value: Variant = params.get("appearance_profile", {})
+	if profile_value is Dictionary and not (profile_value as Dictionary).is_empty():
+		return BeamAppearanceProfileScript.sanitize(profile_value as Dictionary)
+	return BeamAppearanceProfileScript.resolve(params, params)
 
 func _aperture_profile_from_params(params: Dictionary) -> Dictionary:
 	var beam_type: String = str(params.get("beam_type", "Wash")).to_lower()
@@ -247,7 +256,7 @@ func _create_prism(prism_name: String) -> MeshInstance3D:
 	prism.visible = false
 	return prism
 
-func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float) -> void:
+func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float, appearance_profile: Dictionary) -> void:
 	if prism == null:
 		return
 	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
@@ -271,6 +280,13 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	prism.set_instance_shader_parameter("radial_falloff", radial_falloff)
 	prism.set_instance_shader_parameter("longitudinal_falloff", longitudinal_falloff)
 	prism.set_instance_shader_parameter("haze_density", haze_density)
+	prism.set_instance_shader_parameter("appearance_core_field", Vector2(float(appearance_profile.get("core_radius_ratio", 0.7)), float(appearance_profile.get("field_radius_ratio", 1.0))))
+	prism.set_instance_shader_parameter("appearance_edge_exp", Vector2(float(appearance_profile.get("edge_softness", 0.1)), float(appearance_profile.get("radial_exponent", radial_falloff))))
+	prism.set_instance_shader_parameter("appearance_gain_floor", Vector2(float(appearance_profile.get("center_intensity_gain", 1.0)), float(appearance_profile.get("edge_intensity_floor", 0.08))))
+	prism.set_instance_shader_parameter("appearance_extinction", Vector4(float(appearance_profile.get("extinction_coefficient", 0.01)), float(appearance_profile.get("longitudinal_exponent", longitudinal_falloff)), float(appearance_profile.get("near_visibility", 1.0)), float(appearance_profile.get("far_visibility_floor", 0.12))))
+	prism.set_instance_shader_parameter("appearance_shape", 1 if str(appearance_profile.get("shape", "circle")) == "rectangle" else 0)
+	var rect_ratio: float = max(float(appearance_profile.get("rectangle_ratio", appearance_profile.get("rectangleRatio", 1.0))), 0.01)
+	prism.set_instance_shader_parameter("appearance_rect_half_extents", Vector2(sqrt(rect_ratio), 1.0 / max(sqrt(rect_ratio), 0.01)))
 	var prism_material: ShaderMaterial = prism.material_override as ShaderMaterial
 	if prism_material != null:
 		prism_material.set_shader_parameter("use_gobo", false)
