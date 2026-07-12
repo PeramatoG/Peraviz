@@ -610,6 +610,7 @@ func _install_renderer_manifest(renderer_manifest: Array) -> bool:
 
 func _report_native_setup_summary() -> void:
 	var summary: Dictionary = _native_setup_summary.duplicate(true)
+	var dpt_count: int = int(summary.get("dimmer_property_count", 0)) + int(summary.get("pan_property_count", 0)) + int(summary.get("tilt_property_count", 0))
 	print("[native-dpt-setup] mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offset_counts=%s manifest_fixtures=%d installed_native_properties=%d" % [
 		int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))),
 		int(summary.get("gdtf_files_opened", 0)),
