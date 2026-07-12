@@ -26,7 +26,7 @@ When coordinate debug mode is enabled, runtime prints metadata with:
 
 To support visibility checks in the standalone Godot viewer, imported external scene content is currently scaled at the `Proxies` root in `load_scene.gd`:
 
-- `IMPORTED_CONTENT_SCALE = 10.0`
+- `IMPORTED_CONTENT_SCALE = 1.0`
 - Applied in `_apply_imported_content_scale()` with:
   - `proxies_root.scale = Vector3.ONE * IMPORTED_CONTENT_SCALE`
 
@@ -34,6 +34,11 @@ Important:
 - This magnification is a **viewer/runtime presentation multiplier**.
 - Native transform parsing and unit mapping remain unchanged (`mm -> m` conversion in coordinate mapper).
 - Use this when validating dense/large rigs that are hard to inspect at default camera distances.
+
+
+## 1.2) Visual scale reference
+
+The viewer toolbar includes a `1 m cube` toggle that adds a 1 m x 1 m x 1 m translucent reference cube at the Godot scene origin. The cube is parented outside the imported `Proxies` tree, so it is not affected by imported-content scaling and can be used as a direct meter-scale reference while inspecting MVR content.
 
 ## 2) Source/destination handedness
 
