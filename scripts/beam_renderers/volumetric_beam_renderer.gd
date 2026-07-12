@@ -3,6 +3,7 @@ extends BeamRendererBase
 class_name VolumetricBeamRenderer
 
 const BEAM_META_KEY: String = "peraviz_volumetric_beam"
+const CORE_BEAM_META_KEY: String = "peraviz_volumetric_beam_core_layer"
 const VOLUMETRIC_INTENSITY_SCALE: float = 4.0
 const VOLUMETRIC_INTENSITY_RESPONSE_EXPONENT: float = 2.2
 const INTENSITY_REFERENCE_MAX: float = 20.0
@@ -33,22 +34,22 @@ func configure(view_camera: Camera3D, settings: Dictionary) -> void:
 	_active_shape_provider = _select_shape_provider()
 
 func ensure_beam(light: SpotLight3D) -> void:
-	if light.has_meta(BEAM_META_KEY):
-		return
-	var beam := MeshInstance3D.new()
-	beam.name = "PeravizVolumetricBeam"
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	beam.material_override = _beam_material_template.duplicate(true)
-	beam.rotation_degrees.x = 90.0
-	beam.visible = false
-	light.add_child(beam)
-	light.set_meta(BEAM_META_KEY, beam)
-	_apply_static_beam_params(beam, {})
+	if not light.has_meta(BEAM_META_KEY):
+		var beam := _create_beam_instance("PeravizVolumetricBeamField")
+		light.add_child(beam)
+		light.set_meta(BEAM_META_KEY, beam)
+		_apply_static_beam_params(beam, {})
+	if not light.has_meta(CORE_BEAM_META_KEY):
+		var core_beam := _create_beam_instance("PeravizVolumetricBeamCore")
+		light.add_child(core_beam)
+		light.set_meta(CORE_BEAM_META_KEY, core_beam)
+		_apply_static_beam_params(core_beam, {})
 	_ensure_debug_axis(light)
 
 func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	ensure_beam(light)
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
+	var core_beam: MeshInstance3D = light.get_meta(CORE_BEAM_META_KEY) as MeshInstance3D
 	if beam == null:
 		return
 
@@ -67,6 +68,9 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if intensity <= threshold:
 		beam.visible = false
 		beam.set_instance_shader_parameter("beam_visibility", 0.0)
+		if core_beam != null:
+			core_beam.visible = false
+			core_beam.set_instance_shader_parameter("beam_visibility", 0.0)
 		var hidden_axis: MeshInstance3D = _ensure_debug_axis(light)
 		if hidden_axis != null:
 			hidden_axis.visible = false
@@ -77,6 +81,13 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
 	var shape_result: Dictionary = _active_shape_provider.apply_shape(beam, light, params)
+	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
+	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
+	var core_shape_result: Dictionary = {}
+	if core_beam != null:
+		var core_params: Dictionary = params.duplicate(false)
+		core_params["beam_radius_scale"] = core_ratio
+		core_shape_result = _active_shape_provider.apply_shape(core_beam, light, core_params)
 	var gobo_projection_radius: float = max(float(shape_result.get("gobo_projection_radius", 0.1)), 0.001)
 	params["gobo_projection_radius"] = gobo_projection_radius
 	var beam_rotation_deg: float = float(shape_result.get("beam_rotation_deg", 0.0))
@@ -85,6 +96,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		print("[PeravizBeamOptics] mode=", _active_shape_provider.shape_mode(), " angle_deg=", beam_angle, " range_m=", beam_range, " radius_end_m=", gobo_projection_radius)
 
 	beam.visible = true
+	if core_beam != null:
+		core_beam.visible = true
 
 	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
 	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
@@ -98,8 +111,21 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
 	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-	_apply_appearance_profile_params(beam, _appearance_profile_from_params(params))
+	_apply_appearance_profile_params(beam, appearance_profile)
 	_apply_beam_material_params(beam, beam_range, shape_result)
+	if core_beam != null:
+		_apply_static_beam_params(core_beam, params)
+		core_beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha * 0.55))
+		core_beam.set_instance_shader_parameter("beam_visibility", 1.0)
+		core_beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
+		core_beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
+		core_beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
+		core_beam.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
+		core_beam.set_instance_shader_parameter("gobo_projection_radius", max(float(core_shape_result.get("gobo_projection_radius", gobo_projection_radius * core_ratio)), 0.001))
+		core_beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
+		core_beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
+		_apply_appearance_profile_params(core_beam, appearance_profile)
+		_apply_beam_material_params(core_beam, beam_range, core_shape_result if not core_shape_result.is_empty() else shape_result)
 
 func _appearance_profile_from_params(params: Dictionary) -> Dictionary:
 	var profile_value: Variant = params.get("appearance_profile", {})
@@ -118,6 +144,15 @@ func _apply_appearance_profile_params(beam: MeshInstance3D, appearance_profile: 
 	beam_material.set_shader_parameter("appearance_shape", 1 if str(appearance_profile.get("shape", "circle")) == "rectangle" else 0)
 	var rect_ratio: float = max(float(appearance_profile.get("rectangle_ratio", appearance_profile.get("rectangleRatio", 1.0))), 0.01)
 	beam_material.set_shader_parameter("appearance_rect_half_extents", Vector2(sqrt(rect_ratio), 1.0 / max(sqrt(rect_ratio), 0.01)))
+
+func _create_beam_instance(beam_name: String) -> MeshInstance3D:
+	var beam := MeshInstance3D.new()
+	beam.name = beam_name
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.material_override = _beam_material_template.duplicate(true)
+	beam.rotation_degrees.x = 90.0
+	beam.visible = false
+	return beam
 
 func _compute_beam_settings_hash() -> int:
 	var hash_value: int = 2166136261
@@ -167,6 +202,7 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	if not light.has_meta(BEAM_META_KEY):
 		return false
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
+	var core_beam: MeshInstance3D = light.get_meta(CORE_BEAM_META_KEY) as MeshInstance3D
 	if beam == null or not is_instance_valid(beam):
 		return false
 
@@ -176,6 +212,9 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	if intensity <= threshold:
 		beam.visible = false
 		beam.set_instance_shader_parameter("beam_visibility", 0.0)
+		if core_beam != null:
+			core_beam.visible = false
+			core_beam.set_instance_shader_parameter("beam_visibility", 0.0)
 		return true
 
 	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
@@ -188,11 +227,19 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
 	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
 	beam.visible = true
+	if core_beam != null:
+		core_beam.visible = true
 	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
 	beam.set_instance_shader_parameter("beam_visibility", 1.0)
 	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
 	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
+	if core_beam != null:
+		core_beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha * 0.55))
+		core_beam.set_instance_shader_parameter("beam_visibility", 1.0)
+		core_beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
+		core_beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
+		core_beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
 	return true
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
@@ -211,12 +258,13 @@ func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 	return beam if beam != null and is_instance_valid(beam) else null
 
 func cleanup_beam(light: SpotLight3D) -> void:
-	if not light.has_meta(BEAM_META_KEY):
-		return
-	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
-	if beam != null and is_instance_valid(beam):
-		beam.queue_free()
-	light.remove_meta(BEAM_META_KEY)
+	for key in [BEAM_META_KEY, CORE_BEAM_META_KEY]:
+		if not light.has_meta(key):
+			continue
+		var beam: MeshInstance3D = light.get_meta(key) as MeshInstance3D
+		if beam != null and is_instance_valid(beam):
+			beam.queue_free()
+		light.remove_meta(key)
 
 func _select_shape_provider() -> VolumetricBeamShapeProvider:
 	var requested_mode: String = str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)).to_lower()

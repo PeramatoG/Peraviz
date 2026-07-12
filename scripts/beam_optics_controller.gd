@@ -64,8 +64,30 @@ static func BuildBeamParams(light: SpotLight3D, beam_angle_deg: float, beam_colo
 		"spot_angle_half_deg": light.spot_angle,
 		"beam_angle_source": "gdtf_full_angle_deg",
 	}
-	params["appearance_profile"] = BeamAppearanceProfileScript.resolve(params, visual_settings)
 	return params
+
+static func FinalizeBeamParams(params: Dictionary, visual_settings: Dictionary) -> Dictionary:
+	var finalized: Dictionary = params.duplicate(true)
+	var effective_type: String = str(finalized.get("beam_type_effective", finalized.get("beam_type", "Wash")))
+	if effective_type.strip_edges().is_empty():
+		effective_type = "Wash"
+	finalized["beam_type"] = effective_type
+	finalized["beam_type_effective"] = effective_type
+	finalized["beam_type_source"] = str(finalized.get("beam_type_source", "official_default"))
+	finalized["field_angle"] = float(finalized.get("field_angle", finalized.get("field_angle_deg", finalized.get("beam_angle", 25.0))))
+	finalized["field_angle_deg"] = float(finalized["field_angle"])
+	finalized["beam_extinction_multiplier"] = float(visual_settings.get("beam_extinction_multiplier", finalized.get("beam_extinction_multiplier", 1.0)))
+	finalized["beam_far_visibility_multiplier"] = float(visual_settings.get("beam_far_visibility_multiplier", finalized.get("beam_far_visibility_multiplier", 1.0)))
+	finalized["surface_light_falloff_mode"] = int(visual_settings.get("surface_light_falloff_mode", finalized.get("surface_light_falloff_mode", 0)))
+	var profile: Dictionary = BeamAppearanceProfileScript.resolve(finalized, visual_settings)
+	profile["rectangle_ratio"] = float(finalized.get("rectangle_ratio", 1.7777))
+	profile["profile_id"] = ProfileId(profile, finalized)
+	finalized["appearance_profile"] = profile
+	finalized["appearance_profile_id"] = profile["profile_id"]
+	return finalized
+
+static func ProfileId(profile: Dictionary, params: Dictionary) -> String:
+	return "%s:%s:%.3f:%.3f:%.3f:%.3f" % [str(profile.get("beam_type", params.get("beam_type", "Wash"))), str(profile.get("profile_source", "default")), float(params.get("beam_angle", 0.0)), float(params.get("field_angle", 0.0)), float(profile.get("edge_softness", 0.0)), float(profile.get("extinction_coefficient", 0.0))]
 
 static func BuildGoboControls(controls: Dictionary, visual_settings: Dictionary, defaults: Dictionary) -> Dictionary:
 	var merged_defaults: Dictionary = _build_merged_defaults(defaults)

@@ -87,12 +87,16 @@ float radial_profile_from_local(vec3 local_pos) {
 	float radius_norm = clamp(normalized_radius_from_local(local_pos), 0.0, 1.0);
 	float core = clamp(appearance_core_field.x, 0.0, 0.98);
 	float field = clamp(max(appearance_core_field.y, core + 0.01), core + 0.01, 1.0);
-	float edge_t = smoothstep(core, field, radius_norm);
-	float envelope = mix(1.0, clamp(appearance_gain_floor.y, 0.0, 0.5), edge_t);
-	if (radius_norm > field) {
-		envelope *= 1.0 - smoothstep(field, 1.0, radius_norm);
+	float softness = clamp(appearance_edge_exp.x, 0.01, 0.9);
+	float transition_start = clamp(min(core, field - softness), 0.0, field - 0.005);
+	float transition_t = smoothstep(transition_start, field, radius_norm);
+	float center_gain = mix(max(appearance_gain_floor.x, 1.0), 1.0, transition_t);
+	float envelope = mix(1.0, clamp(appearance_gain_floor.y, 0.0, 0.5), transition_t);
+	float edge_gate = 1.0 - smoothstep(field, 1.0, radius_norm);
+	if (radius_norm >= 1.0) {
+		edge_gate = 0.0;
 	}
-	return max(pow(clamp(envelope, 0.0, 1.0), max(appearance_edge_exp.y, 0.05)) * max(appearance_gain_floor.x, 1.0), 0.0);
+	return max(pow(clamp(envelope * edge_gate, 0.0, 1.0), max(appearance_edge_exp.y, 0.05)) * center_gain, 0.0);
 }
 
 float longitudinal_visibility_from_axial(float axial_progress) {
@@ -133,7 +137,7 @@ void fragment() {
 	float dist = length(v_view);
 	float near_alpha = smoothstep(near_fade_start, near_fade_end, dist);
 	float far_alpha = 1.0 - smoothstep(far_fade_start, far_fade_end, dist);
-	float dist_fade = max(near_alpha * far_alpha, 0.35);
+	float dist_fade = clamp(near_alpha * far_alpha, 0.0, 1.0);
 
 	float source_y = 0.5 * cone_height;
 	float axial_progress = clamp((source_y - v_local.y) / max(cone_height, 0.0001), 0.0, 1.0);
@@ -169,8 +173,8 @@ void fragment() {
 	float visibility = clamp(beam_visibility, 0.0, 1.0);
 	float overdrive_alpha_gain = 1.0 + (2.6 * beam_overdrive);
 	float physical_alpha = feather_alpha * radial_profile * depth_mult * dist_fade * max(haze_density, 0.2) * intensity_alpha * overdrive_alpha_gain * visibility;
-	float radial_alpha_floor = 0.04 * visibility * mix(0.25, 1.0, pow(clamp(radial_profile, 0.0, 1.0), 1.2)) * mix(1.0, 1.6, beam_overdrive);
-	float final_alpha = max(physical_alpha, radial_alpha_floor);
+	float radial_alpha_floor = 0.04 * visibility * radial_profile * apex_fade * mix(1.0, 1.6, beam_overdrive);
+	float final_alpha = physical_alpha + radial_alpha_floor;
 
 	float gobo_mask = 1.0;
 	if (use_gobo) {
@@ -179,6 +183,6 @@ void fragment() {
 	}
 
 	ALBEDO = base_color.rgb * brightness * gobo_mask;
-	ALPHA = clamp(final_alpha * max(gobo_mask, 0.8), 0.0, 1.0);
+	ALPHA = clamp(final_alpha * gobo_mask, 0.0, 1.0);
 	EMISSION = ALBEDO * (1.6 + (8.0 * clamp(beam_intensity, 0.0, 1.0)) + (34.0 * beam_overdrive));
 }

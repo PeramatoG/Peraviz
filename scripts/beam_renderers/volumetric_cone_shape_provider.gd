@@ -14,6 +14,9 @@ func apply_shape(beam: MeshInstance3D, _light: SpotLight3D, params: Dictionary) 
 	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
 	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
 	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
+	var radius_scale: float = clamp(float(params.get("beam_radius_scale", 1.0)), 0.01, 1.0)
+	lens_radius *= radius_scale
+	bottom_radius *= radius_scale
 	var cone_mesh: CylinderMesh = beam.mesh as CylinderMesh
 	if cone_mesh == null:
 		cone_mesh = CylinderMesh.new()

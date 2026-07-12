@@ -202,6 +202,10 @@ const DEFAULT_EMITTER_PHOTOMETRICS := {
 	"has_color_temperature": false,
 	"beam_angle": 25.0,
 	"field_angle": 25.0,
+	"beam_type": "Wash",
+	"beam_type_effective": "Wash",
+	"beam_type_source": "official_default",
+	"beam_type_valid": true,
 	"beam_radius": 0.05,
 	"beam_radius_from_gdtf": false,
 	"dominant_wavelength": 0.0,
@@ -2026,7 +2030,9 @@ func _extract_emitter_photometrics(item: Dictionary) -> Dictionary:
 		data["beam_radius_from_gdtf"] = true
 		data["beam_radius_source"] = "explicit"
 	if bool(item.get("has_beam_type", false)):
-		data["beam_type"] = str(item.get("beam_type", "Spot"))
+		data["beam_type"] = str(item.get("beam_type", "Wash"))
+		data["beam_type_effective"] = data["beam_type"]
+		data["beam_type_source"] = "explicit"
 	if bool(item.get("has_throw_ratio", false)):
 		data["throw_ratio"] = float(item.get("throw_ratio", 1.0))
 	if bool(item.get("has_rectangle_ratio", false)):
@@ -2125,13 +2131,13 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
 	beam_params["beam_visual_length_m"] = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
 	beam_params["beam_range"] = beam_params["beam_visual_length_m"]
-	beam_params["beam_type"] = str(photometric.get("beam_type", "Spot"))
+	beam_params["beam_type"] = str(photometric.get("beam_type_effective", photometric.get("beam_type", "Wash")))
+	beam_params["beam_type_effective"] = beam_params["beam_type"]
+	beam_params["beam_type_source"] = str(photometric.get("beam_type_source", "official_default"))
 	beam_params["field_angle"] = field_angle
 	beam_params["field_angle_deg"] = field_angle
 	beam_params["rectangle_ratio"] = float(photometric.get("rectangle_ratio", 1.0))
-	var appearance_profile: Dictionary = BeamAppearanceProfileScript.resolve(beam_params, _visual_settings)
-	appearance_profile["rectangle_ratio"] = beam_params["rectangle_ratio"]
-	beam_params["appearance_profile"] = appearance_profile
+	beam_params = BeamOpticsControllerScript.FinalizeBeamParams(beam_params, _visual_settings)
 	beam_params["official_beam_radius_m"] = float(radius_decision.get("official_beam_radius_m", 0.0))
 	beam_params["measured_model_aperture_radius_m"] = float(radius_decision.get("measured_model_aperture_radius_m", 0.0))
 	beam_params["render_near_radius_source"] = str(radius_decision.get("render_near_radius_source", "unknown"))

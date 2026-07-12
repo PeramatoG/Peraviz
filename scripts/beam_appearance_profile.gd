@@ -65,11 +65,15 @@ static func radial_energy(profile: Dictionary, normalized_radius: float) -> floa
 	var r: float = clamp(normalized_radius, 0.0, 1.0)
 	var core: float = float(p["core_radius_ratio"])
 	var field: float = max(float(p["field_radius_ratio"]), core + 0.01)
-	var t: float = smoothstep(core, field, r)
-	var envelope: float = lerpf(1.0, float(p["edge_intensity_floor"]), t)
-	if r > field:
-		envelope *= 1.0 - smoothstep(field, 1.0, r)
-	return max(pow(clamp(envelope, 0.0, 1.0), float(p["radial_exponent"])) * float(p["center_intensity_gain"]), 0.0)
+	var softness: float = clamp(float(p["edge_softness"]), 0.01, 0.9)
+	var transition_start: float = clamp(minf(core, field - softness), 0.0, field - 0.005)
+	var transition_t: float = smoothstep(transition_start, field, r)
+	var center_gain: float = lerpf(float(p["center_intensity_gain"]), 1.0, transition_t)
+	var envelope: float = lerpf(1.0, float(p["edge_intensity_floor"]), transition_t)
+	var edge_gate: float = 1.0 - smoothstep(field, 1.0, r)
+	if r >= 1.0:
+		edge_gate = 0.0
+	return max(pow(clamp(envelope * edge_gate, 0.0, 1.0), float(p["radial_exponent"])) * center_gain, 0.0)
 
 static func longitudinal_visibility(profile: Dictionary, distance_m: float) -> float:
 	var p: Dictionary = sanitize(profile)

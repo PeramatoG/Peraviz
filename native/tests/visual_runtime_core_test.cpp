@@ -327,6 +327,37 @@ int test_direct_channels_and_inferred_ranges() {
     return 0;
 }
 
+// Verifies missing and explicit BeamType provenance is preserved per Beam target.
+int test_beam_type_defaults_and_provenance() {
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"fixture-a", 1, 1, "Mode", "fixture.gdtf"});
+    peraviz::SceneNode default_beam;
+    default_beam.is_beam = true;
+    default_beam.gdtf_geometry_path = "Head/BeamDefault";
+    default_beam.gdtf_geometry_key = "fixture-a/Head/BeamDefault";
+    peraviz::SceneNode spot_beam = default_beam;
+    spot_beam.gdtf_geometry_path = "Head/BeamSpot";
+    spot_beam.gdtf_geometry_key = "fixture-a/Head/BeamSpot";
+    spot_beam.has_beam_type = true;
+    spot_beam.beam_type = "Spot";
+    model.nodes.push_back(default_beam);
+    model.nodes.push_back(spot_beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, -1);
+    if (scene.beam_profiles.size() != 2) return fail("Expected two independent Beam profiles.");
+    bool saw_default_wash = false;
+    bool saw_explicit_spot = false;
+    for (const auto &profile : scene.beam_profiles) {
+        if (profile.geometry_path == "Head/BeamDefault") {
+            saw_default_wash = profile.beam_type_effective == "Wash" && profile.beam_type_source == "official_default" && profile.beam_type_valid;
+        }
+        if (profile.geometry_path == "Head/BeamSpot") {
+            saw_explicit_spot = profile.beam_type_effective == "Spot" && profile.beam_type_source == "explicit" && profile.beam_type_valid;
+        }
+    }
+    if (!saw_default_wash || !saw_explicit_spot) return fail("Expected BeamType default/provenance to reach native Beam profiles.");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -339,5 +370,6 @@ int main() {
     if (test_parser_owned_runtime_scene() != 0) return 1;
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;
+    if (test_beam_type_defaults_and_provenance() != 0) return 1;
     return 0;
 }

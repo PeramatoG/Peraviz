@@ -55,3 +55,13 @@ Custom visible beam attenuation is independent from `SpotLight3D` surface lighti
 ## Performance and limits
 
 Profiles resolve during setup/static updates and are passed as shader instance parameters. Dimmer changes remain intensity-only, and appearance changes that are shader parameters do not rebuild fixture geometry. This is not a complete volumetric simulation: Frost, Focus, Iris, color systems, atmospheric spectra, multiple scattering, collision shortening, and shadowed participating-media integration are deferred.
+
+## Production renderer correction
+
+GDTF Beam geometries with no `BeamType` attribute now resolve to the official default `Wash` rather than a Spot fallback. Native/static profiles preserve raw BeamType text, effective BeamType, source (`explicit`, `official_default`, or invalid fallback), and validity so the exact render target receives the same appearance contract during setup and live updates.
+
+The first baseline attempted to evaluate radial energy on a hollow cone shell. That could not create a true center-to-margin distribution because most visible fragments were on the outer boundary. Lightweight now uses a cached two-layer field/core representation per projected Beam target. The field layer follows the corrected full near/far geometry, while the core layer reuses the same mesh/material pipeline with near/far radii scaled from `core_radius_ratio`. This adds one draw call and one cached material/mesh instance per Lightweight projected beam, with Dimmer still changing only intensity and Zoom changing only shader radius parameters.
+
+Volumetric mode uses the same bounded layered-volume fallback until a full analytic ray integration is introduced. The field and core resources are created once and reused; Low/Medium/High quality settings keep their existing shader cost and do not add CPU raymarching.
+
+`edge_softness` is now part of the radial envelope. The transition starts at `min(core_radius_ratio, field_radius_ratio - edge_softness)` and ends at `field_radius_ratio`; larger softness therefore begins the center-to-edge transition earlier without changing geometry. Visibility floors are multiplied by the radial and longitudinal envelopes instead of being applied as a constant final alpha, so they no longer erase Spot/Wash edge differences or fill closed gobo regions uniformly.

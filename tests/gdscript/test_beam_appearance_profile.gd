@@ -58,5 +58,11 @@ func _run() -> void:
 	_check(BeamAppearanceProfileScript.longitudinal_visibility(wash, 75.0) >= float(wash.get("far_visibility_floor", 0.0)), "75 m beam should remain readable")
 	_check(BeamAppearanceProfileScript.longitudinal_visibility(wash, 100.0) >= float(wash.get("far_visibility_floor", 0.0)), "100 m beam should remain readable")
 	_check(BeamAppearanceProfileScript.longitudinal_visibility(wash, 100.0) <= BeamAppearanceProfileScript.longitudinal_visibility(wash, 50.0) + 0.0001, "Far end should not brighten")
+	var hard_edge: Dictionary = spot.duplicate(true)
+	var soft_edge: Dictionary = spot.duplicate(true)
+	hard_edge["edge_softness"] = 0.04
+	soft_edge["edge_softness"] = 0.46
+	_check(abs(BeamAppearanceProfileScript.radial_energy(hard_edge, 0.70) - BeamAppearanceProfileScript.radial_energy(soft_edge, 0.70)) > 0.01, "Changing only edge_softness should change sampled radial output")
+	_check(BeamAppearanceProfileScript.radial_energy(spot, 0.96) != BeamAppearanceProfileScript.radial_energy(wash, 0.96), "Visibility floors should not alias Spot and Wash edge samples")
 	_check_close(BeamAppearanceProfileScript.surface_attenuation_exponent(0), 1.0, 0.0001, "Balanced surface falloff should use practical exponent")
 	_check_close(BeamAppearanceProfileScript.surface_attenuation_exponent(1), 2.0, 0.0001, "Physical surface falloff should use inverse-square exponent")

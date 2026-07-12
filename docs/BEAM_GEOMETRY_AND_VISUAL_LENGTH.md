@@ -48,3 +48,5 @@ Renderer safety handling rejects non-finite values, clamps visual length to 1-15
 ## Appearance is not geometry
 
 The Beam Appearance Baseline consumes the corrected near and far geometry as normalized local coordinates. It does not change the selected aperture radius, full-angle far-radius equation, `beam_visual_length_m`, RectangleRatio geometry, Beam-local direction, or fixture/scene scale.
+
+The core/field appearance layers are derived from the existing near/far geometry. They are renderer appearance samples only and do not change the authoritative BeamRadius selection, full-angle far-radius equation, `beam_visual_length_m`, fixture scale, or scene scale.

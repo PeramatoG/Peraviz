@@ -14,6 +14,7 @@ const INTENSITY_REFERENCE_MAX: float = 20.0
 const LEGACY_OVERDRIVE_GAIN_MAX: float = 5.0
 
 const MAIN_KEY: String = "peraviz_beam_prism"
+const CORE_LAYER_KEY: String = "peraviz_beam_prism_core_layer"
 const GOBO_TEXTURE_META_KEY: String = "peraviz_gobo_texture"
 const FALLBACK_GOBO_META_KEY: String = "peraviz_is_vector_fallback_gobo"
 const DEBUG_AXIS_KEY: String = "peraviz_beam_debug_axis"
@@ -33,14 +34,18 @@ func _init() -> void:
 func ensure_beam(light: SpotLight3D) -> void:
 	_cleanup_legacy_cones(light)
 	if not light.has_meta(MAIN_KEY):
-		light.set_meta(MAIN_KEY, _create_prism("PeravizBeamPrism"))
+		light.set_meta(MAIN_KEY, _create_prism("PeravizBeamPrismField"))
+	if not light.has_meta(CORE_LAYER_KEY):
+		light.set_meta(CORE_LAYER_KEY, _create_prism("PeravizBeamPrismCore"))
 
 func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	ensure_beam(light)
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
+	var core_prism: MeshInstance3D = light.get_meta(CORE_LAYER_KEY) as MeshInstance3D
 	if prism == null:
 		return
 	_attach_if_needed(light, prism)
+	_attach_if_needed(light, core_prism)
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -52,6 +57,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam_visible: bool = scaled_intensity > threshold
 
 	prism.visible = beam_visible
+	if core_prism != null:
+		core_prism.visible = beam_visible
 	if not beam_visible:
 		var hidden_axis: MeshInstance3D = _ensure_debug_axis(light)
 		if hidden_axis != null:
@@ -82,6 +89,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var aperture_profile: Dictionary = _aperture_profile_from_params(params)
 	if str(aperture_profile.get("shape", "")) == "no_projected_beam":
 		prism.visible = false
+		if core_prism != null:
+			core_prism.visible = false
 		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, 0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
 		return
 	var prism_mesh: ArrayMesh = _mesh_builder.build_aperture_beam_mesh(aperture_profile, beam_range)
@@ -89,10 +98,17 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	light.set_meta("peraviz_last_beam_renderer_mode", "legacy_cone")
 	if prism_mesh != null:
 		prism.mesh = prism_mesh
+		if core_prism != null:
+			core_prism.mesh = prism_mesh
 	prism.extra_cull_margin = max(bottom_radius, lens_radius) + beam_range
 	prism.position = Vector3(lens_shift_x, lens_shift_y, -(beam_range * 0.5 + lens_offset_m))
 	prism.scale = Vector3(-1.0 if mirror_x else 1.0, 1.0, -1.0 if mirror_z else 1.0)
 	_apply_beam_axis_rotation(prism, beam_rotation_deg)
+	if core_prism != null:
+		core_prism.extra_cull_margin = prism.extra_cull_margin
+		core_prism.position = prism.position
+		core_prism.scale = prism.scale
+		_apply_beam_axis_rotation(core_prism, beam_rotation_deg)
 
 	var color_alpha := Color(beam_color.r, beam_color.g, beam_color.b, 1.0)
 	var beam_softness: float = clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0)
@@ -100,8 +116,12 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
+	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
 	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	_apply_prism_optics_parameters(prism, lens_radius, bottom_radius)
+	if core_prism != null:
+		_update_prism_material(core_prism, color_alpha, scaled_intensity * 0.55, intensity_max, beam_range, max(bottom_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+		_apply_prism_optics_parameters(core_prism, max(lens_radius * core_ratio, 0.001), max(bottom_radius * core_ratio, 0.001))
 	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, lens_radius, bottom_radius, beam_range, beam_angle, aperture_profile, false, true))
 
 
@@ -115,6 +135,7 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	if not light.has_meta(MAIN_KEY):
 		return false
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
+	var core_prism: MeshInstance3D = light.get_meta(CORE_LAYER_KEY) as MeshInstance3D
 	if prism == null or not is_instance_valid(prism):
 		return false
 
@@ -123,6 +144,8 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
 	var beam_visible: bool = scaled_intensity > threshold
 	prism.visible = beam_visible
+	if core_prism != null:
+		core_prism.visible = beam_visible
 	if not beam_visible:
 		return true
 
@@ -134,24 +157,33 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
+	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
 	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+	if core_prism != null:
+		_update_prism_material(core_prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity * 0.55, intensity_max, beam_range, max(gobo_projection_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
 	return true
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	ensure_beam(light)
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
+	var core_prism: MeshInstance3D = light.get_meta(CORE_LAYER_KEY) as MeshInstance3D
 	if prism == null or not is_instance_valid(prism):
 		return {"applied": false, "beam_instance_resolved": false, "failure_reason": "beam instance missing"}
 	_attach_if_needed(light, prism)
+	_attach_if_needed(light, core_prism)
 	var previous_mesh: Mesh = prism.mesh
 	var previous_material: Material = prism.material_override
 	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var near_radius: float = max(float(params.get("lens_radius", params.get("render_near_radius_m", 0.03))), 0.001)
 	var beam_angle: float = clamp(float(params.get("beam_angle", 1.0)), 0.0, 179.0)
 	var far_radius: float = _far_radius_for_angle(near_radius, beam_angle, beam_range)
+	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
+	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var aperture_profile: Dictionary = _aperture_profile_from_params(params)
 	if str(aperture_profile.get("shape", "")) == "no_projected_beam":
 		prism.visible = false
+		if core_prism != null:
+			core_prism.visible = false
 		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, 0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
 		return {"applied": true, "beam_instance_resolved": true, "optics_state_changed": true, "parametric_update_performed": false, "topology_rebuilt": false}
 	var needs_topology: bool = prism.mesh == null or str((light.get_meta("peraviz_beam_optics_state", {}) as Dictionary).get("shape", "")) != str(aperture_profile.get("shape", "circle"))
@@ -159,7 +191,15 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 		var mesh: ArrayMesh = _mesh_builder.build_aperture_beam_mesh(aperture_profile, beam_range)
 		if mesh != null:
 			prism.mesh = mesh
+			if core_prism != null:
+				core_prism.mesh = mesh
+	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
+	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
 	_apply_prism_optics_parameters(prism, near_radius, far_radius)
+	if core_prism != null:
+		_apply_prism_optics_parameters(core_prism, max(near_radius * core_ratio, 0.001), max(far_radius * core_ratio, 0.001))
+		_apply_appearance_material_parameters(core_prism, appearance_profile, radial_falloff, longitudinal_falloff)
+	_apply_appearance_material_parameters(prism, appearance_profile, radial_falloff, longitudinal_falloff)
 	prism.extra_cull_margin = max(far_radius, near_radius) + beam_range
 	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, near_radius, far_radius, beam_range, beam_angle, aperture_profile, needs_topology and previous_mesh != prism.mesh, true))
 	return {
@@ -235,7 +275,7 @@ func cleanup_beam(light: SpotLight3D) -> void:
 	_cleanup_legacy_cones(light)
 
 func _cleanup_legacy_cones(light: SpotLight3D) -> void:
-	for meta_key in [LEGACY_MID_KEY, LEGACY_CORE_KEY, "peraviz_beam_cone"]:
+	for meta_key in [CORE_LAYER_KEY, LEGACY_MID_KEY, LEGACY_CORE_KEY, "peraviz_beam_cone"]:
 		if not light.has_meta(meta_key):
 			continue
 		var legacy_cone: MeshInstance3D = light.get_meta(meta_key) as MeshInstance3D
@@ -280,17 +320,21 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	prism.set_instance_shader_parameter("radial_falloff", radial_falloff)
 	prism.set_instance_shader_parameter("longitudinal_falloff", longitudinal_falloff)
 	prism.set_instance_shader_parameter("haze_density", haze_density)
+	_apply_appearance_material_parameters(prism, appearance_profile, radial_falloff, longitudinal_falloff)
+
+func _apply_appearance_material_parameters(prism: MeshInstance3D, appearance_profile: Dictionary, radial_falloff: float, longitudinal_falloff: float) -> void:
 	var prism_material: ShaderMaterial = prism.material_override as ShaderMaterial
-	if prism_material != null:
-		prism_material.set_shader_parameter("appearance_core_field", Vector2(float(appearance_profile.get("core_radius_ratio", 0.7)), float(appearance_profile.get("field_radius_ratio", 1.0))))
-		prism_material.set_shader_parameter("appearance_edge_exp", Vector2(float(appearance_profile.get("edge_softness", 0.1)), float(appearance_profile.get("radial_exponent", radial_falloff))))
-		prism_material.set_shader_parameter("appearance_gain_floor", Vector2(float(appearance_profile.get("center_intensity_gain", 1.0)), float(appearance_profile.get("edge_intensity_floor", 0.08))))
-		prism_material.set_shader_parameter("appearance_extinction", Vector4(float(appearance_profile.get("extinction_coefficient", 0.01)), float(appearance_profile.get("longitudinal_exponent", longitudinal_falloff)), float(appearance_profile.get("near_visibility", 1.0)), float(appearance_profile.get("far_visibility_floor", 0.12))))
-		prism_material.set_shader_parameter("appearance_shape", 1 if str(appearance_profile.get("shape", "circle")) == "rectangle" else 0)
-		var rect_ratio: float = max(float(appearance_profile.get("rectangle_ratio", appearance_profile.get("rectangleRatio", 1.0))), 0.01)
-		prism_material.set_shader_parameter("appearance_rect_half_extents", Vector2(sqrt(rect_ratio), 1.0 / max(sqrt(rect_ratio), 0.01)))
-		prism_material.set_shader_parameter("use_gobo", false)
-		prism_material.set_shader_parameter("gobo_invert", false)
+	if prism_material == null:
+		return
+	prism_material.set_shader_parameter("appearance_core_field", Vector2(float(appearance_profile.get("core_radius_ratio", 0.7)), float(appearance_profile.get("field_radius_ratio", 1.0))))
+	prism_material.set_shader_parameter("appearance_edge_exp", Vector2(float(appearance_profile.get("edge_softness", 0.1)), float(appearance_profile.get("radial_exponent", radial_falloff))))
+	prism_material.set_shader_parameter("appearance_gain_floor", Vector2(float(appearance_profile.get("center_intensity_gain", 1.0)), float(appearance_profile.get("edge_intensity_floor", 0.08))))
+	prism_material.set_shader_parameter("appearance_extinction", Vector4(float(appearance_profile.get("extinction_coefficient", 0.01)), float(appearance_profile.get("longitudinal_exponent", longitudinal_falloff)), float(appearance_profile.get("near_visibility", 1.0)), float(appearance_profile.get("far_visibility_floor", 0.12))))
+	prism_material.set_shader_parameter("appearance_shape", 1 if str(appearance_profile.get("shape", "circle")) == "rectangle" else 0)
+	var rect_ratio: float = max(float(appearance_profile.get("rectangle_ratio", appearance_profile.get("rectangleRatio", 1.0))), 0.01)
+	prism_material.set_shader_parameter("appearance_rect_half_extents", Vector2(sqrt(rect_ratio), 1.0 / max(sqrt(rect_ratio), 0.01)))
+	prism_material.set_shader_parameter("use_gobo", false)
+	prism_material.set_shader_parameter("gobo_invert", false)
 
 func _ensure_debug_axis(light: SpotLight3D) -> MeshInstance3D:
 	if light.has_meta(DEBUG_AXIS_KEY):
