@@ -141,35 +141,65 @@ int test_multiple_contributors() {
 }
 
 
-// Counts rows in the emitter intensity section.
-int intensity_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
+// Counts rows in a specific sectioned visual-frame section.
+int row_count_for_section(const peraviz::runtime::SectionedVisualFrame &frame, peraviz::runtime::VisualSectionType section_type) {
     for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
-        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+        if (frame.descriptors[index] == static_cast<int32_t>(section_type)) {
             return frame.descriptors[index + 1];
         }
     }
     return 0;
 }
 
+// Counts rows in the owner-level emitter intensity section.
+int intensity_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return row_count_for_section(frame, peraviz::runtime::VisualSectionType::EmitterIntensity);
+}
 
-// Finds the integer payload offset for the emitter intensity section.
-int intensity_int_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+// Counts rows in the target-oriented Beam emitter intensity section.
+int beam_intensity_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return row_count_for_section(frame, peraviz::runtime::VisualSectionType::BeamEmitterIntensity);
+}
+
+
+// Finds the integer payload offset for a specific sectioned visual-frame section.
+int int_offset_for_section(const peraviz::runtime::SectionedVisualFrame &frame, peraviz::runtime::VisualSectionType section_type) {
     for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
-        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+        if (frame.descriptors[index] == static_cast<int32_t>(section_type)) {
             return frame.descriptors[index + 2];
         }
     }
     return -1;
 }
 
-// Finds the float payload offset for the emitter intensity section.
-int intensity_float_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+// Finds the integer payload offset for the owner-level emitter intensity section.
+int intensity_int_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return int_offset_for_section(frame, peraviz::runtime::VisualSectionType::EmitterIntensity);
+}
+
+// Finds the integer payload offset for the target-oriented Beam emitter intensity section.
+int beam_intensity_int_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return int_offset_for_section(frame, peraviz::runtime::VisualSectionType::BeamEmitterIntensity);
+}
+
+// Finds the float payload offset for a specific sectioned visual-frame section.
+int float_offset_for_section(const peraviz::runtime::SectionedVisualFrame &frame, peraviz::runtime::VisualSectionType section_type) {
     for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
-        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+        if (frame.descriptors[index] == static_cast<int32_t>(section_type)) {
             return frame.descriptors[index + 3];
         }
     }
     return -1;
+}
+
+// Finds the float payload offset for the owner-level emitter intensity section.
+int intensity_float_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return float_offset_for_section(frame, peraviz::runtime::VisualSectionType::EmitterIntensity);
+}
+
+// Finds the float payload offset for the target-oriented Beam emitter intensity section.
+int beam_intensity_float_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    return float_offset_for_section(frame, peraviz::runtime::VisualSectionType::BeamEmitterIntensity);
 }
 
 // Verifies repeated Dimmer properties emit independent target rows without last-target-wins behavior.
@@ -471,11 +501,11 @@ int test_master_dimmer_distributes_beam_energy() {
     frame[0] = 255;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     const auto visual = runtime.consume_latest_visual_frame();
-    if (intensity_row_count(visual) != 50) return fail("Expected one target-oriented intensity row per compiled Beam target");
-    const int float_offset = intensity_float_offset(visual);
-    if (float_offset < 0 || visual.floats.size() < static_cast<size_t>(float_offset + 5)) return fail("Expected intensity float payloads");
-    if (std::fabs(visual.floats[static_cast<size_t>(float_offset + 1)] - 6.4f) > 0.001f) return fail("Expected target surface energy to use 320 lm instead of full fixture flux");
-    if (std::fabs(visual.floats[static_cast<size_t>(float_offset + 3)] - 0.4f) > 0.001f) return fail("Expected target visible Beam intensity to be fixture intensity times 0.02");
+    if (beam_intensity_row_count(visual) != 50) return fail("Expected one target-oriented intensity row per compiled Beam target");
+    const int float_offset = beam_intensity_float_offset(visual);
+    if (float_offset < 0 || visual.floats.size() < static_cast<size_t>(float_offset + 6)) return fail("Expected Beam intensity float payloads");
+    if (std::fabs(visual.floats[static_cast<size_t>(float_offset + 3)] - 6.4f) > 0.001f) return fail("Expected target surface energy to use 320 lm instead of full fixture flux");
+    if (std::fabs(visual.floats[static_cast<size_t>(float_offset + 4)] - 0.4f) > 0.001f) return fail("Expected target visible Beam intensity to be fixture intensity times 0.02");
     return 0;
 }
 
@@ -499,8 +529,9 @@ int test_dimmer_ownership_limits_beam_targets() {
     frame[1] = 0;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     const auto visual = runtime.consume_latest_visual_frame();
-    if (intensity_row_count(visual) != 1) return fail("Expected one Beam target row for the changed cell Dimmer");
-    if (visual.integers.size() < 2 || visual.integers[1] != 7001) return fail("Expected CellA Dimmer to update only CellA Beam target");
+    if (beam_intensity_row_count(visual) != 1) return fail("Expected one Beam target row for the changed cell Dimmer");
+    const int beam_int_offset = beam_intensity_int_offset(visual);
+    if (beam_int_offset < 0 || visual.integers.size() < static_cast<size_t>(beam_int_offset + 2) || visual.integers[static_cast<size_t>(beam_int_offset + 1)] != 7001) return fail("Expected CellA Dimmer to update only CellA Beam target");
     return 0;
 }
 
@@ -527,8 +558,8 @@ int test_single_master_dimmer_uses_fixture_beams_when_paths_do_not_match() {
     frame[0] = 255;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     const auto visual = runtime.consume_latest_visual_frame();
-    if (intensity_row_count(visual) != 3) return fail("Expected unmatched single master Dimmer to emit all fixture Beam targets");
-    const int int_offset = intensity_int_offset(visual);
+    if (beam_intensity_row_count(visual) != 3) return fail("Expected unmatched single master Dimmer to emit all fixture Beam targets");
+    const int int_offset = beam_intensity_int_offset(visual);
     if (int_offset < 0 || visual.integers.size() < static_cast<size_t>(int_offset + 8)) return fail("Expected intensity integer payloads for fallback master Dimmer");
     if (visual.integers[static_cast<size_t>(int_offset + 1)] != 8100 || visual.integers[static_cast<size_t>(int_offset + 4)] != 8101 || visual.integers[static_cast<size_t>(int_offset + 7)] != 8102) return fail("Expected fallback master Dimmer rows to use Beam render target IDs");
     return 0;
