@@ -139,3 +139,13 @@ When a renderer path uses shader-side gobo masking, keep a minimum transmission 
 For volumetric beams, also ensure beam alpha is explicitly intensity-aware so beam visibility tracks dimmer/beam intensity changes.
 
 For two-sided volumetric cones (`cull_disabled`), view alignment should use absolute normal alignment (`abs(dot(NORMAL, VIEW))`) to avoid face-orientation cancellations that can make the beam disappear from many camera angles.
+
+## Native BeamOptics foundation
+
+Peraviz now installs a setup-time native Beam optical profile for each resolved Beam geometry/render target. The profile preserves official Beam geometry fields used by the renderer: BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, ColorTemperature, and provenance for angle/radius fallbacks. Zoom remains a native selected-mode ChannelFunction property and emits target-oriented BeamOptics rows with the physical full angle and normalized range position.
+
+The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is preserved as official data; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so oversized-start issues are diagnosable instead of silently hidden.
+
+Lightweight Prism now exposes a real BeamOptics renderer API. Its normalized prism keeps the lens-side mesh end at axial 1.0 for near-edge shading, while shader radius interpolation maps axial 1.0 to the selected near radius and axial 0.0 to the far radius.  Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
+
+Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, active gobo selection/rotation, and high-quality volumetric rectangular rendering remain unsupported.

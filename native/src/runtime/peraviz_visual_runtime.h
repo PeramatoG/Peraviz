@@ -62,6 +62,8 @@ private:
         float tilt = 0.0f;
         float dimmer = 0.0f;
         float zoom = 0.0f;
+        float zoom_normalized = 0.0f;
+        bool has_zoom_physical = false;
         float cyan = 0.0f;
         float magenta = 0.0f;
         float yellow = 0.0f;

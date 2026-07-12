@@ -175,6 +175,15 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
 	return true
 
+func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
+	update_beam(light, params)
+	return {"applied": true, "beam_instance_resolved": get_beam_resource(light) != null, "topology_rebuilt": true, "parametric_update_performed": false, "failure_reason": "volumetric backend rebuilds optics as a compatibility path"}
+
+func get_beam_optics_state(light: SpotLight3D) -> Dictionary:
+	if light != null and light.has_meta("peraviz_beam_optics_state"):
+		return light.get_meta("peraviz_beam_optics_state", {}) as Dictionary
+	return {}
+
 func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 	if not light.has_meta(BEAM_META_KEY):
 		return null

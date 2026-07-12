@@ -382,6 +382,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
         node.is_axis = looks_like_axis(geometry->Name(), geometry_name);
         node.is_lens = looks_like_lens_geometry(geometry_tag, geometry_name, parent_is_lens);
         node.is_emitter = looks_like_emitter(geometry->Name(), geometry_name, node.is_lens);
+        node.is_beam = lower_ascii(geometry_tag) == "beam";
         node.local_transform = peraviz::coordinate_mapper::to_godot_transform(local);
 
         if (lower_ascii(geometry_tag) == "beam") {
@@ -395,6 +396,16 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
                                                     node.field_angle);
             node.has_beam_radius = parse_float_attr(geometry, "BeamRadius", "beamradius",
                                                     node.beam_radius);
+            const char *beam_type = geometry->Attribute("BeamType");
+            if (!beam_type) beam_type = geometry->Attribute("beamtype");
+            if (beam_type) {
+                node.has_beam_type = true;
+                node.beam_type = beam_type;
+            }
+            node.has_throw_ratio = parse_float_attr(geometry, "ThrowRatio", "throwratio",
+                                                    node.throw_ratio);
+            node.has_rectangle_ratio = parse_float_attr(geometry, "RectangleRatio", "rectangleratio",
+                                                        node.rectangle_ratio);
 
             const char *emitter_spectrum = geometry->Attribute("EmitterSpectrum");
             if (!emitter_spectrum) {

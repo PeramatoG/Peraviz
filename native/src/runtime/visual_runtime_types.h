@@ -25,6 +25,7 @@ enum class CompiledSemantic : int32_t {
     Pan,
     Tilt,
     Dimmer,
+    Zoom,
 };
 
 struct CompiledDmxByteSource {
@@ -81,6 +82,30 @@ struct CompiledFixtureInstance {
     double beam_multiplier = 20.0;
 };
 
+
+struct CompiledBeamOpticalProfile {
+    int32_t fixture_id = 0;
+    std::string fixture_uuid;
+    int32_t geometry_instance_id = 0;
+    std::string geometry_path;
+    std::string geometry_key;
+    int32_t render_target_id = 0;
+    std::string beam_type = "Wash";
+    double beam_angle_deg = 25.0;
+    double field_angle_deg = 25.0;
+    double beam_radius_m = 0.05;
+    double throw_ratio = 1.0;
+    double rectangle_ratio = 1.7777;
+    double luminous_flux = 10000.0;
+    double color_temperature = 6000.0;
+    std::string beam_angle_source = "fallback";
+    std::string field_angle_source = "fallback";
+    std::string beam_radius_source = "fallback";
+    std::string aperture_source = "official_beam_type";
+    bool has_projected_beam = true;
+    bool valid = true;
+};
+
 struct CompiledRuntimeDiagnostic {
     std::string code;
     std::string severity;
@@ -100,9 +125,11 @@ struct CompiledRuntimeScene {
     int32_t dimmer_program_count = 0;
     int32_t pan_program_count = 0;
     int32_t tilt_program_count = 0;
+    int32_t zoom_program_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;
+    std::vector<CompiledBeamOpticalProfile> beam_profiles;
     std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };
 
@@ -133,6 +160,8 @@ struct VisualFrameStats {
     uint64_t changed_gobo_rotation = 0;
     uint64_t gobo_topology_updates = 0;
     uint64_t gobo_parametric_updates = 0;
+    uint64_t beam_optics_rows = 0;
+    uint64_t beam_optics_parametric_updates = 0;
 };
 
 } // namespace peraviz::runtime

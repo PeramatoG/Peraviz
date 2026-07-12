@@ -174,6 +174,7 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
         d["is_axis"] = node.is_axis;
         d["is_emitter"] = node.is_emitter;
         d["is_lens"] = node.is_lens;
+        d["is_beam"] = node.is_beam;
         d["has_luminous_flux"] = node.has_luminous_flux;
         d["luminous_flux"] = node.luminous_flux;
         d["has_color_temperature"] = node.has_color_temperature;
@@ -184,6 +185,12 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
         d["field_angle"] = node.field_angle;
         d["has_beam_radius"] = node.has_beam_radius;
         d["beam_radius"] = node.beam_radius;
+        d["has_beam_type"] = node.has_beam_type;
+        d["beam_type"] = String(node.beam_type.c_str());
+        d["has_throw_ratio"] = node.has_throw_ratio;
+        d["throw_ratio"] = node.throw_ratio;
+        d["has_rectangle_ratio"] = node.has_rectangle_ratio;
+        d["rectangle_ratio"] = node.rectangle_ratio;
         d["has_dominant_wavelength"] = node.has_dominant_wavelength;
         d["dominant_wavelength"] = node.dominant_wavelength;
         d["pos"] = Vector3(node.local_transform.position.x, node.local_transform.position.y,
@@ -339,6 +346,10 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
                 semantic = "tilt";
                 target_id = property.component_id;
                 capability_flags |= 4;
+            } else if (property.semantic == peraviz::runtime::CompiledSemantic::Zoom) {
+                semantic = "zoom";
+                target_id = property.render_target_id;
+                capability_flags |= 8;
             }
             if (target_id <= 0 || semantic.is_empty()) {
                 continue;
@@ -358,6 +369,38 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             targets.push_back(target);
             renderer_targets.push_back(target);
         }
+        for (const peraviz::runtime::CompiledBeamOpticalProfile &profile : scene.beam_profiles) {
+            if (profile.fixture_id != fixture.fixture_id || profile.render_target_id <= 0) {
+                continue;
+            }
+            Dictionary target;
+            target["fixture_id"] = fixture.fixture_id;
+            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["property_id"] = 0;
+            target["component_id"] = 0;
+            target["render_target_id"] = profile.render_target_id;
+            target["target_id"] = profile.render_target_id;
+            target["semantic"] = "beam_profile";
+            target["geometry_id"] = profile.geometry_instance_id;
+            target["geometry_name"] = String(profile.geometry_path.c_str());
+            target["geometry_key"] = String(profile.geometry_key.c_str());
+            target["geometry_path"] = String(profile.geometry_path.c_str());
+            Dictionary optical;
+            optical["beam_type"] = String(profile.beam_type.c_str());
+            optical["beam_angle"] = profile.beam_angle_deg;
+            optical["field_angle"] = profile.field_angle_deg;
+            optical["official_beam_radius_m"] = profile.beam_radius_m;
+            optical["beam_radius_source"] = String(profile.beam_radius_source.c_str());
+            optical["throw_ratio"] = profile.throw_ratio;
+            optical["rectangle_ratio"] = profile.rectangle_ratio;
+            optical["luminous_flux"] = profile.luminous_flux;
+            optical["color_temperature"] = profile.color_temperature;
+            optical["has_projected_beam"] = profile.has_projected_beam;
+            optical["valid"] = profile.valid;
+            target["beam_optical_profile"] = optical;
+            targets.push_back(target);
+            renderer_targets.push_back(target);
+        }
         entry["capability_flags"] = capability_flags;
         entry["targets"] = targets;
         manifest[fixture_index] = entry;
@@ -372,10 +415,13 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     int32_t dimmer_property_count = 0;
     int32_t pan_property_count = 0;
     int32_t tilt_property_count = 0;
+    int32_t zoom_property_count = 0;
+    int32_t beam_profile_count = static_cast<int32_t>(scene.beam_profiles.size());
     for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
         if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) ++dimmer_property_count;
         if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) ++pan_property_count;
         if (property.semantic == peraviz::runtime::CompiledSemantic::Tilt) ++tilt_property_count;
+        if (property.semantic == peraviz::runtime::CompiledSemantic::Zoom) ++zoom_property_count;
     }
     for (const peraviz::runtime::CompiledDmxSourceProgram &program : scene.source_programs) {
         for (const peraviz::runtime::CompiledDmxByteSource &source : program.sources) {
@@ -399,6 +445,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["dimmer_program_count"] = scene.dimmer_program_count;
     setup_summary["pan_program_count"] = scene.pan_program_count;
     setup_summary["tilt_program_count"] = scene.tilt_program_count;
+    setup_summary["zoom_program_count"] = scene.zoom_program_count;
     setup_summary["unique_dimmer_programs_per_fixture_type"] = scene.dimmer_program_count;
     setup_summary["unique_pan_programs_per_fixture_type"] = scene.pan_program_count;
     setup_summary["unique_tilt_programs_per_fixture_type"] = scene.tilt_program_count;
@@ -406,6 +453,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["dimmer_property_count"] = dimmer_property_count;
     setup_summary["pan_property_count"] = pan_property_count;
     setup_summary["tilt_property_count"] = tilt_property_count;
+    setup_summary["zoom_property_count"] = zoom_property_count;
+    setup_summary["beam_profile_count"] = beam_profile_count;
     setup_summary["source_program_count"] = static_cast<int32_t>(scene.source_programs.size());
     setup_summary["installed_native_properties"] = static_cast<int32_t>(scene.properties.size());
     setup_summary["fixture_instance_properties"] = static_cast<int32_t>(scene.properties.size());

@@ -36,6 +36,8 @@ var _visual_apply_counters: Dictionary = {
 	"materials_updated": 0,
 	"beam_topology_rebuilds": 0,
 	"beam_intensity_updates": 0,
+	"beam_optics_rows": 0,
+	"beam_optics_parametric_updates": 0,
 	"gobo_topology_updates": 0,
 	"gobo_parametric_updates": 0,
 	"gobo_motion_render_state_updates": 0,
@@ -155,12 +157,62 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, beam_color: Color) 
 		if light.has_meta("peraviz_beam_last_params"):
 			_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_COLOR, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), beam_color, _fixture_beam_intensity(fixture_uuid))
 
-func apply_beam_optics(loader: Node, fixture_uuid: String, beam_half_angle: float, beam_angle: float) -> void:
+func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int, _changed_mask: int, beam_half_angle: float, beam_angle: float, zoom_norm: float) -> Dictionary:
+	if optics_target_id <= 0 or (loader.has_method("_has_native_optics_target") and not loader._has_native_optics_target(optics_target_id)):
+		return {"optics_requested": optics_target_id > 0, "target_resolved": false, "optics_applied": false, "optics_failed": 1, "failure_reason": "target not registered"}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	_visual_apply_counters["beam_optics_rows"] = int(_visual_apply_counters.get("beam_optics_rows", 0)) + 1
 	_set_fixture_beam_angles(fixture_uuid, beam_half_angle, beam_angle)
-	for light in _fixture_lights(loader, fixture_uuid):
-		light.spot_angle = beam_half_angle
-		_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_ZOOM | VISUAL_CHANGE_BEAM_TOPOLOGY, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), beam_angle, _fixture_render_color(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
+	var target_record: Dictionary = loader._get_native_optics_target_record(optics_target_id) if loader.has_method("_get_native_optics_target_record") else {}
+	var emitter_lights: Array = target_record.get("emitter_anchors", [])
+	var mutations: int = 0
+	for light in emitter_lights:
+		var spot: SpotLight3D = light as SpotLight3D
+		if spot == null or not is_instance_valid(spot):
+			continue
+		spot.spot_angle = beam_half_angle
+		spot.set_meta("peraviz_native_zoom_norm", zoom_norm)
+		var last_params: Dictionary = spot.get_meta("peraviz_beam_last_params", {}) if spot.has_meta("peraviz_beam_last_params") else {}
+		if last_params.is_empty():
+			last_params = _beam_params_from_target_record(spot, target_record, beam_angle, _fixture_render_color(fixture_uuid), _fixture_dimmer(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
+		last_params["beam_angle"] = beam_angle
+		last_params["normalized_dimmer"] = _fixture_dimmer(fixture_uuid)
+		last_params["scaled_intensity"] = _fixture_beam_intensity(fixture_uuid)
+		last_params["beam_intensity"] = _fixture_beam_intensity(fixture_uuid)
+		spot.set_meta("peraviz_beam_last_params", last_params)
+		var optics_result: Dictionary = loader._apply_beam_optics_for_light(spot, last_params) if loader.has_method("_apply_beam_optics_for_light") else {}
+		if bool(optics_result.get("parametric_update_performed", false)) or bool(optics_result.get("topology_rebuilt", false)):
+			mutations += 1
+		if bool(optics_result.get("topology_rebuilt", false)):
+			_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1
+	_visual_apply_counters["beam_optics_parametric_updates"] = int(_visual_apply_counters.get("beam_optics_parametric_updates", 0)) + mutations
+	return {"optics_requested": true, "target_resolved": true, "optics_resolved": 1, "optics_mutated": mutations, "optics_applied": mutations > 0, "optics_failed": 0 if mutations > 0 else 1}
+
+func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictionary, beam_angle: float, beam_color: Color, dimmer_norm: float, beam_intensity: float) -> Dictionary:
+	var profile: Dictionary = target_record.get("beam_optical_profile", {})
+	var diagnostics: Dictionary = light.get_meta("peraviz_beam_radius_diagnostics", {}) if light != null and light.has_meta("peraviz_beam_radius_diagnostics") else {}
+	var beam_range: float = max(float(profile.get("beam_range", light.spot_range if light != null else 1.0)), 0.1)
+	var measured_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.0)), 0.0) if light != null else 0.0
+	var near_radius: float = max(float(diagnostics.get("render_near_radius_m", measured_radius)), 0.0)
+	if near_radius <= 0.0:
+		near_radius = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
+	return {
+		"beam_angle": beam_angle,
+		"beam_range": beam_range,
+		"beam_color": beam_color,
+		"lens_radius": near_radius,
+		"render_near_radius_m": near_radius,
+		"official_beam_radius_m": float(profile.get("official_beam_radius_m", diagnostics.get("official_beam_radius_m", 0.0))),
+		"measured_model_aperture_radius_m": float(diagnostics.get("measured_model_aperture_radius_m", measured_radius)),
+		"render_near_radius_source": str(diagnostics.get("render_near_radius_source", "measured_model_lens" if measured_radius > 0.0 else "official_beam_radius_no_model")),
+		"radius_mismatch_ratio": float(diagnostics.get("radius_mismatch_ratio", 1.0)),
+		"beam_type": str(profile.get("beam_type", "Wash")),
+		"rectangle_ratio": float(profile.get("rectangle_ratio", 1.7777)),
+		"normalized_dimmer": dimmer_norm,
+		"scaled_intensity": beam_intensity,
+		"beam_intensity": beam_intensity,
+		"intensity_max": 50.0,
+	}
 
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
@@ -426,7 +478,7 @@ func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, p
 func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int, visible: bool, dimmer_norm: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
 	if not loader.has_method("_update_beam_for_light"):
 		return
-	var needs_topology: bool = (visual_mask & VISUAL_CHANGE_BEAM_TOPOLOGY) != 0 or not light.has_meta("peraviz_beam_last_params")
+	var needs_topology: bool = ((visual_mask & VISUAL_CHANGE_BEAM_TOPOLOGY) != 0 and (visual_mask & VISUAL_CHANGE_ZOOM) == 0) or not light.has_meta("peraviz_beam_last_params")
 	if needs_topology:
 		var beam_phase_start: int = Time.get_ticks_usec()
 		_apply_visual_frame_beam_topology(loader, light, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
@@ -435,6 +487,12 @@ func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int
 	if loader.has_method("_update_beam_intensity_for_light"):
 		var beam_phase_start: int = Time.get_ticks_usec()
 		_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
+		if (visual_mask & VISUAL_CHANGE_ZOOM) != 0 and light.has_meta("peraviz_beam_last_params"):
+			var optics_params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
+			optics_params["beam_angle"] = beam_angle
+			light.set_meta("peraviz_beam_last_params", optics_params)
+			if loader.has_method("_apply_beam_optics_for_light"):
+				loader._apply_beam_optics_for_light(light, optics_params)
 		if loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color, beam_intensity):
 			_visual_apply_counters["beam_intensity_updates"] = int(_visual_apply_counters.get("beam_intensity_updates", 0)) + 1
 		elif visible:
@@ -443,13 +501,19 @@ func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int
 
 func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible: bool, dimmer_norm: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
 	loader._ensure_beam_runtime_for_light(light)
-	var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
-	var beam_defaults: Dictionary = loader.get("_cached_beam_defaults") if loader.get("_cached_beam_defaults") is Dictionary else {}
-	var beam_params: Dictionary = loader._build_cached_beam_params(light, beam_angle, beam_color, dimmer_norm, beam_intensity, lens_radius, beam_defaults)
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}).duplicate(false) if light.has_meta("peraviz_beam_last_params") else {}
+	if beam_params.is_empty():
+		var diagnostics: Dictionary = light.get_meta("peraviz_beam_radius_diagnostics", {}) if light.has_meta("peraviz_beam_radius_diagnostics") else {}
+		var lens_radius: float = max(float(diagnostics.get("render_near_radius_m", light.get_meta("peraviz_lens_radius", 0.03))), 0.005)
+		var beam_defaults: Dictionary = loader.get("_cached_beam_defaults") if loader.get("_cached_beam_defaults") is Dictionary else {}
+		beam_params = loader._build_cached_beam_params(light, beam_angle, beam_color, dimmer_norm, beam_intensity, lens_radius, beam_defaults)
+	beam_params["beam_angle"] = beam_angle
+	beam_params["beam_color"] = beam_color
 	beam_params["normalized_dimmer"] = dimmer_norm
 	beam_params["scaled_intensity"] = beam_intensity
 	beam_params["beam_intensity"] = beam_intensity
 	beam_params["intensity_max"] = float(loader.get("BEAM_INTENSITY_MAX")) if loader.get("BEAM_INTENSITY_MAX") != null else 50.0
+	light.set_meta("peraviz_beam_last_params", beam_params)
 	loader._update_beam_for_light(light, beam_params)
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
 	_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1

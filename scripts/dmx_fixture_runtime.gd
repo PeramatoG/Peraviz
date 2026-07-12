@@ -568,7 +568,7 @@ func _install_renderer_manifest(renderer_manifest: Array) -> bool:
 		push_error("Native DPT setup requires a renderer target registry; compiled scene was not installed.")
 		_native_setup_summary["target_registry_error"] = "missing renderer target registry"
 		return false
-	for method_name in ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_get_native_target_failure"]:
+	for method_name in ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_has_native_optics_target", "_get_native_optics_target_record", "_get_native_target_failure"]:
 		if not _renderer_target_registry.has_method(method_name):
 			push_error("Native DPT renderer target registry is missing required method: %s" % method_name)
 			_native_setup_summary["target_registry_error"] = "missing method %s" % method_name

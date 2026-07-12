@@ -114,3 +114,12 @@ GDTF models multi-wheel gobos as indexed attributes such as `Gobo(n)`, `Gobo(n)P
 
 The intended native protocol for additional wheels is indexed section data: each entry should carry stable `fixture_id`, `attribute_family`, `instance_index` (for example gobo wheel number), `component` (selector, index, rotation, shake), normalized value, raw value, topology dirty flag, and parametric dirty flag. Godot should consume those records by stable IDs and cached renderer resources, while C++ owns the mapping from GDTF/MVR DMX channels to indexed records. This keeps sender and receiver synchronized as new attributes are added without allowing one attribute's bytes to be interpreted as another attribute.
 
+## Native BeamOptics foundation
+
+Peraviz now installs a setup-time native Beam optical profile for each resolved Beam geometry/render target. The profile preserves official Beam geometry fields used by the renderer: BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, ColorTemperature, and provenance for angle/radius fallbacks. Zoom remains a native selected-mode ChannelFunction property and emits target-oriented BeamOptics rows with the physical full angle and normalized range position.
+
+The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is preserved as official data; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so oversized-start issues are diagnosable instead of silently hidden.
+
+Lightweight Prism now exposes a real BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
+
+Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, active gobo selection/rotation, and high-quality volumetric rectangular rendering remain unsupported.

@@ -1675,6 +1675,7 @@ func _configure_native_target_registry() -> void:
 			"get_emitter_photometrics": Callable(self, "_get_fixture_emitter_photometrics"),
 			"ensure_beam_runtime": Callable(self, "_ensure_beam_runtime_for_light"),
 			"get_beam_resource": Callable(self, "_get_beam_resource_for_light"),
+			"apply_beam_optics": Callable(self, "_apply_beam_optics_for_light"),
 			"is_emitter_lens_mesh": Callable(self, "_is_emitter_lens_mesh"),
 		},
 	})
@@ -1691,11 +1692,22 @@ func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
 func _get_native_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
 	return _native_target_registry.get_dimmer_target_record(dimmer_target_id)
 
+func _has_native_optics_target(optics_target_id: int) -> bool:
+	return _native_target_registry.has_optics_target(optics_target_id)
+
+func _get_native_optics_target_record(optics_target_id: int) -> Dictionary:
+	return _native_target_registry.get_optics_target_record(optics_target_id)
+
 func _get_native_target_failure(target_id: int) -> Variant:
 	return _native_target_registry.get_target_failure(target_id)
 
 func _get_native_target_registry_summary() -> Dictionary:
 	return _native_target_registry.get_summary()
+
+func _apply_beam_optics_for_light(light: SpotLight3D, beam_params: Dictionary) -> Dictionary:
+	if _active_beam_renderer != null and _active_beam_renderer.has_method("apply_beam_optics"):
+		return _active_beam_renderer.apply_beam_optics(light, beam_params)
+	return {"applied": false, "failure_reason": "active beam renderer lacks BeamOptics API"}
 
 func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
 	if _active_beam_renderer != null and _active_beam_renderer.has_method("get_beam_resource"):
@@ -2101,7 +2113,15 @@ func _extract_emitter_photometrics(item: Dictionary) -> Dictionary:
 		data["field_angle"] = float(item.get("field_angle", data["field_angle"]))
 	if bool(item.get("has_beam_radius", false)):
 		data["beam_radius"] = float(item.get("beam_radius", data["beam_radius"]))
+		data["official_beam_radius_m"] = data["beam_radius"]
 		data["beam_radius_from_gdtf"] = true
+		data["beam_radius_source"] = "explicit"
+	if bool(item.get("has_beam_type", false)):
+		data["beam_type"] = str(item.get("beam_type", "Spot"))
+	if bool(item.get("has_throw_ratio", false)):
+		data["throw_ratio"] = float(item.get("throw_ratio", 1.0))
+	if bool(item.get("has_rectangle_ratio", false)):
+		data["rectangle_ratio"] = float(item.get("rectangle_ratio", 1.0))
 	if bool(item.get("has_dominant_wavelength", false)):
 		data["dominant_wavelength"] = float(item.get("dominant_wavelength", 0.0))
 	return data
@@ -2148,6 +2168,29 @@ func _build_cached_beam_params(light: SpotLight3D, beam_angle: float, beam_color
 	params["beam_intensity"] = scaled_intensity
 	return params
 
+func _select_render_near_radius(photometric: Dictionary, measured_lens_radius: float) -> Dictionary:
+	var official_radius: float = max(float(photometric.get("official_beam_radius_m", photometric.get("beam_radius", 0.0))), 0.0)
+	var has_explicit_official: bool = bool(photometric.get("beam_radius_from_gdtf", false)) and official_radius > 0.0
+	var measured_radius: float = max(measured_lens_radius, 0.0)
+	var selected_radius: float = 0.03
+	var source: String = "safe_fallback"
+	var mismatch_ratio: float = 1.0
+	if has_explicit_official and measured_radius > 0.0:
+		mismatch_ratio = max(official_radius, measured_radius) / max(min(official_radius, measured_radius), 0.0001)
+	if has_explicit_official:
+		selected_radius = max(official_radius, 0.005)
+		source = "official_beam_radius"
+	elif measured_radius > 0.0:
+		selected_radius = max(measured_radius, 0.005)
+		source = "measured_model_lens"
+	return {
+		"official_beam_radius_m": official_radius,
+		"measured_model_aperture_radius_m": measured_radius,
+		"render_near_radius_m": selected_radius,
+		"render_near_radius_source": source,
+		"radius_mismatch_ratio": mismatch_ratio,
+	}
+
 func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
 	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
 	var render_ready_values: PackedFloat32Array = _get_render_ready_values(controls)
@@ -2188,16 +2231,21 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var light_color: Color = _render_ready_color(render_ready_values) if has_render_ready else _derive_emitter_color(photometric, controls)
 	_set_light_property_color(light, "light_color", light_color, last_state)
 	var beam_color: Color = light_color if has_render_ready else _derive_emitter_color(photometric, controls, BEAM_COLOR_TEMPERATURE_STRENGTH)
-	var beam_radius_from_gdtf: bool = bool(photometric.get("beam_radius_from_gdtf", false))
-	var source_beam_radius: float = beam_radius_m if beam_radius_from_gdtf else -1.0
-	var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
-	if source_beam_radius > 0.0:
-		lens_radius = max(source_beam_radius, 0.005)
+	var measured_lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
+	var radius_decision: Dictionary = _select_render_near_radius(photometric, measured_lens_radius)
+	var lens_radius: float = float(radius_decision.get("render_near_radius_m", measured_lens_radius))
+	light.set_meta("peraviz_beam_radius_diagnostics", radius_decision)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
 	_set_light_meta_variant(light, "peraviz_beam_angle_source", "gdtf_full_angle_deg", last_state)
 	var scaled_intensity: float = clamp(render_ready_values[7], 0.0, BEAM_INTENSITY_MAX) if has_render_ready else clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	var beam_defaults: Dictionary = _cached_beam_defaults
 	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
+	beam_params["beam_type"] = str(photometric.get("beam_type", "Spot"))
+	beam_params["rectangle_ratio"] = float(photometric.get("rectangle_ratio", 1.0))
+	beam_params["official_beam_radius_m"] = float(radius_decision.get("official_beam_radius_m", 0.0))
+	beam_params["measured_model_aperture_radius_m"] = float(radius_decision.get("measured_model_aperture_radius_m", 0.0))
+	beam_params["render_near_radius_source"] = str(radius_decision.get("render_near_radius_source", "unknown"))
+	beam_params["radius_mismatch_ratio"] = float(radius_decision.get("radius_mismatch_ratio", 1.0))
 	beam_params["fade_end_ratio"] = EMITTER_CONE_FADE_END_RATIO
 	beam_params["intensity_visibility_threshold"] = BEAM_INTENSITY_VISIBILITY_THRESHOLD
 	beam_params["distance_cull_m"] = BEAM_DISTANCE_CULL_M
