@@ -20,6 +20,8 @@ var _unlinked_fixtures: int = 0
 var _updated_fixtures: int = 0
 var _skipped_fixtures: int = 0
 
+const MAX_INLINE_UNIVERSES: int = 8
+
 func _ready() -> void:
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 8)
@@ -72,6 +74,9 @@ func _add_metric_row(parent: VBoxContainer, label_text: String, initial_value: S
 	row.add_child(label)
 	var value := Label.new()
 	value.text = initial_value
+	value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value.clip_text = true
+	value.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	row.add_child(value)
 	return value
 
@@ -79,9 +84,11 @@ func _format_universes(active_universes: PackedInt32Array) -> String:
 	if active_universes.is_empty():
 		return "0"
 	var values := PackedStringArray()
-	for universe in active_universes:
-		values.append(str(universe))
-	return "%d (%s)" % [active_universes.size(), ", ".join(values)]
+	var limit: int = min(active_universes.size(), MAX_INLINE_UNIVERSES)
+	for index in range(limit):
+		values.append(str(active_universes[index]))
+	var suffix: String = "" if active_universes.size() <= MAX_INLINE_UNIVERSES else ", ..."
+	return "%d (%s%s)" % [active_universes.size(), ", ".join(values), suffix]
 
 func _on_open_monitor_pressed() -> void:
 	emit_signal("open_technical_monitor_requested")

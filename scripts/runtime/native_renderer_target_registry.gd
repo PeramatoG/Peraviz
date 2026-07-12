@@ -296,7 +296,7 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		var render_radius: float = max(float(existing_params.get("render_near_radius_m", existing_params.get("lens_radius", measured_radius))), 0.0)
 		if render_radius <= 0.0:
 			render_radius = max(float(optical_profile.get("render_near_radius_m", optical_profile.get("official_beam_radius_m", 0.03))), 0.001)
-		var beam_range: float = max(float(existing_params.get("beam_range", light.spot_range)), 0.1)
+		var beam_range: float = clamp(float(existing_params.get("beam_visual_length_m", existing_params.get("beam_range", light.spot_range))), 1.0, 150.0)
 		var params: Dictionary = existing_params.duplicate(false)
 		params["beam_type"] = str(optical_profile.get("beam_type", params.get("beam_type", "Wash")))
 		params["beam_angle"] = float(optical_profile.get("beam_angle", params.get("beam_angle", 25.0)))
@@ -307,6 +307,7 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		params["measured_model_aperture_radius_m"] = measured_radius
 		params["render_near_radius_source"] = str(params.get("render_near_radius_source", "measured_model_lens" if measured_radius > 0.0 else "official_beam_radius_no_model"))
 		params["rectangle_ratio"] = float(optical_profile.get("rectangle_ratio", params.get("rectangle_ratio", 1.7777)))
+		params["beam_visual_length_m"] = beam_range
 		params["beam_range"] = beam_range
 		params["scaled_intensity"] = float(params.get("scaled_intensity", 0.0))
 		params["beam_intensity"] = float(params.get("beam_intensity", 0.0))
@@ -448,18 +449,35 @@ func _log_summary_once() -> void:
 		int(_summary.get("duplicate_imported_geometry_keys", 0)),
 		int(_summary.get("duplicate_manifest_target_ids", 0)),
 		int(_summary.get("registration_timing_failures", 0)),
-		str(_summary.get("first_failures", [])),
+		_compact_failures_for_log(_summary.get("first_failures", [])),
 	])
+
+func _compact_failures_for_log(failures_variant: Variant) -> String:
+	var failures: Array = failures_variant if failures_variant is Array else []
+	if failures.is_empty():
+		return "[]"
+	var compact: Array = []
+	for failure_variant in failures.slice(0, 3):
+		var failure: Dictionary = failure_variant if failure_variant is Dictionary else {}
+		compact.append({
+			"fixture_uuid": str(failure.get("fixture_uuid", "")),
+			"semantic": str(failure.get("semantic", "")),
+			"target_id": int(failure.get("target_id", 0)),
+			"reason": str(failure.get("reason", "")),
+		})
+	return str(compact)
 
 func _target_failure(manifest_row: Dictionary, target_id: int, semantic: String, reason: String) -> Dictionary:
 	var fixture_uuid: String = str(manifest_row.get("fixture_uuid", ""))
+	var matching_keys: Array = _matching_imported_geometry_keys(fixture_uuid)
 	return {
 		"fixture_uuid": fixture_uuid,
 		"fixture_id": int(manifest_row.get("fixture_id", 0)),
 		"semantic": semantic,
 		"target_id": target_id,
 		"geometry_key": str(manifest_row.get("geometry_key", manifest_row.get("%s_geometry_key" % semantic, ""))),
-		"matching_imported_keys": _matching_imported_geometry_keys(fixture_uuid),
+		"matching_imported_key_count": matching_keys.size(),
+		"matching_imported_key_sample": matching_keys.slice(0, 3),
 		"fixture_root_path": _fixture_root_path(fixture_uuid),
 		"reason": reason,
 	}

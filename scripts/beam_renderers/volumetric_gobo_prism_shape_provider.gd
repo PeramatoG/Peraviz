@@ -1,7 +1,9 @@
 extends VolumetricBeamShapeProvider
 class_name VolumetricGoboPrismShapeProvider
 
-const EMITTER_CONE_MAX_BASE_RADIUS_M: float = 10.0
+const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+
+
 const GOBO_TEXTURE_META_KEY: String = "peraviz_gobo_texture"
 const DEFAULT_MIRROR_BEAM_SHAPE_X: bool = true
 const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = true
@@ -12,12 +14,11 @@ func shape_mode() -> String:
 	return "gobo_prism"
 
 func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -> Dictionary:
-	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
+	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
-	var beam_half_angle_deg: float = beam_angle * 0.5
-	var radius: float = tan(deg_to_rad(beam_half_angle_deg)) * beam_range
-	var bottom_radius: float = clamp(radius, 0.03, EMITTER_CONE_MAX_BASE_RADIUS_M)
+	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
+	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
 	var gobo_texture: Texture2D = null
 	if light.has_meta(GOBO_TEXTURE_META_KEY):
 		gobo_texture = light.get_meta(GOBO_TEXTURE_META_KEY) as Texture2D
