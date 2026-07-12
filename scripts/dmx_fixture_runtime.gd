@@ -428,6 +428,29 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		"universes_submitted_to_native": submitted_universes,
 	}
 
+func _format_relevant_offset_counts(offsets_variant: Variant) -> String:
+	var offsets_by_universe: Dictionary = offsets_variant if offsets_variant is Dictionary else {}
+	var counts: Dictionary = {}
+	for universe_key in offsets_by_universe.keys():
+		var offsets: Variant = offsets_by_universe.get(universe_key, [])
+		counts[universe_key] = offsets.size() if offsets is Array else 0
+	return str(counts)
+
+func _format_first_failures(failures_variant: Variant) -> String:
+	var failures: Array = failures_variant if failures_variant is Array else []
+	if failures.is_empty():
+		return "[]"
+	var compact: Array = []
+	for failure_variant in failures.slice(0, 3):
+		var failure: Dictionary = failure_variant if failure_variant is Dictionary else {}
+		compact.append({
+			"reason": str(failure.get("reason", "")),
+			"fixture_id": int(failure.get("fixture_id", 0)),
+			"fixture_uuid": str(failure.get("fixture_uuid", "")),
+			"section_type": int(failure.get("section_type", 0)),
+		})
+	return str(compact)
+
 func _log_native_live_diagnostics_once() -> void:
 	if _native_live_diagnostics_logged:
 		return
@@ -453,7 +476,7 @@ func _log_native_live_diagnostics_once() -> void:
 		int(skip_diagnostics.get("dimmer_lights_mutated", 0)),
 		int(skip_diagnostics.get("dimmer_beams_mutated", 0)),
 		int(skip_diagnostics.get("dimmer_materials_mutated", 0)),
-		str(skip_diagnostics.get("first_failures", [])),
+		_format_first_failures(skip_diagnostics.get("first_failures", [])),
 	])
 
 
@@ -587,8 +610,7 @@ func _install_renderer_manifest(renderer_manifest: Array) -> bool:
 
 func _report_native_setup_summary() -> void:
 	var summary: Dictionary = _native_setup_summary.duplicate(true)
-	var dpt_count: int = int(summary.get("dimmer_property_count", 0)) + int(summary.get("pan_property_count", 0)) + int(summary.get("tilt_property_count", 0))
-	print("[native-dpt-setup] mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offsets=%s manifest_fixtures=%d installed_native_properties=%d" % [
+	print("[native-dpt-setup] mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offset_counts=%s manifest_fixtures=%d installed_native_properties=%d" % [
 		int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))),
 		int(summary.get("gdtf_files_opened", 0)),
 		int(summary.get("selected_modes_found", 0)),
@@ -601,7 +623,7 @@ func _report_native_setup_summary() -> void:
 		int(summary.get("tilt_program_count", 0)),
 		int(_native_bindings_count),
 		str(summary.get("used_universes", {})),
-		str(summary.get("relevant_offsets_by_universe", {})),
+		_format_relevant_offset_counts(summary.get("relevant_offsets_by_universe", {})),
 		int(summary.get("manifest_fixture_count", 0)),
 		int(summary.get("installed_native_properties", _native_bindings_count)),
 	])

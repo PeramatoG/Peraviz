@@ -60,8 +60,6 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if debug_axis != null:
 		debug_axis.visible = bool(params.get("beam_debug_optics", false))
 
-	var beam_half_angle_deg: float = beam_angle * 0.5
-	var radius: float = tan(deg_to_rad(beam_half_angle_deg)) * beam_range
 	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
 	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
 	if bool(params.get("beam_debug_optics", false)):
@@ -187,7 +185,6 @@ func _aperture_profile_from_params(params: Dictionary) -> Dictionary:
 	return {"shape": "circle", "source": "official_beam_type"}
 
 func _far_radius_for_angle(near_radius: float, beam_angle: float, beam_range: float) -> float:
-	var half_angle_deg: float = beam_angle * 0.5
 	return float(BeamGeometryCalculatorScript.far_radius_for_full_angle(near_radius, beam_angle, beam_range).get("far_radius_m", near_radius))
 
 func _apply_prism_optics_parameters(prism: MeshInstance3D, near_radius: float, far_radius: float) -> void:

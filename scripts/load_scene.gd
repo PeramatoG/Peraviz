@@ -2486,8 +2486,6 @@ func _update_emitter_beam_cone(light: SpotLight3D, beam_angle: float, beam_range
 
 	var beam_multiplier: float = float(_visual_settings.get("beam_multiplier", 20.0))
 	var scaled_intensity: float = clamp(intensity * beam_multiplier, 0.0, BEAM_INTENSITY_MAX)
-	var beam_half_angle_deg: float = beam_angle * 0.5
-	var radius: float = tan(deg_to_rad(beam_half_angle_deg)) * beam_range
 	var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
 	if gdtf_beam_radius > 0.0:
 		lens_radius = max(gdtf_beam_radius, 0.005)
