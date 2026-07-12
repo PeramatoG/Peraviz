@@ -1,19 +1,19 @@
 extends VolumetricBeamShapeProvider
 class_name VolumetricConeShapeProvider
 
-const EMITTER_CONE_MAX_BASE_RADIUS_M: float = 10.0
+const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+
+
 
 func shape_mode() -> String:
 	return "cone"
 
 func apply_shape(beam: MeshInstance3D, _light: SpotLight3D, params: Dictionary) -> Dictionary:
-	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
+	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
-	var half_angle_deg: float = beam_angle * 0.5
-	var tan_half_angle: float = tan(deg_to_rad(half_angle_deg))
-	var radius: float = tan_half_angle * beam_range
-	var bottom_radius: float = clamp(radius, 0.03, EMITTER_CONE_MAX_BASE_RADIUS_M)
+	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
+	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
 	var cone_mesh: CylinderMesh = beam.mesh as CylinderMesh
 	if cone_mesh == null:
 		cone_mesh = CylinderMesh.new()

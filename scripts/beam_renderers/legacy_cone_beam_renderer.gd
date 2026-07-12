@@ -1,8 +1,8 @@
 extends BeamRendererBase
-
 class_name LegacyConeBeamRenderer
 
-const EMITTER_CONE_MAX_BASE_RADIUS_M: float = 10.0
+const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+
 const EMITTER_CONE_FADE_END_RATIO: float = 0.82
 const EMITTER_CONE_NEAR_ALPHA: float = 0.16
 const EMITTER_CONE_FAR_ALPHA: float = 0.004
@@ -44,7 +44,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
-	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
+	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
 	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
@@ -62,7 +62,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 	var beam_half_angle_deg: float = beam_angle * 0.5
 	var radius: float = tan(deg_to_rad(beam_half_angle_deg)) * beam_range
-	var bottom_radius: float = clamp(lens_radius + radius, lens_radius, EMITTER_CONE_MAX_BASE_RADIUS_M)
+	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
+	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
 	if bool(params.get("beam_debug_optics", false)):
 		print("[PeravizBeamOptics] angle_deg=", beam_angle, " range_m=", beam_range, " radius_end_m=", bottom_radius)
 
@@ -125,7 +126,7 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	if not beam_visible:
 		return true
 
-	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
+	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var gobo_projection_radius: float = max(float(params.get("gobo_projection_radius", 0.1)), 0.001)
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
 	var beam_softness: float = clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0)
@@ -143,7 +144,7 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	_attach_if_needed(light, prism)
 	var previous_mesh: Mesh = prism.mesh
 	var previous_material: Material = prism.material_override
-	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
+	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var near_radius: float = max(float(params.get("lens_radius", params.get("render_near_radius_m", 0.03))), 0.001)
 	var beam_angle: float = clamp(float(params.get("beam_angle", 1.0)), 0.0, 179.0)
 	var far_radius: float = _far_radius_for_angle(near_radius, beam_angle, beam_range)
@@ -187,7 +188,7 @@ func _aperture_profile_from_params(params: Dictionary) -> Dictionary:
 
 func _far_radius_for_angle(near_radius: float, beam_angle: float, beam_range: float) -> float:
 	var half_angle_deg: float = beam_angle * 0.5
-	return clamp(near_radius + tan(deg_to_rad(half_angle_deg)) * beam_range, near_radius, EMITTER_CONE_MAX_BASE_RADIUS_M)
+	return float(BeamGeometryCalculatorScript.far_radius_for_full_angle(near_radius, beam_angle, beam_range).get("far_radius_m", near_radius))
 
 func _apply_prism_optics_parameters(prism: MeshInstance3D, near_radius: float, far_radius: float) -> void:
 	prism.set_instance_shader_parameter("beam_radius_params", Vector2(max(near_radius, 0.001), max(far_radius, 0.001)))

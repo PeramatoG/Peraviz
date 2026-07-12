@@ -149,3 +149,6 @@ The renderer keeps official optical radius separate from measured model aperture
 Lightweight Prism now exposes a real BeamOptics renderer API. Its normalized prism keeps the lens-side mesh end at axial 1.0 for near-edge shading, while shader radius interpolation maps axial 1.0 to the selected near radius and axial 0.0 to the far radius.  Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
 
 Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, active gobo selection/rotation, and high-quality volumetric rectangular rendering remain unsupported.
+
+
+See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.

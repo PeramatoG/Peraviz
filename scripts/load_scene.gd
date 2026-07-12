@@ -77,6 +77,7 @@ var _visual_environment_baseline := {
 }
 var _cached_beam_defaults: Dictionary = {}
 var _beam_params_template_cache: Dictionary = {}
+var _beam_aperture_measurement_service: Variant = null
 var _visual_settings := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
@@ -108,6 +109,7 @@ var _visual_settings := {
 	"lens_shift_x": 0.0,
 	"lens_shift_y": 0.0,
 	"beam_debug_optics": false,
+	"beam_visual_length_m": 75.0,
 	"ambient_fog_density": 0.0,
 	"volumetric_fog_density": 0.0,
 	"volumetric_fog_fade": 0.02,
@@ -149,6 +151,8 @@ const LegacyConeBeamRendererScript = preload("res://scripts/beam_renderers/legac
 const VolumetricBeamRendererScript = preload("res://scripts/beam_renderers/volumetric_beam_renderer.gd")
 const FixtureGoboProjectorScript = preload("res://scripts/fixture_gobo_projector.gd")
 const BeamOpticsControllerScript = preload("res://scripts/beam_optics_controller.gd")
+const BeamApertureMeasurementServiceScript = preload("res://scripts/beam_aperture_measurement_service.gd")
+const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
 const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_light_apply_service.gd")
 const UiVisibilityPolicyScript = preload("res://scripts/ui/ui_visibility_policy.gd")
 const UiControllerScript = preload("res://scripts/controllers/ui_controller.gd")
@@ -205,7 +209,6 @@ const EMITTER_LIGHT_DIRECTION_FIX: Vector3 = Vector3(-90.0, 0.0, 0.0)
 const IMPORTED_CONTENT_SCALE: float = 1.0
 const EMITTER_LIGHT_MIN_RANGE_M: float = 12.0
 const EMITTER_LIGHT_MAX_RANGE_M: float = 150.0
-const EMITTER_LIGHT_RANGE_BEAM_RADIUS_MULTIPLIER: float = 500.0
 const EMITTER_LIGHT_ENERGY_SCALE: float = 0.02
 const EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG: float = 180.0
 const BEAM_COLOR_TEMPERATURE_STRENGTH: float = 0.04
@@ -213,10 +216,9 @@ const BEAM_PARAMS_TEMPLATE_CACHE_LIMIT: int = 256
 const EMITTER_ZOOM_DEFAULT_MIN_BEAM_ANGLE_DEG: float = 4.0
 const EMITTER_ZOOM_DEFAULT_MAX_BEAM_ANGLE_DEG: float = EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG
 const EMITTER_ZOOM_LENS_RANGE_REFERENCE_M: float = 12.0
-const EMITTER_CONE_MAX_BASE_RADIUS_M: float = 10.0
+const EMITTER_CONE_MAX_BASE_RADIUS_M: float = 250.0
 const EMITTER_LIGHT_MAX_FOOTPRINT_RADIUS_M: float = EMITTER_CONE_MAX_BASE_RADIUS_M
 const EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M: float = 0.75
-const EMITTER_BEAM_LENGTH_SCALE: float = 3.0
 const EMITTER_LIGHT_FOOTPRINT_RANGE_MULTIPLIER: float = 1.0
 const EMITTER_LIGHT_SPOT_ATTENUATION_MIN: float = 0.0669
 const EMITTER_LIGHT_SPOT_ATTENUATION_MAX: float = 1.5
@@ -1987,112 +1989,10 @@ func _estimate_emitter_lens_radius(emitter_node: Node3D) -> float:
 	return default_radius
 
 func _estimate_emitter_lens_radius_from_root(root: Node3D, require_name_hints: bool) -> float:
-	if root == null:
-		return -1.0
-	var candidates: Array = []
-	var world_to_root: Transform3D = root.global_transform.affine_inverse()
-	_collect_emitter_lens_candidates_recursive(root, world_to_root, require_name_hints, candidates)
-	if candidates.is_empty():
-		return -1.0
-
-	var best_name_score: int = 1 << 20
-	var best_position_score: float = INF
-	var best_radius: float = -1.0
-	for candidate in candidates:
-		if not (candidate is Dictionary):
-			continue
-		var radius: float = float(candidate.get("radius", -1.0))
-		if radius < 0.005:
-			continue
-		var center: Vector3 = candidate.get("center", Vector3.ZERO)
-		var name_score: int = int(candidate.get("name_score", 9999))
-		var radial_distance: float = Vector2(center.x, center.y).length()
-		var axial_distance: float = abs(center.z)
-		var position_score: float = axial_distance * 1.5 + radial_distance
-		var name_is_better: bool = name_score < best_name_score
-		var same_name: bool = name_score == best_name_score
-		var position_is_better: bool = position_score < best_position_score
-		var position_tie: bool = is_equal_approx(position_score, best_position_score)
-		if name_is_better or (same_name and (position_is_better or (position_tie and radius > best_radius))):
-			best_name_score = name_score
-			best_position_score = position_score
-			best_radius = radius
-	return max(best_radius, -1.0)
-
-func _collect_emitter_lens_candidates_recursive(node: Node3D, world_to_root: Transform3D, require_name_hints: bool, output_candidates: Array) -> void:
-	if node is MeshInstance3D:
-		var mesh_instance: MeshInstance3D = node
-		if (not require_name_hints) or _is_emitter_lens_mesh(mesh_instance):
-			var mesh_bounds: AABB = mesh_instance.get_aabb()
-			if mesh_bounds.size != Vector3.ZERO:
-				var local_bounds: AABB = world_to_root * (mesh_instance.global_transform * mesh_bounds)
-				var candidate_radius: float = _estimate_mesh_aperture_radius(mesh_instance, world_to_root)
-				if candidate_radius <= 0.0001:
-					candidate_radius = max(local_bounds.size.x, local_bounds.size.y) * 0.5
-				if candidate_radius > 0.0001:
-					output_candidates.append({
-						"center": local_bounds.get_center(),
-						"radius": max(candidate_radius, 0.001),
-						"name_score": _lens_name_priority(mesh_instance.name)
-					})
-
-	for child in node.get_children():
-		if child is Node3D:
-			_collect_emitter_lens_candidates_recursive(child, world_to_root, require_name_hints, output_candidates)
-
-func _estimate_mesh_aperture_radius(mesh_instance: MeshInstance3D, world_to_root: Transform3D) -> float:
-	if mesh_instance == null or mesh_instance.mesh == null:
-		return -1.0
-
-	var best_radius: float = -1.0
-	for surface_index in range(mesh_instance.mesh.get_surface_count()):
-		var arrays: Array = mesh_instance.mesh.surface_get_arrays(surface_index)
-		if arrays.is_empty() or arrays.size() <= Mesh.ARRAY_VERTEX:
-			continue
-		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		if vertices.is_empty():
-			continue
-
-		var local_vertices: Array = []
-		local_vertices.resize(vertices.size())
-		var min_abs_z: float = INF
-		for i in range(vertices.size()):
-			var root_local: Vector3 = world_to_root * (mesh_instance.global_transform * vertices[i])
-			local_vertices[i] = root_local
-			min_abs_z = min(min_abs_z, abs(root_local.z))
-
-		if not is_finite(min_abs_z):
-			continue
-		var z_tolerance: float = max(0.002, min_abs_z * 0.5)
-		var surface_radius: float = -1.0
-		for v in local_vertices:
-			var point: Vector3 = v
-			if abs(abs(point.z) - min_abs_z) > z_tolerance:
-				continue
-			var radial: float = Vector2(point.x, point.y).length()
-			surface_radius = max(surface_radius, radial)
-		if surface_radius > best_radius:
-			best_radius = surface_radius
-
-	return best_radius
-
-func _lens_name_priority(node_name: String) -> int:
-	var name_hint: String = node_name.to_lower()
-	if name_hint.contains("lens"):
-		return 0
-	if name_hint.contains("glass"):
-		return 1
-	if name_hint.contains("front"):
-		return 2
-	if name_hint.contains("emitter"):
-		return 3
-	if name_hint.contains("beam"):
-		return 4
-	return 5
-
-func _is_emitter_lens_mesh(mesh_instance: MeshInstance3D) -> bool:
-	var name_hint: String = mesh_instance.name.to_lower()
-	return name_hint.contains("lens") or name_hint.contains("glass") or name_hint.contains("emitter") or name_hint.contains("beam")
+	if _beam_aperture_measurement_service == null:
+		_beam_aperture_measurement_service = BeamApertureMeasurementServiceScript.new()
+	var measurement: Dictionary = _beam_aperture_measurement_service.measure_circular_aperture(root, require_name_hints)
+	return float(measurement.get("measured_model_aperture_radius_m", -1.0))
 
 func _get_fixture_emitter_photometrics(fixture_uuid: String) -> Array:
 	if _fixture_emitter_photometrics.has(fixture_uuid):
@@ -2174,27 +2074,7 @@ func _build_cached_beam_params(light: SpotLight3D, beam_angle: float, beam_color
 	return params
 
 func _select_render_near_radius(photometric: Dictionary, measured_lens_radius: float) -> Dictionary:
-	var official_radius: float = max(float(photometric.get("official_beam_radius_m", photometric.get("beam_radius", 0.0))), 0.0)
-	var has_explicit_official: bool = bool(photometric.get("beam_radius_from_gdtf", false)) and official_radius > 0.0
-	var measured_radius: float = max(measured_lens_radius, 0.0)
-	var selected_radius: float = 0.03
-	var source: String = "safe_fallback"
-	var mismatch_ratio: float = 1.0
-	if has_explicit_official and measured_radius > 0.0:
-		mismatch_ratio = max(official_radius, measured_radius) / max(min(official_radius, measured_radius), 0.0001)
-	if has_explicit_official:
-		selected_radius = max(official_radius, 0.005)
-		source = "official_beam_radius"
-	elif measured_radius > 0.0:
-		selected_radius = max(measured_radius, 0.005)
-		source = "measured_model_lens"
-	return {
-		"official_beam_radius_m": official_radius,
-		"measured_model_aperture_radius_m": measured_radius,
-		"render_near_radius_m": selected_radius,
-		"render_near_radius_source": source,
-		"radius_mismatch_ratio": mismatch_ratio,
-	}
+	return BeamGeometryCalculatorScript.select_render_near_radius(photometric, measured_lens_radius)
 
 func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
 	var last_state: Dictionary = _get_or_create_emitter_last_state(light)
@@ -2211,7 +2091,6 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		var zoom_max_angle: float = float(zoom_limits.get("max_beam_angle", EMITTER_ZOOM_DEFAULT_MAX_BEAM_ANGLE_DEG))
 		beam_angle = lerp(zoom_min_angle, zoom_max_angle, zoom_norm)
 		field_angle = max(field_angle, beam_angle)
-	var beam_radius_m: float = max(float(photometric.get("beam_radius", 0.05)), 0.001)
 
 	_set_light_property_bool(light, "visible", normalized_dimmer > 0.0001, last_state)
 	var base_light_energy: float = render_ready_values[0] if has_render_ready else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
@@ -2223,15 +2102,9 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	# Keep zoom/beam limits as full GDTF aperture, and convert here for light projection.
 	_set_light_property_float(light, "spot_angle", beam_half_angle_deg, last_state)
 	var spot_attenuation: float = clamp(beam_angle / max(field_angle, 0.1), EMITTER_LIGHT_SPOT_ATTENUATION_MIN, EMITTER_LIGHT_SPOT_ATTENUATION_MAX)
-	var beam_slope: float = tan(deg_to_rad(beam_half_angle_deg))
-	var nominal_spot_range: float = beam_radius_m * EMITTER_LIGHT_RANGE_BEAM_RADIUS_MULTIPLIER * EMITTER_BEAM_LENGTH_SCALE
-	var max_spot_range_from_footprint: float = EMITTER_LIGHT_MAX_RANGE_M
-	if beam_slope > 0.0001:
-		max_spot_range_from_footprint = max(EMITTER_LIGHT_MAX_FOOTPRINT_RADIUS_M / beam_slope, EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M)
-	var cone_range: float = clamp(min(nominal_spot_range, max_spot_range_from_footprint), EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M, EMITTER_LIGHT_MAX_RANGE_M)
-	# SpotLight3D footprint follows transform by default in Godot; this extension only
-	# avoids early floor clipping on steep tilt while keeping cone visuals unchanged.
-	_set_light_property_float(light, "spot_range", clamp(cone_range * EMITTER_LIGHT_FOOTPRINT_RANGE_MULTIPLIER, EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M, EMITTER_LIGHT_MAX_RANGE_M), last_state)
+	var beam_visual_length_m: float = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
+	# SpotLight3D range is an optional lighting policy; custom visible beam length is explicit and independent.
+	_set_light_property_float(light, "spot_range", clamp(beam_visual_length_m * EMITTER_LIGHT_FOOTPRINT_RANGE_MULTIPLIER, EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M, EMITTER_LIGHT_MAX_RANGE_M), last_state)
 	_set_light_property_float(light, "spot_attenuation", spot_attenuation, last_state)
 	var light_color: Color = _render_ready_color(render_ready_values) if has_render_ready else _derive_emitter_color(photometric, controls)
 	_set_light_property_color(light, "light_color", light_color, last_state)
@@ -2245,6 +2118,8 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var scaled_intensity: float = clamp(render_ready_values[7], 0.0, BEAM_INTENSITY_MAX) if has_render_ready else clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	var beam_defaults: Dictionary = _cached_beam_defaults
 	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
+	beam_params["beam_visual_length_m"] = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
+	beam_params["beam_range"] = beam_params["beam_visual_length_m"]
 	beam_params["beam_type"] = str(photometric.get("beam_type", "Spot"))
 	beam_params["rectangle_ratio"] = float(photometric.get("rectangle_ratio", 1.0))
 	beam_params["official_beam_radius_m"] = float(radius_decision.get("official_beam_radius_m", 0.0))
@@ -2616,7 +2491,7 @@ func _update_emitter_beam_cone(light: SpotLight3D, beam_angle: float, beam_range
 	var lens_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.03)), 0.005)
 	if gdtf_beam_radius > 0.0:
 		lens_radius = max(gdtf_beam_radius, 0.005)
-	var bottom_radius: float = clamp(radius, 0.03, EMITTER_CONE_MAX_BASE_RADIUS_M)
+	var bottom_radius: float = float(BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range).get("far_radius_m", lens_radius))
 
 	_update_beam_cone_geometry(cone, lens_radius, bottom_radius, beam_range, 1.0)
 	_update_beam_cone_geometry(mid_cone, lens_radius, bottom_radius, beam_range, 0.7)

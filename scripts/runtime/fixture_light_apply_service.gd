@@ -191,13 +191,14 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictionary, beam_angle: float, beam_color: Color, dimmer_norm: float, beam_intensity: float) -> Dictionary:
 	var profile: Dictionary = target_record.get("beam_optical_profile", {})
 	var diagnostics: Dictionary = light.get_meta("peraviz_beam_radius_diagnostics", {}) if light != null and light.has_meta("peraviz_beam_radius_diagnostics") else {}
-	var beam_range: float = max(float(profile.get("beam_range", light.spot_range if light != null else 1.0)), 0.1)
+	var beam_range: float = clamp(float(profile.get("beam_visual_length_m", profile.get("beam_range", light.spot_range if light != null else 75.0))), 1.0, 150.0)
 	var measured_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.0)), 0.0) if light != null else 0.0
 	var near_radius: float = max(float(diagnostics.get("render_near_radius_m", measured_radius)), 0.0)
 	if near_radius <= 0.0:
 		near_radius = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
 	return {
 		"beam_angle": beam_angle,
+		"beam_visual_length_m": beam_range,
 		"beam_range": beam_range,
 		"beam_color": beam_color,
 		"lens_radius": near_radius,
