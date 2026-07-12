@@ -17,12 +17,12 @@ instance uniform vec2 beam_radius_params = vec2(0.03, 1.0);
 instance uniform float radial_falloff = 1.1;
 instance uniform float longitudinal_falloff = 1.0;
 instance uniform vec2 gobo_transform = vec2(1.0, 0.0);
-instance uniform vec2 appearance_core_field = vec2(0.7, 1.0);
-instance uniform vec2 appearance_edge_exp = vec2(0.1, 1.1);
-instance uniform vec2 appearance_gain_floor = vec2(1.0, 0.08);
-instance uniform vec4 appearance_extinction = vec4(0.01, 1.0, 1.0, 0.12);
-instance uniform int appearance_shape = 0;
-instance uniform vec2 appearance_rect_half_extents = vec2(1.0, 1.0);
+uniform vec2 appearance_core_field = vec2(0.7, 1.0);
+uniform vec2 appearance_edge_exp = vec2(0.1, 1.1);
+uniform vec2 appearance_gain_floor = vec2(1.0, 0.08);
+uniform vec4 appearance_extinction = vec4(0.01, 1.0, 1.0, 0.12);
+uniform int appearance_shape = 0;
+uniform vec2 appearance_rect_half_extents = vec2(1.0, 1.0);
 
 uniform float haze_density = 0.35;
 uniform sampler2D gobo_texture : source_color;

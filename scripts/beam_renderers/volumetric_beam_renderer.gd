@@ -108,13 +108,16 @@ func _appearance_profile_from_params(params: Dictionary) -> Dictionary:
 	return BeamAppearanceProfileScript.resolve(params, params)
 
 func _apply_appearance_profile_params(beam: MeshInstance3D, appearance_profile: Dictionary) -> void:
-	beam.set_instance_shader_parameter("appearance_core_field", Vector2(float(appearance_profile.get("core_radius_ratio", 0.7)), float(appearance_profile.get("field_radius_ratio", 1.0))))
-	beam.set_instance_shader_parameter("appearance_edge_exp", Vector2(float(appearance_profile.get("edge_softness", 0.1)), float(appearance_profile.get("radial_exponent", 1.1))))
-	beam.set_instance_shader_parameter("appearance_gain_floor", Vector2(float(appearance_profile.get("center_intensity_gain", 1.0)), float(appearance_profile.get("edge_intensity_floor", 0.08))))
-	beam.set_instance_shader_parameter("appearance_extinction", Vector4(float(appearance_profile.get("extinction_coefficient", 0.01)), float(appearance_profile.get("longitudinal_exponent", 1.0)), float(appearance_profile.get("near_visibility", 1.0)), float(appearance_profile.get("far_visibility_floor", 0.12))))
-	beam.set_instance_shader_parameter("appearance_shape", 1 if str(appearance_profile.get("shape", "circle")) == "rectangle" else 0)
+	var beam_material: ShaderMaterial = beam.material_override as ShaderMaterial
+	if beam_material == null:
+		return
+	beam_material.set_shader_parameter("appearance_core_field", Vector2(float(appearance_profile.get("core_radius_ratio", 0.7)), float(appearance_profile.get("field_radius_ratio", 1.0))))
+	beam_material.set_shader_parameter("appearance_edge_exp", Vector2(float(appearance_profile.get("edge_softness", 0.1)), float(appearance_profile.get("radial_exponent", 1.1))))
+	beam_material.set_shader_parameter("appearance_gain_floor", Vector2(float(appearance_profile.get("center_intensity_gain", 1.0)), float(appearance_profile.get("edge_intensity_floor", 0.08))))
+	beam_material.set_shader_parameter("appearance_extinction", Vector4(float(appearance_profile.get("extinction_coefficient", 0.01)), float(appearance_profile.get("longitudinal_exponent", 1.0)), float(appearance_profile.get("near_visibility", 1.0)), float(appearance_profile.get("far_visibility_floor", 0.12))))
+	beam_material.set_shader_parameter("appearance_shape", 1 if str(appearance_profile.get("shape", "circle")) == "rectangle" else 0)
 	var rect_ratio: float = max(float(appearance_profile.get("rectangle_ratio", appearance_profile.get("rectangleRatio", 1.0))), 0.01)
-	beam.set_instance_shader_parameter("appearance_rect_half_extents", Vector2(sqrt(rect_ratio), 1.0 / max(sqrt(rect_ratio), 0.01)))
+	beam_material.set_shader_parameter("appearance_rect_half_extents", Vector2(sqrt(rect_ratio), 1.0 / max(sqrt(rect_ratio), 0.01)))
 
 func _compute_beam_settings_hash() -> int:
 	var hash_value: int = 2166136261

@@ -36,12 +36,12 @@ instance uniform float beam_overdrive : hint_range(0.0, 1.0) = 0.0;
 instance uniform float beam_visibility : hint_range(0.0, 1.0) = 1.0;
 uniform bool gobo_mirror_x = true;
 uniform bool gobo_mirror_z = false;
-instance uniform vec2 appearance_core_field = vec2(0.7, 1.0);
-instance uniform vec2 appearance_edge_exp = vec2(0.1, 1.1);
-instance uniform vec2 appearance_gain_floor = vec2(1.0, 0.08);
-instance uniform vec4 appearance_extinction = vec4(0.01, 1.0, 1.0, 0.12);
-instance uniform int appearance_shape = 0;
-instance uniform vec2 appearance_rect_half_extents = vec2(1.0, 1.0);
+uniform vec2 appearance_core_field = vec2(0.7, 1.0);
+uniform vec2 appearance_edge_exp = vec2(0.1, 1.1);
+uniform vec2 appearance_gain_floor = vec2(1.0, 0.08);
+uniform vec4 appearance_extinction = vec4(0.01, 1.0, 1.0, 0.12);
+uniform int appearance_shape = 0;
+uniform vec2 appearance_rect_half_extents = vec2(1.0, 1.0);
 
 
 

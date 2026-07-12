@@ -30,7 +30,7 @@ static func resolve(params: Dictionary, visual_settings: Dictionary = {}) -> Dic
 	if profile.get("shape", "circle") == "circle" and key in ["wash", "pc", "fresnel"] and field_angle > beam_angle and beam_angle > 0.0:
 		var ratio: float = clamp(tan(deg_to_rad(field_angle * 0.5)) / max(tan(deg_to_rad(beam_angle * 0.5)), 0.0001), 1.0, 3.0)
 		profile["field_radius_ratio"] = clamp(1.0 / ratio, 0.62, 1.0)
-		profile["edge_softness"] = clamp(float(profile["edge_softness"]) * (1.0 + min(ratio - 1.0, 1.0) * 0.35), 0.02, 0.85)
+		profile["edge_softness"] = clamp(float(profile["edge_softness"]) * (1.0 + minf(ratio - 1.0, 1.0) * 0.35), 0.02, 0.85)
 		profile["profile_source"] = str(profile["profile_source"]) + "+field_angle_visual_envelope"
 	var extinction_multiplier: float = max(float(visual_settings.get("beam_extinction_multiplier", params.get("beam_extinction_multiplier", 1.0))), 0.0)
 	var far_multiplier: float = max(float(visual_settings.get("beam_far_visibility_multiplier", params.get("beam_far_visibility_multiplier", 1.0))), 0.0)
@@ -55,7 +55,7 @@ static func sanitize(profile: Dictionary) -> Dictionary:
 	return sanitized
 
 static func circular_normalized_radius(local_x: float, local_z: float, local_radius: float) -> float:
-	return length(Vector2(local_x, local_z)) / max(local_radius, 0.0001)
+	return Vector2(local_x, local_z).length() / max(local_radius, 0.0001)
 
 static func rectangular_normalized_radius(local_x: float, local_z: float, half_width: float, half_height: float) -> float:
 	return max(abs(local_x) / max(half_width, 0.0001), abs(local_z) / max(half_height, 0.0001))
