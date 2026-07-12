@@ -28,5 +28,6 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Scaled projected Beam emitter and surface-light intensity from each Beam geometry's declared GDTF luminous flux so multi-emitter fixtures no longer multiply fixture-level brightness across every beam.
 - Reduced overly verbose DMX diagnostics in normal logs and compacted inline monitor summaries so diagnostic text no longer stretches panels across the viewer.
 - Corrected visible beam geometry so the near aperture uses GDTF BeamRadius or exact Beam-owned lens measurement, long beams use an explicit 75 m visual length by default, and Lightweight/Volumetric renderers share the same full-angle far-spread contract without changing fixture or scene scale.
