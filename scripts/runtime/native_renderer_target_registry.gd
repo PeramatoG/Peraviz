@@ -216,6 +216,9 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
 	var lens_material_targets: Array = _prepare_lens_materials(cache_key, target_nodes + emitter_nodes)
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
+	var emitter_photometrics: Array = _call_array("get_emitter_photometrics", [fixture_uuid])
+	var emitter_output_weights: Array = _calculate_emitter_output_weights(emitter_photometrics, emitter_anchors.size())
+	_apply_initial_output_weights(emitter_anchors, emitter_output_weights)
 	_dimmer_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
 		"property_id": int(manifest_row.get("property_id", 0)),
@@ -230,7 +233,8 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 		"optional_spotlights": emitter_anchors,
 		"beam_instances": beam_instances,
 		"lens_material_targets": lens_material_targets,
-		"emitter_photometrics": _call_array("get_emitter_photometrics", [fixture_uuid]),
+		"emitter_photometrics": _emitter_photometrics_with_output_weights(emitter_photometrics, emitter_output_weights),
+		"emitter_output_weights": emitter_output_weights,
 	}
 	_increment_counter("dimmer_owner_geometries_resolved")
 	if not emitter_nodes.is_empty():
@@ -245,6 +249,58 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
 		_increment_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_counter("dimmer_resolved")
+
+func _calculate_emitter_output_weights(emitter_photometrics: Array, emitter_count: int) -> Array:
+	var weights: Array = []
+	weights.resize(emitter_count)
+	weights.fill(1.0)
+	var projected_indices: Array = []
+	var projected_fluxes: Array = []
+	var total_positive_flux: float = 0.0
+	var all_projected_flux_valid: bool = true
+	for index in range(emitter_count):
+		var photometric: Dictionary = emitter_photometrics[index] if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary else {}
+		if not _is_projected_beam_photometric(photometric):
+			continue
+		projected_indices.append(index)
+		var luminous_flux_value: Variant = photometric.get("luminous_flux", null)
+		var has_valid_flux: bool = (typeof(luminous_flux_value) == TYPE_INT or typeof(luminous_flux_value) == TYPE_FLOAT) and is_finite(float(luminous_flux_value)) and float(luminous_flux_value) > 0.0
+		if has_valid_flux:
+			var luminous_flux: float = float(luminous_flux_value)
+			projected_fluxes.append(luminous_flux)
+			total_positive_flux += luminous_flux
+		else:
+			projected_fluxes.append(0.0)
+			all_projected_flux_valid = false
+	var projected_count: int = projected_indices.size()
+	if projected_count <= 1:
+		return weights
+	if all_projected_flux_valid and total_positive_flux > 0.0:
+		for flux_index in range(projected_count):
+			weights[int(projected_indices[flux_index])] = float(projected_fluxes[flux_index]) / total_positive_flux
+	else:
+		var equal_weight: float = 1.0 / float(projected_count)
+		for projected_index in projected_indices:
+			weights[int(projected_index)] = equal_weight
+	return weights
+
+func _is_projected_beam_photometric(photometric: Dictionary) -> bool:
+	var beam_type: String = str(photometric.get("beam_type_effective", photometric.get("beam_type", "Wash"))).strip_edges().to_lower()
+	return beam_type != "none" and beam_type != "glow"
+
+func _emitter_photometrics_with_output_weights(emitter_photometrics: Array, emitter_output_weights: Array) -> Array:
+	var weighted: Array = []
+	for index in range(max(emitter_photometrics.size(), emitter_output_weights.size())):
+		var photometric: Dictionary = emitter_photometrics[index].duplicate(true) if emitter_photometrics[index] is Dictionary else {}
+		photometric["photometric_output_weight"] = float(emitter_output_weights[index]) if index < emitter_output_weights.size() else 1.0
+		weighted.append(photometric)
+	return weighted
+
+func _apply_initial_output_weights(emitter_anchors: Array, emitter_output_weights: Array) -> void:
+	for index in range(min(emitter_anchors.size(), emitter_output_weights.size())):
+		var light: SpotLight3D = emitter_anchors[index] as SpotLight3D
+		if light != null and is_instance_valid(light):
+			light.set_meta("peraviz_photometric_output_weight", float(emitter_output_weights[index]))
 
 func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:

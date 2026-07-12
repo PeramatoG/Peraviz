@@ -34,6 +34,7 @@ instance uniform float haze_density = 0.35;
 instance uniform float beam_intensity : hint_range(0.0, 1.0) = 1.0;
 instance uniform float beam_overdrive : hint_range(0.0, 1.0) = 0.0;
 instance uniform float beam_visibility : hint_range(0.0, 1.0) = 1.0;
+instance uniform float photometric_output_weight = 1.0;
 uniform bool gobo_mirror_x = true;
 uniform bool gobo_mirror_z = false;
 uniform vec2 appearance_core_field = vec2(0.7, 1.0);
@@ -183,6 +184,7 @@ void fragment() {
 	}
 
 	ALBEDO = base_color.rgb * brightness * gobo_mask;
-	ALPHA = clamp(final_alpha * gobo_mask, 0.0, 1.0);
-	EMISSION = ALBEDO * (1.6 + (8.0 * clamp(beam_intensity, 0.0, 1.0)) + (34.0 * beam_overdrive));
+	float output_weight = max(photometric_output_weight, 0.0);
+	ALPHA = clamp(final_alpha * gobo_mask * output_weight, 0.0, 1.0);
+	EMISSION = ALBEDO * (1.6 + (8.0 * clamp(beam_intensity, 0.0, 1.0)) + (34.0 * beam_overdrive)) * output_weight;
 }

@@ -590,10 +590,15 @@ func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionar
 	var render_ready_values: PackedFloat32Array = _get_render_ready_values(controls)
 	var luminous_flux: float = max(float(photometric.get("luminous_flux", 10000.0)), 0.0)
 	var base_light_energy: float = render_ready_values[0] if render_ready_values.size() >= 9 else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
+	var output_weight: float = _photometric_output_weight(photometric)
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
-	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
+	_set_light_property_float(light, "light_energy", base_light_energy * output_weight * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
 	var scaled_intensity_override: float = render_ready_values[7] if render_ready_values.size() >= 9 else -1.0
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
+	if not beam_params.is_empty():
+		beam_params["photometric_output_weight"] = output_weight
+		light.set_meta("peraviz_beam_last_params", beam_params)
 	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color, scaled_intensity_override)
 
 func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> bool:
@@ -2104,8 +2109,9 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 
 	_set_light_property_bool(light, "visible", normalized_dimmer > 0.0001, last_state)
 	var base_light_energy: float = render_ready_values[0] if has_render_ready else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
+	var output_weight: float = _photometric_output_weight(photometric)
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
-	var light_energy: float = base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0))
+	var light_energy: float = base_light_energy * output_weight * float(_visual_settings.get("spot_multiplier", 1.0))
 	_set_light_property_float(light, "light_energy", light_energy, last_state)
 	var beam_half_angle_deg: float = render_ready_values[2] if has_render_ready else beam_angle * 0.5
 	# Godot 4.2 SpotLight3D.spot_angle behaves as cone half-angle in degrees.
@@ -2129,6 +2135,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var scaled_intensity: float = clamp(render_ready_values[7], 0.0, BEAM_INTENSITY_MAX) if has_render_ready else clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	var beam_defaults: Dictionary = _cached_beam_defaults
 	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
+	beam_params["photometric_output_weight"] = output_weight
 	beam_params["beam_visual_length_m"] = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
 	beam_params["beam_range"] = beam_params["beam_visual_length_m"]
 	beam_params["beam_type"] = str(photometric.get("beam_type_effective", photometric.get("beam_type", "Wash")))
@@ -2208,6 +2215,12 @@ func _get_or_create_emitter_last_state(light: SpotLight3D) -> Dictionary:
 	if not _fixture_emitter_last_state.has(key):
 		_fixture_emitter_last_state[key] = {}
 	return _fixture_emitter_last_state.get(key, {})
+
+func _photometric_output_weight(photometric: Dictionary) -> float:
+	var output_weight: float = float(photometric.get("photometric_output_weight", 1.0))
+	if not is_finite(output_weight) or output_weight < 0.0:
+		return 1.0
+	return output_weight
 
 func _is_close_float(a: float, b: float, epsilon: float = EMITTER_LIGHT_STATE_EPSILON) -> bool:
 	return abs(a - b) < epsilon
