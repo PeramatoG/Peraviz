@@ -193,6 +193,8 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 			prism.mesh = mesh
 			if core_prism != null:
 				core_prism.mesh = mesh
+	elif core_prism != null and core_prism.mesh == null:
+		core_prism.mesh = prism.mesh
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
 	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
 	_apply_prism_optics_parameters(prism, near_radius, far_radius)
@@ -201,7 +203,11 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 		_apply_appearance_material_parameters(core_prism, appearance_profile, radial_falloff, longitudinal_falloff)
 	_apply_appearance_material_parameters(prism, appearance_profile, radial_falloff, longitudinal_falloff)
 	prism.extra_cull_margin = max(far_radius, near_radius) + beam_range
+	if core_prism != null:
+		core_prism.extra_cull_margin = prism.extra_cull_margin
 	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, near_radius, far_radius, beam_range, beam_angle, aperture_profile, needs_topology and previous_mesh != prism.mesh, true))
+	if bool(params.get("beam_debug_optics", false)):
+		_record_debug_diagnostics(light, "legacy_cone", prism, core_prism, near_radius, far_radius, beam_range, str(params.get("beam_type", "Wash")), core_ratio, prism.visible, float(params.get("scaled_intensity", 0.0)), prism.extra_cull_margin, not light.has_meta("peraviz_beam_debug_reused"))
 	return {
 		"applied": true,
 		"beam_instance_resolved": true,
@@ -267,15 +273,16 @@ func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 	return prism if prism != null and is_instance_valid(prism) else null
 
 func cleanup_beam(light: SpotLight3D) -> void:
-	if light.has_meta(MAIN_KEY):
-		var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
-		if prism != null and is_instance_valid(prism):
-			prism.queue_free()
-		light.remove_meta(MAIN_KEY)
+	for meta_key in [MAIN_KEY, CORE_LAYER_KEY]:
+		if light.has_meta(meta_key):
+			var prism: MeshInstance3D = light.get_meta(meta_key) as MeshInstance3D
+			if prism != null and is_instance_valid(prism):
+				prism.queue_free()
+			light.remove_meta(meta_key)
 	_cleanup_legacy_cones(light)
 
 func _cleanup_legacy_cones(light: SpotLight3D) -> void:
-	for meta_key in [CORE_LAYER_KEY, LEGACY_MID_KEY, LEGACY_CORE_KEY, "peraviz_beam_cone"]:
+	for meta_key in [LEGACY_MID_KEY, LEGACY_CORE_KEY, "peraviz_beam_cone"]:
 		if not light.has_meta(meta_key):
 			continue
 		var legacy_cone: MeshInstance3D = light.get_meta(meta_key) as MeshInstance3D
@@ -295,6 +302,28 @@ func _create_prism(prism_name: String) -> MeshInstance3D:
 	prism.rotation_degrees.x = 90.0
 	prism.visible = false
 	return prism
+
+func _record_debug_diagnostics(light: SpotLight3D, mode: String, prism: MeshInstance3D, core_prism: MeshInstance3D, near_radius: float, far_radius: float, beam_range: float, beam_type: String, core_ratio: float, visible: bool, intensity: float, cull_margin: float, created: bool) -> void:
+	var diagnostics := {
+		"renderer_mode": mode,
+		"field_instance_id": prism.get_instance_id() if prism != null else 0,
+		"core_instance_id": core_prism.get_instance_id() if core_prism != null else 0,
+		"field_mesh_valid": prism != null and prism.mesh != null,
+		"core_mesh_valid": core_prism != null and core_prism.mesh != null,
+		"field_material_valid": prism != null and prism.material_override != null,
+		"core_material_valid": core_prism != null and core_prism.material_override != null,
+		"near_radius": near_radius,
+		"far_radius": far_radius,
+		"visual_length": beam_range,
+		"beam_type": beam_type,
+		"core_ratio": core_ratio,
+		"visible": visible,
+		"alpha_intensity": intensity,
+		"cull_margin": cull_margin,
+		"resource_action": "created" if created else "reused",
+	}
+	light.set_meta("peraviz_beam_debug_diagnostics", diagnostics)
+	light.set_meta("peraviz_beam_debug_reused", true)
 
 func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float, appearance_profile: Dictionary) -> void:
 	if prism == null:

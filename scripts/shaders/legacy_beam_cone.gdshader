@@ -71,6 +71,9 @@ float normalized_radius_from_local(vec3 local_pos) {
 }
 
 float radial_profile_from_local(vec3 local_pos) {
+	// The beam mesh is a hollow shell, so its fragments lie on each layer's
+	// outer radius. Treat that shell as a visible volume sample instead of
+	// gating it out as an interior radial edge.
 	float radius_norm = clamp(normalized_radius_from_local(local_pos), 0.0, 1.0);
 	float core = clamp(appearance_core_field.x, 0.0, 0.98);
 	float field = clamp(max(appearance_core_field.y, core + 0.01), core + 0.01, 1.0);
@@ -79,11 +82,8 @@ float radial_profile_from_local(vec3 local_pos) {
 	float transition_t = smoothstep(transition_start, field, radius_norm);
 	float center_gain = mix(max(appearance_gain_floor.x, 1.0), 1.0, transition_t);
 	float envelope = mix(1.0, clamp(appearance_gain_floor.y, 0.0, 0.5), transition_t);
-	float edge_gate = 1.0 - smoothstep(field, 1.0, radius_norm);
-	if (radius_norm >= 1.0) {
-		edge_gate = 0.0;
-	}
-	return max(pow(clamp(envelope * edge_gate, 0.0, 1.0), max(appearance_edge_exp.y, 0.05)) * center_gain, 0.0);
+	float shell_floor = max(clamp(appearance_gain_floor.y, 0.0, 0.5), 0.02);
+	return max(pow(clamp(envelope, shell_floor, 1.0), max(appearance_edge_exp.y, 0.05)) * center_gain, shell_floor);
 }
 
 float longitudinal_visibility_from_axial(float axial_from_near) {
@@ -126,7 +126,7 @@ void fragment() {
 	}
 	ALBEDO = beam_color.rgb * gobo_mask;
 	float beam_alpha = mix(far_alpha, near_alpha, near_factor) * end_fade * lateral_fade * gobo_mask * max(haze_density, 0.01);
-	beam_alpha += beam_alpha_floor * max(haze_density, 0.01) * radial_fade * end_fade;
+	beam_alpha += beam_alpha_floor * max(haze_density, 0.01) * end_fade;
 	if (beam_alpha < 0.0001) {
 		discard;
 	}

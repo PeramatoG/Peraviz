@@ -44,6 +44,8 @@ func _run() -> void:
 			_check(energy <= previous + 0.0001, "Radial energy should be monotonic")
 			previous = energy
 		_check(BeamAppearanceProfileScript.radial_energy(profile, 0.0) > BeamAppearanceProfileScript.radial_energy(profile, 1.0), "Center should be brighter than margin")
+	for profile in [spot, rectangle, wash, pc, fresnel, BeamAppearanceProfileScript.resolve({}, {})]:
+		_check(BeamAppearanceProfileScript.shell_sample_energy(profile, 1.0) > 0.0, "A visible hollow-shell beam layer must not produce zero energy at its own radius")
 	var soft_field: Dictionary = BeamAppearanceProfileScript.resolve({"beam_type": "Wash", "beam_angle": 20.0, "field_angle": 40.0}, {})
 	_check(float(soft_field.get("field_radius_ratio", 1.0)) < float(wash.get("field_radius_ratio", 1.0)), "Larger FieldAngle may widen soft envelope without geometry changes")
 	_check_close(float(BeamGeometryCalculatorScript.far_radius_for_full_angle(0.05, 25.0, 75.0).get("far_radius_m", 0.0)), 16.6770997, 0.0001, "Appearance must not alter 75 m geometry")

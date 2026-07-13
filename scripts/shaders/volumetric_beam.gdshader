@@ -84,6 +84,9 @@ float normalized_radius_from_local(vec3 local_pos) {
 }
 
 float radial_profile_from_local(vec3 local_pos) {
+	// The field and core meshes are hollow envelopes. Their fragments represent
+	// discrete volume samples, so a surface point at radius_norm == 1 must keep
+	// the layer's visible floor instead of being culled as an interior edge.
 	float radius_norm = clamp(normalized_radius_from_local(local_pos), 0.0, 1.0);
 	float core = clamp(appearance_core_field.x, 0.0, 0.98);
 	float field = clamp(max(appearance_core_field.y, core + 0.01), core + 0.01, 1.0);
@@ -92,11 +95,8 @@ float radial_profile_from_local(vec3 local_pos) {
 	float transition_t = smoothstep(transition_start, field, radius_norm);
 	float center_gain = mix(max(appearance_gain_floor.x, 1.0), 1.0, transition_t);
 	float envelope = mix(1.0, clamp(appearance_gain_floor.y, 0.0, 0.5), transition_t);
-	float edge_gate = 1.0 - smoothstep(field, 1.0, radius_norm);
-	if (radius_norm >= 1.0) {
-		edge_gate = 0.0;
-	}
-	return max(pow(clamp(envelope * edge_gate, 0.0, 1.0), max(appearance_edge_exp.y, 0.05)) * center_gain, 0.0);
+	float shell_floor = max(clamp(appearance_gain_floor.y, 0.0, 0.5), 0.02);
+	return max(pow(clamp(envelope, shell_floor, 1.0), max(appearance_edge_exp.y, 0.05)) * center_gain, shell_floor);
 }
 
 float longitudinal_visibility_from_axial(float axial_progress) {
@@ -137,7 +137,7 @@ void fragment() {
 	float dist = length(v_view);
 	float near_alpha = smoothstep(near_fade_start, near_fade_end, dist);
 	float far_alpha = 1.0 - smoothstep(far_fade_start, far_fade_end, dist);
-	float dist_fade = clamp(near_alpha * far_alpha, 0.0, 1.0);
+	float dist_fade = max(clamp(near_alpha * far_alpha, 0.0, 1.0), 0.35);
 
 	float source_y = 0.5 * cone_height;
 	float axial_progress = clamp((source_y - v_local.y) / max(cone_height, 0.0001), 0.0, 1.0);

@@ -28,5 +28,6 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Restored stable Lightweight and Volumetric beam visibility by treating field/core beam shells as visible volume samples, preserving a camera-independent visibility floor, and keeping core layer resources alive across repeated renderer updates.
 - Reduced overly verbose DMX diagnostics in normal logs and compacted inline monitor summaries so diagnostic text no longer stretches panels across the viewer.
 - Corrected visible beam geometry so the near aperture uses GDTF BeamRadius or exact Beam-owned lens measurement, long beams use an explicit 75 m visual length by default, and Lightweight/Volumetric renderers share the same full-angle far-spread contract without changing fixture or scene scale.

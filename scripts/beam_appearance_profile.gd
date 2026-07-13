@@ -75,6 +75,19 @@ static func radial_energy(profile: Dictionary, normalized_radius: float) -> floa
 		edge_gate = 0.0
 	return max(pow(clamp(envelope * edge_gate, 0.0, 1.0), float(p["radial_exponent"])) * center_gain, 0.0)
 
+static func shell_sample_energy(profile: Dictionary, normalized_radius: float) -> float:
+	var p: Dictionary = sanitize(profile)
+	var r: float = clamp(normalized_radius, 0.0, 1.0)
+	var core: float = float(p["core_radius_ratio"])
+	var field: float = max(float(p["field_radius_ratio"]), core + 0.01)
+	var softness: float = clamp(float(p["edge_softness"]), 0.01, 0.9)
+	var transition_start: float = clamp(minf(core, field - softness), 0.0, field - 0.005)
+	var transition_t: float = smoothstep(transition_start, field, r)
+	var center_gain: float = lerpf(float(p["center_intensity_gain"]), 1.0, transition_t)
+	var envelope: float = lerpf(1.0, float(p["edge_intensity_floor"]), transition_t)
+	var shell_floor: float = max(float(p["edge_intensity_floor"]), 0.02)
+	return max(pow(clamp(envelope, shell_floor, 1.0), float(p["radial_exponent"])) * center_gain, shell_floor)
+
 static func longitudinal_visibility(profile: Dictionary, distance_m: float) -> float:
 	var p: Dictionary = sanitize(profile)
 	var d: float = max(distance_m, 0.0)

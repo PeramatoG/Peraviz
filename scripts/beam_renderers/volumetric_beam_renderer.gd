@@ -126,6 +126,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		core_beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
 		_apply_appearance_profile_params(core_beam, appearance_profile)
 		_apply_beam_material_params(core_beam, beam_range, core_shape_result if not core_shape_result.is_empty() else shape_result)
+	if bool(params.get("beam_debug_optics", false)):
+		_record_debug_diagnostics(light, beam, core_beam, shape_result, beam_range, str(params.get("beam_type", "Wash")), core_ratio, true, intensity_alpha, beam.extra_cull_margin, false)
 
 func _appearance_profile_from_params(params: Dictionary) -> Dictionary:
 	var profile_value: Variant = params.get("appearance_profile", {})
@@ -265,6 +267,27 @@ func cleanup_beam(light: SpotLight3D) -> void:
 		if beam != null and is_instance_valid(beam):
 			beam.queue_free()
 		light.remove_meta(key)
+
+func _record_debug_diagnostics(light: SpotLight3D, beam: MeshInstance3D, core_beam: MeshInstance3D, shape_result: Dictionary, beam_range: float, beam_type: String, core_ratio: float, visible: bool, intensity: float, cull_margin: float, created: bool) -> void:
+	var diagnostics := {
+		"renderer_mode": "volumetric_%s" % _active_shape_provider.shape_mode(),
+		"field_instance_id": beam.get_instance_id() if beam != null else 0,
+		"core_instance_id": core_beam.get_instance_id() if core_beam != null else 0,
+		"field_mesh_valid": beam != null and beam.mesh != null,
+		"core_mesh_valid": core_beam != null and core_beam.mesh != null,
+		"field_material_valid": beam != null and beam.material_override != null,
+		"core_material_valid": core_beam != null and core_beam.material_override != null,
+		"near_radius": float(shape_result.get("near_radius", 0.0)),
+		"far_radius": float(shape_result.get("far_radius", shape_result.get("gobo_projection_radius", 0.0))),
+		"visual_length": beam_range,
+		"beam_type": beam_type,
+		"core_ratio": core_ratio,
+		"visible": visible,
+		"alpha_intensity": intensity,
+		"cull_margin": cull_margin,
+		"resource_action": "created" if created else "reused",
+	}
+	light.set_meta("peraviz_beam_debug_diagnostics", diagnostics)
 
 func _select_shape_provider() -> VolumetricBeamShapeProvider:
 	var requested_mode: String = str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)).to_lower()

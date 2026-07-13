@@ -28,6 +28,7 @@ func apply_shape(beam: MeshInstance3D, _light: SpotLight3D, params: Dictionary) 
 	cone_mesh.top_radius = max(lens_radius, 0.003)
 	cone_mesh.bottom_radius = bottom_radius
 	cone_mesh.height = beam_range
+	beam.extra_cull_margin = max(bottom_radius, lens_radius) + beam_range
 	var lens_offset_m: float = max(float(params.get("lens_offset_m", params.get("near_offset", 0.0))), 0.0)
 	var lens_shift_x: float = float(params.get("lens_shift_x", 0.0))
 	var lens_shift_y: float = float(params.get("lens_shift_y", 0.0))
@@ -41,6 +42,8 @@ func apply_shape(beam: MeshInstance3D, _light: SpotLight3D, params: Dictionary) 
 	_apply_beam_axis_rotation(beam, beam_rotation_deg)
 	return {
 		"gobo_projection_radius": max(bottom_radius, 0.001),
+		"near_radius": max(lens_radius, 0.001),
+		"far_radius": max(bottom_radius, 0.001),
 		"beam_rotation_deg": beam_rotation_deg,
 		"mirror_x": mirror_x,
 		"mirror_z": mirror_z,
