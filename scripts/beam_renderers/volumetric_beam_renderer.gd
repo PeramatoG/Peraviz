@@ -80,7 +80,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		debug_axis.visible = bool(params.get("beam_debug_optics", false))
 
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
-	var output_weight: float = max(float(params.get("photometric_output_weight", 1.0)), 0.0)
+	var output_weight: float = max(float(params.get("beam_output_weight", 1.0)), 0.0)
 	var shape_result: Dictionary = _active_shape_provider.apply_shape(beam, light, params)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
 	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
@@ -225,7 +225,7 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	if intensity_max > reference_max:
 		overdrive_norm = clamp((intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
 	var beam_color: Color = params.get("beam_color", Color.WHITE)
-	var output_weight: float = max(float(params.get("photometric_output_weight", 1.0)), 0.0)
+	var output_weight: float = max(float(params.get("beam_output_weight", 1.0)), 0.0)
 	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
 	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
 	beam.visible = true

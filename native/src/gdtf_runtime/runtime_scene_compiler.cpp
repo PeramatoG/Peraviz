@@ -5,9 +5,11 @@
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace peraviz::gdtf_runtime {
 namespace {
@@ -142,6 +144,7 @@ void resolve_beam_type(runtime::CompiledBeamOpticalProfile &profile, runtime::Co
 // Appends setup-time Beam profiles for exact GDTF Beam geometry nodes in one fixture patch.
 void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &scene, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
     const std::string prefix = patch.fixture_uuid + "/";
+    std::vector<size_t> appended_indices;
     for (const SceneNode &node : scene.nodes) {
         if (!node.is_beam || node.gdtf_geometry_key.rfind(prefix, 0) != 0) continue;
         runtime::CompiledBeamOpticalProfile profile;
@@ -167,6 +170,34 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
             out.diagnostics.push_back({"PVZ-GDTF-BEAM-PROFILE-INVALID", "warning", "Beam geometry profile contains invalid optical values.", patch.fixture_uuid + " geometry=" + node.gdtf_geometry_path});
         }
         out.beam_profiles.push_back(profile);
+        appended_indices.push_back(out.beam_profiles.size() - 1U);
+    }
+    std::vector<size_t> projected_indices;
+    double total_luminous_flux = 0.0;
+    bool all_projected_flux_valid = true;
+    for (const size_t profile_index : appended_indices) {
+        const runtime::CompiledBeamOpticalProfile &profile = out.beam_profiles[profile_index];
+        if (!profile.has_projected_beam) continue;
+        projected_indices.push_back(profile_index);
+        const bool valid_flux = std::isfinite(profile.luminous_flux) && profile.luminous_flux > 0.0;
+        all_projected_flux_valid = all_projected_flux_valid && valid_flux;
+        if (valid_flux) total_luminous_flux += profile.luminous_flux;
+    }
+    if (projected_indices.size() <= 1U) {
+        for (const size_t profile_index : projected_indices) {
+            out.beam_profiles[profile_index].beam_output_weight = 1.0;
+        }
+        return;
+    }
+    if (all_projected_flux_valid && total_luminous_flux > 0.0) {
+        for (const size_t profile_index : projected_indices) {
+            out.beam_profiles[profile_index].beam_output_weight = out.beam_profiles[profile_index].luminous_flux / total_luminous_flux;
+        }
+    } else {
+        const double equal_weight = 1.0 / static_cast<double>(projected_indices.size());
+        for (const size_t profile_index : projected_indices) {
+            out.beam_profiles[profile_index].beam_output_weight = equal_weight;
+        }
     }
 }
 
