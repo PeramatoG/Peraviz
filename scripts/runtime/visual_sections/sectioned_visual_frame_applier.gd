@@ -162,9 +162,9 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 			intensity_result["applied"] = bool(intensity_result.get("dimmer_applied", false))
 			return _categorized_dimmer_result(loader, fixture_uuid, dimmer_target_id, intensity_result)
 		SECTION_EMITTER_COLOR:
-			if float_base + 2 >= floats.size(): return {"applied": false}
+			if float_base + 3 >= floats.size(): return {"applied": false}
 			var color_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
-			var color_result: Dictionary = light_apply_service.apply_emitter_color(loader, fixture_uuid, color_target_id, changed_mask, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0))
+			var color_result: Dictionary = light_apply_service.apply_emitter_color(loader, fixture_uuid, color_target_id, changed_mask, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0), floats[float_base + 3])
 			color_result["applied"] = bool(color_result.get("color_applied", false))
 			return color_result
 		SECTION_BEAM_OPTICS:

@@ -67,7 +67,7 @@ Godot registers the native renderer manifest once during structural setup, resol
 
 ## Known unsupported GDTF semantics
 
-ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement interpolation, continuous color-wheel motion, split slots, gobos, prisms, strobe curves, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. The initial color slice supports native RGB/RGBW-style additive channels, CMY-style fallback filtering, CTO/CTB/CTC/Tint approximations, and target-oriented EmitterColor rows; advanced physical emitter/filter/wheel resources remain incremental work. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
+ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement interpolation, continuous color-wheel motion, split slots, gobos, prisms, strobe curves, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. The corrected initial color slice supports native ColorAdd_R/G/B/W/RY/GY and ColorSub_C/M/Y fallback composition with target-oriented EmitterColor rows; CTO/CTB/CTC, Tint, Color wheels/macros, physical emitter/filter measurements, and complete wheel resources remain unsupported until their parser payloads are complete. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
 
 ## Runtime invariants
 

@@ -2,6 +2,7 @@
 
 #include "runtime/visual_frame_schema.h"
 
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -17,23 +18,12 @@ enum class SemanticParameter : int32_t {
     ColorAddRed,
     ColorAddGreen,
     ColorAddBlue,
-    ColorAddCyan,
-    ColorAddMagenta,
-    ColorAddYellow,
     ColorAddWhite,
     ColorAddAmber,
     ColorAddLime,
-    ColorAddUv,
     ColorSubCyan,
     ColorSubMagenta,
     ColorSubYellow,
-    ColorSubRed,
-    ColorSubGreen,
-    ColorSubBlue,
-    ColorTemperature,
-    Tint,
-    ColorWheel,
-    ColorMacro,
     Cyan,
     Magenta,
     Yellow,
@@ -60,13 +50,33 @@ private:
         SemanticParameter parameter = SemanticParameter::Unknown;
     };
 
+    struct InstalledSourceProgram {
+        CompiledDmxSourceProgram program;
+        uint32_t max_value = 255;
+        double inverse_max_value = 1.0 / 255.0;
+    };
+
+    struct ColorInputRuntime {
+        CompiledColorInputBinding binding;
+        float value = 0.0f;
+        bool initialized = false;
+    };
+
+    struct ColorTargetRuntime {
+        CompiledColorTargetProgram target;
+        std::vector<ColorInputRuntime> inputs;
+    };
+
     struct UniverseState {
         std::vector<CompiledPropertyProgram> properties;
+        std::vector<ColorTargetRuntime> color_targets;
+        std::unordered_map<int, std::vector<int>> property_indices_by_offset;
+        std::unordered_map<int, std::vector<int>> color_target_indices_by_offset;
         std::vector<int> interest_offsets;
+        std::array<uint8_t, 512> last_relevant_values{};
         std::vector<uint8_t> latest_frame;
-        uint64_t interest_hash = 0;
         bool has_pending_frame = false;
-        bool has_hash = false;
+        bool has_last_relevant_values = false;
     };
 
     struct EvaluationResult {
@@ -84,41 +94,21 @@ private:
         float zoom = 0.0f;
         float zoom_normalized = 0.0f;
         bool has_zoom_physical = false;
-        float cyan = 0.0f;
-        float magenta = 0.0f;
-        float yellow = 0.0f;
-        float gobo_select = 0.0f;
-        float gobo_index = 0.0f;
-        float gobo_rotation = 0.0f;
-        float prism_select = 0.0f;
-        float prism_rotation = 0.0f;
-        float strobe = 0.0f;
         float beam_energy = 0.0f;
         float spot_energy = 0.0f;
         float beam_half_angle = 12.5f;
         float beam_angle = 25.0f;
-        float add_red = 0.0f;
-        float add_green = 0.0f;
-        float add_blue = 0.0f;
-        float add_white = 0.0f;
-        float add_amber = 0.0f;
-        float add_lime = 0.0f;
-        float add_uv = 0.0f;
-        float sub_cyan = 0.0f;
-        float sub_magenta = 0.0f;
-        float sub_yellow = 0.0f;
-        float sub_red = 0.0f;
-        float sub_green = 0.0f;
-        float sub_blue = 0.0f;
-        float color_temperature = 0.0f;
-        float tint = 0.0f;
-        float red = 1.0f;
-        float green = 1.0f;
-        float blue = 1.0f;
-        float color_gain = 1.0f;
-        bool has_additive_color = false;
         float beam_intensity = 0.0f;
         float material_energy = 0.0f;
+        bool initialized = false;
+    };
+
+    struct CookedEmitterColor {
+        float srgb_red = 1.0f;
+        float srgb_green = 1.0f;
+        float srgb_blue = 1.0f;
+        float gain = 1.0f;
+        bool valid = true;
         bool initialized = false;
     };
 
@@ -128,14 +118,19 @@ private:
     };
 
     static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
-    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
-    static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
+    static bool is_color_semantic(CompiledSemantic semantic);
+    static uint32_t max_raw_value_for_source_count(size_t source_count);
+    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
+    static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
     EvaluationResult evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property);
-    static uint64_t compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets);
+    EvaluationResult evaluate_source_program_by_id(const std::vector<uint8_t> &frame, int32_t source_program_id);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
     static void cook_render_state(ComponentState &state, const FixtureRenderParams &params);
     static bool nearly_equal(float a, float b, float epsilon);
+    static bool program_uses_changed_offset(const CompiledDmxSourceProgram &program, const std::vector<int> &changed_offsets);
+    static float color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated);
+    static CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target);
     void add_visual_mask_stats(uint32_t visual_mask);
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
     FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);
@@ -145,11 +140,11 @@ private:
     std::vector<CompiledRuntimeDiagnostic> diagnostics_;
     std::unordered_map<int, ComponentState> transform_state_by_fixture_;
     std::unordered_map<int32_t, ComponentState> property_state_by_property_;
-    std::unordered_map<int32_t, ComponentState> color_state_by_target_;
+    std::unordered_map<int32_t, CookedEmitterColor> color_state_by_target_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
-    std::unordered_map<int32_t, CompiledDmxSourceProgram> source_programs_by_id_;
+    std::unordered_map<int32_t, InstalledSourceProgram> source_programs_by_id_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;

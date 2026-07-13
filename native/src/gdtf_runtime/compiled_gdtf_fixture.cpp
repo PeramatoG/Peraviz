@@ -379,7 +379,10 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (dmx::lower_ascii(attribute_name) == "pan") ++fixture.pan_program_count;
                 if (dmx::lower_ascii(attribute_name) == "tilt") ++fixture.tilt_program_count;
                 if (dmx::lower_ascii(attribute_name) == "zoom") ++fixture.zoom_program_count;
-                if (dmx::lower_ascii(attribute_name).find("color") != std::string::npos || dmx::lower_ascii(attribute_name) == "cyan" || dmx::lower_ascii(attribute_name) == "magenta" || dmx::lower_ascii(attribute_name) == "yellow" || dmx::lower_ascii(attribute_name) == "cto" || dmx::lower_ascii(attribute_name) == "ctb" || dmx::lower_ascii(attribute_name) == "ctc" || dmx::lower_ascii(attribute_name) == "tint") ++fixture.color_program_count;
+                {
+                    const std::string lower_attribute = dmx::lower_ascii(attribute_name);
+                    if (lower_attribute == "coloradd_r" || lower_attribute == "coloradd_g" || lower_attribute == "coloradd_b" || lower_attribute == "coloradd_w" || lower_attribute == "coloradd_ry" || lower_attribute == "coloradd_gy" || lower_attribute == "colorsub_c" || lower_attribute == "colorsub_m" || lower_attribute == "colorsub_y" || lower_attribute == "cyan" || lower_attribute == "magenta" || lower_attribute == "yellow") ++fixture.color_program_count;
+                }
             }
         }
     }

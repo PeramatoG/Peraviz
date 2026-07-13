@@ -36,7 +36,7 @@ enum GeometryTransformFloatField : int32_t { GeometryTransformPanDegrees = 0, Ge
 enum EmitterIntensityIntField : int32_t { EmitterIntensityFixtureId = 0, EmitterIntensityTargetId = 1, EmitterIntensityChangedMask = 2 };
 enum EmitterIntensityFloatField : int32_t { EmitterIntensityDimmerNorm = 0, EmitterIntensityEnergy = 1, EmitterIntensitySpotEnergy = 2, EmitterIntensityBeamIntensity = 3, EmitterIntensityMaterialEnergy = 4 };
 enum EmitterColorIntField : int32_t { EmitterColorFixtureId = 0, EmitterColorTargetId = 1, EmitterColorChangedMask = 2 };
-enum EmitterColorFloatField : int32_t { EmitterColorRed = 0, EmitterColorGreen = 1, EmitterColorBlue = 2 };
+enum EmitterColorFloatField : int32_t { EmitterColorRed = 0, EmitterColorGreen = 1, EmitterColorBlue = 2, EmitterColorGain = 3 };
 enum BeamOpticsIntField : int32_t { BeamOpticsFixtureId = 0, BeamOpticsTargetId = 1, BeamOpticsChangedMask = 2 };
 enum BeamOpticsFloatField : int32_t { BeamOpticsHalfAngle = 0, BeamOpticsAngle = 1, BeamOpticsZoomNorm = 2 };
 enum WheelSelectionIntField : int32_t { WheelSelectionFixtureId = 0, WheelSelectionWheelId = 1, WheelSelectionTargetId = 2, WheelSelectionSlotIndex = 3, WheelSelectionChangedMask = 4 };

@@ -38,30 +38,23 @@ runtime::CompiledSemantic semantic_for_attribute(const AttributeIdentity &attrib
     if (lower == "coloradd_r" || lower == "colorrgb_red") return runtime::CompiledSemantic::ColorAddRed;
     if (lower == "coloradd_g" || lower == "colorrgb_green") return runtime::CompiledSemantic::ColorAddGreen;
     if (lower == "coloradd_b" || lower == "colorrgb_blue") return runtime::CompiledSemantic::ColorAddBlue;
-    if (lower == "coloradd_c" || lower == "colorrgb_cyan") return runtime::CompiledSemantic::ColorAddCyan;
-    if (lower == "coloradd_m" || lower == "colorrgb_magenta") return runtime::CompiledSemantic::ColorAddMagenta;
-    if (lower == "coloradd_y" || lower == "colorrgb_yellow") return runtime::CompiledSemantic::ColorAddYellow;
-    if (lower == "coloradd_w" || lower == "coloradd_ww" || lower == "coloradd_cw") return runtime::CompiledSemantic::ColorAddWhite;
-    if (lower == "coloradd_ry" || lower == "coloradd_rm") return runtime::CompiledSemantic::ColorAddAmber;
-    if (lower == "coloradd_gy" || lower == "coloradd_gc") return runtime::CompiledSemantic::ColorAddLime;
-    if (lower == "coloradd_bc" || lower == "coloradd_bm") return runtime::CompiledSemantic::ColorAddBlue;
-    if (lower == "coloradd_uv") return runtime::CompiledSemantic::ColorAddUv;
+    if (lower == "coloradd_w") return runtime::CompiledSemantic::ColorAddWhite;
+    if (lower == "coloradd_ry") return runtime::CompiledSemantic::ColorAddAmber;
+    if (lower == "coloradd_gy") return runtime::CompiledSemantic::ColorAddLime;
     if (lower == "colorsub_c" || lower == "cyan") return runtime::CompiledSemantic::ColorSubCyan;
     if (lower == "colorsub_m" || lower == "magenta") return runtime::CompiledSemantic::ColorSubMagenta;
     if (lower == "colorsub_y" || lower == "yellow") return runtime::CompiledSemantic::ColorSubYellow;
-    if (lower == "colorsub_r") return runtime::CompiledSemantic::ColorSubRed;
-    if (lower == "colorsub_g") return runtime::CompiledSemantic::ColorSubGreen;
-    if (lower == "colorsub_b") return runtime::CompiledSemantic::ColorSubBlue;
-    if (lower == "cto" || lower == "ctb" || lower == "ctc") return runtime::CompiledSemantic::ColorTemperature;
-    if (lower == "tint") return runtime::CompiledSemantic::Tint;
-    if (lower.rfind("color", 0) == 0 && lower.find("macro") != std::string::npos) return runtime::CompiledSemantic::ColorMacro;
-    if (lower.rfind("color", 0) == 0) return runtime::CompiledSemantic::ColorWheel;
     const dmx::ParsedAttribute parsed = dmx::parse_attribute_name(attribute.name);
     if (parsed.role == dmx::AttributeRole::kDimmer) return runtime::CompiledSemantic::Dimmer;
     if (parsed.role == dmx::AttributeRole::kPan) return runtime::CompiledSemantic::Pan;
     if (parsed.role == dmx::AttributeRole::kTilt) return runtime::CompiledSemantic::Tilt;
     if (parsed.role == dmx::AttributeRole::kZoom) return runtime::CompiledSemantic::Zoom;
     return runtime::CompiledSemantic::Unknown;
+}
+
+// Returns true when the corrected color slice supports this semantic end to end.
+bool is_supported_color_semantic(runtime::CompiledSemantic semantic) {
+    return semantic == runtime::CompiledSemantic::ColorAddRed || semantic == runtime::CompiledSemantic::ColorAddGreen || semantic == runtime::CompiledSemantic::ColorAddBlue || semantic == runtime::CompiledSemantic::ColorAddWhite || semantic == runtime::CompiledSemantic::ColorAddAmber || semantic == runtime::CompiledSemantic::ColorAddLime || semantic == runtime::CompiledSemantic::ColorSubCyan || semantic == runtime::CompiledSemantic::ColorSubMagenta || semantic == runtime::CompiledSemantic::ColorSubYellow;
 }
 
 // Finds a parser-owned attribute identity by ID.
@@ -227,11 +220,11 @@ void append_property(runtime::CompiledRuntimeScene &scene,
     const GeometryInstance *geometry = find_geometry(fixture_type, component.geometry_instance_id);
     if (!attribute || !geometry) return;
     const runtime::CompiledSemantic semantic = semantic_for_attribute(*attribute);
-    if (semantic == runtime::CompiledSemantic::Unknown) return;
-    const bool is_color_semantic = static_cast<int32_t>(semantic) >= static_cast<int32_t>(runtime::CompiledSemantic::ColorAddRed);
+    if (semantic == runtime::CompiledSemantic::Unknown || is_supported_color_semantic(semantic)) return;
+    const bool is_color_semantic = false;
     const std::string semantic_label = semantic == runtime::CompiledSemantic::Pan ? "pan" : semantic == runtime::CompiledSemantic::Tilt ? "tilt" : semantic == runtime::CompiledSemantic::Zoom ? "zoom" : (semantic == runtime::CompiledSemantic::Dimmer ? "dimmer" : "color");
     const int32_t component_id = stable_id(patch.fixture_uuid, semantic_label + ":component:" + geometry->path);
-    const int32_t target_id = semantic == runtime::CompiledSemantic::Zoom ? stable_id(patch.fixture_uuid, "beam:target:" + geometry->path) : ((semantic == runtime::CompiledSemantic::Dimmer || is_color_semantic) ? stable_id(patch.fixture_uuid, "dimmer:target:" + geometry->path) : component_id);
+    const int32_t target_id = semantic == runtime::CompiledSemantic::Zoom ? stable_id(patch.fixture_uuid, "beam:target:" + geometry->path) : (semantic == runtime::CompiledSemantic::Dimmer ? stable_id(patch.fixture_uuid, semantic_label + ":target:" + geometry->path) : component_id);
     const int32_t property_id = stable_id(patch.fixture_uuid, semantic_label + ":property:" + geometry->path);
     runtime::CompiledComponentProperty property;
     property.property_id = property_id;
@@ -260,6 +253,66 @@ void append_property(runtime::CompiledRuntimeScene &scene,
         property.contributors.push_back({runtime_program.program_id, 1.0, runtime::CompiledContributorOperation::WeightedAdd});
     }
     if (!property.contributors.empty()) scene.properties.push_back(property);
+}
+
+// Returns true when a channel geometry controls a candidate Beam output by GDTF trickle-down inheritance.
+bool color_channel_controls_beam(const GeometryInstance &channel_geometry, const runtime::CompiledBeamOpticalProfile &beam) {
+    if (channel_geometry.path.empty()) return true;
+    return beam.geometry_path == channel_geometry.path || beam.geometry_path.rfind(channel_geometry.path + "/", 0) == 0;
+}
+
+// Appends target-level color programs after Beam target IDs are known.
+void append_color_targets(runtime::CompiledRuntimeScene &scene,
+                          const SceneModel::FixturePatch &patch,
+                          const CompiledGdtfFixtureType &fixture_type,
+                          int artnet_universe,
+                          int32_t fixture_id,
+                          int32_t &next_program_id) {
+    std::unordered_map<int32_t, const AttributeIdentity *> attributes_by_id;
+    std::unordered_map<int32_t, const GeometryInstance *> geometries_by_id;
+    for (const AttributeIdentity &attribute : fixture_type.attributes) attributes_by_id[attribute.id] = &attribute;
+    for (const GeometryInstance &geometry : fixture_type.geometries) geometries_by_id[geometry.id] = &geometry;
+    std::unordered_map<int32_t, runtime::CompiledColorTargetProgram> targets_by_beam_id;
+    for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
+        auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
+        auto geometry_it = geometries_by_id.find(parser_program.geometry_instance_id);
+        if (attribute_it == attributes_by_id.end() || geometry_it == geometries_by_id.end()) continue;
+        const runtime::CompiledSemantic semantic = semantic_for_attribute(*attribute_it->second);
+        if (!is_supported_color_semantic(semantic)) continue;
+        runtime::CompiledDmxSourceProgram runtime_program;
+        runtime_program.program_id = next_program_id++;
+        runtime_program.semantic = semantic;
+        runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+        if (runtime_program.sources.empty()) continue;
+        runtime_program.dmx_from = parser_program.dmx_from;
+        runtime_program.dmx_to = parser_program.dmx_to;
+        runtime_program.physical_from = parser_program.physical_from;
+        runtime_program.physical_to = parser_program.physical_to;
+        runtime_program.attribute_name = parser_program.attribute_name;
+        runtime_program.function_name = parser_program.function_name.empty() ? parser_program.attribute_name : parser_program.function_name;
+        runtime_program.geometry_id = parser_program.geometry_instance_id;
+        runtime_program.geometry_name = geometry_it->second->path;
+        scene.source_programs.push_back(runtime_program);
+        for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
+            if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
+            runtime::CompiledColorTargetProgram &target = targets_by_beam_id[beam.render_target_id];
+            if (target.beam_render_target_id == 0) {
+                target.color_target_id = stable_id(patch.fixture_uuid, "color:target:" + beam.geometry_path);
+                target.fixture_id = fixture_id;
+                target.beam_render_target_id = beam.render_target_id;
+                target.geometry_id = beam.geometry_instance_id;
+                target.geometry_name = beam.geometry_path;
+                target.geometry_key = beam.geometry_key;
+            }
+            const bool additive = semantic == runtime::CompiledSemantic::ColorAddRed || semantic == runtime::CompiledSemantic::ColorAddGreen || semantic == runtime::CompiledSemantic::ColorAddBlue || semantic == runtime::CompiledSemantic::ColorAddWhite || semantic == runtime::CompiledSemantic::ColorAddAmber || semantic == runtime::CompiledSemantic::ColorAddLime;
+            target.additive_source = target.additive_source || additive;
+            const bool valid_additive_physical = !additive || (parser_program.physical_from >= 0.0 && parser_program.physical_from <= 1.0 && parser_program.physical_to >= 0.0 && parser_program.physical_to <= 1.0);
+            target.inputs.push_back({runtime_program.program_id, semantic, 0.0, !valid_additive_physical});
+        }
+    }
+    for (auto &[_, target] : targets_by_beam_id) {
+        if (!target.inputs.empty()) scene.color_targets.push_back(target);
+    }
 }
 
 } // namespace
@@ -295,12 +348,16 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         for (const ChannelProgram &program : fixture_type.channel_programs) programs_by_component[program.component_id].push_back(&program);
         const size_t property_start = out.properties.size();
         for (const ComponentBinding &component : fixture_type.components) append_property(out, patch, fixture_type, component, programs_by_component[component.component_id], artnet_universe, fixture_id, next_program_id);
-        if (out.properties.size() == property_start) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
+        append_color_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
+        if (out.properties.size() == property_start && out.color_targets.empty()) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
     }
     for (const auto &property : out.properties) {
         check_generated_id(generated_ids, out, property.property_id, std::to_string(property.fixture_id));
         check_generated_id(generated_ids, out, property.component_id, std::to_string(property.fixture_id));
         if (property.render_target_id != property.component_id && property.render_target_id != property.property_id) check_generated_id(generated_ids, out, property.render_target_id, std::to_string(property.fixture_id));
+    }
+    for (const auto &target : out.color_targets) {
+        check_generated_id(generated_ids, out, target.color_target_id, std::to_string(target.fixture_id));
     }
     return out;
 }
