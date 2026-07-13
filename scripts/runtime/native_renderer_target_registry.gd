@@ -12,6 +12,7 @@ var _optics_targets: Dictionary = {}
 var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
 var _dimmer_emitter_owner_by_key: Dictionary = {}
+var _beam_profiles_by_geometry_key: Dictionary = {}
 var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 
@@ -29,12 +30,14 @@ func clear() -> void:
 	_target_resolution_failures.clear()
 	_geometry_targets_by_key.clear()
 	_dimmer_emitter_owner_by_key.clear()
+	_beam_profiles_by_geometry_key.clear()
 	_lens_material_cache.clear()
 	_summary = _new_summary()
 
 func install_manifest(renderer_manifest: Array) -> void:
 	clear()
 	_build_geometry_target_map(renderer_manifest)
+	_index_beam_profiles(renderer_manifest)
 	for item in renderer_manifest:
 		if item is not Dictionary:
 			continue
@@ -145,6 +148,16 @@ func _new_summary() -> Dictionary:
 		"dimmer_targets_with_optional_spotlights": 0,
 		"dimmer_targets_with_no_mutable_resource": 0,
 		"dimmer_target_overlaps": 0,
+		"beam_profiles_indexed": 0,
+		"duplicate_beam_profile_geometry_keys": 0,
+		"emitter_nodes_missing_beam_profile": 0,
+		"projected_beam_profiles": 0,
+		"emission_only_beam_profiles": 0,
+		"explicit_luminous_flux_profiles": 0,
+		"default_luminous_flux_profiles": 0,
+		"invalid_luminous_flux_profiles": 0,
+		"dimmer_projected_flux_sum_lm": 0.0,
+		"dimmer_emission_only_flux_sum_lm": 0.0,
 		"first_failures": [],
 	}
 
@@ -171,6 +184,38 @@ func _build_geometry_target_map(renderer_manifest: Array) -> void:
 			_summary["duplicate_imported_geometry_keys"] = int(_summary.get("duplicate_imported_geometry_keys", 0)) + 1
 		_geometry_targets_by_key[key] = node3d
 	_summary["imported_geometry_keys"] = _geometry_targets_by_key.size()
+
+func _index_beam_profiles(renderer_manifest: Array) -> void:
+	for item in renderer_manifest:
+		if item is not Dictionary:
+			continue
+		for target_item in (item as Dictionary).get("targets", []):
+			if target_item is not Dictionary:
+				continue
+			var target: Dictionary = target_item
+			if str(target.get("semantic", "")).to_lower() != "beam_profile":
+				continue
+			var geometry_key: String = str(target.get("geometry_key", ""))
+			if geometry_key.is_empty():
+				continue
+			if _beam_profiles_by_geometry_key.has(geometry_key):
+				_increment_counter("duplicate_beam_profile_geometry_keys")
+				continue
+			var profile: Dictionary = target.get("beam_optical_profile", {})
+			profile["geometry_key"] = geometry_key
+			_beam_profiles_by_geometry_key[geometry_key] = profile
+			_increment_counter("beam_profiles_indexed")
+			if bool(profile.get("has_projected_beam", true)):
+				_increment_counter("projected_beam_profiles")
+			else:
+				_increment_counter("emission_only_beam_profiles")
+			match str(profile.get("luminous_flux_source", "")):
+				"explicit":
+					_increment_counter("explicit_luminous_flux_profiles")
+				"gdtf_default":
+					_increment_counter("default_luminous_flux_profiles")
+				"invalid_safe_value":
+					_increment_counter("invalid_luminous_flux_profiles")
 
 func _register_axis_target(targets: Dictionary, manifest_row: Dictionary, target_id: int, geometry_key: String, role: String) -> void:
 	if target_id <= 0:
@@ -212,7 +257,9 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	emitter_nodes = _filter_dimmer_target_emitters(manifest_row, target_id, emitter_nodes)
 	var cache_key: String = "%s:%d" % [fixture_uuid, target_id]
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
+	var emitter_records: Array = _build_emitter_records(emitter_nodes, emitter_anchors)
 	var lens_material_targets: Array = _prepare_lens_materials(cache_key, target_nodes + emitter_nodes)
+	_apply_lens_profiles(lens_material_targets)
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
 	_dimmer_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
@@ -228,7 +275,8 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 		"optional_spotlights": emitter_anchors,
 		"beam_instances": beam_instances,
 		"lens_material_targets": lens_material_targets,
-		"emitter_photometrics": _call_array("get_emitter_photometrics", [fixture_uuid]),
+		"emitter_records": emitter_records,
+		"emitter_photometrics": emitter_records,
 	}
 	_increment_counter("dimmer_owner_geometries_resolved")
 	if not emitter_nodes.is_empty():
@@ -240,6 +288,15 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 		_increment_counter("dimmer_targets_with_beam_instances")
 	if not lens_material_targets.is_empty():
 		_increment_counter("dimmer_targets_with_lens_materials")
+	var projected_flux_sum: float = 0.0
+	var emission_only_flux_sum: float = 0.0
+	for record in emitter_records:
+		if bool(record.get("has_projected_beam", true)):
+			projected_flux_sum += float(record.get("effective_luminous_flux_lm", 0.0))
+		else:
+			emission_only_flux_sum += float(record.get("effective_luminous_flux_lm", 0.0))
+	_summary["dimmer_projected_flux_sum_lm"] = float(_summary.get("dimmer_projected_flux_sum_lm", 0.0)) + projected_flux_sum
+	_summary["dimmer_emission_only_flux_sum_lm"] = float(_summary.get("dimmer_emission_only_flux_sum_lm", 0.0)) + emission_only_flux_sum
 	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
 		_increment_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_counter("dimmer_resolved")
@@ -323,6 +380,9 @@ func _prepare_beam_instances(emitter_anchors: Array) -> Array:
 		var spot: SpotLight3D = anchor as SpotLight3D
 		if spot == null or not is_instance_valid(spot):
 			continue
+		var profile: Dictionary = spot.get_meta("peraviz_beam_optical_profile", {}) if spot.has_meta("peraviz_beam_optical_profile") else {}
+		if not bool(profile.get("has_projected_beam", true)):
+			continue
 		spot.visible = false
 		spot.light_energy = 0.0
 		spot.set_meta("peraviz_beam_base_intensity", 0.0)
@@ -349,6 +409,51 @@ func _filter_dimmer_target_emitters(manifest_row: Dictionary, target_id: int, em
 		_dimmer_emitter_owner_by_key[emitter_key] = target_id
 		filtered.append(node3d)
 	return filtered
+
+func _profile_for_geometry_key(geometry_key: String) -> Dictionary:
+	if geometry_key.is_empty():
+		return {}
+	return _beam_profiles_by_geometry_key.get(geometry_key, {})
+
+func _default_profile_for_geometry_key(geometry_key: String) -> Dictionary:
+	return {
+		"geometry_key": geometry_key,
+		"has_projected_beam": true,
+		"projected_lumen_scale": 1.0,
+		"emission_lumen_scale": 1.0,
+		"effective_luminous_flux_lm": 10000.0,
+		"luminous_flux_source": "legacy_default",
+	}
+
+func _build_emitter_records(emitter_nodes: Array, emitter_anchors: Array) -> Array:
+	var records: Array = []
+	for index in range(emitter_nodes.size()):
+		var node3d: Node3D = emitter_nodes[index] as Node3D
+		if node3d == null:
+			continue
+		var geometry_key: String = str(node3d.get_meta("peraviz_gdtf_geometry_key", ""))
+		var profile: Dictionary = _profile_for_geometry_key(geometry_key)
+		if profile.is_empty():
+			_increment_counter("emitter_nodes_missing_beam_profile")
+			profile = _default_profile_for_geometry_key(geometry_key)
+		var record: Dictionary = profile.duplicate(true)
+		record["geometry_key"] = geometry_key
+		if index < emitter_anchors.size() and emitter_anchors[index] is SpotLight3D:
+			var light: SpotLight3D = emitter_anchors[index]
+			light.set_meta("peraviz_beam_optical_profile", record)
+			light.set_meta("peraviz_has_projected_beam", bool(record.get("has_projected_beam", true)))
+		records.append(record)
+	return records
+
+func _apply_lens_profiles(lens_material_targets: Array) -> void:
+	for target in lens_material_targets:
+		if target is not Dictionary:
+			continue
+		var entry: Dictionary = target
+		var existing_profile: Variant = entry.get("beam_optical_profile", {})
+		if existing_profile is Dictionary and not (existing_profile as Dictionary).is_empty():
+			continue
+		entry["beam_optical_profile"] = _profile_for_geometry_key(str(entry.get("geometry_key", "")))
 
 func _prepare_lens_materials(cache_key: String, geometry_nodes: Array) -> Array:
 	if _lens_material_cache.has(cache_key):
@@ -384,7 +489,7 @@ func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_t
 		if prepared == null:
 			continue
 		mesh_instance.set_surface_override_material(surface_index, prepared)
-		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared})
+		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "geometry_key": str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")), "beam_optical_profile": _profile_for_geometry_key(str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")))})
 
 func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
 	var prepared: BaseMaterial3D = null

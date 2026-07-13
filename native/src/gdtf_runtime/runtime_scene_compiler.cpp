@@ -5,12 +5,15 @@
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace peraviz::gdtf_runtime {
 namespace {
+
+constexpr double kReferenceLuminousFluxLm = 10000.0;
 
 // Creates deterministic nonzero IDs from fixture UUID and semantic labels using FNV-1a.
 int32_t stable_id(const std::string &fixture_uuid, const std::string &label) {
@@ -113,6 +116,30 @@ std::string normalize_beam_type(const std::string &beam_type) {
     return "Wash";
 }
 
+// Returns true when a normalized BeamType creates a projected renderer beam.
+bool is_projected_beam_type(const std::string &beam_type) {
+    return beam_type == "Wash" || beam_type == "Spot" || beam_type == "Rectangle" || beam_type == "PC" || beam_type == "Fresnel";
+}
+
+// Resolves GDTF Beam LuminousFlux provenance and renderer scales for one exact Beam geometry.
+void resolve_luminous_flux(runtime::CompiledRuntimeScene &out, runtime::CompiledBeamOpticalProfile &profile, const SceneNode &node, const SceneModel::FixturePatch &patch) {
+    profile.raw_luminous_flux = node.has_luminous_flux ? static_cast<double>(node.luminous_flux) : kReferenceLuminousFluxLm;
+    if (!node.has_luminous_flux) {
+        profile.effective_luminous_flux_lm = kReferenceLuminousFluxLm;
+        profile.luminous_flux_source = "gdtf_default";
+    } else if (std::isfinite(profile.raw_luminous_flux) && profile.raw_luminous_flux >= 0.0) {
+        profile.effective_luminous_flux_lm = profile.raw_luminous_flux;
+        profile.luminous_flux_source = "explicit";
+    } else {
+        profile.effective_luminous_flux_lm = 0.0;
+        profile.luminous_flux_source = "invalid_safe_value";
+        out.diagnostics.push_back({"PVZ-GDTF-BEAM-LUMINOUS-FLUX-INVALID", "warning", "Beam geometry has invalid explicit LuminousFlux; using a safe non-negative renderer value.", patch.fixture_uuid + " geometry=" + node.gdtf_geometry_path});
+    }
+    profile.luminous_flux = profile.effective_luminous_flux_lm;
+    profile.emission_lumen_scale = profile.effective_luminous_flux_lm / kReferenceLuminousFluxLm;
+    profile.projected_lumen_scale = profile.has_projected_beam ? profile.emission_lumen_scale : 0.0;
+}
+
 // Appends setup-time Beam profiles for exact GDTF Beam geometry nodes in one fixture patch.
 void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &scene, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
     const std::string prefix = patch.fixture_uuid + "/";
@@ -130,12 +157,12 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
         profile.beam_radius_m = node.has_beam_radius ? node.beam_radius : profile.beam_radius_m;
         profile.throw_ratio = node.has_throw_ratio ? node.throw_ratio : profile.throw_ratio;
         profile.rectangle_ratio = node.has_rectangle_ratio ? node.rectangle_ratio : profile.rectangle_ratio;
-        profile.luminous_flux = node.has_luminous_flux ? node.luminous_flux : profile.luminous_flux;
         profile.color_temperature = node.has_color_temperature ? node.color_temperature : profile.color_temperature;
         profile.beam_angle_source = node.has_beam_angle ? "explicit" : "fallback";
         profile.field_angle_source = node.has_field_angle ? "explicit" : "fallback";
         profile.beam_radius_source = node.has_beam_radius ? "explicit" : "fallback";
-        profile.has_projected_beam = profile.beam_type != "None" && profile.beam_type != "Glow";
+        profile.has_projected_beam = is_projected_beam_type(profile.beam_type);
+        resolve_luminous_flux(out, profile, node, patch);
         if (profile.beam_radius_m <= 0.0 || profile.beam_angle_deg < 0.0 || profile.rectangle_ratio <= 0.0) {
             profile.valid = false;
             out.diagnostics.push_back({"PVZ-GDTF-BEAM-PROFILE-INVALID", "warning", "Beam geometry profile contains invalid optical values.", patch.fixture_uuid + " geometry=" + node.gdtf_geometry_path});

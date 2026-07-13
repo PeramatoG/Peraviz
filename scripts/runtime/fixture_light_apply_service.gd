@@ -120,7 +120,7 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	var beam_color: Color = _fixture_render_color(fixture_uuid)
 	var lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
 	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, material_energy, lens_material_targets, true)
-	var emitter_photometrics: Array = target_record.get("emitter_photometrics", [])
+	var emitter_photometrics: Array = target_record.get("emitter_records", target_record.get("emitter_photometrics", []))
 	var emitter_lights: Array = target_record.get("emitter_anchors", target_record.get("emitter_lights", []))
 	var beam_instances: Array = target_record.get("beam_instances", [])
 	var visible_beams: int = 0
@@ -137,7 +137,7 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 		beams_mutated += int(light_result.get("beams_mutated", 0))
 		if _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001):
 			visible_lights += 1
-		if _beam_is_visible(light, beam_intensity):
+		if _beam_is_visible(light, _clamped_beam_intensity(_scaled_projected_value(beam_intensity, photometric))):
 			visible_beams += 1
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
@@ -177,8 +177,9 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 			last_params = _beam_params_from_target_record(spot, target_record, beam_angle, _fixture_render_color(fixture_uuid), _fixture_dimmer(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
 		last_params["beam_angle"] = beam_angle
 		last_params["normalized_dimmer"] = _fixture_dimmer(fixture_uuid)
-		last_params["scaled_intensity"] = _fixture_beam_intensity(fixture_uuid)
-		last_params["beam_intensity"] = _fixture_beam_intensity(fixture_uuid)
+		var scaled_intensity: float = _clamped_beam_intensity(_scaled_projected_value(_fixture_beam_intensity(fixture_uuid), target_record.get("beam_optical_profile", {})))
+		last_params["scaled_intensity"] = scaled_intensity
+		last_params["beam_intensity"] = scaled_intensity
 		spot.set_meta("peraviz_beam_last_params", last_params)
 		var optics_result: Dictionary = loader._apply_beam_optics_for_light(spot, last_params) if loader.has_method("_apply_beam_optics_for_light") else {}
 		if bool(optics_result.get("parametric_update_performed", false)) or bool(optics_result.get("topology_rebuilt", false)):
@@ -190,6 +191,7 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 
 func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictionary, beam_angle: float, beam_color: Color, dimmer_norm: float, beam_intensity: float) -> Dictionary:
 	var profile: Dictionary = target_record.get("beam_optical_profile", {})
+	var scaled_beam_intensity: float = _clamped_beam_intensity(_scaled_projected_value(beam_intensity, profile))
 	var diagnostics: Dictionary = light.get_meta("peraviz_beam_radius_diagnostics", {}) if light != null and light.has_meta("peraviz_beam_radius_diagnostics") else {}
 	var beam_range: float = clamp(float(profile.get("beam_visual_length_m", profile.get("beam_range", light.spot_range if light != null else 75.0))), 1.0, 150.0)
 	var measured_radius: float = max(float(light.get_meta("peraviz_lens_radius", 0.0)), 0.0) if light != null else 0.0
@@ -210,8 +212,8 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		"beam_type": str(profile.get("beam_type", "Wash")),
 		"rectangle_ratio": float(profile.get("rectangle_ratio", 1.7777)),
 		"normalized_dimmer": dimmer_norm,
-		"scaled_intensity": beam_intensity,
-		"beam_intensity": beam_intensity,
+		"scaled_intensity": scaled_beam_intensity,
+		"beam_intensity": scaled_beam_intensity,
 		"intensity_max": 50.0,
 	}
 
@@ -235,30 +237,34 @@ func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: flo
 	_diagnostic_info_keys[key + ":temporal_state"] = {"strobe_norm": strobe_norm, "output_norm": output_norm}
 
 func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> Dictionary:
-	var visible: bool = dimmer_norm > 0.0001
+	var projected_scale: float = max(float(photometric.get("projected_lumen_scale", 1.0)), 0.0)
+	var scaled_beam_energy: float = _scaled_projected_value(beam_energy, photometric)
+	var scaled_spot_energy: float = _scaled_projected_value(spot_energy, photometric)
+	var scaled_beam_intensity: float = _clamped_beam_intensity(_scaled_projected_value(beam_intensity, photometric))
+	var visible: bool = dimmer_norm > 0.0001 and projected_scale > 0.0
 	var beam_color: Color = _fixture_render_color(fixture_uuid)
 	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
-	var light_energy: float = spot_energy if spot_energy > 0.0 else beam_energy
+	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
 	var previous_energy: float = light.light_energy
 	var previous_visible: bool = light.visible
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
 	light.light_energy = light_energy
 	light.spot_angle = beam_half_angle
 	light.light_color = beam_color
-	light.set_meta("peraviz_base_light_energy", beam_energy)
+	light.set_meta("peraviz_base_light_energy", scaled_beam_energy)
 	light.set_meta("peraviz_beam_base_intensity", dimmer_norm)
 	_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
 	var previous_beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 	var previous_beam_visible: bool = previous_beam != null and is_instance_valid(previous_beam) and previous_beam.visible
 	if not light.has_meta("peraviz_beam_last_params"):
-		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_intensity, material_energy)
+		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, scaled_beam_energy, scaled_spot_energy, beam_half_angle, beam_angle, scaled_beam_intensity, material_energy)
 	else:
-		_apply_visual_frame_beam(loader, light, changed_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
+		_apply_visual_frame_beam(loader, light, changed_mask, visible, dimmer_norm, beam_angle, beam_color, scaled_beam_intensity)
 	var lights_mutated: int = 1 if not is_equal_approx(previous_energy, light.light_energy) or previous_visible != light.visible else 0
 	var beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 	var beam_visible: bool = beam != null and is_instance_valid(beam) and beam.visible
-	var beams_mutated: int = 1 if beam != null and is_instance_valid(beam) and (beam_visible != previous_beam_visible or (beam_visible and beam_intensity > 0.0001)) else 0
+	var beams_mutated: int = 1 if beam != null and is_instance_valid(beam) and (beam_visible != previous_beam_visible or (beam_visible and scaled_beam_intensity > 0.0001)) else 0
 	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "beam_visible": beam_visible}
 
 func _any_beam_instance_visible(beam_instances: Array) -> bool:
@@ -406,6 +412,19 @@ func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLig
 		_visual_apply_counters["gobo_texture_compositions"] = int(result.get("texture_compositions", _visual_apply_counters.get("gobo_texture_compositions", 0)))
 	return bool(result.get("topology_changed", false))
 
+func _scaled_projected_value(value: float, photometric: Dictionary) -> float:
+	return value * max(float(photometric.get("projected_lumen_scale", 1.0)), 0.0)
+
+func _clamped_beam_intensity(value: float) -> float:
+	return clamp(value, 0.0, 50.0)
+
+func _material_emission_scale(material_entry: Variant) -> float:
+	if material_entry is Dictionary:
+		var profile_value: Variant = (material_entry as Dictionary).get("beam_optical_profile", {})
+		if profile_value is Dictionary and not (profile_value as Dictionary).is_empty():
+			return max(float((profile_value as Dictionary).get("emission_lumen_scale", 1.0)), 0.0)
+	return 1.0
+
 func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_nodes: Array, beam_color: Color, material_energy: float, cached_materials: Array = [], use_cached_materials: bool = false) -> int:
 	var material_phase_start: int = Time.get_ticks_usec()
 	var emissive_materials: Array = cached_materials if use_cached_materials else _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
@@ -421,8 +440,9 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 		if material is BaseMaterial3D:
 			var material_rid: RID = _get_cached_material_rid(material)
 			if material_rid.is_valid():
+				var emission_scale: float = _material_emission_scale(material_entry)
 				RenderingServer.material_set_param(material_rid, "emission", beam_color)
-				RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", material_energy)
+				RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", material_energy * emission_scale)
 				materials_mutated += 1
 				_visual_apply_counters["materials_updated"] = int(_visual_apply_counters.get("materials_updated", 0)) + 1
 				_visual_apply_counters["rendering_server_calls"] = int(_visual_apply_counters.get("rendering_server_calls", 0)) + 2
