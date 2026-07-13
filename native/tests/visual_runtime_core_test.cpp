@@ -327,6 +327,57 @@ int test_direct_channels_and_inferred_ranges() {
     return 0;
 }
 
+// Verifies exact Beam LuminousFlux semantics and projected/emission renderer scales.
+int test_beam_luminous_flux_profiles() {
+    const std::filesystem::path repo_root = repo_root_from_source();
+    const std::string golden_xml = read_file(repo_root / "native/tests/data/golden_fixture_description.xml");
+    if (golden_xml.empty()) return fail("Failed to read golden fixture XML for Beam LuminousFlux test");
+    const std::filesystem::path temp_dir = std::filesystem::temp_directory_path() / "peraviz_native_visual_runtime_tests";
+    std::error_code ec;
+    std::filesystem::create_directories(temp_dir, ec);
+    const std::filesystem::path gdtf_path = temp_dir / "lumen_fixture.gdtf";
+    if (!write_gdtf_archive(gdtf_path, golden_xml)) return fail("Failed to write Beam LuminousFlux test GDTF");
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"fixture-lumen", 1, 1, "Standard", gdtf_path.string()});
+    auto add_beam = [&](const std::string &path, bool has_flux, float flux, const std::string &beam_type) {
+        peraviz::SceneNode node;
+        node.is_beam = true;
+        node.gdtf_geometry_path = path;
+        node.gdtf_geometry_key = "fixture-lumen/" + path;
+        node.has_luminous_flux = has_flux;
+        node.luminous_flux = flux;
+        node.has_beam_type = true;
+        node.beam_type = beam_type;
+        model.nodes.push_back(node);
+    };
+    add_beam("Explicit", true, 320.0f, "Wash");
+    add_beam("Missing", false, 0.0f, "Spot");
+    add_beam("Zero", true, 0.0f, "Rectangle");
+    add_beam("Invalid", true, -10.0f, "PC");
+    add_beam("NoneAura", true, 900.0f, "None");
+    add_beam("GlowAura", true, 500.0f, "Glow");
+    add_beam("Fresnel", true, 20000.0f, "Fresnel");
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
+    if (scene.beam_profiles.size() != 7) return fail("Expected one Beam profile per exact Beam geometry");
+    bool saw_invalid_diagnostic = false;
+    for (const auto &diagnostic : scene.diagnostics) {
+        if (diagnostic.code == "PVZ-GDTF-BEAM-LUMINOUS-FLUX-INVALID") saw_invalid_diagnostic = true;
+    }
+    bool saw_explicit = false, saw_missing = false, saw_zero = false, saw_invalid = false, saw_none = false, saw_glow = false, saw_fresnel = false;
+    for (const auto &profile : scene.beam_profiles) {
+        if (profile.geometry_path == "Explicit") saw_explicit = profile.luminous_flux_source == "explicit" && std::fabs(profile.effective_luminous_flux_lm - 320.0) < 0.001 && std::fabs(profile.projected_lumen_scale - 0.032) < 0.001 && profile.has_projected_beam;
+        if (profile.geometry_path == "Missing") saw_missing = profile.luminous_flux_source == "gdtf_default" && std::fabs(profile.effective_luminous_flux_lm - 10000.0) < 0.001 && std::fabs(profile.projected_lumen_scale - 1.0) < 0.001 && profile.has_projected_beam;
+        if (profile.geometry_path == "Zero") saw_zero = profile.luminous_flux_source == "explicit" && std::fabs(profile.effective_luminous_flux_lm) < 0.001 && std::fabs(profile.projected_lumen_scale) < 0.001 && profile.has_projected_beam;
+        if (profile.geometry_path == "Invalid") saw_invalid = profile.luminous_flux_source == "invalid_safe_value" && std::fabs(profile.effective_luminous_flux_lm) < 0.001 && std::fabs(profile.projected_lumen_scale) < 0.001;
+        if (profile.geometry_path == "NoneAura") saw_none = !profile.has_projected_beam && std::fabs(profile.projected_lumen_scale) < 0.001 && std::fabs(profile.emission_lumen_scale - 0.09) < 0.001;
+        if (profile.geometry_path == "GlowAura") saw_glow = !profile.has_projected_beam && std::fabs(profile.projected_lumen_scale) < 0.001 && std::fabs(profile.emission_lumen_scale - 0.05) < 0.001;
+        if (profile.geometry_path == "Fresnel") saw_fresnel = profile.has_projected_beam && std::fabs(profile.projected_lumen_scale - 2.0) < 0.001;
+    }
+    if (!saw_invalid_diagnostic) return fail("Expected invalid LuminousFlux diagnostic");
+    if (!saw_explicit || !saw_missing || !saw_zero || !saw_invalid || !saw_none || !saw_glow || !saw_fresnel) return fail("Expected Beam LuminousFlux profile semantics");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -337,6 +388,7 @@ int main() {
     if (test_multiple_contributors() != 0) return 1;
     if (test_independent_dimmer_targets() != 0) return 1;
     if (test_parser_owned_runtime_scene() != 0) return 1;
+    if (test_beam_luminous_flux_profiles() != 0) return 1;
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;
     return 0;

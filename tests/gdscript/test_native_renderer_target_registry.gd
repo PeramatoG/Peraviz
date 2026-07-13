@@ -68,7 +68,7 @@ func _make_registry(harness: RegistryHarness) -> NativeRendererTargetRegistry:
 	})
 	return registry
 
-func _target(fixture_uuid: String, semantic: String, target_id: int, geometry_key: String) -> Dictionary:
+func _target(fixture_uuid: String, semantic: String, target_id: int, geometry_key: String, profile: Dictionary = {}) -> Dictionary:
 	return {
 		"fixture_id": 1,
 		"fixture_uuid": fixture_uuid,
@@ -78,6 +78,7 @@ func _target(fixture_uuid: String, semantic: String, target_id: int, geometry_ke
 		"target_id": target_id,
 		"semantic": semantic,
 		"geometry_key": geometry_key,
+		"beam_optical_profile": profile,
 	}
 
 func _init() -> void:
@@ -107,11 +108,11 @@ func _init() -> void:
 	assert(bool(transform_result.get("tilt_applied", false)))
 	assert(is_equal_approx(pan.rotation_degrees.y, 45.0))
 	assert(is_equal_approx(tilt.rotation_degrees.x, -20.0))
-	var record: Dictionary = registry.get_dimmer_target_record(201)
-	assert(record.get("emitter_anchors", []).size() == 1)
-	assert(record.get("beam_instances", []).size() == 1)
-	assert(record.get("lens_material_targets", []).size() >= 1)
-	assert(not (record.get("beam_instances", [])[0] as MeshInstance3D).visible)
+	var initial_record: Dictionary = registry.get_dimmer_target_record(201)
+	assert(initial_record.get("emitter_anchors", []).size() == 1)
+	assert(initial_record.get("beam_instances", []).size() == 1)
+	assert(initial_record.get("lens_material_targets", []).size() >= 1)
+	assert(not (initial_record.get("beam_instances", [])[0] as MeshInstance3D).visible)
 	registry.clear()
 	assert(not registry.has_dimmer_target(201))
 
@@ -126,4 +127,55 @@ func _init() -> void:
 	var overlap_summary: Dictionary = registry.get_summary().get("registry_summary", {})
 	assert(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1)
 	assert(registry.get_target_failure(202) is Dictionary)
+
+
+	var keyed_harness := RegistryHarness.new()
+	get_root().add_child(keyed_harness)
+	keyed_harness.add_geometry("fixture-b/Base")
+	keyed_harness.add_geometry("fixture-b/Base/BeamA", true, true)
+	keyed_harness.add_geometry("fixture-b/Base/BeamB", true, true)
+	keyed_harness.add_geometry("fixture-b/Base/Aura", true, true)
+	var keyed_registry: NativeRendererTargetRegistry = _make_registry(keyed_harness)
+	var profile_a: Dictionary = {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 2500.0, "projected_lumen_scale": 0.25, "emission_lumen_scale": 0.25, "luminous_flux_source": "explicit"}
+	var profile_b: Dictionary = {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 7500.0, "projected_lumen_scale": 0.75, "emission_lumen_scale": 0.75, "luminous_flux_source": "explicit"}
+	var profile_aura: Dictionary = {"beam_type": "None", "has_projected_beam": false, "effective_luminous_flux_lm": 900.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.09, "luminous_flux_source": "explicit"}
+	keyed_registry.install_manifest([{"fixture_uuid": "fixture-b", "targets": [
+		_target("fixture-b", "beam_profile", 302, "fixture-b/Base/BeamB", profile_b),
+		_target("fixture-b", "beam_profile", 303, "fixture-b/Base/Aura", profile_aura),
+		_target("fixture-b", "beam_profile", 301, "fixture-b/Base/BeamA", profile_a),
+		_target("fixture-b", "dimmer", 401, "fixture-b/Base"),
+	]}])
+	var keyed_record: Dictionary = keyed_registry.get_dimmer_target_record(401)
+	var records: Array = keyed_record.get("emitter_records", [])
+	assert(records.size() == 3)
+	var projected_sum: float = 0.0
+	var aura_scale: float = -1.0
+	for keyed_record_item in records:
+		var keyed_emitter_record: Dictionary = keyed_record_item
+		projected_sum += float(keyed_emitter_record.get("projected_lumen_scale", 0.0))
+		if str(keyed_emitter_record.get("geometry_key", "")) == "fixture-b/Base/Aura":
+			aura_scale = float(keyed_emitter_record.get("emission_lumen_scale", -1.0))
+	assert(is_equal_approx(projected_sum, 1.0))
+	assert(is_equal_approx(aura_scale, 0.09))
+	assert(keyed_record.get("beam_instances", []).size() == 2)
+
+	var quantum_harness := RegistryHarness.new()
+	get_root().add_child(quantum_harness)
+	quantum_harness.add_geometry("fixture-q/Base")
+	var quantum_targets: Array = []
+	for i in range(50):
+		var key: String = "fixture-q/Base/Beam%02d" % i
+		quantum_harness.add_geometry(key, true, false)
+		quantum_targets.append(_target("fixture-q", "beam_profile", 500 + i, key, {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 320.0, "projected_lumen_scale": 0.032, "emission_lumen_scale": 0.032, "luminous_flux_source": "explicit"}))
+	quantum_harness.add_geometry("fixture-q/Base/Aura", true, false)
+	quantum_targets.append(_target("fixture-q", "beam_profile", 700, "fixture-q/Base/Aura", {"beam_type": "None", "has_projected_beam": false, "effective_luminous_flux_lm": 900.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.09, "luminous_flux_source": "explicit"}))
+	quantum_targets.append(_target("fixture-q", "dimmer", 800, "fixture-q/Base"))
+	var quantum_registry: NativeRendererTargetRegistry = _make_registry(quantum_harness)
+	quantum_registry.install_manifest([{"fixture_uuid": "fixture-q", "targets": quantum_targets}])
+	var quantum_record: Dictionary = quantum_registry.get_dimmer_target_record(800)
+	assert(quantum_record.get("beam_instances", []).size() == 50)
+	var quantum_sum: float = 0.0
+	for quantum_record_item in quantum_record.get("emitter_records", []):
+		quantum_sum += float((quantum_record_item as Dictionary).get("projected_lumen_scale", 0.0))
+	assert(abs(quantum_sum - 1.6) < 0.001)
 	quit(0)

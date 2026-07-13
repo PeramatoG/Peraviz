@@ -394,6 +394,11 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             optical["throw_ratio"] = profile.throw_ratio;
             optical["rectangle_ratio"] = profile.rectangle_ratio;
             optical["luminous_flux"] = profile.luminous_flux;
+            optical["raw_luminous_flux"] = profile.raw_luminous_flux;
+            optical["effective_luminous_flux_lm"] = profile.effective_luminous_flux_lm;
+            optical["luminous_flux_source"] = String(profile.luminous_flux_source.c_str());
+            optical["projected_lumen_scale"] = profile.projected_lumen_scale;
+            optical["emission_lumen_scale"] = profile.emission_lumen_scale;
             optical["color_temperature"] = profile.color_temperature;
             optical["has_projected_beam"] = profile.has_projected_beam;
             optical["valid"] = profile.valid;

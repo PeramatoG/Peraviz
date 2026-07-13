@@ -112,6 +112,12 @@ func _init() -> void:
 	assert(bool(maxed.get("dimmer_applied", false)))
 	assert(prism.visible)
 	assert(float((root.lens.material_override as BaseMaterial3D).emission_energy_multiplier) > mid_energy)
+	root.target_record["emitter_records"] = [{"projected_lumen_scale": 0.5, "emission_lumen_scale": 0.5, "has_projected_beam": true}]
+	var scaled: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 10.0, 20.0, 4.0)
+	assert(bool(scaled.get("dimmer_applied", false)))
+	assert(is_equal_approx(root.anchor.light_energy, 5.0))
+	var params: Dictionary = root.anchor.get_meta("peraviz_beam_last_params", {})
+	assert(is_equal_approx(float(params.get("beam_intensity", -1.0)), 10.0))
 	var hidden: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)
 	assert(bool(hidden.get("dimmer_applied", false)))
 	assert(not prism.visible)

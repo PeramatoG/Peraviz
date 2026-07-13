@@ -97,6 +97,11 @@ struct CompiledBeamOpticalProfile {
     double throw_ratio = 1.0;
     double rectangle_ratio = 1.7777;
     double luminous_flux = 10000.0;
+    double raw_luminous_flux = 10000.0;
+    double effective_luminous_flux_lm = 10000.0;
+    double projected_lumen_scale = 1.0;
+    double emission_lumen_scale = 1.0;
+    std::string luminous_flux_source = "gdtf_default";
     double color_temperature = 6000.0;
     std::string beam_angle_source = "fallback";
     std::string field_angle_source = "fallback";
