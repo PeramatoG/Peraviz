@@ -101,7 +101,6 @@ struct CompiledBeamOpticalProfile {
     double throw_ratio = 1.0;
     double rectangle_ratio = 1.7777;
     double luminous_flux = 10000.0;
-    double beam_output_weight = 1.0;
     double color_temperature = 6000.0;
     std::string beam_angle_source = "fallback";
     std::string field_angle_source = "fallback";

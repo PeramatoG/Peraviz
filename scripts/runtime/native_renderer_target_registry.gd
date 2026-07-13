@@ -14,7 +14,6 @@ var _optics_targets: Dictionary = {}
 var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
 var _dimmer_emitter_owner_by_key: Dictionary = {}
-var _beam_output_weight_by_geometry_key: Dictionary = {}
 var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 
@@ -32,14 +31,12 @@ func clear() -> void:
 	_target_resolution_failures.clear()
 	_geometry_targets_by_key.clear()
 	_dimmer_emitter_owner_by_key.clear()
-	_beam_output_weight_by_geometry_key.clear()
 	_lens_material_cache.clear()
 	_summary = _new_summary()
 
 func install_manifest(renderer_manifest: Array) -> void:
 	clear()
 	_build_geometry_target_map(renderer_manifest)
-	_collect_beam_output_weights(renderer_manifest)
 	for item in renderer_manifest:
 		if item is not Dictionary:
 			continue
@@ -52,23 +49,6 @@ func install_manifest(renderer_manifest: Array) -> void:
 			continue
 		_register_legacy_manifest_row(row)
 	_log_summary_once()
-
-func _collect_beam_output_weights(renderer_manifest: Array) -> void:
-	for item in renderer_manifest:
-		if item is not Dictionary:
-			continue
-		var row: Dictionary = item
-		for target_item in row.get("targets", []):
-			if target_item is not Dictionary:
-				continue
-			var target: Dictionary = target_item
-			if str(target.get("semantic", "")) != "beam_profile":
-				continue
-			var geometry_key: String = str(target.get("geometry_key", ""))
-			var optical_profile: Dictionary = target.get("beam_optical_profile", {})
-			if geometry_key.is_empty() or optical_profile.is_empty():
-				continue
-			_beam_output_weight_by_geometry_key[geometry_key] = max(float(optical_profile.get("beam_output_weight", 1.0)), 0.0)
 
 func apply_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	var pan_axis: Node3D = _pan_targets.get(pan_component_id, null) as Node3D
@@ -236,8 +216,6 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
 	var lens_material_targets: Array = _prepare_lens_materials(cache_key, target_nodes + emitter_nodes)
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
-	var emitter_photometrics: Array = _call_array("get_emitter_photometrics", [fixture_uuid])
-	emitter_photometrics = _apply_cached_beam_output_weights(emitter_photometrics, emitter_nodes, emitter_anchors)
 	_dimmer_targets[target_id] = {
 		"fixture_uuid": fixture_uuid,
 		"property_id": int(manifest_row.get("property_id", 0)),
@@ -252,7 +230,7 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 		"optional_spotlights": emitter_anchors,
 		"beam_instances": beam_instances,
 		"lens_material_targets": lens_material_targets,
-		"emitter_photometrics": emitter_photometrics,
+		"emitter_photometrics": _call_array("get_emitter_photometrics", [fixture_uuid]),
 	}
 	_increment_counter("dimmer_owner_geometries_resolved")
 	if not emitter_nodes.is_empty():
@@ -267,23 +245,6 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
 		_increment_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_counter("dimmer_resolved")
-
-func _apply_cached_beam_output_weights(emitter_photometrics: Array, emitter_nodes: Array, emitter_anchors: Array) -> Array:
-	var weighted: Array = []
-	for index in range(max(emitter_photometrics.size(), emitter_nodes.size())):
-		var photometric: Dictionary = emitter_photometrics[index].duplicate(true) if index < emitter_photometrics.size() and emitter_photometrics[index] is Dictionary else {}
-		var emitter_node: Node3D = null
-		if index < emitter_nodes.size():
-			emitter_node = emitter_nodes[index] as Node3D
-		var geometry_key: String = str(emitter_node.get_meta("peraviz_gdtf_geometry_key", "")) if emitter_node != null else ""
-		var output_weight: float = max(float(_beam_output_weight_by_geometry_key.get(geometry_key, 1.0)), 0.0)
-		photometric["beam_output_weight"] = output_weight
-		weighted.append(photometric)
-		if index < emitter_anchors.size():
-			var light: SpotLight3D = emitter_anchors[index] as SpotLight3D
-			if light != null and is_instance_valid(light):
-				light.set_meta("peraviz_beam_output_weight", output_weight)
-	return weighted
 
 func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:
