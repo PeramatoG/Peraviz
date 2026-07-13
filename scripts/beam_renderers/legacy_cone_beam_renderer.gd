@@ -115,12 +115,13 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
+	var output_weight: float = max(float(params.get("beam_output_weight", 1.0)), 0.0)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
 	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
-	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+	_update_prism_material(prism, color_alpha, scaled_intensity, intensity_max, beam_range, bottom_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, output_weight, appearance_profile)
 	_apply_prism_optics_parameters(prism, lens_radius, bottom_radius)
 	if core_prism != null:
-		_update_prism_material(core_prism, color_alpha, scaled_intensity * 0.55, intensity_max, beam_range, max(bottom_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+		_update_prism_material(core_prism, color_alpha, scaled_intensity * 0.55, intensity_max, beam_range, max(bottom_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, output_weight, appearance_profile)
 		_apply_prism_optics_parameters(core_prism, max(lens_radius * core_ratio, 0.001), max(bottom_radius * core_ratio, 0.001))
 	light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, lens_radius, bottom_radius, beam_range, beam_angle, aperture_profile, false, true))
 
@@ -156,11 +157,12 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var radial_falloff: float = max(float(params.get("beam_radial_falloff", 1.1)), 0.05)
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
+	var output_weight: float = max(float(params.get("beam_output_weight", 1.0)), 0.0)
 	var appearance_profile: Dictionary = _appearance_profile_from_params(params)
 	var core_ratio: float = clamp(float(appearance_profile.get("core_radius_ratio", 0.7)), 0.05, 1.0)
-	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density, output_weight, appearance_profile)
 	if core_prism != null:
-		_update_prism_material(core_prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity * 0.55, intensity_max, beam_range, max(gobo_projection_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, appearance_profile)
+		_update_prism_material(core_prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity * 0.55, intensity_max, beam_range, max(gobo_projection_radius * core_ratio, 0.001), beam_softness, radial_falloff, longitudinal_falloff, haze_density, output_weight, appearance_profile)
 	return true
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
@@ -296,7 +298,7 @@ func _create_prism(prism_name: String) -> MeshInstance3D:
 	prism.visible = false
 	return prism
 
-func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float, appearance_profile: Dictionary) -> void:
+func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float, output_weight: float, appearance_profile: Dictionary) -> void:
 	if prism == null:
 		return
 	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
@@ -306,11 +308,12 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	if intensity_max > reference_max:
 		overdrive_norm = clamp((scaled_intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
 	var overdrive_gain: float = lerp(1.0, LEGACY_OVERDRIVE_GAIN_MAX, overdrive_norm)
+	var clamped_output_weight: float = max(output_weight, 0.0)
 	prism.set_instance_shader_parameter("beam_color", beam_color)
-	prism.set_instance_shader_parameter("near_alpha", lerp(0.0, EMITTER_CONE_NEAR_ALPHA, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("far_alpha", lerp(0.0, EMITTER_CONE_FAR_ALPHA, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("near_emission", lerp(0.0, EMITTER_CONE_NEAR_EMISSION, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("far_emission", lerp(0.0, EMITTER_CONE_FAR_EMISSION, perceptual_intensity) * overdrive_gain)
+	prism.set_instance_shader_parameter("near_alpha", lerp(0.0, EMITTER_CONE_NEAR_ALPHA, perceptual_intensity) * overdrive_gain * clamped_output_weight)
+	prism.set_instance_shader_parameter("far_alpha", lerp(0.0, EMITTER_CONE_FAR_ALPHA, perceptual_intensity) * overdrive_gain * clamped_output_weight)
+	prism.set_instance_shader_parameter("near_emission", lerp(0.0, EMITTER_CONE_NEAR_EMISSION, perceptual_intensity) * overdrive_gain * clamped_output_weight)
+	prism.set_instance_shader_parameter("far_emission", lerp(0.0, EMITTER_CONE_FAR_EMISSION, perceptual_intensity) * overdrive_gain * clamped_output_weight)
 	prism.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
 	prism.set_instance_shader_parameter("gobo_projection_radius", max(gobo_projection_radius, 0.001))
 	prism.set_instance_shader_parameter("fade_end_ratio", EMITTER_CONE_FADE_END_RATIO)

@@ -358,6 +358,63 @@ int test_beam_type_defaults_and_provenance() {
     return 0;
 }
 
+// Verifies native setup normalizes projected Beam output weights per fixture owner.
+int test_beam_output_weights() {
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"fixture-a", 1, 1, "Mode", "fixture.gdtf"});
+    for (int index = 0; index < 10; ++index) {
+        peraviz::SceneNode beam;
+        beam.is_beam = true;
+        beam.gdtf_geometry_path = "Head/Beam" + std::to_string(index);
+        beam.gdtf_geometry_key = "fixture-a/" + beam.gdtf_geometry_path;
+        beam.has_luminous_flux = true;
+        beam.luminous_flux = index == 0 ? 100.0F : 900.0F;
+        model.nodes.push_back(beam);
+    }
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, -1);
+    if (scene.beam_profiles.size() != 10) return fail("Expected ten Beam profiles for weight normalization.");
+    double total_weight = 0.0;
+    bool saw_low_weight = false;
+    bool saw_high_weight = false;
+    for (const auto &profile : scene.beam_profiles) {
+        total_weight += profile.beam_output_weight;
+        if (profile.geometry_path == "Head/Beam0") saw_low_weight = std::abs(profile.beam_output_weight - 0.0121951219512) < 0.000001;
+        if (profile.geometry_path == "Head/Beam1") saw_high_weight = std::abs(profile.beam_output_weight - 0.109756097561) < 0.000001;
+    }
+    if (std::abs(total_weight - 1.0) > 0.000001) return fail("Expected Beam output weights to sum to 1.0.");
+    if (!saw_low_weight || !saw_high_weight) return fail("Expected proportional Beam output weights from luminous flux.");
+
+    peraviz::SceneModel incomplete_model;
+    incomplete_model.fixture_patches.push_back({"fixture-b", 1, 1, "Mode", "fixture.gdtf"});
+    for (int index = 0; index < 4; ++index) {
+        peraviz::SceneNode beam;
+        beam.is_beam = true;
+        beam.gdtf_geometry_path = "Head/Beam" + std::to_string(index);
+        beam.gdtf_geometry_key = "fixture-b/" + beam.gdtf_geometry_path;
+        beam.has_luminous_flux = index != 2;
+        beam.luminous_flux = 100.0F;
+        incomplete_model.nodes.push_back(beam);
+    }
+    const auto incomplete_scene = peraviz::gdtf_runtime::compile_runtime_scene(incomplete_model, -1);
+    if (incomplete_scene.beam_profiles.size() != 4) return fail("Expected four Beam profiles for equal fallback weights.");
+    for (const auto &profile : incomplete_scene.beam_profiles) {
+        if (std::abs(profile.beam_output_weight - 0.25) > 0.000001) return fail("Expected equal fallback weights when projected Beam flux is incomplete.");
+    }
+
+    peraviz::SceneModel single_model;
+    single_model.fixture_patches.push_back({"fixture-c", 1, 1, "Mode", "fixture.gdtf"});
+    peraviz::SceneNode single_beam;
+    single_beam.is_beam = true;
+    single_beam.gdtf_geometry_path = "Head/Beam";
+    single_beam.gdtf_geometry_key = "fixture-c/Head/Beam";
+    single_beam.has_luminous_flux = true;
+    single_beam.luminous_flux = 26000.0F;
+    single_model.nodes.push_back(single_beam);
+    const auto single_scene = peraviz::gdtf_runtime::compile_runtime_scene(single_model, -1);
+    if (single_scene.beam_profiles.size() != 1 || std::abs(single_scene.beam_profiles[0].beam_output_weight - 1.0) > 0.000001) return fail("Expected single Beam output weight to remain 1.0.");
+    return 0;
+}
+
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
@@ -371,5 +428,6 @@ int main() {
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;
     if (test_beam_type_defaults_and_provenance() != 0) return 1;
+    if (test_beam_output_weights() != 0) return 1;
     return 0;
 }

@@ -28,5 +28,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Balanced projected output across multi-Beam fixtures by weighting final Beam emission and alpha per emitter while preserving single-Beam appearance and existing renderer intensity controls.
+- Kept beam shader parameter usage within Godot renderer limits so Beam rendering initializes reliably on the clustered renderer.
 - Reduced overly verbose DMX diagnostics in normal logs and compacted inline monitor summaries so diagnostic text no longer stretches panels across the viewer.
 - Corrected visible beam geometry so the near aperture uses GDTF BeamRadius or exact Beam-owned lens measurement, long beams use an explicit 75 m visual length by default, and Lightweight/Volumetric renderers share the same full-angle far-spread contract without changing fixture or scene scale.
