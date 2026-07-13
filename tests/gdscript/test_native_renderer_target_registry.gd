@@ -108,11 +108,11 @@ func _init() -> void:
 	assert(bool(transform_result.get("tilt_applied", false)))
 	assert(is_equal_approx(pan.rotation_degrees.y, 45.0))
 	assert(is_equal_approx(tilt.rotation_degrees.x, -20.0))
-	var record: Dictionary = registry.get_dimmer_target_record(201)
-	assert(record.get("emitter_anchors", []).size() == 1)
-	assert(record.get("beam_instances", []).size() == 1)
-	assert(record.get("lens_material_targets", []).size() >= 1)
-	assert(not (record.get("beam_instances", [])[0] as MeshInstance3D).visible)
+	var initial_record: Dictionary = registry.get_dimmer_target_record(201)
+	assert(initial_record.get("emitter_anchors", []).size() == 1)
+	assert(initial_record.get("beam_instances", []).size() == 1)
+	assert(initial_record.get("lens_material_targets", []).size() >= 1)
+	assert(not (initial_record.get("beam_instances", [])[0] as MeshInstance3D).visible)
 	registry.clear()
 	assert(not registry.has_dimmer_target(201))
 
@@ -150,11 +150,11 @@ func _init() -> void:
 	assert(records.size() == 3)
 	var projected_sum: float = 0.0
 	var aura_scale: float = -1.0
-	for record_item in records:
-		var record: Dictionary = record_item
-		projected_sum += float(record.get("projected_lumen_scale", 0.0))
-		if str(record.get("geometry_key", "")) == "fixture-b/Base/Aura":
-			aura_scale = float(record.get("emission_lumen_scale", -1.0))
+	for keyed_record_item in records:
+		var keyed_emitter_record: Dictionary = keyed_record_item
+		projected_sum += float(keyed_emitter_record.get("projected_lumen_scale", 0.0))
+		if str(keyed_emitter_record.get("geometry_key", "")) == "fixture-b/Base/Aura":
+			aura_scale = float(keyed_emitter_record.get("emission_lumen_scale", -1.0))
 	assert(is_equal_approx(projected_sum, 1.0))
 	assert(is_equal_approx(aura_scale, 0.09))
 	assert(keyed_record.get("beam_instances", []).size() == 2)
@@ -175,7 +175,7 @@ func _init() -> void:
 	var quantum_record: Dictionary = quantum_registry.get_dimmer_target_record(800)
 	assert(quantum_record.get("beam_instances", []).size() == 50)
 	var quantum_sum: float = 0.0
-	for record_item in quantum_record.get("emitter_records", []):
-		quantum_sum += float((record_item as Dictionary).get("projected_lumen_scale", 0.0))
+	for quantum_record_item in quantum_record.get("emitter_records", []):
+		quantum_sum += float((quantum_record_item as Dictionary).get("projected_lumen_scale", 0.0))
 	assert(abs(quantum_sum - 1.6) < 0.001)
 	quit(0)
