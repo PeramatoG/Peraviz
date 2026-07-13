@@ -26,6 +26,7 @@ void PeravizVisualRuntimeCore::clear() {
     render_params_by_fixture_.clear();
     transform_state_by_fixture_.clear();
     property_state_by_property_.clear();
+    color_state_by_target_.clear();
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
     installed_visual_mask_by_fixture_.clear();
@@ -113,6 +114,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
         capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
         capabilities.has_optics = capabilities.has_optics || parameter == SemanticParameter::Zoom;
+        capabilities.has_color = capabilities.has_color || (installed_mask & VisualChangeColor) != 0U;
         UniverseState &universe = universes_[property_universe];
         universe.properties.push_back({property, parameter});
         for (const CompiledPropertyContributor &contributor : property.contributors) {
@@ -124,7 +126,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         ++installed_properties;
     }
     if (installed_properties == 0) {
-        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported Dimmer/Pan/Tilt/Zoom properties.", "CompiledRuntimeScene"});
+        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
@@ -184,6 +186,33 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 continue;
             }
             const float semantic_value = program.parameter == SemanticParameter::Dimmer ? evaluated.normalized_value : evaluated.physical_value;
+            if ((visual_mask_for_parameter(program.parameter) & VisualChangeColor) != 0U) {
+                ComponentState state;
+                auto existing = color_state_by_target_.find(program.property.render_target_id);
+                if (existing != color_state_by_target_.end()) {
+                    state = existing->second;
+                }
+                apply_semantic_value(state, program.parameter, semantic_value);
+                const auto params_it = render_params_by_fixture_.find(program.property.fixture_id);
+                cook_render_state(state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
+                ComponentState &previous = color_state_by_target_[program.property.render_target_id];
+                uint32_t color_mask = VisualChangeNone;
+                if (!previous.initialized || !nearly_equal(previous.red, state.red, kDefaultEpsilon) || !nearly_equal(previous.green, state.green, kDefaultEpsilon) || !nearly_equal(previous.blue, state.blue, kDefaultEpsilon) || !nearly_equal(previous.color_gain, state.color_gain, kDefaultEpsilon)) {
+                    color_mask = visual_mask_for_parameter(program.parameter);
+                }
+                previous = state;
+                previous.initialized = true;
+                if (color_mask == VisualChangeNone) {
+                    ++stats_.fixtures_skipped;
+                    continue;
+                }
+                add_visual_mask_stats(color_mask);
+                ++stats_.fixtures_dirty;
+                ++stats_.color_rows;
+                rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, program.property.render_target_id, color_mask, state});
+                continue;
+            }
+
             if (program.parameter == SemanticParameter::Dimmer || program.parameter == SemanticParameter::Zoom) {
                 ComponentState state;
                 auto existing = property_state_by_property_.find(program.property.property_id);
@@ -260,6 +289,18 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         append_descriptor(frame, VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
     }
 
+    const int32_t color_count = section_count_for(VisualChangeColor | VisualChangeMaterial);
+    if (color_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & (VisualChangeColor | VisualChangeMaterial)) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.render_target_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.state.red, row.state.green, row.state.blue});
+        }
+        append_descriptor(frame, VisualSectionType::EmitterColor, color_count, int_offset, float_offset);
+    }
+
     const int32_t optics_count = section_count_for(VisualChangeZoom);
     if (optics_count > 0) {
         const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
@@ -289,6 +330,26 @@ SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(Comp
         case CompiledSemantic::Tilt: return SemanticParameter::Tilt;
         case CompiledSemantic::Dimmer: return SemanticParameter::Dimmer;
         case CompiledSemantic::Zoom: return SemanticParameter::Zoom;
+        case CompiledSemantic::ColorAddRed: return SemanticParameter::ColorAddRed;
+        case CompiledSemantic::ColorAddGreen: return SemanticParameter::ColorAddGreen;
+        case CompiledSemantic::ColorAddBlue: return SemanticParameter::ColorAddBlue;
+        case CompiledSemantic::ColorAddCyan: return SemanticParameter::ColorAddCyan;
+        case CompiledSemantic::ColorAddMagenta: return SemanticParameter::ColorAddMagenta;
+        case CompiledSemantic::ColorAddYellow: return SemanticParameter::ColorAddYellow;
+        case CompiledSemantic::ColorAddWhite: return SemanticParameter::ColorAddWhite;
+        case CompiledSemantic::ColorAddAmber: return SemanticParameter::ColorAddAmber;
+        case CompiledSemantic::ColorAddLime: return SemanticParameter::ColorAddLime;
+        case CompiledSemantic::ColorAddUv: return SemanticParameter::ColorAddUv;
+        case CompiledSemantic::ColorSubCyan: return SemanticParameter::ColorSubCyan;
+        case CompiledSemantic::ColorSubMagenta: return SemanticParameter::ColorSubMagenta;
+        case CompiledSemantic::ColorSubYellow: return SemanticParameter::ColorSubYellow;
+        case CompiledSemantic::ColorSubRed: return SemanticParameter::ColorSubRed;
+        case CompiledSemantic::ColorSubGreen: return SemanticParameter::ColorSubGreen;
+        case CompiledSemantic::ColorSubBlue: return SemanticParameter::ColorSubBlue;
+        case CompiledSemantic::ColorTemperature: return SemanticParameter::ColorTemperature;
+        case CompiledSemantic::Tint: return SemanticParameter::Tint;
+        case CompiledSemantic::ColorWheel: return SemanticParameter::ColorWheel;
+        case CompiledSemantic::ColorMacro: return SemanticParameter::ColorMacro;
         case CompiledSemantic::Unknown: return SemanticParameter::Unknown;
     }
     return SemanticParameter::Unknown;
@@ -415,6 +476,26 @@ uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter p
         case SemanticParameter::Pan:
         case SemanticParameter::Tilt: return VisualChangeTransform;
         case SemanticParameter::Zoom: return VisualChangeZoom;
+        case SemanticParameter::ColorAddRed:
+        case SemanticParameter::ColorAddGreen:
+        case SemanticParameter::ColorAddBlue:
+        case SemanticParameter::ColorAddCyan:
+        case SemanticParameter::ColorAddMagenta:
+        case SemanticParameter::ColorAddYellow:
+        case SemanticParameter::ColorAddWhite:
+        case SemanticParameter::ColorAddAmber:
+        case SemanticParameter::ColorAddLime:
+        case SemanticParameter::ColorAddUv:
+        case SemanticParameter::ColorSubCyan:
+        case SemanticParameter::ColorSubMagenta:
+        case SemanticParameter::ColorSubYellow:
+        case SemanticParameter::ColorSubRed:
+        case SemanticParameter::ColorSubGreen:
+        case SemanticParameter::ColorSubBlue:
+        case SemanticParameter::ColorTemperature:
+        case SemanticParameter::Tint:
+        case SemanticParameter::ColorWheel:
+        case SemanticParameter::ColorMacro: return VisualChangeColor | VisualChangeMaterial;
         case SemanticParameter::Cyan:
         case SemanticParameter::Magenta:
         case SemanticParameter::Yellow: return VisualChangeColor | VisualChangeMaterial;
@@ -437,6 +518,26 @@ void PeravizVisualRuntimeCore::apply_semantic_value(ComponentState &state, Seman
         case SemanticParameter::Tilt: state.tilt = value; break;
         case SemanticParameter::Dimmer: state.dimmer = value; break;
         case SemanticParameter::Zoom: state.zoom = value; break;
+        case SemanticParameter::ColorAddRed: state.add_red = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddGreen: state.add_green = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddBlue: state.add_blue = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddCyan: state.add_green = value; state.add_blue = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddMagenta: state.add_red = value; state.add_blue = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddYellow: state.add_red = value; state.add_green = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddWhite: state.add_white = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddAmber: state.add_amber = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddLime: state.add_lime = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorAddUv: state.add_uv = value; state.has_additive_color = true; break;
+        case SemanticParameter::ColorSubCyan: state.sub_cyan = value; break;
+        case SemanticParameter::ColorSubMagenta: state.sub_magenta = value; break;
+        case SemanticParameter::ColorSubYellow: state.sub_yellow = value; break;
+        case SemanticParameter::ColorSubRed: state.sub_red = value; break;
+        case SemanticParameter::ColorSubGreen: state.sub_green = value; break;
+        case SemanticParameter::ColorSubBlue: state.sub_blue = value; break;
+        case SemanticParameter::ColorTemperature: state.color_temperature = value; break;
+        case SemanticParameter::Tint: state.tint = value; break;
+        case SemanticParameter::ColorWheel: state.gobo_select = value; break;
+        case SemanticParameter::ColorMacro: state.gobo_select = value; break;
         case SemanticParameter::Cyan: state.cyan = value; break;
         case SemanticParameter::Magenta: state.magenta = value; break;
         case SemanticParameter::Yellow: state.yellow = value; break;
@@ -467,9 +568,34 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
             beam_angle = std::clamp(zoom_min + ((zoom_max - zoom_min) * state.zoom_normalized), 0.0, max_beam_angle);
         }
     }
-    state.red = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.cyan : 1.0f;
-    state.green = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.magenta : 1.0f;
-    state.blue = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.yellow : 1.0f;
+    const bool has_subtractive = state.sub_cyan > cmy_epsilon || state.sub_magenta > cmy_epsilon || state.sub_yellow > cmy_epsilon || state.sub_red > cmy_epsilon || state.sub_green > cmy_epsilon || state.sub_blue > cmy_epsilon || state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon;
+    double red = state.has_additive_color ? 0.0 : 1.0;
+    double green = state.has_additive_color ? 0.0 : 1.0;
+    double blue = state.has_additive_color ? 0.0 : 1.0;
+    if (state.has_additive_color) {
+        red += state.add_red + state.add_white + state.add_amber + state.add_uv * 0.35;
+        green += state.add_green + state.add_white + state.add_amber * 0.45 + state.add_lime;
+        blue += state.add_blue + state.add_white + state.add_uv;
+    }
+    if (has_subtractive) {
+        red *= std::clamp(1.0 - std::max(static_cast<double>(state.sub_cyan), static_cast<double>(state.cyan)), 0.0, 1.0);
+        green *= std::clamp(1.0 - std::max(static_cast<double>(state.sub_magenta), static_cast<double>(state.magenta)), 0.0, 1.0);
+        blue *= std::clamp(1.0 - std::max(static_cast<double>(state.sub_yellow), static_cast<double>(state.yellow)), 0.0, 1.0);
+        red *= std::clamp(1.0 - static_cast<double>(state.sub_red), 0.0, 1.0);
+        green *= std::clamp(1.0 - static_cast<double>(state.sub_green), 0.0, 1.0);
+        blue *= std::clamp(1.0 - static_cast<double>(state.sub_blue), 0.0, 1.0);
+    }
+    if (state.color_temperature > 1000.0f) {
+        const double warm = std::clamp((6500.0 - static_cast<double>(state.color_temperature)) / 4500.0, -1.0, 1.0);
+        red *= 1.0 + std::max(warm, 0.0) * 0.25;
+        blue *= 1.0 + std::max(-warm, 0.0) * 0.25 - std::max(warm, 0.0) * 0.2;
+    }
+    if (std::fabs(state.tint) > cmy_epsilon) green *= std::clamp(1.0 + static_cast<double>(state.tint) * 0.15, 0.0, 2.0);
+    const double gain = std::max({red, green, blue, 1.0});
+    state.color_gain = static_cast<float>(gain);
+    state.red = static_cast<float>(std::clamp(red / gain, 0.0, 1.0));
+    state.green = static_cast<float>(std::clamp(green / gain, 0.0, 1.0));
+    state.blue = static_cast<float>(std::clamp(blue / gain, 0.0, 1.0));
     const double base_energy = std::max(params.luminous_flux, 0.0) * state.dimmer * energy_scale;
     state.beam_energy = static_cast<float>(base_energy);
     state.spot_energy = static_cast<float>(base_energy * params.spot_multiplier);

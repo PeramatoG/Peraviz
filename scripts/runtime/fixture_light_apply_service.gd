@@ -147,15 +147,25 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 		return {"dimmer_requested": true, "target_resolved": true, "lights_considered": 0, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "visible_output_after_apply": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target has no mutable Dimmer resources"}
 	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights.size(), "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
 
-func apply_emitter_color(loader: Node, fixture_uuid: String, beam_color: Color) -> void:
+func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: int, changed_mask: int, beam_color: Color) -> Dictionary:
+	if color_target_id <= 0 or (loader.has_method("_has_native_dimmer_target") and not loader._has_native_dimmer_target(color_target_id)):
+		return {"color_requested": color_target_id > 0, "target_resolved": false, "color_applied": false, "failed": 1, "failure_reason": "target not registered"}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_render_color(fixture_uuid, beam_color)
-	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
-	_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, _fixture_material_energy(fixture_uuid))
-	for light in _fixture_lights(loader, fixture_uuid):
+	var target_record: Dictionary = loader._get_native_dimmer_target_record(color_target_id) if loader.has_method("_get_native_dimmer_target_record") else {}
+	var lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
+	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, _fixture_material_energy(fixture_uuid), lens_material_targets, true)
+	var lights_mutated: int = 0
+	var beams_mutated: int = 0
+	for light in target_record.get("emitter_anchors", []):
+		if light == null or not is_instance_valid(light):
+			continue
 		light.light_color = beam_color
+		lights_mutated += 1
 		if light.has_meta("peraviz_beam_last_params"):
-			_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_COLOR, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), beam_color, _fixture_beam_intensity(fixture_uuid))
+			_apply_visual_frame_beam(loader, light, changed_mask | VISUAL_CHANGE_COLOR, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), beam_color, _fixture_beam_intensity(fixture_uuid))
+			beams_mutated += 1
+	return {"color_requested": true, "target_resolved": true, "color_applied": lights_mutated + beams_mutated + materials_mutated > 0, "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "failed": 0}
 
 func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int, _changed_mask: int, beam_half_angle: float, beam_angle: float, zoom_norm: float) -> Dictionary:
 	if optics_target_id <= 0 or (loader.has_method("_has_native_optics_target") and not loader._has_native_optics_target(optics_target_id)):

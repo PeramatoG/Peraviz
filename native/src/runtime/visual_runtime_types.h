@@ -26,6 +26,26 @@ enum class CompiledSemantic : int32_t {
     Tilt,
     Dimmer,
     Zoom,
+    ColorAddRed,
+    ColorAddGreen,
+    ColorAddBlue,
+    ColorAddCyan,
+    ColorAddMagenta,
+    ColorAddYellow,
+    ColorAddWhite,
+    ColorAddAmber,
+    ColorAddLime,
+    ColorAddUv,
+    ColorSubCyan,
+    ColorSubMagenta,
+    ColorSubYellow,
+    ColorSubRed,
+    ColorSubGreen,
+    ColorSubBlue,
+    ColorTemperature,
+    Tint,
+    ColorWheel,
+    ColorMacro,
 };
 
 struct CompiledDmxByteSource {
@@ -131,6 +151,7 @@ struct CompiledRuntimeScene {
     int32_t pan_program_count = 0;
     int32_t tilt_program_count = 0;
     int32_t zoom_program_count = 0;
+    int32_t color_program_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;
@@ -161,6 +182,7 @@ struct VisualFrameStats {
     uint64_t changed_dimmer = 0;
     uint64_t changed_color = 0;
     uint64_t changed_zoom = 0;
+    uint64_t color_rows = 0;
     uint64_t changed_gobo = 0;
     uint64_t changed_gobo_rotation = 0;
     uint64_t gobo_topology_updates = 0;

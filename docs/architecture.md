@@ -16,7 +16,7 @@ Current native runtime responsibilities include:
 - Universe filtering and relevant-slot hashing before fixture updates are emitted.
 - Native compiled scene generation and installation for fixture instances, stable IDs, DMX byte sources, and property contributors.
 - Multi-byte DMX value assembly from ordered source byte records, including non-adjacent coarse/fine addresses.
-- Dirty-state detection for transform and intensity output in the verified Dimmer/Pan/Tilt slice.
+- Dirty-state detection for transform, intensity, optics, and the initial target-oriented color output slice.
 - Render-value cooking for sectioned visual output.
 - Section assembly using descriptors and typed payloads.
 - Visual frame schema validation helpers and behavior tests.
@@ -34,7 +34,7 @@ Current Godot runtime responsibilities include:
 MVR fixture patch
   -> parser-owned selected GDTF DMX mode model
   -> scoped DMXChannel records under the selected mode, including standard DMXChannels wrappers and harmless vendor wrappers
-  -> LogicalChannel / ChannelFunction records with inferred or explicit full-resolution DMX ranges
+  -> LogicalChannel / ChannelFunction records with inferred or explicit full-resolution DMX ranges and supported color attributes
   -> CompiledGdtfFixtureType
   -> native compiled runtime scene
   -> native fixture instances, patch, source programs, and contributors
@@ -67,7 +67,7 @@ Godot registers the native renderer manifest once during structural setup, resol
 
 ## Known unsupported GDTF semantics
 
-ModeMaster, Relations, virtual attributes, complex ChannelSet selection, CMY/RGB/color wheels/CTO, gobos, prisms, strobe curves, repeated emitters, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
+ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement interpolation, continuous color-wheel motion, split slots, gobos, prisms, strobe curves, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. The initial color slice supports native RGB/RGBW-style additive channels, CMY-style fallback filtering, CTO/CTB/CTC/Tint approximations, and target-oriented EmitterColor rows; advanced physical emitter/filter/wheel resources remain incremental work. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
 
 ## Runtime invariants
 
@@ -80,7 +80,7 @@ ModeMaster, Relations, virtual attributes, complex ChannelSet selection, CMY/RGB
 
 ## Next architectural step
 
-The next recommended vertical slice is color intensity/color-mixing through parser-owned compiled GDTF programs, with behavior tests proving selected ChannelFunction ranges and renderer-facing color sections without restoring Godot-built semantic dictionaries.
+The next recommended vertical slice is richer physical color resources and reusable wheel-slot resolution for gobos/prisms, building on the parser-owned color programs and renderer-facing color section without restoring Godot-built semantic dictionaries.
 
 ## Supporting documents
 

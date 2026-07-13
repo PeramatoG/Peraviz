@@ -34,6 +34,28 @@ runtime::CompiledSemantic semantic_for_attribute(const AttributeIdentity &attrib
     if (attribute.canonical_family == "Pan") return runtime::CompiledSemantic::Pan;
     if (attribute.canonical_family == "Tilt") return runtime::CompiledSemantic::Tilt;
     if (attribute.canonical_family == "Zoom") return runtime::CompiledSemantic::Zoom;
+    std::string lower = dmx::lower_ascii(dmx::trim_ascii(attribute.name));
+    if (lower == "coloradd_r" || lower == "colorrgb_red") return runtime::CompiledSemantic::ColorAddRed;
+    if (lower == "coloradd_g" || lower == "colorrgb_green") return runtime::CompiledSemantic::ColorAddGreen;
+    if (lower == "coloradd_b" || lower == "colorrgb_blue") return runtime::CompiledSemantic::ColorAddBlue;
+    if (lower == "coloradd_c" || lower == "colorrgb_cyan") return runtime::CompiledSemantic::ColorAddCyan;
+    if (lower == "coloradd_m" || lower == "colorrgb_magenta") return runtime::CompiledSemantic::ColorAddMagenta;
+    if (lower == "coloradd_y" || lower == "colorrgb_yellow") return runtime::CompiledSemantic::ColorAddYellow;
+    if (lower == "coloradd_w" || lower == "coloradd_ww" || lower == "coloradd_cw") return runtime::CompiledSemantic::ColorAddWhite;
+    if (lower == "coloradd_ry" || lower == "coloradd_rm") return runtime::CompiledSemantic::ColorAddAmber;
+    if (lower == "coloradd_gy" || lower == "coloradd_gc") return runtime::CompiledSemantic::ColorAddLime;
+    if (lower == "coloradd_bc" || lower == "coloradd_bm") return runtime::CompiledSemantic::ColorAddBlue;
+    if (lower == "coloradd_uv") return runtime::CompiledSemantic::ColorAddUv;
+    if (lower == "colorsub_c" || lower == "cyan") return runtime::CompiledSemantic::ColorSubCyan;
+    if (lower == "colorsub_m" || lower == "magenta") return runtime::CompiledSemantic::ColorSubMagenta;
+    if (lower == "colorsub_y" || lower == "yellow") return runtime::CompiledSemantic::ColorSubYellow;
+    if (lower == "colorsub_r") return runtime::CompiledSemantic::ColorSubRed;
+    if (lower == "colorsub_g") return runtime::CompiledSemantic::ColorSubGreen;
+    if (lower == "colorsub_b") return runtime::CompiledSemantic::ColorSubBlue;
+    if (lower == "cto" || lower == "ctb" || lower == "ctc") return runtime::CompiledSemantic::ColorTemperature;
+    if (lower == "tint") return runtime::CompiledSemantic::Tint;
+    if (lower.rfind("color", 0) == 0 && lower.find("macro") != std::string::npos) return runtime::CompiledSemantic::ColorMacro;
+    if (lower.rfind("color", 0) == 0) return runtime::CompiledSemantic::ColorWheel;
     const dmx::ParsedAttribute parsed = dmx::parse_attribute_name(attribute.name);
     if (parsed.role == dmx::AttributeRole::kDimmer) return runtime::CompiledSemantic::Dimmer;
     if (parsed.role == dmx::AttributeRole::kPan) return runtime::CompiledSemantic::Pan;
@@ -188,6 +210,7 @@ void add_fixture_type_counters(runtime::CompiledRuntimeScene &out, const Compile
     out.pan_program_count += fixture_type.pan_program_count;
     out.tilt_program_count += fixture_type.tilt_program_count;
     out.zoom_program_count += fixture_type.zoom_program_count;
+    out.color_program_count += fixture_type.color_program_count;
 }
 
 // Appends one runtime property containing all ChannelFunction programs for the same component.
@@ -205,9 +228,10 @@ void append_property(runtime::CompiledRuntimeScene &scene,
     if (!attribute || !geometry) return;
     const runtime::CompiledSemantic semantic = semantic_for_attribute(*attribute);
     if (semantic == runtime::CompiledSemantic::Unknown) return;
-    const std::string semantic_label = semantic == runtime::CompiledSemantic::Pan ? "pan" : semantic == runtime::CompiledSemantic::Tilt ? "tilt" : semantic == runtime::CompiledSemantic::Zoom ? "zoom" : "dimmer";
+    const bool is_color_semantic = static_cast<int32_t>(semantic) >= static_cast<int32_t>(runtime::CompiledSemantic::ColorAddRed);
+    const std::string semantic_label = semantic == runtime::CompiledSemantic::Pan ? "pan" : semantic == runtime::CompiledSemantic::Tilt ? "tilt" : semantic == runtime::CompiledSemantic::Zoom ? "zoom" : (semantic == runtime::CompiledSemantic::Dimmer ? "dimmer" : "color");
     const int32_t component_id = stable_id(patch.fixture_uuid, semantic_label + ":component:" + geometry->path);
-    const int32_t target_id = semantic == runtime::CompiledSemantic::Zoom ? stable_id(patch.fixture_uuid, "beam:target:" + geometry->path) : (semantic == runtime::CompiledSemantic::Dimmer ? stable_id(patch.fixture_uuid, semantic_label + ":target:" + geometry->path) : component_id);
+    const int32_t target_id = semantic == runtime::CompiledSemantic::Zoom ? stable_id(patch.fixture_uuid, "beam:target:" + geometry->path) : ((semantic == runtime::CompiledSemantic::Dimmer || is_color_semantic) ? stable_id(patch.fixture_uuid, "dimmer:target:" + geometry->path) : component_id);
     const int32_t property_id = stable_id(patch.fixture_uuid, semantic_label + ":property:" + geometry->path);
     runtime::CompiledComponentProperty property;
     property.property_id = property_id;

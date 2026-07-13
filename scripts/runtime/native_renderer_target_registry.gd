@@ -116,7 +116,7 @@ func _register_renderer_target(target: Dictionary) -> void:
 		_register_axis_target(_pan_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "pan")
 	elif semantic == "tilt":
 		_register_axis_target(_tilt_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "tilt")
-	elif semantic == "dimmer":
+	elif semantic == "dimmer" or semantic == "color":
 		_register_dimmer_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 	elif semantic == "zoom" or semantic == "beam_profile":
 		_register_optics_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)

@@ -350,6 +350,10 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
                 semantic = "zoom";
                 target_id = property.render_target_id;
                 capability_flags |= 8;
+            } else if (static_cast<int32_t>(property.semantic) >= static_cast<int32_t>(peraviz::runtime::CompiledSemantic::ColorAddRed)) {
+                semantic = "color";
+                target_id = property.render_target_id;
+                capability_flags |= 16;
             }
             if (target_id <= 0 || semantic.is_empty()) {
                 continue;

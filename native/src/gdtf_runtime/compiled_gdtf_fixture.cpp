@@ -379,6 +379,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (dmx::lower_ascii(attribute_name) == "pan") ++fixture.pan_program_count;
                 if (dmx::lower_ascii(attribute_name) == "tilt") ++fixture.tilt_program_count;
                 if (dmx::lower_ascii(attribute_name) == "zoom") ++fixture.zoom_program_count;
+                if (dmx::lower_ascii(attribute_name).find("color") != std::string::npos || dmx::lower_ascii(attribute_name) == "cyan" || dmx::lower_ascii(attribute_name) == "magenta" || dmx::lower_ascii(attribute_name) == "yellow" || dmx::lower_ascii(attribute_name) == "cto" || dmx::lower_ascii(attribute_name) == "ctb" || dmx::lower_ascii(attribute_name) == "ctc" || dmx::lower_ascii(attribute_name) == "tint") ++fixture.color_program_count;
             }
         }
     }

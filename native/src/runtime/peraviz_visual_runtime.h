@@ -14,6 +14,26 @@ enum class SemanticParameter : int32_t {
     Tilt,
     Dimmer,
     Zoom,
+    ColorAddRed,
+    ColorAddGreen,
+    ColorAddBlue,
+    ColorAddCyan,
+    ColorAddMagenta,
+    ColorAddYellow,
+    ColorAddWhite,
+    ColorAddAmber,
+    ColorAddLime,
+    ColorAddUv,
+    ColorSubCyan,
+    ColorSubMagenta,
+    ColorSubYellow,
+    ColorSubRed,
+    ColorSubGreen,
+    ColorSubBlue,
+    ColorTemperature,
+    Tint,
+    ColorWheel,
+    ColorMacro,
     Cyan,
     Magenta,
     Yellow,
@@ -77,9 +97,26 @@ private:
         float spot_energy = 0.0f;
         float beam_half_angle = 12.5f;
         float beam_angle = 25.0f;
+        float add_red = 0.0f;
+        float add_green = 0.0f;
+        float add_blue = 0.0f;
+        float add_white = 0.0f;
+        float add_amber = 0.0f;
+        float add_lime = 0.0f;
+        float add_uv = 0.0f;
+        float sub_cyan = 0.0f;
+        float sub_magenta = 0.0f;
+        float sub_yellow = 0.0f;
+        float sub_red = 0.0f;
+        float sub_green = 0.0f;
+        float sub_blue = 0.0f;
+        float color_temperature = 0.0f;
+        float tint = 0.0f;
         float red = 1.0f;
         float green = 1.0f;
         float blue = 1.0f;
+        float color_gain = 1.0f;
+        bool has_additive_color = false;
         float beam_intensity = 0.0f;
         float material_energy = 0.0f;
         bool initialized = false;
@@ -108,6 +145,7 @@ private:
     std::vector<CompiledRuntimeDiagnostic> diagnostics_;
     std::unordered_map<int, ComponentState> transform_state_by_fixture_;
     std::unordered_map<int32_t, ComponentState> property_state_by_property_;
+    std::unordered_map<int32_t, ComponentState> color_state_by_target_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
