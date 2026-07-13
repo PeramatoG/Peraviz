@@ -16,7 +16,6 @@ instance uniform float gobo_projection_radius = 1.0;
 instance uniform vec2 beam_radius_params = vec2(0.03, 1.0);
 instance uniform float radial_falloff = 1.1;
 instance uniform float longitudinal_falloff = 1.0;
-instance uniform float photometric_output_weight = 1.0;
 instance uniform vec2 gobo_transform = vec2(1.0, 0.0);
 uniform vec2 appearance_core_field = vec2(0.7, 1.0);
 uniform vec2 appearance_edge_exp = vec2(0.1, 1.1);
@@ -131,7 +130,6 @@ void fragment() {
 	if (beam_alpha < 0.0001) {
 		discard;
 	}
-	float output_weight = max(photometric_output_weight, 0.0);
-	ALPHA = clamp(beam_alpha * output_weight, 0.0, 1.0);
-	EMISSION = beam_color.rgb * (mix(far_emission, near_emission, near_factor) * end_fade * center_boost * gobo_mask * max(haze_density, 0.05) * output_weight);
+	ALPHA = clamp(beam_alpha, 0.0, 1.0);
+	EMISSION = beam_color.rgb * (mix(far_emission, near_emission, near_factor) * end_fade * center_boost * gobo_mask * max(haze_density, 0.05));
 }

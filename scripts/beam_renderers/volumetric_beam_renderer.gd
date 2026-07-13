@@ -101,8 +101,8 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		core_beam.visible = true
 
 	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
-	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
-	beam.set_instance_shader_parameter("beam_visibility", 1.0)
+	beam.set_instance_shader_parameter("base_color", Color(beam_color.r * output_weight, beam_color.g * output_weight, beam_color.b * output_weight, intensity_alpha))
+	beam.set_instance_shader_parameter("beam_visibility", output_weight)
 	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
 	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
 	_apply_static_beam_params(beam, params)
@@ -112,13 +112,12 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
 	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-	beam.set_instance_shader_parameter("photometric_output_weight", output_weight)
 	_apply_appearance_profile_params(beam, appearance_profile)
 	_apply_beam_material_params(beam, beam_range, shape_result)
 	if core_beam != null:
 		_apply_static_beam_params(core_beam, params)
-		core_beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha * 0.55))
-		core_beam.set_instance_shader_parameter("beam_visibility", 1.0)
+		core_beam.set_instance_shader_parameter("base_color", Color(beam_color.r * output_weight, beam_color.g * output_weight, beam_color.b * output_weight, intensity_alpha * 0.55))
+		core_beam.set_instance_shader_parameter("beam_visibility", output_weight)
 		core_beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
 		core_beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
 		core_beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
@@ -126,7 +125,6 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		core_beam.set_instance_shader_parameter("gobo_projection_radius", max(float(core_shape_result.get("gobo_projection_radius", gobo_projection_radius * core_ratio)), 0.001))
 		core_beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 		core_beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-		core_beam.set_instance_shader_parameter("photometric_output_weight", output_weight)
 		_apply_appearance_profile_params(core_beam, appearance_profile)
 		_apply_beam_material_params(core_beam, beam_range, core_shape_result if not core_shape_result.is_empty() else shape_result)
 
@@ -233,19 +231,17 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	beam.visible = true
 	if core_beam != null:
 		core_beam.visible = true
-	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
-	beam.set_instance_shader_parameter("beam_visibility", 1.0)
+	beam.set_instance_shader_parameter("base_color", Color(beam_color.r * output_weight, beam_color.g * output_weight, beam_color.b * output_weight, intensity_alpha))
+	beam.set_instance_shader_parameter("beam_visibility", output_weight)
 	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
 	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-	beam.set_instance_shader_parameter("photometric_output_weight", output_weight)
 	if core_beam != null:
-		core_beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha * 0.55))
-		core_beam.set_instance_shader_parameter("beam_visibility", 1.0)
+		core_beam.set_instance_shader_parameter("base_color", Color(beam_color.r * output_weight, beam_color.g * output_weight, beam_color.b * output_weight, intensity_alpha * 0.55))
+		core_beam.set_instance_shader_parameter("beam_visibility", output_weight)
 		core_beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
 		core_beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
 		core_beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-		core_beam.set_instance_shader_parameter("photometric_output_weight", output_weight)
 	return true
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:

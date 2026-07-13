@@ -308,11 +308,12 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	if intensity_max > reference_max:
 		overdrive_norm = clamp((scaled_intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
 	var overdrive_gain: float = lerp(1.0, LEGACY_OVERDRIVE_GAIN_MAX, overdrive_norm)
+	var clamped_output_weight: float = max(output_weight, 0.0)
 	prism.set_instance_shader_parameter("beam_color", beam_color)
-	prism.set_instance_shader_parameter("near_alpha", lerp(0.0, EMITTER_CONE_NEAR_ALPHA, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("far_alpha", lerp(0.0, EMITTER_CONE_FAR_ALPHA, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("near_emission", lerp(0.0, EMITTER_CONE_NEAR_EMISSION, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("far_emission", lerp(0.0, EMITTER_CONE_FAR_EMISSION, perceptual_intensity) * overdrive_gain)
+	prism.set_instance_shader_parameter("near_alpha", lerp(0.0, EMITTER_CONE_NEAR_ALPHA, perceptual_intensity) * overdrive_gain * clamped_output_weight)
+	prism.set_instance_shader_parameter("far_alpha", lerp(0.0, EMITTER_CONE_FAR_ALPHA, perceptual_intensity) * overdrive_gain * clamped_output_weight)
+	prism.set_instance_shader_parameter("near_emission", lerp(0.0, EMITTER_CONE_NEAR_EMISSION, perceptual_intensity) * overdrive_gain * clamped_output_weight)
+	prism.set_instance_shader_parameter("far_emission", lerp(0.0, EMITTER_CONE_FAR_EMISSION, perceptual_intensity) * overdrive_gain * clamped_output_weight)
 	prism.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
 	prism.set_instance_shader_parameter("gobo_projection_radius", max(gobo_projection_radius, 0.001))
 	prism.set_instance_shader_parameter("fade_end_ratio", EMITTER_CONE_FADE_END_RATIO)
@@ -322,7 +323,6 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	prism.set_instance_shader_parameter("radial_falloff", radial_falloff)
 	prism.set_instance_shader_parameter("longitudinal_falloff", longitudinal_falloff)
 	prism.set_instance_shader_parameter("haze_density", haze_density)
-	prism.set_instance_shader_parameter("photometric_output_weight", output_weight)
 	_apply_appearance_material_parameters(prism, appearance_profile, radial_falloff, longitudinal_falloff)
 
 func _apply_appearance_material_parameters(prism: MeshInstance3D, appearance_profile: Dictionary, radial_falloff: float, longitudinal_falloff: float) -> void:
