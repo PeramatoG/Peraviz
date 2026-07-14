@@ -128,6 +128,14 @@ func _init() -> void:
 	assert(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1)
 	assert(registry.get_target_failure(202) is Dictionary)
 
+	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base/EmitterLens"), _target("fixture-a", "color", 301, "fixture-a/Base/EmitterLens")]}])
+	var color_summary: Dictionary = registry.get_summary().get("registry_summary", {})
+	assert(registry.has_dimmer_target(201))
+	assert(registry.has_color_target(301))
+	assert(int(color_summary.get("dimmer_requested", 0)) == 1)
+	assert(int(color_summary.get("color_requested", 0)) == 1)
+	assert(int(color_summary.get("dimmer_target_overlaps", 0)) == 0)
+
 
 	var keyed_harness := RegistryHarness.new()
 	get_root().add_child(keyed_harness)

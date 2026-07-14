@@ -115,11 +115,16 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	if dimmer_target_id <= 0 or (loader.has_method("_has_native_dimmer_target") and not loader._has_native_dimmer_target(dimmer_target_id)):
 		return {"dimmer_requested": dimmer_target_id > 0, "target_resolved": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target not registered"}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
-	_set_fixture_intensity_state(fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
 	var target_record: Dictionary = loader._get_native_dimmer_target_record(dimmer_target_id) if loader.has_method("_get_native_dimmer_target_record") else {}
-	var beam_color: Color = _fixture_render_color(fixture_uuid)
+	_set_target_intensity_state(dimmer_target_id, fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
+	var beam_color: Color = _target_render_color(dimmer_target_id, fixture_uuid)
+	var color_gain: float = _target_color_gain(dimmer_target_id, fixture_uuid)
+	var gained_beam_energy: float = beam_energy * color_gain
+	var gained_spot_energy: float = spot_energy * color_gain
+	var gained_beam_intensity: float = beam_intensity * color_gain
+	var gained_material_energy: float = material_energy * color_gain
 	var lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
-	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, material_energy, lens_material_targets, true)
+	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, gained_material_energy, lens_material_targets, true)
 	var emitter_photometrics: Array = target_record.get("emitter_records", target_record.get("emitter_photometrics", []))
 	var emitter_lights: Array = target_record.get("emitter_anchors", target_record.get("emitter_lights", []))
 	var beam_instances: Array = target_record.get("beam_instances", [])
@@ -132,12 +137,12 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 		if light == null or not is_instance_valid(light):
 			continue
 		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
-		var light_result: Dictionary = _apply_intensity_to_light(loader, fixture_uuid, light, photometric, changed_mask, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
+		var light_result: Dictionary = _apply_intensity_to_light(loader, fixture_uuid, light, photometric, changed_mask, dimmer_norm, gained_beam_energy, gained_spot_energy, gained_beam_intensity, gained_material_energy, beam_color)
 		lights_mutated += int(light_result.get("lights_mutated", 0))
 		beams_mutated += int(light_result.get("beams_mutated", 0))
 		if _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001):
 			visible_lights += 1
-		if _beam_is_visible(light, _clamped_beam_intensity(_scaled_projected_value(beam_intensity, photometric))):
+		if _beam_is_visible(light, _clamped_beam_intensity(_scaled_projected_value(gained_beam_intensity, photometric))):
 			visible_beams += 1
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
@@ -151,22 +156,34 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: in
 	if color_target_id <= 0 or (loader.has_method("_has_native_color_target") and not loader._has_native_color_target(color_target_id)):
 		return {"color_requested": color_target_id > 0, "target_resolved": false, "color_applied": false, "failed": 1, "failure_reason": "target not registered"}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
-	_set_fixture_render_color(fixture_uuid, beam_color)
 	var target_record: Dictionary = loader._get_native_color_target_record(color_target_id) if loader.has_method("_get_native_color_target_record") else {}
+	_set_target_color_state(color_target_id, fixture_uuid, beam_color, color_gain)
+	var state: Dictionary = _target_state(color_target_id, fixture_uuid)
+	var final_gain: float = max(float(state.get("color_gain", 1.0)), 0.0)
+	var final_material_energy: float = float(state.get("material_energy", 0.0)) * final_gain
+	var final_beam_energy: float = float(state.get("beam_energy", 0.0)) * final_gain
+	var final_spot_energy: float = float(state.get("spot_energy", 0.0)) * final_gain
+	var final_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * final_gain
+	var dimmer_norm: float = float(state.get("dimmer", 0.0))
 	var lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
-	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, _fixture_material_energy(fixture_uuid) * max(color_gain, 0.0), lens_material_targets, true)
+	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, target_record.get("geometry_nodes", []), beam_color, final_material_energy, lens_material_targets, true)
 	var lights_mutated: int = 0
 	var beams_mutated: int = 0
 	for light in target_record.get("emitter_anchors", []):
 		if light == null or not is_instance_valid(light):
 			continue
+		var final_light_energy: float = final_spot_energy if final_spot_energy > 0.0 else final_beam_energy
 		if light.light_color != beam_color:
 			light.light_color = beam_color
+			lights_mutated += 1
+		if not is_equal_approx(light.light_energy, final_light_energy):
+			light.light_energy = final_light_energy
 			lights_mutated += 1
 		var beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 		if beam != null and is_instance_valid(beam):
 			beam.set_instance_shader_parameter("beam_color", beam_color)
 			beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, beam_color.a))
+			beam.set_instance_shader_parameter("beam_intensity", _clamped_beam_intensity(final_beam_intensity))
 			beams_mutated += 1
 	return {"color_requested": true, "target_resolved": true, "color_applied": lights_mutated + beams_mutated + materials_mutated > 0, "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "failed": 0, "color_gain": color_gain}
 
@@ -186,11 +203,14 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 		spot.spot_angle = beam_half_angle
 		spot.set_meta("peraviz_native_zoom_norm", zoom_norm)
 		var last_params: Dictionary = spot.get_meta("peraviz_beam_last_params", {}) if spot.has_meta("peraviz_beam_last_params") else {}
+		var state: Dictionary = _target_state(optics_target_id, fixture_uuid)
+		var color_gain: float = max(float(state.get("color_gain", 1.0)), 0.0)
+		var gained_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * color_gain
 		if last_params.is_empty():
-			last_params = _beam_params_from_target_record(spot, target_record, beam_angle, _fixture_render_color(fixture_uuid), _fixture_dimmer(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
+			last_params = _beam_params_from_target_record(spot, target_record, beam_angle, _target_render_color(optics_target_id, fixture_uuid), _target_dimmer(optics_target_id, fixture_uuid), gained_beam_intensity)
 		last_params["beam_angle"] = beam_angle
-		last_params["normalized_dimmer"] = _fixture_dimmer(fixture_uuid)
-		var scaled_intensity: float = _clamped_beam_intensity(_scaled_projected_value(_fixture_beam_intensity(fixture_uuid), target_record.get("beam_optical_profile", {})))
+		last_params["normalized_dimmer"] = _target_dimmer(optics_target_id, fixture_uuid)
+		var scaled_intensity: float = _clamped_beam_intensity(_scaled_projected_value(gained_beam_intensity, target_record.get("beam_optical_profile", {})))
 		last_params["scaled_intensity"] = scaled_intensity
 		last_params["beam_intensity"] = scaled_intensity
 		spot.set_meta("peraviz_beam_last_params", last_params)
@@ -249,13 +269,12 @@ func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: flo
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_diagnostic_info_keys[key + ":temporal_state"] = {"strobe_norm": strobe_norm, "output_norm": output_norm}
 
-func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> Dictionary:
+func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float, beam_color: Color) -> Dictionary:
 	var projected_scale: float = max(float(photometric.get("projected_lumen_scale", 1.0)), 0.0)
 	var scaled_beam_energy: float = _scaled_projected_value(beam_energy, photometric)
 	var scaled_spot_energy: float = _scaled_projected_value(spot_energy, photometric)
 	var scaled_beam_intensity: float = _clamped_beam_intensity(_scaled_projected_value(beam_intensity, photometric))
 	var visible: bool = dimmer_norm > 0.0001 and projected_scale > 0.0
-	var beam_color: Color = _fixture_render_color(fixture_uuid)
 	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
 	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
@@ -286,6 +305,47 @@ func _any_beam_instance_visible(beam_instances: Array) -> bool:
 		if mesh != null and is_instance_valid(mesh) and mesh.visible:
 			return true
 	return false
+
+func _target_state_key(target_id: int, fixture_uuid: String) -> String:
+	return "target_state:%d:%s" % [target_id, fixture_uuid]
+
+func _target_state(target_id: int, fixture_uuid: String) -> Dictionary:
+	var key: String = _target_state_key(target_id, fixture_uuid)
+	if not _diagnostic_info_keys.has(key):
+		_diagnostic_info_keys[key] = {
+			"beam_render_target_id": target_id,
+			"fixture_uuid": fixture_uuid,
+			"dimmer": 0.0,
+			"beam_energy": 0.0,
+			"spot_energy": 0.0,
+			"beam_intensity": 0.0,
+			"material_energy": 0.0,
+			"beam_color": Color.WHITE,
+			"color_gain": 1.0,
+		}
+	return _diagnostic_info_keys[key]
+
+func _set_target_intensity_state(target_id: int, fixture_uuid: String, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
+	var state: Dictionary = _target_state(target_id, fixture_uuid)
+	state["dimmer"] = dimmer_norm
+	state["beam_energy"] = beam_energy
+	state["spot_energy"] = spot_energy
+	state["beam_intensity"] = beam_intensity
+	state["material_energy"] = material_energy
+
+func _set_target_color_state(target_id: int, fixture_uuid: String, beam_color: Color, color_gain: float) -> void:
+	var state: Dictionary = _target_state(target_id, fixture_uuid)
+	state["beam_color"] = beam_color
+	state["color_gain"] = max(color_gain, 0.0)
+
+func _target_render_color(target_id: int, fixture_uuid: String) -> Color:
+	return _target_state(target_id, fixture_uuid).get("beam_color", Color.WHITE)
+
+func _target_color_gain(target_id: int, fixture_uuid: String) -> float:
+	return float(_target_state(target_id, fixture_uuid).get("color_gain", 1.0))
+
+func _target_dimmer(target_id: int, fixture_uuid: String) -> float:
+	return float(_target_state(target_id, fixture_uuid).get("dimmer", 0.0))
 
 func _fixture_lights(loader: Node, fixture_uuid: String) -> Array:
 	return loader._collect_fixture_emitter_lights(fixture_uuid, loader._get_fixture_emitter_nodes(fixture_uuid))

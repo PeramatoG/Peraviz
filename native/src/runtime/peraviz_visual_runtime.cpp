@@ -560,8 +560,12 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emit
     red *= 1.0f - std::clamp(sub_c, 0.0f, 1.0f);
     green *= 1.0f - std::clamp(sub_m, 0.0f, 1.0f);
     blue *= 1.0f - std::clamp(sub_y, 0.0f, 1.0f);
-    const float gain = std::max({red, green, blue, 1.0f});
-    const float inv_gain = gain > 0.0f ? 1.0f / gain : 1.0f;
+    const float gain = std::max({red, green, blue, 0.0f});
+    constexpr float kColorGainEpsilon = 0.000001f;
+    if (gain <= kColorGainEpsilon) {
+        return {0.0f, 0.0f, 0.0f, 0.0f, true, true};
+    }
+    const float inv_gain = 1.0f / gain;
     return {linear_to_srgb(red * inv_gain), linear_to_srgb(green * inv_gain), linear_to_srgb(blue * inv_gain), gain, true, true};
 }
 

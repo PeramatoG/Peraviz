@@ -8,12 +8,14 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
-- Added the first corrected native GDTF color runtime path for beam targets: supported additive and CMY color ChannelFunctions now compile into target-level native programs, emit one renderer-ready `EmitterColor` row per changed Beam target, and avoid color work while static color inputs are unchanged.
+- Consolidated the native GDTF color MVP for Beam targets: supported additive and CMY color ChannelFunctions now preserve target-local chromaticity and scalar color gain, support CMY transmission below 1.0 and RGBW gain above 1.0, and emit one renderer-ready `EmitterColor` row only when the cooked output changes.
 - Added a 1 m reference cube toggle in the viewer toolbar so MVR scene scale can be checked directly in Godot.
 - Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.
 - Simplified contributor and agent guidance so maintainers can focus on enforceable rules and current workflows.
 
 ## Documentation
+
+- Documented the corrected native color MVP contract, target-local renderer state ownership, Peraviz fallback color approximations, and deferred physical color features.
 
 - Removed overlapping architecture documents and stale migration history.
 - Updated release notes to present user-visible changes first and keep internal architecture notes brief.
@@ -22,7 +24,8 @@ Changes since the previous Peraviz release.
 
 - Added the first native BeamOptics foundation: setup-time Beam profiles, native Zoom ChannelFunction compilation, target-oriented BeamOptics rows, cached optics targets, official/model/render aperture-radius diagnostics, and parametric Lightweight Prism near/far spread updates, corrected lens-side/far-end axial radius mapping, and packed shader instance parameters to stay within Godot renderer limits, while using explicit GDTF BeamRadius as the preferred beam-only near-aperture source when available.
 - Kept BeamOptics scale corrections limited to beam geometry and preserved imported 3D model sizes unchanged.
-- Consolidated the verified Dimmer, Pan, and Tilt runtime around parser-owned selected-mode ChannelFunction records, stable native component/render-target IDs, target-ID section application, capability-derived dirty masks, and diagnostics for unsupported domains. Restored robust selected-mode `DMXChannel` traversal, explicit/inferred full-resolution ChannelFunction ranges, compiled-scene-owned universe submission, truthful target-application counts, setup/live skip diagnostics, explicit native-loader versus renderer-target-registry wiring, mandatory manifest installation, full-node-index canonical target registration through a focused `NativeRendererTargetRegistry`, detailed target-registry/unlinked-fixture diagnostics, property-oriented native Dimmer state, per-target intensity rows, normalized-versus-physical evaluation, Lightweight Prism renderer target resources, native Dimmer target resource prewarming/mutation reporting, safe cached lens-material application, and removal of the native DPT bound-fixture gate in the compiled path. BeamOptics now corrects the Lightweight Prism lens-side/far-end radius mapping while preserving native Dimmer, Pan, and Tilt behavior.
+- Kept renderer color state target-local so Dimmer, Color and BeamOptics updates reuse cached per-Beam color/gain/intensity without fixture-wide color bleed.
+- Consolidated Dimmer, Pan, and Tilt runtime around parser-owned selected-mode ChannelFunction records, stable native component/render-target IDs, target-ID section application, capability-derived dirty masks, and diagnostics for unsupported domains. Restored robust selected-mode `DMXChannel` traversal, explicit/inferred full-resolution ChannelFunction ranges, compiled-scene-owned universe submission, truthful target-application counts, setup/live skip diagnostics, explicit native-loader versus renderer-target-registry wiring, mandatory manifest installation, full-node-index canonical target registration through a focused `NativeRendererTargetRegistry`, detailed target-registry/unlinked-fixture diagnostics, property-oriented native Dimmer state, per-target intensity rows, normalized-versus-physical evaluation, Lightweight Prism renderer target resources, native Dimmer target resource prewarming/mutation reporting, safe cached lens-material application, and removal of the native DPT bound-fixture gate in the compiled path. BeamOptics now corrects the Lightweight Prism lens-side/far-end radius mapping while preserving native Dimmer, Pan, and Tilt behavior.
 - Consolidated overlapping static runtime guardrails into one current architecture check.
 - Removed shell checks that preserved transitional helper names instead of validating behavior.
 - Fixed the native renderer target registry regression test so it parses cleanly under current Godot GDScript scope rules.

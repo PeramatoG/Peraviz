@@ -249,32 +249,26 @@ func _register_axis_target(targets: Dictionary, manifest_row: Dictionary, target
 	targets[target_id] = target
 	_increment_counter("%s_resolved" % role)
 
-func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
-	if target_id <= 0:
-		return
-	_increment_counter("dimmer_requested")
+func _resolve_beam_target_resources(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String, role: String, cache_suffix: String = "") -> Dictionary:
 	if geometry_key.is_empty():
 		_increment_counter("empty_manifest_geometry_keys")
-		_register_target_failure(manifest_row, target_id, "dimmer", "Manifest target has an empty canonical geometry key.")
-		return
-	if _dimmer_targets.has(target_id):
-		_increment_counter("duplicate_manifest_target_ids")
-		_register_target_failure(manifest_row, target_id, "dimmer", "Duplicate native Dimmer target handle in renderer manifest.")
-		return
+		_register_target_failure(manifest_row, target_id, role, "Manifest target has an empty canonical geometry key.")
+		return {}
 	var target: Node3D = _geometry_targets_by_key.get(geometry_key, null) as Node3D
 	if target == null:
-		_register_target_failure(manifest_row, target_id, "dimmer", "No imported geometry node has canonical geometry key %s" % geometry_key)
-		return
+		_register_target_failure(manifest_row, target_id, role, "No imported geometry node has canonical geometry key %s" % geometry_key)
+		return {}
 	var target_nodes: Array = [target]
 	var emitter_nodes: Array = _collect_descendant_emitters(geometry_key)
-	emitter_nodes = _filter_dimmer_target_emitters(manifest_row, target_id, emitter_nodes)
-	var cache_key: String = "%s:%d" % [fixture_uuid, target_id]
+	if role == "dimmer":
+		emitter_nodes = _filter_dimmer_target_emitters(manifest_row, target_id, emitter_nodes)
+	var cache_key: String = "%s:%d%s" % [fixture_uuid, target_id, cache_suffix]
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
 	var emitter_records: Array = _build_emitter_records(emitter_nodes, emitter_anchors)
 	var lens_material_targets: Array = _prepare_lens_materials(cache_key, target_nodes + emitter_nodes)
 	_apply_lens_profiles(lens_material_targets)
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
-	_dimmer_targets[target_id] = {
+	return {
 		"fixture_uuid": fixture_uuid,
 		"property_id": int(manifest_row.get("property_id", 0)),
 		"component_id": int(manifest_row.get("component_id", 0)),
@@ -291,41 +285,61 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 		"emitter_records": emitter_records,
 		"emitter_photometrics": emitter_records,
 	}
+
+func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
+	if target_id <= 0:
+		return
+	_increment_counter("dimmer_requested")
+	if _dimmer_targets.has(target_id):
+		_increment_counter("duplicate_manifest_target_ids")
+		_register_target_failure(manifest_row, target_id, "dimmer", "Duplicate native Dimmer target handle in renderer manifest.")
+		return
+	var record: Dictionary = _resolve_beam_target_resources(manifest_row, target_id, fixture_uuid, geometry_key, "dimmer")
+	if record.is_empty():
+		return
+	_dimmer_targets[target_id] = record
 	_increment_counter("dimmer_owner_geometries_resolved")
-	if not emitter_nodes.is_empty():
+	if not record.get("emitter_nodes", []).is_empty():
 		_increment_counter("dimmer_targets_with_emitter_nodes")
-	if not emitter_anchors.is_empty():
+	if not record.get("emitter_anchors", []).is_empty():
 		_increment_counter("dimmer_targets_with_lights")
 		_increment_counter("dimmer_targets_with_optional_spotlights")
-	if not beam_instances.is_empty():
+	if not record.get("beam_instances", []).is_empty():
 		_increment_counter("dimmer_targets_with_beam_instances")
-	if not lens_material_targets.is_empty():
+	if not record.get("lens_material_targets", []).is_empty():
 		_increment_counter("dimmer_targets_with_lens_materials")
 	var projected_flux_sum: float = 0.0
 	var emission_only_flux_sum: float = 0.0
-	for record in emitter_records:
-		if bool(record.get("has_projected_beam", true)):
-			projected_flux_sum += float(record.get("effective_luminous_flux_lm", 0.0))
+	for item in record.get("emitter_records", []):
+		var emitter_record: Dictionary = item
+		if bool(emitter_record.get("has_projected_beam", true)):
+			projected_flux_sum += float(emitter_record.get("effective_luminous_flux_lm", 0.0))
 		else:
-			emission_only_flux_sum += float(record.get("effective_luminous_flux_lm", 0.0))
+			emission_only_flux_sum += float(emitter_record.get("effective_luminous_flux_lm", 0.0))
 	_summary["dimmer_projected_flux_sum_lm"] = float(_summary.get("dimmer_projected_flux_sum_lm", 0.0)) + projected_flux_sum
 	_summary["dimmer_emission_only_flux_sum_lm"] = float(_summary.get("dimmer_emission_only_flux_sum_lm", 0.0)) + emission_only_flux_sum
-	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
+	if record.get("emitter_anchors", []).is_empty() and record.get("beam_instances", []).is_empty() and record.get("lens_material_targets", []).is_empty():
 		_increment_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_counter("dimmer_resolved")
 
 func _register_color_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
-	_register_dimmer_target(manifest_row, target_id, fixture_uuid, geometry_key)
-	if _dimmer_targets.has(target_id):
-		_color_targets[target_id] = _dimmer_targets.get(target_id, {})
+	if target_id <= 0:
+		return
+	_increment_counter("color_requested")
+	if _color_targets.has(target_id):
+		_increment_counter("duplicate_manifest_target_ids")
+		_register_target_failure(manifest_row, target_id, "color", "Duplicate native Color target handle in renderer manifest.")
+		return
+	var record: Dictionary = _resolve_beam_target_resources(manifest_row, target_id, fixture_uuid, geometry_key, "color", ":color")
+	if record.is_empty():
+		return
+	_color_targets[target_id] = record
+	_increment_counter("color_resolved")
 
 func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:
 		return
 	_increment_counter("optics_requested")
-	if geometry_key.is_empty():
-		_register_target_failure(manifest_row, target_id, "optics", "Manifest target has an empty canonical geometry key.")
-		return
 	if _optics_targets.has(target_id):
 		var existing: Dictionary = _optics_targets.get(target_id, {})
 		var profile: Dictionary = manifest_row.get("beam_optical_profile", {})
@@ -334,29 +348,13 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 			_apply_initial_optics_profile(existing.get("emitter_anchors", []), profile)
 			_optics_targets[target_id] = existing
 		return
-	var target: Node3D = _geometry_targets_by_key.get(geometry_key, null) as Node3D
-	if target == null:
-		_register_target_failure(manifest_row, target_id, "optics", "No imported geometry node has canonical geometry key %s" % geometry_key)
+	var record: Dictionary = _resolve_beam_target_resources(manifest_row, target_id, fixture_uuid, geometry_key, "optics", ":optics")
+	if record.is_empty():
 		return
-	var emitter_nodes: Array = _collect_descendant_emitters(geometry_key)
-	var cache_key: String = "%s:%d:optics" % [fixture_uuid, target_id]
-	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
-	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
 	var optical_profile: Dictionary = manifest_row.get("beam_optical_profile", {})
-	_apply_initial_optics_profile(emitter_anchors, optical_profile)
-	_optics_targets[target_id] = {
-		"fixture_uuid": fixture_uuid,
-		"property_id": int(manifest_row.get("property_id", 0)),
-		"component_id": int(manifest_row.get("component_id", 0)),
-		"render_target_id": target_id,
-		"target_id": target_id,
-		"owner_geometry_key": geometry_key,
-		"owner_geometry_node": target,
-		"emitter_nodes": emitter_nodes,
-		"emitter_anchors": emitter_anchors,
-		"beam_instances": beam_instances,
-		"beam_optical_profile": optical_profile,
-	}
+	record["beam_optical_profile"] = optical_profile
+	_apply_initial_optics_profile(record.get("emitter_anchors", []), optical_profile)
+	_optics_targets[target_id] = record
 	_increment_counter("optics_resolved")
 
 func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dictionary) -> void:

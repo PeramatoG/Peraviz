@@ -390,6 +390,55 @@ int first_color_float_offset(const peraviz::runtime::SectionedVisualFrame &frame
     return -1;
 }
 
+// Reads the first color section row count or returns zero when no color rows exist.
+int first_color_row_count(const peraviz::runtime::SectionedVisualFrame &frame) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterColor)) return frame.descriptors[index + 1];
+    }
+    return 0;
+}
+
+// Verifies corrected native color decomposition separates chromaticity from scalar gain.
+bool test_native_color_gain_decomposition() {
+    peraviz::runtime::CompiledRuntimeScene scene = make_scene();
+    scene.source_programs.push_back({20, peraviz::runtime::CompiledSemantic::ColorSubCyan, {{10, 20, 0}}, 0, 255, 0.0, 1.0, "ColorSub_C", "Cyan"});
+    scene.source_programs.push_back({21, peraviz::runtime::CompiledSemantic::ColorSubMagenta, {{10, 21, 0}}, 0, 255, 0.0, 1.0, "ColorSub_M", "Magenta"});
+    scene.source_programs.push_back({22, peraviz::runtime::CompiledSemantic::ColorSubYellow, {{10, 22, 0}}, 0, 255, 0.0, 1.0, "ColorSub_Y", "Yellow"});
+    peraviz::runtime::CompiledColorTargetProgram cmy;
+    cmy.color_target_id = 41001; cmy.fixture_id = 1; cmy.beam_render_target_id = 1001; cmy.geometry_id = 101; cmy.geometry_name = "Head/Beam"; cmy.geometry_key = "fixture-1/Head/Beam"; cmy.additive_source = false;
+    cmy.inputs.push_back({20, peraviz::runtime::CompiledSemantic::ColorSubCyan, 0.0, false});
+    cmy.inputs.push_back({21, peraviz::runtime::CompiledSemantic::ColorSubMagenta, 0.0, false});
+    cmy.inputs.push_back({22, peraviz::runtime::CompiledSemantic::ColorSubYellow, 0.0, false});
+    scene.color_targets.push_back(cmy);
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(512, 0);
+    frame[20] = 128; frame[21] = 128; frame[22] = 128;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    auto half = runtime.consume_latest_visual_frame();
+    int offset = first_color_float_offset(half);
+    if (offset < 0) return fail("Expected CMY half transmission color row");
+    if (std::fabs(half.floats[offset] - 1.0f) > 0.01f || std::fabs(half.floats[offset + 1] - 1.0f) > 0.01f || std::fabs(half.floats[offset + 2] - 1.0f) > 0.01f) return fail("Expected neutral CMY chromaticity to stay white");
+    if (std::fabs(half.floats[offset + 3] - (127.0f / 255.0f)) > 0.01f) return fail("Expected CMY half transmission gain below one");
+    frame[20] = 255; frame[21] = 255; frame[22] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    auto closed = runtime.consume_latest_visual_frame();
+    offset = first_color_float_offset(closed);
+    if (offset < 0) return fail("Expected CMY closure color row");
+    if (closed.floats[offset] != 0.0f || closed.floats[offset + 1] != 0.0f || closed.floats[offset + 2] != 0.0f || closed.floats[offset + 3] != 0.0f) return fail("Expected full CMY closure to produce black with zero gain");
+    for (int i = 0; i < 4; ++i) if (!std::isfinite(closed.floats[offset + i])) return fail("Expected finite CMY closure payload");
+    frame[20] = 128; frame[21] = 128; frame[22] = 128;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    auto reopened = runtime.consume_latest_visual_frame();
+    if (first_color_row_count(reopened) != 1) return fail("Expected gain-only neutral chromaticity change to emit one row");
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    if (first_color_row_count(runtime.consume_latest_visual_frame()) != 0) return fail("Expected unchanged gain and chromaticity to emit no row");
+    frame[1] = 100;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    if (first_color_row_count(runtime.consume_latest_visual_frame()) != 0) return fail("Expected pan-only change to emit no color rows");
+    return true;
+}
+
 // Verifies native additive RGBW and subtractive CMY color rows remain target-oriented and dirty-only.
 bool test_native_color_mixing_rows() {
     peraviz::runtime::CompiledRuntimeScene scene = make_scene();
@@ -481,6 +530,7 @@ int main() {
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;
     if (!test_native_color_mixing_rows()) return 1;
+    if (!test_native_color_gain_decomposition()) return 1;
     if (!test_color_inheritance_compiles_to_beam_targets()) return 1;
     return 0;
 }
