@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 namespace peraviz::runtime {
 namespace {
@@ -18,6 +19,13 @@ void append_descriptor(SectionedVisualFrame &frame, VisualSectionType type, int3
     frame.descriptors.push_back(0);
 }
 
+// Converts one linear RGB component into renderer-ready sRGB.
+float linear_to_srgb(float value) {
+    const float clamped = std::clamp(value, 0.0f, 1.0f);
+    if (clamped <= 0.0031308f) return clamped * 12.92f;
+    return 1.055f * std::pow(clamped, 1.0f / 2.4f) - 0.055f;
+}
+
 } // namespace
 
 // Clears bindings, cached frames, fixture state, and runtime counters.
@@ -26,6 +34,7 @@ void PeravizVisualRuntimeCore::clear() {
     render_params_by_fixture_.clear();
     transform_state_by_fixture_.clear();
     property_state_by_property_.clear();
+    color_state_by_target_.clear();
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
     installed_visual_mask_by_fixture_.clear();
@@ -36,14 +45,7 @@ void PeravizVisualRuntimeCore::clear() {
 
 // Installs parser-owned compiled scene programs as the only runtime setup authority.
 void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene &scene) {
-    universes_.clear();
-    render_params_by_fixture_.clear();
-    transform_state_by_fixture_.clear();
-    property_state_by_property_.clear();
-    pan_component_id_by_fixture_.clear();
-    tilt_component_id_by_fixture_.clear();
-    installed_visual_mask_by_fixture_.clear();
-    source_programs_by_id_.clear();
+    clear();
     diagnostics_ = scene.diagnostics;
     VisualFrameSchemaCapabilities capabilities;
     if (scene.fixtures.empty()) {
@@ -54,7 +56,12 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
             diagnostics_.push_back({"PVZ-RUNTIME-DUPLICATE-PROGRAM", "error", "Compiled source program ID is invalid or duplicated.", std::to_string(program.program_id)});
             continue;
         }
-        source_programs_by_id_[program.program_id] = program;
+        InstalledSourceProgram installed;
+        installed.program = program;
+        std::sort(installed.program.sources.begin(), installed.program.sources.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
+        installed.max_value = max_raw_value_for_source_count(installed.program.sources.size());
+        installed.inverse_max_value = installed.max_value > 0U ? 1.0 / static_cast<double>(installed.max_value) : 0.0;
+        source_programs_by_id_[program.program_id] = installed;
     }
     for (const CompiledFixtureInstance &fixture : scene.fixtures) {
         if (fixture.fixture_id <= 0 || fixture.universe_id < 0 || fixture.start_address < 1 || fixture.start_address > 512) {
@@ -84,7 +91,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
                 valid_property = false;
                 continue;
             }
-            const CompiledDmxSourceProgram &program = program_it->second;
+            const CompiledDmxSourceProgram &program = program_it->second.program;
             if (program.sources.empty() || program.sources.size() > 4) {
                 diagnostics_.push_back({"PVZ-RUNTIME-INVALID-SOURCE-COUNT", "warning", "Compiled source program must contain one to four DMX byte sources.", std::to_string(program.program_id)});
                 valid_property = false;
@@ -102,9 +109,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
                 }
             }
         }
-        if (!valid_property || property_universe < 0) {
-            continue;
-        }
+        if (!valid_property || property_universe < 0) continue;
         if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
         if (parameter == SemanticParameter::Zoom) render_params_by_fixture_[property.fixture_id].has_zoom = true;
@@ -114,17 +119,51 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
         capabilities.has_optics = capabilities.has_optics || parameter == SemanticParameter::Zoom;
         UniverseState &universe = universes_[property_universe];
+        const int property_index = static_cast<int>(universe.properties.size());
         universe.properties.push_back({property, parameter});
         for (const CompiledPropertyContributor &contributor : property.contributors) {
-            const CompiledDmxSourceProgram &program = source_programs_by_id_[contributor.source_program_id];
+            const CompiledDmxSourceProgram &program = source_programs_by_id_[contributor.source_program_id].program;
             for (const CompiledDmxByteSource &source : program.sources) {
                 universe.interest_offsets.push_back(source.address);
+                universe.property_indices_by_offset[source.address].push_back(property_index);
             }
         }
         ++installed_properties;
     }
-    if (installed_properties == 0) {
-        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported Dimmer/Pan/Tilt/Zoom properties.", "CompiledRuntimeScene"});
+    for (const CompiledColorTargetProgram &target : scene.color_targets) {
+        if (target.fixture_id <= 0 || target.beam_render_target_id <= 0 || target.inputs.empty()) continue;
+        int target_universe = -1;
+        bool valid_target = true;
+        ColorTargetRuntime runtime_target;
+        runtime_target.target = target;
+        runtime_target.inputs.reserve(target.inputs.size());
+        for (const CompiledColorInputBinding &input : target.inputs) {
+            auto program_it = source_programs_by_id_.find(input.source_program_id);
+            if (program_it == source_programs_by_id_.end()) { valid_target = false; continue; }
+            const CompiledDmxSourceProgram &program = program_it->second.program;
+            if (program.sources.empty()) { valid_target = false; continue; }
+            for (const CompiledDmxByteSource &source : program.sources) {
+                if (target_universe < 0) target_universe = source.universe_id;
+                if (source.universe_id != target_universe) valid_target = false;
+            }
+            runtime_target.inputs.push_back({input, static_cast<float>(input.default_value), false});
+        }
+        if (!valid_target || target_universe < 0 || runtime_target.inputs.empty()) continue;
+        UniverseState &universe = universes_[target_universe];
+        const int color_target_index = static_cast<int>(universe.color_targets.size());
+        universe.color_targets.push_back(runtime_target);
+        for (const ColorInputRuntime &input : runtime_target.inputs) {
+            const CompiledDmxSourceProgram &program = source_programs_by_id_[input.binding.source_program_id].program;
+            for (const CompiledDmxByteSource &source : program.sources) {
+                universe.interest_offsets.push_back(source.address);
+                universe.color_target_indices_by_offset[source.address].push_back(color_target_index);
+            }
+        }
+        capabilities.has_color = true;
+        installed_visual_mask_by_fixture_[target.fixture_id] |= VisualChangeColor;
+    }
+    if (installed_properties == 0 && scene.color_targets.empty()) {
+        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
@@ -142,9 +181,7 @@ void PeravizVisualRuntimeCore::submit_universe_frame(int universe_id, const uint
         return;
     }
     UniverseState &universe = universe_it->second;
-    if (universe.has_pending_frame) {
-        ++stats_.packets_coalesced;
-    }
+    if (universe.has_pending_frame) ++stats_.packets_coalesced;
     const int clamped_length = std::clamp(length, 0, 512);
     universe.latest_frame.assign(data, data + clamped_length);
     universe.has_pending_frame = true;
@@ -154,86 +191,104 @@ void PeravizVisualRuntimeCore::submit_universe_frame(int universe_id, const uint
 SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
     SectionedVisualFrame frame;
     frame.schema_generation = schema_.schema_generation;
-    struct PendingRow {
-        int fixture_id = 0;
-        int32_t property_id = 0;
-        int32_t component_id = 0;
-        int32_t render_target_id = 0;
-        uint32_t changed_visual_mask = 0;
-        ComponentState state;
-    };
+    struct PendingRow { int fixture_id = 0; int32_t render_target_id = 0; uint32_t changed_visual_mask = 0; ComponentState state; CookedEmitterColor color; };
     std::vector<PendingRow> rows;
 
     for (auto &[_, universe] : universes_) {
-        if (!universe.has_pending_frame) {
-            continue;
-        }
+        if (!universe.has_pending_frame) continue;
         universe.has_pending_frame = false;
         ++stats_.universes_considered;
-        const uint64_t interest_hash = compute_interest_hash(universe.latest_frame, universe.interest_offsets);
-        if (universe.has_hash && universe.interest_hash == interest_hash) {
-            continue;
+        std::vector<int> changed_offsets;
+        for (int offset : universe.interest_offsets) {
+            const uint8_t value = offset >= 0 && offset < static_cast<int>(universe.latest_frame.size()) ? universe.latest_frame[static_cast<size_t>(offset)] : 0;
+            if (!universe.has_last_relevant_values || universe.last_relevant_values[static_cast<size_t>(offset)] != value) {
+                changed_offsets.push_back(offset);
+                universe.last_relevant_values[static_cast<size_t>(offset)] = value;
+            }
         }
-        universe.has_hash = true;
-        universe.interest_hash = interest_hash;
+        universe.has_last_relevant_values = true;
+        if (changed_offsets.empty()) continue;
+
+        std::set<int> property_indices;
+        std::set<int> color_target_indices;
+        for (int offset : changed_offsets) {
+            auto property_it = universe.property_indices_by_offset.find(offset);
+            if (property_it != universe.property_indices_by_offset.end()) property_indices.insert(property_it->second.begin(), property_it->second.end());
+            auto color_it = universe.color_target_indices_by_offset.find(offset);
+            if (color_it != universe.color_target_indices_by_offset.end()) color_target_indices.insert(color_it->second.begin(), color_it->second.end());
+        }
 
         std::unordered_map<int, ComponentState> pending_transform_by_fixture;
-        for (const CompiledPropertyProgram &program : universe.properties) {
+        for (int property_index : property_indices) {
+            if (property_index < 0 || property_index >= static_cast<int>(universe.properties.size())) continue;
+            const CompiledPropertyProgram &program = universe.properties[static_cast<size_t>(property_index)];
             const EvaluationResult evaluated = evaluate_property_value(universe.latest_frame, program.property);
-            if (!evaluated.valid) {
-                continue;
-            }
+            if (!evaluated.valid) continue;
             const float semantic_value = program.parameter == SemanticParameter::Dimmer ? evaluated.normalized_value : evaluated.physical_value;
             if (program.parameter == SemanticParameter::Dimmer || program.parameter == SemanticParameter::Zoom) {
                 ComponentState state;
                 auto existing = property_state_by_property_.find(program.property.property_id);
-                if (existing != property_state_by_property_.end()) {
-                    state = existing->second;
-                }
+                if (existing != property_state_by_property_.end()) state = existing->second;
                 apply_semantic_value(state, program.parameter, semantic_value);
-                if (program.parameter == SemanticParameter::Zoom) {
-                    state.zoom_normalized = evaluated.normalized_value;
-                    state.has_zoom_physical = true;
-                }
+                if (program.parameter == SemanticParameter::Zoom) { state.zoom_normalized = evaluated.normalized_value; state.has_zoom_physical = true; }
                 const auto params_it = render_params_by_fixture_.find(program.property.fixture_id);
                 cook_render_state(state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
                 const FixtureChangeResult change = merge_property_state(program.property.property_id, state, visual_mask_for_parameter(program.parameter));
-                if (!change.changed) {
-                    ++stats_.fixtures_skipped;
-                    continue;
-                }
+                if (!change.changed) { ++stats_.fixtures_skipped; continue; }
                 add_visual_mask_stats(change.changed_visual_mask);
                 ++stats_.fixtures_dirty;
-                rows.push_back({program.property.fixture_id, program.property.property_id, program.property.component_id, program.property.render_target_id, change.changed_visual_mask, state});
+                rows.push_back({program.property.fixture_id, program.property.render_target_id, change.changed_visual_mask, state, {}});
                 continue;
             }
-
             ComponentState &state = pending_transform_by_fixture[program.property.fixture_id];
             auto existing = transform_state_by_fixture_.find(program.property.fixture_id);
-            if (!state.initialized && existing != transform_state_by_fixture_.end()) {
-                state = existing->second;
-            }
+            if (!state.initialized && existing != transform_state_by_fixture_.end()) state = existing->second;
             apply_semantic_value(state, program.parameter, semantic_value);
+        }
+
+        for (int target_index : color_target_indices) {
+            if (target_index < 0 || target_index >= static_cast<int>(universe.color_targets.size())) continue;
+            ColorTargetRuntime &target = universe.color_targets[static_cast<size_t>(target_index)];
+            bool input_changed = false;
+            for (ColorInputRuntime &input : target.inputs) {
+                auto program_it = source_programs_by_id_.find(input.binding.source_program_id);
+                if (program_it == source_programs_by_id_.end()) continue;
+                if (input.initialized && !program_uses_changed_offset(program_it->second.program, changed_offsets)) continue;
+                const EvaluationResult evaluated = evaluate_source_program(universe.latest_frame, program_it->second, &diagnostics_);
+                if (!evaluated.valid) continue;
+                const float next_value = color_value_from_evaluation(input.binding.semantic, evaluated);
+                input_changed = input_changed || !input.initialized || !nearly_equal(input.value, next_value, kDefaultEpsilon);
+                input.value = next_value;
+                input.initialized = true;
+                ++stats_.color_inputs_evaluated;
+            }
+            if (!input_changed) continue;
+            ++stats_.color_targets_dirty;
+            CookedEmitterColor cooked = cook_emitter_color(target);
+            CookedEmitterColor &previous = color_state_by_target_[target.target.beam_render_target_id];
+            ++stats_.color_targets_cooked;
+            const bool changed = !previous.initialized || !nearly_equal(previous.srgb_red, cooked.srgb_red, kDefaultEpsilon) || !nearly_equal(previous.srgb_green, cooked.srgb_green, kDefaultEpsilon) || !nearly_equal(previous.srgb_blue, cooked.srgb_blue, kDefaultEpsilon) || !nearly_equal(previous.gain, cooked.gain, kDefaultEpsilon) || previous.valid != cooked.valid;
+            previous = cooked;
+            previous.initialized = true;
+            if (!changed) continue;
+            add_visual_mask_stats(VisualChangeColor);
+            ++stats_.fixtures_dirty;
+            ++stats_.color_rows;
+            rows.push_back({target.target.fixture_id, target.target.beam_render_target_id, VisualChangeColor, {}, cooked});
         }
 
         for (auto &[fixture_id, next_state] : pending_transform_by_fixture) {
             const auto params_it = render_params_by_fixture_.find(fixture_id);
             cook_render_state(next_state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
             const FixtureChangeResult change = merge_transform_state(fixture_id, next_state);
-            if (!change.changed) {
-                ++stats_.fixtures_skipped;
-                continue;
-            }
+            if (!change.changed) { ++stats_.fixtures_skipped; continue; }
             add_visual_mask_stats(change.changed_visual_mask);
             ++stats_.fixtures_dirty;
-            rows.push_back({fixture_id, 0, 0, 0, change.changed_visual_mask, next_state});
+            rows.push_back({fixture_id, 0, change.changed_visual_mask, next_state, {}});
         }
     }
 
-    auto section_count_for = [&rows](uint32_t mask) {
-        return static_cast<int32_t>(std::count_if(rows.begin(), rows.end(), [mask](const PendingRow &row) { return (row.changed_visual_mask & mask) != 0U; }));
-    };
-
+    auto section_count_for = [&rows](uint32_t mask) { return static_cast<int32_t>(std::count_if(rows.begin(), rows.end(), [mask](const PendingRow &row) { return (row.changed_visual_mask & mask) != 0U; })); };
     const int32_t transform_count = section_count_for(VisualChangeTransform);
     if (transform_count > 0) {
         const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
@@ -247,7 +302,6 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
         append_descriptor(frame, VisualSectionType::GeometryTransform, transform_count, int_offset, float_offset);
     }
-
     const int32_t intensity_count = section_count_for(VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology);
     if (intensity_count > 0) {
         const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
@@ -259,7 +313,17 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
         append_descriptor(frame, VisualSectionType::EmitterIntensity, intensity_count, int_offset, float_offset);
     }
-
+    const int32_t color_count = section_count_for(VisualChangeColor);
+    if (color_count > 0) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const PendingRow &row : rows) {
+            if ((row.changed_visual_mask & VisualChangeColor) == 0U) continue;
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.render_target_id, static_cast<int32_t>(row.changed_visual_mask)});
+            frame.floats.insert(frame.floats.end(), {row.color.srgb_red, row.color.srgb_green, row.color.srgb_blue, row.color.gain});
+        }
+        append_descriptor(frame, VisualSectionType::EmitterColor, color_count, int_offset, float_offset);
+    }
     const int32_t optics_count = section_count_for(VisualChangeZoom);
     if (optics_count > 0) {
         const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
@@ -271,7 +335,6 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
         append_descriptor(frame, VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
     }
-
     frame.stats = stats_;
     return frame;
 }
@@ -289,23 +352,42 @@ SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(Comp
         case CompiledSemantic::Tilt: return SemanticParameter::Tilt;
         case CompiledSemantic::Dimmer: return SemanticParameter::Dimmer;
         case CompiledSemantic::Zoom: return SemanticParameter::Zoom;
+        case CompiledSemantic::ColorAddRed: return SemanticParameter::ColorAddRed;
+        case CompiledSemantic::ColorAddGreen: return SemanticParameter::ColorAddGreen;
+        case CompiledSemantic::ColorAddBlue: return SemanticParameter::ColorAddBlue;
+        case CompiledSemantic::ColorAddWhite: return SemanticParameter::ColorAddWhite;
+        case CompiledSemantic::ColorAddAmber: return SemanticParameter::ColorAddAmber;
+        case CompiledSemantic::ColorAddLime: return SemanticParameter::ColorAddLime;
+        case CompiledSemantic::ColorSubCyan: return SemanticParameter::ColorSubCyan;
+        case CompiledSemantic::ColorSubMagenta: return SemanticParameter::ColorSubMagenta;
+        case CompiledSemantic::ColorSubYellow: return SemanticParameter::ColorSubYellow;
         case CompiledSemantic::Unknown: return SemanticParameter::Unknown;
     }
     return SemanticParameter::Unknown;
 }
 
-// Reads a compiled DMX program by assembling ordered source bytes into a raw integer value.
-uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
-    if (program.sources.empty() || program.sources.size() > 4) {
-        if (diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program_id)});
+// Returns true when a compiled semantic belongs to the corrected color target slice.
+bool PeravizVisualRuntimeCore::is_color_semantic(CompiledSemantic semantic) {
+    return semantic == CompiledSemantic::ColorAddRed || semantic == CompiledSemantic::ColorAddGreen || semantic == CompiledSemantic::ColorAddBlue || semantic == CompiledSemantic::ColorAddWhite || semantic == CompiledSemantic::ColorAddAmber || semantic == CompiledSemantic::ColorAddLime || semantic == CompiledSemantic::ColorSubCyan || semantic == CompiledSemantic::ColorSubMagenta || semantic == CompiledSemantic::ColorSubYellow;
+}
+
+// Returns the maximum assembled raw DMX value for an ordered source width.
+uint32_t PeravizVisualRuntimeCore::max_raw_value_for_source_count(size_t source_count) {
+    uint32_t max_value = 0;
+    for (size_t index = 0; index < source_count && index < 4; ++index) max_value = (max_value << 8U) | 0xffU;
+    return max_value;
+}
+
+// Reads a compiled DMX program by assembling preordered source bytes into a raw integer value.
+uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
+    if (program.program.sources.empty() || program.program.sources.size() > 4) {
+        if (diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program.program_id)});
         return 0U;
     }
-    std::vector<CompiledDmxByteSource> ordered = program.sources;
-    std::sort(ordered.begin(), ordered.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
     uint32_t raw_value = 0;
-    for (const CompiledDmxByteSource &source : ordered) {
+    for (const CompiledDmxByteSource &source : program.program.sources) {
         const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
-        if (!valid && diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program_id)});
+        if (!valid && diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program.program_id)});
         const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
         raw_value = (raw_value << 8U) | value;
     }
@@ -313,17 +395,13 @@ uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &fr
 }
 
 // Evaluates one source program into raw, local normalized, and physical representations.
-PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program(const std::vector<uint8_t> &frame, const CompiledDmxSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
-    uint32_t max_value = 0;
-    for (size_t index = 0; index < program.sources.size() && index < 4; ++index) {
-        max_value = (max_value << 8U) | 0xffU;
-    }
+PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
     const uint32_t raw_value = read_raw_value(frame, program, diagnostics);
-    const double dmx_span = program.dmx_to > program.dmx_from ? static_cast<double>(program.dmx_to - program.dmx_from) : static_cast<double>(max_value);
-    const double full_range_normalized = max_value > 0 ? static_cast<double>(raw_value) / static_cast<double>(max_value) : 0.0;
-    const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.dmx_from)) / dmx_span, 0.0, 1.0) : full_range_normalized;
-    const double physical = program.physical_from + ((program.physical_to - program.physical_from) * local);
-    return {raw_value, static_cast<float>(local), static_cast<float>(physical), program.program_id, true};
+    const double dmx_span = program.program.dmx_to > program.program.dmx_from ? static_cast<double>(program.program.dmx_to - program.program.dmx_from) : static_cast<double>(program.max_value);
+    const double full_range_normalized = static_cast<double>(raw_value) * program.inverse_max_value;
+    const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.program.dmx_from)) / dmx_span, 0.0, 1.0) : full_range_normalized;
+    const double physical = program.program.physical_from + ((program.program.physical_to - program.program.physical_from) * local);
+    return {raw_value, static_cast<float>(local), static_cast<float>(physical), program.program.program_id, true};
 }
 
 // Resolves all contributors for one property into a single deterministic value.
@@ -331,81 +409,46 @@ PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_pr
     double weighted_normalized_sum = 0.0;
     double weighted_physical_sum = 0.0;
     double total_weight = 0.0;
-    const CompiledDmxSourceProgram *active_program = nullptr;
+    const InstalledSourceProgram *active_program = nullptr;
     bool has_range_selector = false;
     bool has_reference_range = false;
     uint32_t reference_from = 0;
     uint32_t reference_to = 0;
     for (const CompiledPropertyContributor &contributor : property.contributors) {
-        if (contributor.operation != CompiledContributorOperation::WeightedAdd) {
-            diagnostics_.push_back({"PVZ-RUNTIME-UNSUPPORTED-CONTRIBUTOR", "warning", "Compiled contributor operation is not supported.", std::to_string(contributor.source_program_id)});
-            continue;
-        }
         auto program_it = source_programs_by_id_.find(contributor.source_program_id);
-        if (program_it == source_programs_by_id_.end()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled contributor references a missing source program.", std::to_string(contributor.source_program_id)});
-            continue;
-        }
-        const CompiledDmxSourceProgram &program = program_it->second;
-        if (!has_reference_range) {
-            reference_from = program.dmx_from;
-            reference_to = program.dmx_to;
-            has_reference_range = true;
-        } else if (program.dmx_from != reference_from || program.dmx_to != reference_to) {
-            has_range_selector = true;
-        }
-        const uint32_t raw_value = read_raw_value(frame, program, &diagnostics_);
-        if (raw_value >= program.dmx_from && raw_value <= program.dmx_to) {
-            if (active_program != nullptr) diagnostics_.push_back({"PVZ-RUNTIME-OVERLAPPING-FUNCTIONS", "warning", "Multiple ChannelFunctions matched the same raw DMX value; using the first match.", std::to_string(property.fixture_id)});
-            if (active_program == nullptr) active_program = &program;
-        }
+        if (program_it == source_programs_by_id_.end()) continue;
+        const CompiledDmxSourceProgram &program = program_it->second.program;
+        if (!has_reference_range) { reference_from = program.dmx_from; reference_to = program.dmx_to; has_reference_range = true; }
+        else if (program.dmx_from != reference_from || program.dmx_to != reference_to) has_range_selector = true;
+        const uint32_t raw_value = read_raw_value(frame, program_it->second, &diagnostics_);
+        if (raw_value >= program.dmx_from && raw_value <= program.dmx_to && active_program == nullptr) active_program = &program_it->second;
     }
     if (property.contributors.size() > 1 && has_range_selector) {
-        if (active_program == nullptr) {
-            diagnostics_.push_back({"PVZ-RUNTIME-NO-ACTIVE-FUNCTION", "warning", "No ChannelFunction range matched the assembled raw DMX value.", std::to_string(property.fixture_id)});
-            return {};
-        }
+        if (active_program == nullptr) return {};
         return evaluate_source_program(frame, *active_program, &diagnostics_);
     }
     EvaluationResult result;
     for (const CompiledPropertyContributor &contributor : property.contributors) {
         auto program_it = source_programs_by_id_.find(contributor.source_program_id);
-        if (program_it == source_programs_by_id_.end()) {
-            continue;
-        }
-        const double weight = contributor.weight;
+        if (program_it == source_programs_by_id_.end()) continue;
         const EvaluationResult program_value = evaluate_source_program(frame, program_it->second, &diagnostics_);
-        if (!program_value.valid) {
-            continue;
-        }
-        if (!result.valid) {
-            result.raw_value = program_value.raw_value;
-            result.active_program_id = program_value.active_program_id;
-            result.valid = true;
-        }
-        weighted_normalized_sum += static_cast<double>(program_value.normalized_value) * weight;
-        weighted_physical_sum += static_cast<double>(program_value.physical_value) * weight;
-        total_weight += weight;
+        if (!program_value.valid) continue;
+        if (!result.valid) { result.raw_value = program_value.raw_value; result.active_program_id = program_value.active_program_id; result.valid = true; }
+        weighted_normalized_sum += static_cast<double>(program_value.normalized_value) * contributor.weight;
+        weighted_physical_sum += static_cast<double>(program_value.physical_value) * contributor.weight;
+        total_weight += contributor.weight;
     }
-    if (total_weight == 0.0 || !result.valid) {
-        return {};
-    }
+    if (total_weight == 0.0 || !result.valid) return {};
     result.normalized_value = static_cast<float>(weighted_normalized_sum / total_weight);
     result.physical_value = static_cast<float>(weighted_physical_sum / total_weight);
     return result;
 }
 
-// Computes a native hash over only patched DMX offsets for a universe.
-uint64_t PeravizVisualRuntimeCore::compute_interest_hash(const std::vector<uint8_t> &frame, const std::vector<int> &offsets) {
-    uint64_t hash = 1469598103934665603ULL;
-    for (int offset : offsets) {
-        const uint8_t value = offset >= 0 && offset < static_cast<int>(frame.size()) ? frame[static_cast<size_t>(offset)] : 0;
-        hash ^= static_cast<uint64_t>(offset & 0xffff);
-        hash *= 1099511628211ULL;
-        hash ^= static_cast<uint64_t>(value);
-        hash *= 1099511628211ULL;
-    }
-    return hash;
+// Evaluates one installed source program by stable program ID.
+PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program_by_id(const std::vector<uint8_t> &frame, int32_t source_program_id) {
+    auto program_it = source_programs_by_id_.find(source_program_id);
+    if (program_it == source_programs_by_id_.end()) return {};
+    return evaluate_source_program(frame, program_it->second, &diagnostics_);
 }
 
 // Maps a semantic parameter to the render domains it can dirty.
@@ -415,9 +458,18 @@ uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter p
         case SemanticParameter::Pan:
         case SemanticParameter::Tilt: return VisualChangeTransform;
         case SemanticParameter::Zoom: return VisualChangeZoom;
+        case SemanticParameter::ColorAddRed:
+        case SemanticParameter::ColorAddGreen:
+        case SemanticParameter::ColorAddBlue:
+        case SemanticParameter::ColorAddWhite:
+        case SemanticParameter::ColorAddAmber:
+        case SemanticParameter::ColorAddLime:
+        case SemanticParameter::ColorSubCyan:
+        case SemanticParameter::ColorSubMagenta:
+        case SemanticParameter::ColorSubYellow:
         case SemanticParameter::Cyan:
         case SemanticParameter::Magenta:
-        case SemanticParameter::Yellow: return VisualChangeColor | VisualChangeMaterial;
+        case SemanticParameter::Yellow: return VisualChangeColor;
         case SemanticParameter::GoboSelect:
         case SemanticParameter::GoboIndex: return VisualChangeGobo | VisualChangeBeamTopology;
         case SemanticParameter::GoboRotation: return VisualChangeGoboRotation;
@@ -429,7 +481,6 @@ uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter p
     return VisualChangeNone;
 }
 
-
 // Writes the incoming semantic value into the component-oriented fixture state.
 void PeravizVisualRuntimeCore::apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value) {
     switch (parameter) {
@@ -437,16 +488,7 @@ void PeravizVisualRuntimeCore::apply_semantic_value(ComponentState &state, Seman
         case SemanticParameter::Tilt: state.tilt = value; break;
         case SemanticParameter::Dimmer: state.dimmer = value; break;
         case SemanticParameter::Zoom: state.zoom = value; break;
-        case SemanticParameter::Cyan: state.cyan = value; break;
-        case SemanticParameter::Magenta: state.magenta = value; break;
-        case SemanticParameter::Yellow: state.yellow = value; break;
-        case SemanticParameter::GoboSelect: state.gobo_select = value; break;
-        case SemanticParameter::GoboIndex: state.gobo_index = value; break;
-        case SemanticParameter::GoboRotation: state.gobo_rotation = value; break;
-        case SemanticParameter::PrismSelect: state.prism_select = value; break;
-        case SemanticParameter::PrismRotation: state.prism_rotation = value; break;
-        case SemanticParameter::Strobe: state.strobe = value; break;
-        case SemanticParameter::Unknown: break;
+        default: break;
     }
 }
 
@@ -456,20 +498,15 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
     constexpr double default_zoom_min = 4.0;
     constexpr double max_beam_angle = 90.0;
     constexpr double beam_intensity_max = 50.0;
-    constexpr double cmy_epsilon = 0.0001;
     double beam_angle = std::clamp(params.beam_angle_default, 0.1, max_beam_angle);
     if (params.has_zoom) {
-        if (state.has_zoom_physical) {
-            beam_angle = std::clamp(static_cast<double>(state.zoom), 0.0, max_beam_angle);
-        } else {
+        if (state.has_zoom_physical) beam_angle = std::clamp(static_cast<double>(state.zoom), 0.0, max_beam_angle);
+        else {
             double zoom_min = params.zoom_min_deg >= 0.0 ? params.zoom_min_deg : default_zoom_min;
             double zoom_max = params.zoom_max_deg >= 0.0 ? params.zoom_max_deg : max_beam_angle;
             beam_angle = std::clamp(zoom_min + ((zoom_max - zoom_min) * state.zoom_normalized), 0.0, max_beam_angle);
         }
     }
-    state.red = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.cyan : 1.0f;
-    state.green = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.magenta : 1.0f;
-    state.blue = state.cyan > cmy_epsilon || state.magenta > cmy_epsilon || state.yellow > cmy_epsilon ? 1.0f - state.yellow : 1.0f;
     const double base_energy = std::max(params.luminous_flux, 0.0) * state.dimmer * energy_scale;
     state.beam_energy = static_cast<float>(base_energy);
     state.spot_energy = static_cast<float>(base_energy * params.spot_multiplier);
@@ -481,6 +518,52 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
 
 // Compares two component values using section-appropriate tolerances.
 bool PeravizVisualRuntimeCore::nearly_equal(float a, float b, float epsilon) { return std::fabs(a - b) <= epsilon; }
+
+// Checks whether a source program depends on one of the current dirty DMX offsets.
+bool PeravizVisualRuntimeCore::program_uses_changed_offset(const CompiledDmxSourceProgram &program, const std::vector<int> &changed_offsets) {
+    for (const CompiledDmxByteSource &source : program.sources) {
+        if (std::find(changed_offsets.begin(), changed_offsets.end(), source.address) != changed_offsets.end()) return true;
+    }
+    return false;
+}
+
+// Selects normalized or physical color input values for the supported fallback color slice.
+float PeravizVisualRuntimeCore::color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated) {
+    const bool additive = semantic == CompiledSemantic::ColorAddRed || semantic == CompiledSemantic::ColorAddGreen || semantic == CompiledSemantic::ColorAddBlue || semantic == CompiledSemantic::ColorAddWhite || semantic == CompiledSemantic::ColorAddAmber || semantic == CompiledSemantic::ColorAddLime;
+    if (additive && evaluated.physical_value >= 0.0f && evaluated.physical_value <= 1.0f) return evaluated.physical_value;
+    return std::clamp(evaluated.normalized_value, 0.0f, 1.0f);
+}
+
+// Composes one complete color target once into renderer-ready sRGB plus linear gain.
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emitter_color(const ColorTargetRuntime &target) {
+    float add_r = 0.0f, add_g = 0.0f, add_b = 0.0f;
+    float sub_c = 0.0f, sub_m = 0.0f, sub_y = 0.0f;
+    bool has_additive = target.target.additive_source;
+    for (const ColorInputRuntime &input : target.inputs) {
+        const float v = std::clamp(input.value, 0.0f, 1.0f);
+        switch (input.binding.semantic) {
+            case CompiledSemantic::ColorAddRed: add_r += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddGreen: add_g += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddBlue: add_b += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddWhite: add_r += v; add_g += v; add_b += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddAmber: add_r += v; add_g += v * 0.45f; has_additive = true; break;
+            case CompiledSemantic::ColorAddLime: add_g += v; add_r += v * 0.15f; has_additive = true; break;
+            case CompiledSemantic::ColorSubCyan: sub_c = std::max(sub_c, v); break;
+            case CompiledSemantic::ColorSubMagenta: sub_m = std::max(sub_m, v); break;
+            case CompiledSemantic::ColorSubYellow: sub_y = std::max(sub_y, v); break;
+            default: break;
+        }
+    }
+    float red = has_additive ? add_r : 1.0f;
+    float green = has_additive ? add_g : 1.0f;
+    float blue = has_additive ? add_b : 1.0f;
+    red *= 1.0f - std::clamp(sub_c, 0.0f, 1.0f);
+    green *= 1.0f - std::clamp(sub_m, 0.0f, 1.0f);
+    blue *= 1.0f - std::clamp(sub_y, 0.0f, 1.0f);
+    const float gain = std::max({red, green, blue, 1.0f});
+    const float inv_gain = gain > 0.0f ? 1.0f / gain : 1.0f;
+    return {linear_to_srgb(red * inv_gain), linear_to_srgb(green * inv_gain), linear_to_srgb(blue * inv_gain), gain, true, true};
+}
 
 // Adds cumulative per-category visual mask counters for diagnostics.
 void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
@@ -497,16 +580,13 @@ void PeravizVisualRuntimeCore::add_visual_mask_stats(uint32_t visual_mask) {
 PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_transform_state(int fixture_id, const ComponentState &next_state) {
     ComponentState &previous = transform_state_by_fixture_[fixture_id];
     FixtureChangeResult result;
-    result.changed = !previous.initialized;
     if (!previous.initialized) {
         const auto mask_it = installed_visual_mask_by_fixture_.find(fixture_id);
         const uint32_t installed_mask = mask_it != installed_visual_mask_by_fixture_.end() ? mask_it->second : VisualChangeNone;
         result.changed_visual_mask = installed_mask & VisualChangeTransform;
-    } else {
-        if (!nearly_equal(previous.pan, next_state.pan, kDefaultEpsilon) || !nearly_equal(previous.tilt, next_state.tilt, kDefaultEpsilon)) result.changed_visual_mask |= VisualChangeTransform;
-        result.changed = result.changed_visual_mask != VisualChangeNone;
+    } else if (!nearly_equal(previous.pan, next_state.pan, kDefaultEpsilon) || !nearly_equal(previous.tilt, next_state.tilt, kDefaultEpsilon)) {
+        result.changed_visual_mask = VisualChangeTransform;
     }
-    result.changed_visual_mask &= VisualChangeTransform;
     result.changed = result.changed_visual_mask != VisualChangeNone;
     previous = next_state;
     previous.initialized = true;
@@ -517,7 +597,6 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_tr
 PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask) {
     ComponentState &previous = property_state_by_property_[property_id];
     FixtureChangeResult result;
-    result.changed = !previous.initialized;
     if (!previous.initialized) {
         result.changed_visual_mask = installed_mask;
     } else {
@@ -526,7 +605,6 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_pr
         const bool previous_visible = previous.dimmer > kDefaultEpsilon;
         const bool current_visible = next_state.dimmer > kDefaultEpsilon;
         if ((installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer)) != 0U && previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;
-        result.changed = result.changed_visual_mask != VisualChangeNone;
     }
     result.changed_visual_mask &= installed_mask;
     result.changed = result.changed_visual_mask != VisualChangeNone;

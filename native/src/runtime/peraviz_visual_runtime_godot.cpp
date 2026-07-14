@@ -22,7 +22,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     peraviz::runtime::CompiledRuntimeScene scene;
     PackedInt32Array integers = packed_scene.get("integers", PackedInt32Array());
     PackedFloat32Array floats = packed_scene.get("floats", PackedFloat32Array());
-    if (integers.size() < 5 || integers[0] != 1) {
+    if (integers.size() < 6 || integers[0] != 1) {
         core_.install_compiled_scene(scene);
         return;
     }
@@ -30,6 +30,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     const int fixture_count = integers[cursor++];
     const int program_count = integers[cursor++];
     const int property_count = integers[cursor++];
+    const int color_target_count = integers[cursor++];
     cursor++;
     for (int index = 0; index < fixture_count && cursor + 6 <= integers.size(); ++index) {
         peraviz::runtime::CompiledFixtureInstance fixture;
@@ -81,6 +82,25 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
             property.contributors.push_back(contributor);
         }
         scene.properties.push_back(property);
+    }
+    for (int index = 0; index < color_target_count && cursor + 6 <= integers.size(); ++index) {
+        peraviz::runtime::CompiledColorTargetProgram target;
+        target.color_target_id = integers[cursor++];
+        target.fixture_id = integers[cursor++];
+        target.beam_render_target_id = integers[cursor++];
+        target.geometry_id = integers[cursor++];
+        target.additive_source = integers[cursor++] != 0;
+        const int input_count = integers[cursor++];
+        for (int input_index = 0; input_index < input_count && cursor + 4 <= integers.size(); ++input_index) {
+            peraviz::runtime::CompiledColorInputBinding input;
+            input.source_program_id = integers[cursor++];
+            input.semantic = static_cast<peraviz::runtime::CompiledSemantic>(integers[cursor++]);
+            const int default_value_index = integers[cursor++];
+            input.default_value = default_value_index >= 0 && default_value_index < floats.size() ? floats[default_value_index] : 0.0;
+            input.use_normalized_value = integers[cursor++] != 0;
+            target.inputs.push_back(input);
+        }
+        scene.color_targets.push_back(target);
     }
     core_.install_compiled_scene(scene);
 }
@@ -156,6 +176,10 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["changed_dimmer"] = static_cast<int64_t>(stats.changed_dimmer);
     out["changed_color"] = static_cast<int64_t>(stats.changed_color);
     out["changed_zoom"] = static_cast<int64_t>(stats.changed_zoom);
+    out["color_rows"] = static_cast<int64_t>(stats.color_rows);
+    out["color_targets_dirty"] = static_cast<int64_t>(stats.color_targets_dirty);
+    out["color_inputs_evaluated"] = static_cast<int64_t>(stats.color_inputs_evaluated);
+    out["color_targets_cooked"] = static_cast<int64_t>(stats.color_targets_cooked);
     out["changed_gobo"] = static_cast<int64_t>(stats.changed_gobo);
     out["changed_gobo_rotation"] = static_cast<int64_t>(stats.changed_gobo_rotation);
     out["gobo_topology_updates"] = static_cast<int64_t>(stats.gobo_topology_updates);

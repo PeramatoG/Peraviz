@@ -261,6 +261,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     integers.push_back(static_cast<int32_t>(scene.fixtures.size()));
     integers.push_back(static_cast<int32_t>(scene.source_programs.size()));
     integers.push_back(static_cast<int32_t>(scene.properties.size()));
+    integers.push_back(static_cast<int32_t>(scene.color_targets.size()));
     integers.push_back(static_cast<int32_t>(scene.diagnostics.size()));
     auto push_float = [&floats](double value) -> int32_t {
         const int32_t index = static_cast<int32_t>(floats.size());
@@ -301,6 +302,20 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             integers.push_back(contributor.source_program_id);
             integers.push_back(push_float(contributor.weight));
             integers.push_back(static_cast<int32_t>(contributor.operation));
+        }
+    }
+    for (const peraviz::runtime::CompiledColorTargetProgram &target : scene.color_targets) {
+        integers.push_back(target.color_target_id);
+        integers.push_back(target.fixture_id);
+        integers.push_back(target.beam_render_target_id);
+        integers.push_back(target.geometry_id);
+        integers.push_back(target.additive_source ? 1 : 0);
+        integers.push_back(static_cast<int32_t>(target.inputs.size()));
+        for (const peraviz::runtime::CompiledColorInputBinding &input : target.inputs) {
+            integers.push_back(input.source_program_id);
+            integers.push_back(static_cast<int32_t>(input.semantic));
+            integers.push_back(push_float(input.default_value));
+            integers.push_back(input.use_normalized_value ? 1 : 0);
         }
     }
     Array diagnostics;
@@ -369,6 +384,26 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             targets.push_back(target);
             renderer_targets.push_back(target);
         }
+        for (const peraviz::runtime::CompiledColorTargetProgram &color_target : scene.color_targets) {
+            if (color_target.fixture_id != fixture.fixture_id || color_target.beam_render_target_id <= 0) {
+                continue;
+            }
+            capability_flags |= 16;
+            Dictionary target;
+            target["fixture_id"] = fixture.fixture_id;
+            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["property_id"] = color_target.color_target_id;
+            target["component_id"] = 0;
+            target["render_target_id"] = color_target.beam_render_target_id;
+            target["target_id"] = color_target.beam_render_target_id;
+            target["semantic"] = "color";
+            target["geometry_id"] = color_target.geometry_id;
+            target["geometry_name"] = String(color_target.geometry_name.c_str());
+            target["geometry_key"] = String(color_target.geometry_key.c_str());
+            target["geometry_path"] = String(color_target.geometry_name.c_str());
+            targets.push_back(target);
+            renderer_targets.push_back(target);
+        }
         for (const peraviz::runtime::CompiledBeamOpticalProfile &profile : scene.beam_profiles) {
             if (profile.fixture_id != fixture.fixture_id || profile.render_target_id <= 0) {
                 continue;
@@ -421,6 +456,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     int32_t pan_property_count = 0;
     int32_t tilt_property_count = 0;
     int32_t zoom_property_count = 0;
+    int32_t color_target_count = static_cast<int32_t>(scene.color_targets.size());
     int32_t beam_profile_count = static_cast<int32_t>(scene.beam_profiles.size());
     for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
         if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) ++dimmer_property_count;
@@ -451,6 +487,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["pan_program_count"] = scene.pan_program_count;
     setup_summary["tilt_program_count"] = scene.tilt_program_count;
     setup_summary["zoom_program_count"] = scene.zoom_program_count;
+    setup_summary["color_program_count"] = scene.color_program_count;
+    setup_summary["color_target_count"] = color_target_count;
     setup_summary["unique_dimmer_programs_per_fixture_type"] = scene.dimmer_program_count;
     setup_summary["unique_pan_programs_per_fixture_type"] = scene.pan_program_count;
     setup_summary["unique_tilt_programs_per_fixture_type"] = scene.tilt_program_count;

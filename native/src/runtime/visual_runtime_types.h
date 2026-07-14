@@ -26,8 +26,16 @@ enum class CompiledSemantic : int32_t {
     Tilt,
     Dimmer,
     Zoom,
+    ColorAddRed,
+    ColorAddGreen,
+    ColorAddBlue,
+    ColorAddWhite,
+    ColorAddAmber,
+    ColorAddLime,
+    ColorSubCyan,
+    ColorSubMagenta,
+    ColorSubYellow,
 };
-
 struct CompiledDmxByteSource {
     int32_t universe_id = -1;
     int32_t address = -1;
@@ -67,6 +75,24 @@ struct CompiledComponentProperty {
     std::vector<CompiledPropertyContributor> contributors;
     int32_t geometry_id = 0;
     std::string geometry_name;
+};
+
+struct CompiledColorInputBinding {
+    int32_t source_program_id = 0;
+    CompiledSemantic semantic = CompiledSemantic::Unknown;
+    double default_value = 0.0;
+    bool use_normalized_value = false;
+};
+
+struct CompiledColorTargetProgram {
+    int32_t color_target_id = 0;
+    int32_t fixture_id = 0;
+    int32_t beam_render_target_id = 0;
+    int32_t geometry_id = 0;
+    std::string geometry_name;
+    std::string geometry_key;
+    std::vector<CompiledColorInputBinding> inputs;
+    bool additive_source = false;
 };
 
 struct CompiledFixtureInstance {
@@ -131,9 +157,11 @@ struct CompiledRuntimeScene {
     int32_t pan_program_count = 0;
     int32_t tilt_program_count = 0;
     int32_t zoom_program_count = 0;
+    int32_t color_program_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;
+    std::vector<CompiledColorTargetProgram> color_targets;
     std::vector<CompiledBeamOpticalProfile> beam_profiles;
     std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };
@@ -161,6 +189,10 @@ struct VisualFrameStats {
     uint64_t changed_dimmer = 0;
     uint64_t changed_color = 0;
     uint64_t changed_zoom = 0;
+    uint64_t color_rows = 0;
+    uint64_t color_targets_dirty = 0;
+    uint64_t color_inputs_evaluated = 0;
+    uint64_t color_targets_cooked = 0;
     uint64_t changed_gobo = 0;
     uint64_t changed_gobo_rotation = 0;
     uint64_t gobo_topology_updates = 0;

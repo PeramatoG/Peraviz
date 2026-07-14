@@ -9,6 +9,7 @@ var _pan_targets: Dictionary = {}
 var _tilt_targets: Dictionary = {}
 var _dimmer_targets: Dictionary = {}
 var _optics_targets: Dictionary = {}
+var _color_targets: Dictionary = {}
 var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
 var _dimmer_emitter_owner_by_key: Dictionary = {}
@@ -27,6 +28,7 @@ func clear() -> void:
 	_tilt_targets.clear()
 	_dimmer_targets.clear()
 	_optics_targets.clear()
+	_color_targets.clear()
 	_target_resolution_failures.clear()
 	_geometry_targets_by_key.clear()
 	_dimmer_emitter_owner_by_key.clear()
@@ -77,6 +79,9 @@ func has_dimmer_target(dimmer_target_id: int) -> bool:
 func has_optics_target(optics_target_id: int) -> bool:
 	return optics_target_id > 0 and _optics_targets.has(optics_target_id)
 
+func has_color_target(color_target_id: int) -> bool:
+	return color_target_id > 0 and _color_targets.has(color_target_id)
+
 func get_optics_target_record(optics_target_id: int) -> Dictionary:
 	if optics_target_id <= 0:
 		return {}
@@ -87,6 +92,11 @@ func get_dimmer_target_record(dimmer_target_id: int) -> Dictionary:
 		return {}
 	return _dimmer_targets.get(dimmer_target_id, {})
 
+func get_color_target_record(color_target_id: int) -> Dictionary:
+	if color_target_id <= 0:
+		return {}
+	return _color_targets.get(color_target_id, {})
+
 func get_target_failure(target_id: int) -> Variant:
 	return _target_resolution_failures.get(target_id, null)
 
@@ -96,6 +106,7 @@ func get_summary() -> Dictionary:
 		"tilt_targets_resolved": _tilt_targets.size(),
 		"dimmer_targets_resolved": _dimmer_targets.size(),
 		"optics_targets_resolved": _optics_targets.size(),
+		"color_targets_resolved": _color_targets.size(),
 		"registry_summary": _summary.duplicate(true),
 		"target_resolution_failures": _target_resolution_failures.duplicate(true),
 	}
@@ -118,6 +129,8 @@ func _register_renderer_target(target: Dictionary) -> void:
 		_register_axis_target(_tilt_targets, target, int(target.get("target_id", target.get("component_id", 0))), geometry_key, "tilt")
 	elif semantic == "dimmer":
 		_register_dimmer_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
+	elif semantic == "color":
+		_register_color_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 	elif semantic == "zoom" or semantic == "beam_profile":
 		_register_optics_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 
@@ -300,6 +313,11 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	if emitter_anchors.is_empty() and beam_instances.is_empty() and lens_material_targets.is_empty():
 		_increment_counter("dimmer_targets_with_no_mutable_resource")
 	_increment_counter("dimmer_resolved")
+
+func _register_color_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
+	_register_dimmer_target(manifest_row, target_id, fixture_uuid, geometry_key)
+	if _dimmer_targets.has(target_id):
+		_color_targets[target_id] = _dimmer_targets.get(target_id, {})
 
 func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
 	if target_id <= 0:

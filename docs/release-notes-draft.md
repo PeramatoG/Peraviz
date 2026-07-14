@@ -8,6 +8,7 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Added the first corrected native GDTF color runtime path for beam targets: supported additive and CMY color ChannelFunctions now compile into target-level native programs, emit one renderer-ready `EmitterColor` row per changed Beam target, and avoid color work while static color inputs are unchanged.
 - Added a 1 m reference cube toggle in the viewer toolbar so MVR scene scale can be checked directly in Godot.
 - Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.
 - Simplified contributor and agent guidance so maintainers can focus on enforceable rules and current workflows.

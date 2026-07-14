@@ -33,7 +33,7 @@ VisualFrameSchema make_visual_frame_schema(int32_t schema_generation, const Visu
     schema.schema_generation = schema_generation;
     if (capabilities.has_transform) add_section(schema.sections, VisualSectionType::GeometryTransform, 4, 2);
     if (capabilities.has_intensity) add_section(schema.sections, VisualSectionType::EmitterIntensity, 3, 5);
-    if (capabilities.has_color) add_section(schema.sections, VisualSectionType::EmitterColor, 3, 3);
+    if (capabilities.has_color) add_section(schema.sections, VisualSectionType::EmitterColor, 3, 4);
     if (capabilities.has_optics) add_section(schema.sections, VisualSectionType::BeamOptics, 3, 3);
     if (capabilities.has_wheel_selection) add_section(schema.sections, VisualSectionType::WheelSelection, 5, 1);
     if (capabilities.has_wheel_motion) add_section(schema.sections, VisualSectionType::WheelMotion, 4, 3);

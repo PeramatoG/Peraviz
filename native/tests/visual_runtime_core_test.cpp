@@ -43,12 +43,12 @@ peraviz::runtime::CompiledRuntimeScene make_scene() {
     using namespace peraviz::runtime;
     CompiledRuntimeScene scene;
     scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
-    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "Dimmer"});
-    scene.source_programs.push_back({2, CompiledSemantic::Pan, {{10, 1, 0}, {10, 3, 1}}, 0, 65535, -270.0, 270.0, "Pan", "Pan"});
-    scene.source_programs.push_back({3, CompiledSemantic::Tilt, {{10, 2, 0}, {10, 4, 1}}, 0, 65535, -135.0, 135.0, "Tilt", "Tilt"});
-    scene.properties.push_back({10001, 1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
-    scene.properties.push_back({10002, 1, 101, 1001, CompiledSemantic::Pan, {{2, 1.0}}});
-    scene.properties.push_back({10003, 1, 101, 1001, CompiledSemantic::Tilt, {{3, 1.0}}});
+    scene.source_programs.push_back({1, peraviz::runtime::CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "Dimmer"});
+    scene.source_programs.push_back({2, peraviz::runtime::CompiledSemantic::Pan, {{10, 1, 0}, {10, 3, 1}}, 0, 65535, -270.0, 270.0, "Pan", "Pan"});
+    scene.source_programs.push_back({3, peraviz::runtime::CompiledSemantic::Tilt, {{10, 2, 0}, {10, 4, 1}}, 0, 65535, -135.0, 135.0, "Tilt", "Tilt"});
+    scene.properties.push_back({10001, 1, 101, 1001, peraviz::runtime::CompiledSemantic::Dimmer, {{1, 1.0}}});
+    scene.properties.push_back({10002, 1, 101, 1001, peraviz::runtime::CompiledSemantic::Pan, {{2, 1.0}}});
+    scene.properties.push_back({10003, 1, 101, 1001, peraviz::runtime::CompiledSemantic::Tilt, {{3, 1.0}}});
     return scene;
 }
 
@@ -101,9 +101,9 @@ int test_more_than_two_source_bytes() {
     using namespace peraviz::runtime;
     CompiledRuntimeScene scene;
     scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
-    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}, {10, 2, 1}, {10, 4, 2}}, 0, 16777215, 0.0, 1.0, "Dimmer", "Dimmer24"});
-    scene.properties.push_back({10001, 1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}}});
-    PeravizVisualRuntimeCore runtime;
+    scene.source_programs.push_back({1, peraviz::runtime::CompiledSemantic::Dimmer, {{10, 0, 0}, {10, 2, 1}, {10, 4, 2}}, 0, 16777215, 0.0, 1.0, "Dimmer", "Dimmer24"});
+    scene.properties.push_back({10001, 1, 101, 1001, peraviz::runtime::CompiledSemantic::Dimmer, {{1, 1.0}}});
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> frame(8, 0xff);
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
@@ -118,10 +118,10 @@ int test_multiple_contributors() {
     CompiledRuntimeScene scene = make_scene();
     scene.source_programs.clear();
     scene.properties.clear();
-    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerA"});
-    scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
-    scene.properties.push_back({10004, 1, 101, 1001, CompiledSemantic::Dimmer, {{1, 1.0}, {2, 3.0}}});
-    PeravizVisualRuntimeCore runtime;
+    scene.source_programs.push_back({1, peraviz::runtime::CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerA"});
+    scene.source_programs.push_back({2, peraviz::runtime::CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
+    scene.properties.push_back({10004, 1, 101, 1001, peraviz::runtime::CompiledSemantic::Dimmer, {{1, 1.0}, {2, 3.0}}});
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> frame(8, 0);
     frame[0] = 0;
@@ -156,11 +156,11 @@ int test_independent_dimmer_targets() {
     using namespace peraviz::runtime;
     CompiledRuntimeScene scene;
     scene.fixtures.push_back({1, "fixture-1", "RegressionFixture", "Mode 1", 10, 1, 10000.0, 25.0, 1.0, 20.0});
-    scene.source_programs.push_back({1, CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 100.0, "Dimmer", "DimmerA"});
-    scene.source_programs.push_back({2, CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
-    scene.properties.push_back({20001, 1, 501, 1501, CompiledSemantic::Dimmer, {{1, 1.0}}});
-    scene.properties.push_back({20002, 1, 502, 1502, CompiledSemantic::Dimmer, {{2, 1.0}}});
-    PeravizVisualRuntimeCore runtime;
+    scene.source_programs.push_back({1, peraviz::runtime::CompiledSemantic::Dimmer, {{10, 0, 0}}, 0, 255, 0.0, 100.0, "Dimmer", "DimmerA"});
+    scene.source_programs.push_back({2, peraviz::runtime::CompiledSemantic::Dimmer, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "Dimmer", "DimmerB"});
+    scene.properties.push_back({20001, 1, 501, 1501, peraviz::runtime::CompiledSemantic::Dimmer, {{1, 1.0}}});
+    scene.properties.push_back({20002, 1, 502, 1502, peraviz::runtime::CompiledSemantic::Dimmer, {{2, 1.0}}});
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> frame(8, 0);
     frame[0] = 128;
@@ -236,7 +236,7 @@ int test_parser_owned_runtime_scene() {
     dmx[6] = 0x00;
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     const auto visual = runtime.consume_latest_visual_frame();
-    if (visual.descriptors.size() != peraviz::runtime::kVisualSectionDescriptorStride * 3) return fail("Expected Transform, Intensity, and BeamOptics sections");
+    if (visual.descriptors.size() < peraviz::runtime::kVisualSectionDescriptorStride * 3) return fail("Expected Transform, Intensity, and BeamOptics sections");
     bool has_transform = false;
     bool has_intensity = false;
     bool has_optics = false;
@@ -381,6 +381,95 @@ int test_beam_luminous_flux_profiles() {
 } // namespace
 
 // Runs compiled scene runtime behavior tests.
+
+// Reads the first color section float offset or returns -1 when no color rows exist.
+int first_color_float_offset(const peraviz::runtime::SectionedVisualFrame &frame) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterColor)) return frame.descriptors[index + 3];
+    }
+    return -1;
+}
+
+// Verifies native additive RGBW and subtractive CMY color rows remain target-oriented and dirty-only.
+bool test_native_color_mixing_rows() {
+    peraviz::runtime::CompiledRuntimeScene scene = make_scene();
+    scene.source_programs.push_back({10, peraviz::runtime::CompiledSemantic::ColorAddRed, {{10, 5, 0}}, 0, 255, 0.0, 1.0, "ColorAdd_R", "Red"});
+    scene.source_programs.push_back({11, peraviz::runtime::CompiledSemantic::ColorAddGreen, {{10, 6, 0}}, 0, 255, 0.0, 1.0, "ColorAdd_G", "Green"});
+    scene.source_programs.push_back({12, peraviz::runtime::CompiledSemantic::ColorAddBlue, {{10, 7, 0}}, 0, 255, 0.0, 1.0, "ColorAdd_B", "Blue"});
+    scene.source_programs.push_back({13, peraviz::runtime::CompiledSemantic::ColorAddWhite, {{10, 8, 0}}, 0, 255, 0.0, 1.0, "ColorAdd_W", "White"});
+    scene.source_programs.push_back({14, peraviz::runtime::CompiledSemantic::ColorSubCyan, {{10, 9, 0}}, 0, 255, 0.0, 1.0, "ColorSub_C", "Cyan"});
+    peraviz::runtime::CompiledColorTargetProgram color_target;
+    color_target.color_target_id = 40001;
+    color_target.fixture_id = 1;
+    color_target.beam_render_target_id = 1001;
+    color_target.geometry_id = 101;
+    color_target.geometry_name = "Head/Beam";
+    color_target.geometry_key = "fixture-1/Head/Beam";
+    color_target.additive_source = true;
+    color_target.inputs.push_back({10, peraviz::runtime::CompiledSemantic::ColorAddRed, 0.0, false});
+    color_target.inputs.push_back({11, peraviz::runtime::CompiledSemantic::ColorAddGreen, 0.0, false});
+    color_target.inputs.push_back({12, peraviz::runtime::CompiledSemantic::ColorAddBlue, 0.0, false});
+    color_target.inputs.push_back({13, peraviz::runtime::CompiledSemantic::ColorAddWhite, 0.0, false});
+    color_target.inputs.push_back({14, peraviz::runtime::CompiledSemantic::ColorSubCyan, 0.0, false});
+    scene.color_targets.push_back(color_target);
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(512, 0);
+    frame[5] = 255;
+    frame[6] = 128;
+    frame[8] = 64;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    peraviz::runtime::SectionedVisualFrame visual = runtime.consume_latest_visual_frame();
+    const int color_offset = first_color_float_offset(visual);
+    if (color_offset < 0) return fail("Expected one native EmitterColor row for RGBW target");
+    if (visual.floats.size() < static_cast<size_t>(color_offset + 4)) return fail("Expected RGB plus gain color payload");
+    if (visual.floats[color_offset] < visual.floats[color_offset + 1] || visual.floats[color_offset + 1] < visual.floats[color_offset + 2]) return fail("Expected red-dominant RGBW color with white contribution");
+    if (visual.floats[color_offset + 3] <= 1.0f) return fail("Expected RGBW color gain to preserve additive energy");
+    const uint64_t color_inputs_after_first = runtime.stats().color_inputs_evaluated;
+    frame[0] = 127;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    peraviz::runtime::SectionedVisualFrame dimmer_only = runtime.consume_latest_visual_frame();
+    if (first_color_float_offset(dimmer_only) >= 0) return fail("Expected dimmer-only change to emit no color row");
+    if (runtime.stats().color_inputs_evaluated != color_inputs_after_first) return fail("Expected dimmer-only change to evaluate no color inputs");
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    peraviz::runtime::SectionedVisualFrame stable = runtime.consume_latest_visual_frame();
+    if (!stable.descriptors.empty()) return fail("Expected unchanged color inputs to skip visual updates");
+    frame[9] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    peraviz::runtime::SectionedVisualFrame filtered = runtime.consume_latest_visual_frame();
+    const int filtered_offset = first_color_float_offset(filtered);
+    if (filtered_offset < 0 || filtered.floats[filtered_offset] > 0.05f) return fail("Expected ColorSub_C fallback to reduce red transmission");
+    return true;
+}
+
+
+// Verifies color channels on ancestor geometries compile to descendant Beam target IDs.
+bool test_color_inheritance_compiles_to_beam_targets() {
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "peraviz_color_inheritance_test.gdtf";
+    const std::string xml = R"XML(<GDTF><FixtureType Name="ColorFixture">
+  <Geometries><Geometry Name="Base"><Beam Name="Beam" /></Geometry></Geometries>
+  <DMXModes><DMXMode Name="Mode 1" Geometry="Base"><DMXChannels>
+    <DMXChannel Offset="1" Geometry="Base"><LogicalChannel Attribute="ColorAdd_R"><ChannelFunction Attribute="ColorAdd_R" DMXFrom="0" DMXTo="255" PhysicalFrom="0" PhysicalTo="1" /></LogicalChannel></DMXChannel>
+  </DMXChannels></DMXMode></DMXModes>
+</FixtureType></GDTF>)XML";
+    if (!write_gdtf_archive(path, xml)) return fail("Expected color inheritance fixture archive to be written");
+    peraviz::SceneModel model;
+    model.fixture_patches.push_back({"fixture-color", 10, 1, "Mode 1", path.string()});
+    peraviz::SceneNode beam;
+    beam.node_id = "fixture-color/Beam";
+    beam.name = "Beam";
+    beam.gdtf_geometry_path = "Base/Beam";
+    beam.gdtf_geometry_key = "fixture-color/Base/Beam";
+    beam.is_fixture = true;
+    beam.is_beam = true;
+    model.nodes.push_back(beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
+    if (scene.color_targets.size() != 1) return fail("Expected one inherited color target for descendant Beam");
+    if (scene.color_targets[0].beam_render_target_id <= 0 || scene.color_targets[0].beam_render_target_id != scene.beam_profiles[0].render_target_id) return fail("Expected color target to use Beam render target ID");
+    if (scene.properties.empty() == false) return fail("Expected color inputs to avoid generic component properties");
+    return true;
+}
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -391,5 +480,7 @@ int main() {
     if (test_beam_luminous_flux_profiles() != 0) return 1;
     if (test_full_resolution_ranges_and_function_selection() != 0) return 1;
     if (test_direct_channels_and_inferred_ranges() != 0) return 1;
+    if (!test_native_color_mixing_rows()) return 1;
+    if (!test_color_inheritance_compiles_to_beam_targets()) return 1;
     return 0;
 }
