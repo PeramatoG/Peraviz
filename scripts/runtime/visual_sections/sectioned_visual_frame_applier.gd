@@ -140,7 +140,7 @@ func _fixture_id_for_row(int_base: int, integers: PackedInt32Array) -> int:
 		return 0
 	return integers[int_base]
 
-func _apply_section_row(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, frame_delta_sec: float, dmx_runtime: Object, counts: Dictionary) -> Dictionary:
+func _apply_section_row(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, _frame_delta_sec: float, _dmx_runtime: Object, counts: Dictionary) -> Dictionary:
 	if int_base < 0 or int_base >= integers.size() or float_base < 0 or float_base > floats.size():
 		return {"applied": false}
 	var changed_mask: int = _changed_mask_for_row(section_type, int_base, integers)

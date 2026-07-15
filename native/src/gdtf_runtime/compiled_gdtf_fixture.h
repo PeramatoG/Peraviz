@@ -85,8 +85,8 @@ struct ParsedWheel {
 };
 
 struct ParsedWheelChannelSet {
-    uint32_t dmx_from = 0;
-    uint32_t dmx_to = 255;
+    uint32_t declared_dmx_from = 0;
+    uint32_t effective_dmx_to = 255;
     int32_t wheel_slot_index = 0;
     std::string name;
 };

@@ -127,6 +127,9 @@ private:
         float srgb_green = 1.0f;
         float srgb_blue = 1.0f;
         float gain = 1.0f;
+        double linear_red = 1.0;
+        double linear_green = 1.0;
+        double linear_blue = 1.0;
         bool valid = true;
         bool initialized = false;
     };

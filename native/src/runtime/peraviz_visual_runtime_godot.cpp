@@ -22,7 +22,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     peraviz::runtime::CompiledRuntimeScene scene;
     PackedInt32Array integers = packed_scene.get("integers", PackedInt32Array());
     PackedFloat32Array floats = packed_scene.get("floats", PackedFloat32Array());
-    if (integers.size() < 6 || integers[0] < 1 || integers[0] > 2) {
+    if (integers.size() < 6 || integers[0] < 1 || integers[0] > 3) {
         core_.install_compiled_scene(scene);
         return;
     }
@@ -97,13 +97,17 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         target.geometry_id = integers[cursor++];
         target.additive_source = integers[cursor++] != 0;
         const int input_count = integers[cursor++];
-        for (int input_index = 0; input_index < input_count && cursor + 4 <= integers.size(); ++input_index) {
+        for (int input_index = 0; input_index < input_count && cursor + (integers[0] >= 3 ? 6 : 4) <= integers.size(); ++input_index) {
             peraviz::runtime::CompiledColorInputBinding input;
             input.source_program_id = integers[cursor++];
             input.semantic = static_cast<peraviz::runtime::CompiledSemantic>(integers[cursor++]);
             const int default_value_index = integers[cursor++];
             input.default_value = default_value_index >= 0 && default_value_index < floats.size() ? floats[default_value_index] : 0.0;
             input.use_normalized_value = integers[cursor++] != 0;
+            if (integers[0] >= 3) {
+                input.emitter_resource_id = integers[cursor++];
+                input.filter_resource_id = integers[cursor++];
+            }
             target.inputs.push_back(input);
         }
         scene.color_targets.push_back(target);

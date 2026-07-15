@@ -695,8 +695,8 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emit
     }
     double gain = 0.0;
     const runtime::LinearRgb normalized = runtime::normalize_color_gain(linear, gain);
-    if (gain <= 0.0) return {0.0f, 0.0f, 0.0f, 0.0f, true, true};
-    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), static_cast<float>(gain), true, true};
+    if (gain <= 0.0) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
+    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), static_cast<float>(gain), normalized.r, normalized.g, normalized.b, true, true};
 }
 
 
@@ -705,11 +705,16 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::apply_whe
     CookedEmitterColor upstream;
     auto upstream_it = color_state_by_target_.find(beam_target_id);
     if (upstream_it != color_state_by_target_.end() && upstream_it->second.initialized) upstream = upstream_it->second;
-    const float r = std::clamp(upstream.srgb_red * slot.srgb_red, 0.0f, 1.0f);
-    const float g = std::clamp(upstream.srgb_green * slot.srgb_green, 0.0f, 1.0f);
-    const float b = std::clamp(upstream.srgb_blue * slot.srgb_blue, 0.0f, 1.0f);
+    runtime::LinearRgb final_linear;
+    final_linear.r = upstream.linear_red * static_cast<double>(slot.linear_red);
+    final_linear.g = upstream.linear_green * static_cast<double>(slot.linear_green);
+    final_linear.b = upstream.linear_blue * static_cast<double>(slot.linear_blue);
     const float gain = upstream.gain * slot.gain;
-    return {r, g, b, gain, true, true};
+    double separated_gain = 0.0;
+    const runtime::LinearRgb normalized = runtime::normalize_color_gain(final_linear, separated_gain);
+    const float final_gain = gain * static_cast<float>(separated_gain);
+    if (final_gain <= 0.0f) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
+    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), final_gain, normalized.r, normalized.g, normalized.b, true, true};
 }
 
 // Adds cumulative per-category visual mask counters for diagnostics.

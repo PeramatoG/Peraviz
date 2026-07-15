@@ -164,13 +164,13 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
 	var beam_instances: Array = target_record.get("beam_instances", [])
-	var lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
-	var mutable_resources: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size()) + beam_instances.size() + lens_material_targets.size()
+	var resolved_lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
+	var mutable_resources: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size()) + beam_instances.size() + resolved_lens_material_targets.size()
 	var mutations: int = lights_mutated + beams_mutated + materials_mutated
 	if mutable_resources <= 0:
 		return {"dimmer_requested": true, "target_resolved": true, "lights_considered": 0, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "visible_output_after_apply": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target has no mutable Dimmer resources"}
 	var emitter_lights_count: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size())
-	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
+	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": resolved_lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
 
 func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: int, changed_mask: int, beam_color: Color, color_gain: float) -> Dictionary:
 	if color_target_id <= 0 or (loader.has_method("_has_native_color_target") and not loader._has_native_color_target(color_target_id)):
@@ -293,6 +293,8 @@ func apply_wheel_optical_state(loader: Node, fixture_uuid: String, beam_target_i
 		return {"applied": false, "wheel_state_applied": false, "target_resolved": false, "failed": 1, "failure_reason": "beam target not registered", "beam_target_id": beam_target_id}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	var output_record: Dictionary = loader._get_native_beam_output_record(beam_target_id)
+	var previous_state: Dictionary = _target_state(beam_target_id, fixture_uuid)
+	var was_unchanged: bool = previous_state.has("beam_color") and previous_state.get("beam_color", Color.WHITE) == aggregate_srgb and is_equal_approx(float(previous_state.get("color_gain", 1.0)), aggregate_gain)
 	_set_target_color_state(beam_target_id, fixture_uuid, aggregate_srgb, aggregate_gain)
 	var state: Dictionary = _target_state(beam_target_id, fixture_uuid)
 	var dimmer_norm: float = float(state.get("dimmer", 0.0))
@@ -300,7 +302,8 @@ func apply_wheel_optical_state(loader: Node, fixture_uuid: String, beam_target_i
 	var mutations: int = int(result.get("lights_mutated", 0)) + int(result.get("beams_mutated", 0)) + int(result.get("materials_mutated", 0))
 	var key: String = _fixture_state_key(fixture_uuid) + ":wheel:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
 	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizWheelCoverageApproximation", "mutations": mutations}
-	return {"applied": mutations > 0, "wheel_state_applied": mutations > 0, "target_resolved": true, "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0)), "topology_rebuilds": 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no wheel renderer resource changed"}
+	var accepted: bool = mutations > 0 or was_unchanged
+	return {"applied": accepted, "wheel_state_applied": accepted, "unchanged": was_unchanged and mutations == 0, "target_resolved": true, "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0)), "topology_rebuilds": 0, "failed": 0 if accepted else 1, "failure_reason": "" if accepted else "no wheel renderer resource changed"}
 
 func apply_wheel_motion_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, motion_mode: int, changed_mask: int, revision: int, authoritative_phase: float, angular_velocity_degrees_per_second: float, reference_seconds: float, random_frequency_hz: float) -> Dictionary:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1

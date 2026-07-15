@@ -339,32 +339,54 @@ runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene 
     out.media_file_name = slot.media_file_name;
     out.provenance = slot.provenance;
     runtime::LinearRgb linear{1.0, 1.0, 1.0};
+    double transmission_gain = 1.0;
     if (slot.filter_resource_id > 0) {
         for (const PhysicalFilterResource &filter : fixture_type.filters) {
             if (filter.id != slot.filter_resource_id) continue;
-            const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({filter.color.x, filter.color.y, filter.color.Y, filter.color.valid});
-            linear = runtime::xyz_to_linear_srgb(xyz);
-            out.gain = static_cast<float>(filter.color.valid ? std::clamp(filter.color.Y, 0.0, 1.0) : 1.0);
+            const PhysicalColorMeasurement *measurement = nullptr;
+            for (const PhysicalColorMeasurement &candidate : filter.measurements) {
+                if (measurement == nullptr || candidate.physical_percent >= measurement->physical_percent) measurement = &candidate;
+            }
+            if (measurement != nullptr) {
+                transmission_gain = std::clamp(measurement->transmission, 0.0, 10.0);
+                std::vector<runtime::SpectralSample> samples;
+                for (const PhysicalSpectralPoint &point : measurement->spectral_points) samples.push_back({point.wavelength_nm, point.energy});
+                const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
+                if (xyz.valid) {
+                    linear = runtime::xyz_to_linear_srgb(xyz);
+                    out.provenance = "filter_measurement_spectrum:" + filter.name;
+                } else if (filter.color.valid) {
+                    linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({filter.color.x, filter.color.y, filter.color.Y, true}));
+                    out.provenance = "filter_measurement_color_cie:" + filter.name;
+                } else {
+                    out.provenance = "filter_measurement_transmission:" + filter.name;
+                }
+            } else if (filter.color.valid) {
+                linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({filter.color.x, filter.color.y, filter.color.Y, true}));
+                transmission_gain = std::clamp(filter.color.Y, 0.0, 10.0);
+                out.provenance = "filter_color_cie:" + filter.name;
+            }
             break;
         }
     } else if (slot.color.valid) {
-        linear = runtime::xyz_to_linear_srgb({slot.color.x * (slot.color.Y / slot.color.y), slot.color.Y, (1.0 - slot.color.x - slot.color.y) * (slot.color.Y / slot.color.y), true});
+        linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({slot.color.x, slot.color.y, slot.color.Y, true}));
     }
-    out.linear_red = static_cast<float>(std::clamp(linear.r, 0.0, 1.0));
-    out.linear_green = static_cast<float>(std::clamp(linear.g, 0.0, 1.0));
-    out.linear_blue = static_cast<float>(std::clamp(linear.b, 0.0, 1.0));
-    double gain = 0.0;
-    const runtime::LinearRgb normalized = runtime::normalize_color_gain(linear, gain);
-    out.srgb_red = static_cast<float>(runtime::srgb_encode(normalized.r));
-    out.srgb_green = static_cast<float>(runtime::srgb_encode(normalized.g));
-    out.srgb_blue = static_cast<float>(runtime::srgb_encode(normalized.b));
-    if (slot.filter_resource_id <= 0) out.gain = static_cast<float>(gain <= 0.0 ? 0.0 : gain);
-    out.identity = out.media_file_name.empty() && std::fabs(out.linear_red - 1.0f) < 0.001f && std::fabs(out.linear_green - 1.0f) < 0.001f && std::fabs(out.linear_blue - 1.0f) < 0.001f && std::fabs(out.gain - 1.0f) < 0.001f;
-    if (!std::isfinite(out.srgb_red) || !std::isfinite(out.srgb_green) || !std::isfinite(out.srgb_blue)) {
+    double color_gain = 0.0;
+    const runtime::LinearRgb normalized = runtime::normalize_color_gain(linear, color_gain);
+    if (color_gain <= 0.0 || !std::isfinite(color_gain)) {
         scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COOK-FALLBACK", "warning", "Wheel Slot color cooked to invalid RGB; using white fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
         out.srgb_red = out.srgb_green = out.srgb_blue = out.linear_red = out.linear_green = out.linear_blue = out.gain = 1.0f;
         out.identity = true;
+        return out;
     }
+    out.linear_red = static_cast<float>(normalized.r);
+    out.linear_green = static_cast<float>(normalized.g);
+    out.linear_blue = static_cast<float>(normalized.b);
+    out.gain = static_cast<float>(color_gain * transmission_gain);
+    out.srgb_red = static_cast<float>(runtime::srgb_encode(normalized.r));
+    out.srgb_green = static_cast<float>(runtime::srgb_encode(normalized.g));
+    out.srgb_blue = static_cast<float>(runtime::srgb_encode(normalized.b));
+    out.identity = out.media_file_name.empty() && std::fabs(out.linear_red - 1.0f) < 0.001f && std::fabs(out.linear_green - 1.0f) < 0.001f && std::fabs(out.linear_blue - 1.0f) < 0.001f && std::fabs(out.gain - 1.0f) < 0.001f;
     return out;
 }
 
@@ -420,7 +442,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             binding.source_program_id = runtime_program.program_id;
             binding.mode = runtime::CompiledWheelMode::Select;
             binding.snap = parser_program.snap;
-            for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.dmx_from, set.dmx_to, set.wheel_slot_index, set.name});
+            for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name});
             if (binding.wheel_renderer_id > 0) scene.wheel_bindings.push_back(binding);
         }
     }

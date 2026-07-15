@@ -318,6 +318,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             integers.push_back(static_cast<int32_t>(input.semantic));
             integers.push_back(push_float(input.default_value));
             integers.push_back(input.use_normalized_value ? 1 : 0);
+            integers.push_back(input.emitter_resource_id);
+            integers.push_back(input.filter_resource_id);
         }
     }
 

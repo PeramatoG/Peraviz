@@ -619,9 +619,9 @@ bool test_gdtf_color_wheel_vertical_slice() {
     <Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries>
     <DMXModes><DMXMode Name="Mode 1" Geometry="Root"><DMXChannels>
       <DMXChannel Offset="1" Geometry="Beam"><LogicalChannel Attribute="Color1" Snap="Yes"><ChannelFunction Name="Color Select" Attribute="Color1" Wheel="ColorWheel1" DMXFrom="0" DMXTo="255">
-        <ChannelSet Name="Open" DMXFrom="0" DMXTo="84" WheelSlotIndex="1" />
-        <ChannelSet Name="Red" DMXFrom="85" DMXTo="169" WheelSlotIndex="2" />
-        <ChannelSet Name="Blue" DMXFrom="170" DMXTo="255" WheelSlotIndex="3" />
+        <ChannelSet Name="Open" DMXFrom="0/1" WheelSlotIndex="1" />
+        <ChannelSet Name="Red" DMXFrom="85/1" WheelSlotIndex="2" />
+        <ChannelSet Name="Blue" DMXFrom="170/1" WheelSlotIndex="3" />
       </ChannelFunction></LogicalChannel></DMXChannel>
     </DMXChannels></DMXMode></DMXModes>
   </FixtureType>
@@ -652,21 +652,38 @@ bool test_gdtf_color_wheel_vertical_slice() {
     bool schema_has_wheel = false;
     for (const auto &section : runtime.schema().sections) schema_has_wheel = schema_has_wheel || section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::WheelSelection);
     if (!schema_has_wheel) return fail("Expected installed runtime schema to enable WheelSelection") == 0;
+    if (scene.wheel_bindings[0].channel_sets.size() != 3) return fail("Expected three effective ChannelSet ranges") == 0;
+    if (scene.wheel_bindings[0].channel_sets[0].dmx_from != 0 || scene.wheel_bindings[0].channel_sets[0].dmx_to != 84) return fail("Expected Open effective range 0..84") == 0;
+    if (scene.wheel_bindings[0].channel_sets[1].dmx_from != 85 || scene.wheel_bindings[0].channel_sets[1].dmx_to != 169) return fail("Expected Red effective range 85..169") == 0;
+    if (scene.wheel_bindings[0].channel_sets[2].dmx_from != 170 || scene.wheel_bindings[0].channel_sets[2].dmx_to != 255) return fail("Expected Blue effective range 170..255") == 0;
     std::vector<uint8_t> dmx(512, 0);
-    dmx[0] = 100;
+    auto expect_slot = [&](uint8_t value, int expected_slot) -> bool {
+        dmx[0] = value;
+        runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+        const auto row = runtime.consume_latest_visual_frame();
+        int int_offset = -1, float_offset = -1;
+        if (!first_wheel_selection_row(row, int_offset, float_offset)) return fail("Expected boundary DMX value to emit WheelSelection") == 0;
+        if (row.integers[int_offset + 4] != expected_slot || row.integers[int_offset + 5] != expected_slot) return fail("Expected boundary DMX value to select requested slot") == 0;
+        return true;
+    };
+    if (!expect_slot(0, 1)) return false;
+    if (!expect_slot(85, 2)) return false;
+    if (!expect_slot(170, 3)) return false;
+    if (!expect_slot(84, 1)) return false;
+    if (!expect_slot(169, 2)) return false;
+    if (!expect_slot(255, 3)) return false;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged seated wheel slot to emit no repeated row") == 0;
+    dmx[0] = 85;
     runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
     const auto red = runtime.consume_latest_visual_frame();
     int int_offset = -1, float_offset = -1;
     if (!first_wheel_selection_row(red, int_offset, float_offset)) return fail("Expected Red DMX value to emit one WheelSelection row") == 0;
-    if (red.integers[int_offset + 4] != 2 || red.integers[int_offset + 5] != 2) return fail("Expected Red ChannelSet WheelSlotIndex 2 in slot A/B") == 0;
     if (!(red.floats[float_offset + 3] > red.floats[float_offset + 5])) return fail("Expected Red aggregate sRGB to be red-dominant") == 0;
-    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged seated wheel slot to emit no repeated row") == 0;
-    dmx[0] = 200;
+    dmx[0] = 170;
     runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
     const auto blue = runtime.consume_latest_visual_frame();
     if (!first_wheel_selection_row(blue, int_offset, float_offset)) return fail("Expected Blue DMX value to emit one WheelSelection row") == 0;
-    if (blue.integers[int_offset + 4] != 3 || blue.integers[int_offset + 5] != 3) return fail("Expected Blue ChannelSet WheelSlotIndex 3 in slot A/B") == 0;
     if (!(blue.floats[float_offset + 5] > blue.floats[float_offset + 3])) return fail("Expected Blue aggregate sRGB to be blue-dominant") == 0;
     return true;
 }
