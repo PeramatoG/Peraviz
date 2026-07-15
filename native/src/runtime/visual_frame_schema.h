@@ -8,7 +8,7 @@
 namespace peraviz::runtime {
 
 constexpr int kVisualProtocolMajor = 2;
-constexpr int kVisualProtocolMinor = 0;
+constexpr int kVisualProtocolMinor = 1;
 constexpr int kVisualSectionDescriptorStride = 5;
 
 enum class VisualSectionType : int32_t {
@@ -39,10 +39,10 @@ enum EmitterColorIntField : int32_t { EmitterColorFixtureId = 0, EmitterColorTar
 enum EmitterColorFloatField : int32_t { EmitterColorRed = 0, EmitterColorGreen = 1, EmitterColorBlue = 2, EmitterColorGain = 3 };
 enum BeamOpticsIntField : int32_t { BeamOpticsFixtureId = 0, BeamOpticsTargetId = 1, BeamOpticsChangedMask = 2 };
 enum BeamOpticsFloatField : int32_t { BeamOpticsHalfAngle = 0, BeamOpticsAngle = 1, BeamOpticsZoomNorm = 2 };
-enum WheelSelectionIntField : int32_t { WheelSelectionFixtureId = 0, WheelSelectionWheelId = 1, WheelSelectionTargetId = 2, WheelSelectionSlotIndex = 3, WheelSelectionChangedMask = 4 };
-enum WheelSelectionFloatField : int32_t { WheelSelectionNormalized = 0 };
-enum WheelMotionIntField : int32_t { WheelMotionFixtureId = 0, WheelMotionWheelId = 1, WheelMotionChangedMask = 2, WheelMotionMode = 3 };
-enum WheelMotionFloatField : int32_t { WheelMotionIndexNorm = 0, WheelMotionRotationNorm = 1, WheelMotionShakeNorm = 2 };
+enum WheelSelectionIntField : int32_t { WheelSelectionFixtureId = 0, WheelSelectionTargetId = 1, WheelSelectionWheelId = 2, WheelSelectionMode = 3, WheelSelectionSlotA = 4, WheelSelectionSlotB = 5, WheelSelectionChangedMask = 6, WheelSelectionRevisionFlags = 7 };
+enum WheelSelectionFloatField : int32_t { WheelSelectionNormalizedPhase = 0, WheelSelectionSplitFraction = 1, WheelSelectionBoundaryAngleDegrees = 2, WheelSelectionAggregateRed = 3, WheelSelectionAggregateGreen = 4, WheelSelectionAggregateBlue = 5, WheelSelectionAggregateGain = 6, WheelSelectionEdgeSoftness = 7 };
+enum WheelMotionIntField : int32_t { WheelMotionFixtureId = 0, WheelMotionTargetId = 1, WheelMotionWheelId = 2, WheelMotionMode = 3, WheelMotionChangedMask = 4, WheelMotionRevision = 5 };
+enum WheelMotionFloatField : int32_t { WheelMotionAuthoritativePhase = 0, WheelMotionAngularVelocityDegreesPerSecond = 1, WheelMotionReferenceSeconds = 2, WheelMotionRandomFrequencyHz = 3 };
 enum TemporalOutputIntField : int32_t { TemporalOutputFixtureId = 0, TemporalOutputTargetId = 1, TemporalOutputMode = 2, TemporalOutputChangedMask = 3 };
 enum TemporalOutputFloatField : int32_t { TemporalOutputStrobeNorm = 0, TemporalOutputOutputNorm = 1 };
 

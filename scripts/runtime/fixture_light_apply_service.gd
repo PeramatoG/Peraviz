@@ -288,6 +288,18 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		"intensity_max": 50.0,
 	}
 
+func apply_wheel_optical_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, mode: int, slot_a: int, slot_b: int, changed_mask: int, revision_flags: int, normalized_phase: float, split_fraction: float, boundary_angle_degrees: float, aggregate_srgb: Color, aggregate_gain: float, edge_softness: float) -> Dictionary:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	var key: String = _fixture_state_key(fixture_uuid) + ":wheel:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
+	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizWheelCoverageApproximation"}
+	return {"applied": true, "wheel_state_applied": true, "topology_rebuilds": 0}
+
+func apply_wheel_motion_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, motion_mode: int, changed_mask: int, revision: int, authoritative_phase: float, angular_velocity_degrees_per_second: float, reference_seconds: float, random_frequency_hz: float) -> Dictionary:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	var key: String = _fixture_state_key(fixture_uuid) + ":wheel_motion:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
+	_diagnostic_info_keys[key] = {"motion_mode": motion_mode, "changed_mask": changed_mask, "revision": revision, "authoritative_phase": authoritative_phase, "angular_velocity_degrees_per_second": angular_velocity_degrees_per_second, "reference_seconds": reference_seconds, "random_frequency_hz": random_frequency_hz}
+	return {"applied": true, "wheel_motion_applied": true, "topology_rebuilds": 0}
+
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_gobo_selection(fixture_uuid, gobo_norm)

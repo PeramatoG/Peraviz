@@ -175,11 +175,11 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 			optics_result["applied"] = bool(optics_result.get("optics_applied", false))
 			return optics_result
 		SECTION_WHEEL_SELECTION:
-			if float_base >= floats.size(): return {"applied": false}
-			light_apply_service.apply_wheel_selection(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], dmx_runtime)
+			if int_base + 7 >= integers.size() or float_base + 7 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid wheel selection payload", "fixture_uuid": fixture_uuid}}
+			return light_apply_service.apply_wheel_optical_state(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], integers[int_base + 6], integers[int_base + 7], floats[float_base], floats[float_base + 1], floats[float_base + 2], Color(floats[float_base + 3], floats[float_base + 4], floats[float_base + 5], 1.0), floats[float_base + 6], floats[float_base + 7])
 		SECTION_WHEEL_MOTION:
-			if float_base + 1 >= floats.size(): return {"applied": false}
-			light_apply_service.apply_wheel_motion(loader, fixture_uuid, changed_mask, frame_delta_sec, floats[float_base], floats[float_base + 1], dmx_runtime)
+			if int_base + 5 >= integers.size() or float_base + 3 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid wheel motion payload", "fixture_uuid": fixture_uuid}}
+			return light_apply_service.apply_wheel_motion_state(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3])
 		SECTION_TEMPORAL_OUTPUT:
 			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_temporal_output(loader, fixture_uuid, floats[float_base], floats[float_base + 1] if float_base + 1 < floats.size() else 1.0)

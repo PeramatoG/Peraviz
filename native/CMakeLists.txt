@@ -131,6 +131,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
+        src/runtime/wheel_runtime_core.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
@@ -256,6 +257,7 @@ if(BUILD_TESTING)
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
+        src/runtime/wheel_runtime_core.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
@@ -287,6 +289,7 @@ if(BUILD_TESTING)
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_xml_reader.cpp
         src/runtime/visual_frame_schema.cpp
+        src/runtime/wheel_runtime_core.cpp
     )
     target_include_directories(peraviz_native_gdtf_runtime_schema_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
