@@ -26,6 +26,13 @@ enum class CompiledSemantic : int32_t {
     Tilt,
     Dimmer,
     Zoom,
+    CieX,
+    CieY,
+    CieBrightness,
+    Cto,
+    Ctb,
+    Ctc,
+    Tint,
     ColorAddRed,
     ColorAddGreen,
     ColorAddBlue,
@@ -42,6 +49,55 @@ struct CompiledDmxByteSource {
     int32_t byte_order = 0;
 };
 
+struct CompiledColorCIE {
+    double x = 0.0;
+    double y = 0.0;
+    double Y = 0.0;
+    bool valid = false;
+};
+
+struct CompiledSpectralPoint {
+    double wavelength_nm = 0.0;
+    double energy = 0.0;
+};
+
+struct CompiledColorMeasurement {
+    double physical_percent = 0.0;
+    double luminous_intensity = 1.0;
+    double transmission = 1.0;
+    std::string interpolation_to = "Linear";
+    std::vector<CompiledSpectralPoint> spectral_points;
+    double xyz_x = 0.0;
+    double xyz_y = 0.0;
+    double xyz_z = 0.0;
+    bool has_spectrum_xyz = false;
+};
+
+struct CompiledEmitterResource {
+    int32_t resource_id = 0;
+    std::string name;
+    CompiledColorCIE color;
+    double dominant_wavelength_nm = 0.0;
+    bool has_dominant_wavelength = false;
+    std::vector<CompiledColorMeasurement> measurements;
+    double fallback_linear_r = 0.0;
+    double fallback_linear_g = 0.0;
+    double fallback_linear_b = 0.0;
+    bool valid = false;
+};
+
+struct CompiledFilterResource {
+    int32_t resource_id = 0;
+    std::string name;
+    CompiledColorCIE color;
+    std::vector<CompiledColorMeasurement> measurements;
+    double fallback_linear_r = 1.0;
+    double fallback_linear_g = 1.0;
+    double fallback_linear_b = 1.0;
+    double fallback_transmission = 1.0;
+    bool valid = false;
+};
+
 struct CompiledDmxSourceProgram {
     int32_t program_id = 0;
     CompiledSemantic semantic = CompiledSemantic::Unknown;
@@ -54,6 +110,9 @@ struct CompiledDmxSourceProgram {
     std::string function_name;
     int32_t geometry_id = 0;
     std::string geometry_name;
+    int32_t emitter_resource_id = 0;
+    int32_t filter_resource_id = 0;
+    std::string color_space_name;
 };
 
 enum class CompiledContributorOperation : int32_t {
@@ -82,6 +141,8 @@ struct CompiledColorInputBinding {
     CompiledSemantic semantic = CompiledSemantic::Unknown;
     double default_value = 0.0;
     bool use_normalized_value = false;
+    int32_t emitter_resource_id = 0;
+    int32_t filter_resource_id = 0;
 };
 
 struct CompiledColorTargetProgram {
@@ -159,6 +220,8 @@ struct CompiledRuntimeScene {
     int32_t zoom_program_count = 0;
     int32_t color_program_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
+    std::vector<CompiledEmitterResource> emitter_resources;
+    std::vector<CompiledFilterResource> filter_resources;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;
     std::vector<CompiledColorTargetProgram> color_targets;

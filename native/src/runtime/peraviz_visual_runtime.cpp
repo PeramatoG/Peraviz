@@ -1,4 +1,5 @@
 #include "runtime/peraviz_visual_runtime.h"
+#include "runtime/color_science.h"
 
 #include <algorithm>
 #include <cmath>
@@ -39,6 +40,8 @@ void PeravizVisualRuntimeCore::clear() {
     tilt_component_id_by_fixture_.clear();
     installed_visual_mask_by_fixture_.clear();
     source_programs_by_id_.clear();
+    emitter_resources_by_id_.clear();
+    filter_resources_by_id_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
@@ -51,6 +54,8 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     if (scene.fixtures.empty()) {
         diagnostics_.push_back({"PVZ-RUNTIME-EMPTY-SCENE", "error", "Compiled runtime scene contains no fixture instances.", "CompiledRuntimeScene"});
     }
+    for (const CompiledEmitterResource &resource : scene.emitter_resources) emitter_resources_by_id_[resource.resource_id] = resource;
+    for (const CompiledFilterResource &resource : scene.filter_resources) filter_resources_by_id_[resource.resource_id] = resource;
     for (const CompiledDmxSourceProgram &program : scene.source_programs) {
         if (program.program_id <= 0 || source_programs_by_id_.find(program.program_id) != source_programs_by_id_.end()) {
             diagnostics_.push_back({"PVZ-RUNTIME-DUPLICATE-PROGRAM", "error", "Compiled source program ID is invalid or duplicated.", std::to_string(program.program_id)});
@@ -368,7 +373,7 @@ SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(Comp
 
 // Returns true when a compiled semantic belongs to the corrected color target slice.
 bool PeravizVisualRuntimeCore::is_color_semantic(CompiledSemantic semantic) {
-    return semantic == CompiledSemantic::ColorAddRed || semantic == CompiledSemantic::ColorAddGreen || semantic == CompiledSemantic::ColorAddBlue || semantic == CompiledSemantic::ColorAddWhite || semantic == CompiledSemantic::ColorAddAmber || semantic == CompiledSemantic::ColorAddLime || semantic == CompiledSemantic::ColorSubCyan || semantic == CompiledSemantic::ColorSubMagenta || semantic == CompiledSemantic::ColorSubYellow;
+    return semantic == CompiledSemantic::ColorAddRed || semantic == CompiledSemantic::ColorAddGreen || semantic == CompiledSemantic::ColorAddBlue || semantic == CompiledSemantic::ColorAddWhite || semantic == CompiledSemantic::ColorAddAmber || semantic == CompiledSemantic::ColorAddLime || semantic == CompiledSemantic::ColorSubCyan || semantic == CompiledSemantic::ColorSubMagenta || semantic == CompiledSemantic::ColorSubYellow || semantic == CompiledSemantic::CieX || semantic == CompiledSemantic::CieY || semantic == CompiledSemantic::CieBrightness || semantic == CompiledSemantic::Cto || semantic == CompiledSemantic::Ctb || semantic == CompiledSemantic::Ctc || semantic == CompiledSemantic::Tint;
 }
 
 // Returns the maximum assembled raw DMX value for an ordered source width.
@@ -529,44 +534,90 @@ bool PeravizVisualRuntimeCore::program_uses_changed_offset(const CompiledDmxSour
 
 // Selects normalized or physical color input values for the supported fallback color slice.
 float PeravizVisualRuntimeCore::color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated) {
-    const bool additive = semantic == CompiledSemantic::ColorAddRed || semantic == CompiledSemantic::ColorAddGreen || semantic == CompiledSemantic::ColorAddBlue || semantic == CompiledSemantic::ColorAddWhite || semantic == CompiledSemantic::ColorAddAmber || semantic == CompiledSemantic::ColorAddLime;
-    if (additive && evaluated.physical_value >= 0.0f && evaluated.physical_value <= 1.0f) return evaluated.physical_value;
+    const bool unit_physical = semantic == CompiledSemantic::ColorAddRed || semantic == CompiledSemantic::ColorAddGreen || semantic == CompiledSemantic::ColorAddBlue || semantic == CompiledSemantic::ColorAddWhite || semantic == CompiledSemantic::ColorAddAmber || semantic == CompiledSemantic::ColorAddLime || semantic == CompiledSemantic::CieX || semantic == CompiledSemantic::CieY || semantic == CompiledSemantic::CieBrightness || semantic == CompiledSemantic::Tint;
+    if (unit_physical && evaluated.physical_value >= -1.0f && evaluated.physical_value <= 1.0f) return evaluated.physical_value;
+    if ((semantic == CompiledSemantic::Cto || semantic == CompiledSemantic::Ctb || semantic == CompiledSemantic::Ctc) && evaluated.physical_value > 0.0f) return evaluated.physical_value;
     return std::clamp(evaluated.normalized_value, 0.0f, 1.0f);
 }
 
 // Composes one complete color target once into renderer-ready sRGB plus linear gain.
-PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emitter_color(const ColorTargetRuntime &target) {
-    float add_r = 0.0f, add_g = 0.0f, add_b = 0.0f;
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emitter_color(const ColorTargetRuntime &target) const {
+    runtime::LinearRgb add;
     float sub_c = 0.0f, sub_m = 0.0f, sub_y = 0.0f;
+    std::vector<std::pair<const CompiledFilterResource *, float>> physical_filters;
     bool has_additive = target.target.additive_source;
+    bool has_cie_x = false, has_cie_y = false, has_cie_brightness = false;
+    float cie_x = 0.0f, cie_y = 0.0f, cie_brightness = 0.0f;
+    float cct_kelvin = 0.0f;
+    float tint_value = 0.0f;
+    bool has_tint = false;
     for (const ColorInputRuntime &input : target.inputs) {
         const float v = std::clamp(input.value, 0.0f, 1.0f);
+        const auto emitter_it = emitter_resources_by_id_.find(input.binding.emitter_resource_id);
+        const auto filter_it = filter_resources_by_id_.find(input.binding.filter_resource_id);
+        if (emitter_it != emitter_resources_by_id_.end() && emitter_it->second.valid) {
+            const CompiledEmitterResource &emitter = emitter_it->second;
+            add.r += emitter.fallback_linear_r * v;
+            add.g += emitter.fallback_linear_g * v;
+            add.b += emitter.fallback_linear_b * v;
+            has_additive = true;
+            continue;
+        }
+        if (filter_it != filter_resources_by_id_.end() && filter_it->second.valid) {
+            physical_filters.push_back({&filter_it->second, v});
+            continue;
+        }
         switch (input.binding.semantic) {
-            case CompiledSemantic::ColorAddRed: add_r += v; has_additive = true; break;
-            case CompiledSemantic::ColorAddGreen: add_g += v; has_additive = true; break;
-            case CompiledSemantic::ColorAddBlue: add_b += v; has_additive = true; break;
-            case CompiledSemantic::ColorAddWhite: add_r += v; add_g += v; add_b += v; has_additive = true; break;
-            case CompiledSemantic::ColorAddAmber: add_r += v; add_g += v * 0.45f; has_additive = true; break;
-            case CompiledSemantic::ColorAddLime: add_g += v; add_r += v * 0.15f; has_additive = true; break;
+            case CompiledSemantic::ColorAddRed: add.r += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddGreen: add.g += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddBlue: add.b += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddWhite: add.r += v; add.g += v; add.b += v; has_additive = true; break;
+            case CompiledSemantic::ColorAddAmber: add.r += v; add.g += v * 0.45f; has_additive = true; break;
+            case CompiledSemantic::ColorAddLime: add.g += v; add.r += v * 0.15f; has_additive = true; break;
             case CompiledSemantic::ColorSubCyan: sub_c = std::max(sub_c, v); break;
             case CompiledSemantic::ColorSubMagenta: sub_m = std::max(sub_m, v); break;
             case CompiledSemantic::ColorSubYellow: sub_y = std::max(sub_y, v); break;
+            case CompiledSemantic::CieX: cie_x = input.value; has_cie_x = true; break;
+            case CompiledSemantic::CieY: cie_y = input.value; has_cie_y = true; break;
+            case CompiledSemantic::CieBrightness: cie_brightness = std::max(0.0f, input.value); has_cie_brightness = true; break;
+            case CompiledSemantic::Cto:
+            case CompiledSemantic::Ctb:
+            case CompiledSemantic::Ctc: cct_kelvin = input.value; break;
+            case CompiledSemantic::Tint: tint_value = input.value; has_tint = true; break;
             default: break;
         }
     }
-    float red = has_additive ? add_r : 1.0f;
-    float green = has_additive ? add_g : 1.0f;
-    float blue = has_additive ? add_b : 1.0f;
-    red *= 1.0f - std::clamp(sub_c, 0.0f, 1.0f);
-    green *= 1.0f - std::clamp(sub_m, 0.0f, 1.0f);
-    blue *= 1.0f - std::clamp(sub_y, 0.0f, 1.0f);
-    const float gain = std::max({red, green, blue, 0.0f});
-    constexpr float kColorGainEpsilon = 0.000001f;
-    if (gain <= kColorGainEpsilon) {
-        return {0.0f, 0.0f, 0.0f, 0.0f, true, true};
+    runtime::LinearRgb linear = has_additive ? add : runtime::LinearRgb{1.0, 1.0, 1.0};
+    if (has_cie_x && has_cie_y && has_cie_brightness) {
+        linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({cie_x, cie_y, cie_brightness, true}));
     }
-    const float inv_gain = 1.0f / gain;
-    return {linear_to_srgb(red * inv_gain), linear_to_srgb(green * inv_gain), linear_to_srgb(blue * inv_gain), gain, true, true};
+    for (const auto &entry : physical_filters) {
+        const CompiledFilterResource &filter = *entry.first;
+        const double insertion = std::clamp<double>(entry.second, 0.0, 1.0);
+        const double transmission = 1.0 + (std::clamp(filter.fallback_transmission, 0.0, 1.0) - 1.0) * insertion;
+        linear.r *= transmission * (1.0 + (std::clamp(filter.fallback_linear_r, 0.0, 1.0) - 1.0) * insertion);
+        linear.g *= transmission * (1.0 + (std::clamp(filter.fallback_linear_g, 0.0, 1.0) - 1.0) * insertion);
+        linear.b *= transmission * (1.0 + (std::clamp(filter.fallback_linear_b, 0.0, 1.0) - 1.0) * insertion);
+    }
+    linear.r *= 1.0f - std::clamp(sub_c, 0.0f, 1.0f);
+    linear.g *= 1.0f - std::clamp(sub_m, 0.0f, 1.0f);
+    linear.b *= 1.0f - std::clamp(sub_y, 0.0f, 1.0f);
+    if (cct_kelvin > 0.0f && std::isfinite(cct_kelvin)) {
+        const runtime::LinearRgb white = runtime::cct_to_linear_srgb(cct_kelvin);
+        linear.r *= white.r;
+        linear.g *= white.g;
+        linear.b *= white.b;
+    }
+    if (has_tint) {
+        const double shift = std::clamp<double>(tint_value, -1.0, 1.0) * 0.08;
+        linear.g *= 1.0 + shift;
+        linear.r *= 1.0 - shift * 0.5;
+        linear.b *= 1.0 - shift * 0.5;
+    }
+    double gain = 0.0;
+    const runtime::LinearRgb normalized = runtime::normalize_color_gain(linear, gain);
+    if (gain <= 0.0) return {0.0f, 0.0f, 0.0f, 0.0f, true, true};
+    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), static_cast<float>(gain), true, true};
 }
 
 // Adds cumulative per-category visual mask counters for diagnostics.
