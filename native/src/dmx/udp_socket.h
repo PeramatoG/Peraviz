@@ -8,6 +8,10 @@
 
 namespace peraviz::dmx {
 
+struct UdpSocketBindOptions {
+    bool reuse_address = false;
+};
+
 class UdpSocket {
 public:
     UdpSocket() = default;
@@ -16,7 +20,7 @@ public:
     UdpSocket(const UdpSocket &) = delete;
     UdpSocket &operator=(const UdpSocket &) = delete;
 
-    bool open_and_bind(const std::string &bind_ip, uint16_t port, std::string &error_message);
+    bool open_and_bind(const std::string &bind_ip, uint16_t port, const UdpSocketBindOptions &options, std::string &error_message);
     void close();
 
     bool is_open() const;

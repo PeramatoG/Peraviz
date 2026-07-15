@@ -1,23 +1,78 @@
 #include "dmx/artnet_dmx_parser.h"
 #include "dmx/artnet_receiver.h"
 #include "dmx/dmx_universe_cache.h"
+#include "dmx/dmx_platform.h"
 
 #include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <chrono>
 #include <iostream>
+#include <string>
 #include <thread>
 #ifdef _WIN32
 #include <winsock2.h>
 #else
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
 #include <vector>
 
 namespace {
+
+
+// Returns true when the platform socket handle is not valid.
+bool is_test_socket_invalid(peraviz::dmx::SocketHandle socket_handle) {
+#ifdef _WIN32
+    return socket_handle == static_cast<peraviz::dmx::SocketHandle>(INVALID_SOCKET);
+#else
+    return socket_handle < 0;
+#endif
+}
+
+// Creates a UDP socket that simulates another Art-Net application already listening with address reuse enabled.
+bool create_reusable_bound_socket(peraviz::dmx::SocketHandle &socket_handle, uint16_t &bound_port, std::string &error_message) {
+    socket_handle = static_cast<peraviz::dmx::SocketHandle>(::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
+    if (is_test_socket_invalid(socket_handle)) {
+        error_message = "Failed to create existing UDP socket";
+        return false;
+    }
+
+    if (!peraviz::dmx::set_socket_reuse_address(socket_handle, true, error_message)) {
+        peraviz::dmx::close_socket(socket_handle);
+        return false;
+    }
+
+    sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(0);
+    address.sin_addr.s_addr = htonl(0x7f000001UL);
+    if (::bind(socket_handle, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
+        const int error_code = peraviz::dmx::get_last_socket_error();
+        error_message = "Failed to bind existing UDP socket. Error=" + std::to_string(error_code);
+        const std::string error_detail = peraviz::dmx::describe_socket_error(error_code);
+        if (!error_detail.empty()) {
+            error_message += " (" + error_detail + ")";
+        }
+        peraviz::dmx::close_socket(socket_handle);
+        return false;
+    }
+
+#ifdef _WIN32
+    int address_size = sizeof(address);
+#else
+    socklen_t address_size = sizeof(address);
+#endif
+    if (getsockname(socket_handle, reinterpret_cast<sockaddr *>(&address), &address_size) != 0) {
+        error_message = "Failed to read existing UDP socket port";
+        peraviz::dmx::close_socket(socket_handle);
+        return false;
+    }
+    bound_port = ntohs(address.sin_port);
+    return true;
+}
 
 // Reports a test failure message and returns a non-zero exit code.
 int fail(const char *message) {
@@ -205,6 +260,69 @@ int test_universe_cache() {
     return 0;
 }
 
+
+// Verifies Art-Net can start after another reusable socket has already bound the endpoint.
+int test_receiver_starts_after_existing_reusable_bind() {
+    peraviz::dmx::SocketSystemInitializer socket_initializer;
+    if (!socket_initializer.is_valid()) {
+        return fail("Socket subsystem failed to initialize for reusable bind test");
+    }
+
+    peraviz::dmx::SocketHandle existing_socket;
+#ifdef _WIN32
+    existing_socket = static_cast<peraviz::dmx::SocketHandle>(INVALID_SOCKET);
+#else
+    existing_socket = -1;
+#endif
+    uint16_t port = 0;
+    std::string error_message;
+    if (!create_reusable_bound_socket(existing_socket, port, error_message)) {
+        return fail(error_message.c_str());
+    }
+
+    peraviz::dmx::ArtNetReceiver receiver;
+    if (!receiver.start("127.0.0.1", port)) {
+        const std::string receiver_error = receiver.get_last_error();
+        peraviz::dmx::close_socket(existing_socket);
+        return fail(("Receiver failed to share reusable UDP endpoint: " + receiver_error).c_str());
+    }
+
+    std::vector<uint8_t> packet = make_artdmx_packet(4, 7, 0, 6);
+    if (!send_udp_packets(port, {packet})) {
+        receiver.stop();
+        peraviz::dmx::close_socket(existing_socket);
+        return fail("Failed to send packet to shared Art-Net receiver");
+    }
+    if (!wait_for_counter(receiver, 7, 1)) {
+        receiver.stop();
+        peraviz::dmx::close_socket(existing_socket);
+        return fail("Receiver did not parse packet on shared UDP endpoint");
+    }
+
+    receiver.stop();
+    if (!receiver.start("127.0.0.1", port)) {
+        const std::string receiver_error = receiver.get_last_error();
+        peraviz::dmx::close_socket(existing_socket);
+        return fail(("Receiver failed to restart on shared UDP endpoint: " + receiver_error).c_str());
+    }
+
+    std::vector<uint8_t> restart_packet = make_artdmx_packet(5, 8, 0, 6);
+    if (!send_udp_packets(port, {restart_packet})) {
+        receiver.stop();
+        peraviz::dmx::close_socket(existing_socket);
+        return fail("Failed to send packet after shared receiver restart");
+    }
+    if (!wait_for_counter(receiver, 8, 1)) {
+        receiver.stop();
+        peraviz::dmx::close_socket(existing_socket);
+        return fail("Receiver did not parse packet after shared UDP restart");
+    }
+
+    receiver.stop();
+    peraviz::dmx::close_socket(existing_socket);
+    return 0;
+}
+
 // Verifies receiver burst draining and latest-wins sequence handling through UDP.
 int test_receiver_sequence() {
     peraviz::dmx::ArtNetReceiver receiver;
@@ -249,6 +367,9 @@ int main() {
         return rc;
     }
     if (const int rc = test_receiver_sequence(); rc != 0) {
+        return rc;
+    }
+    if (const int rc = test_receiver_starts_after_existing_reusable_bind(); rc != 0) {
         return rc;
     }
     return 0;

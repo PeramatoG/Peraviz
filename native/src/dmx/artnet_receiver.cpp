@@ -37,14 +37,19 @@ bool ArtNetReceiver::start(const std::string &bind_ip, uint16_t port) {
     }
 
     std::string error_message;
-    if (!socket_.open_and_bind(bind_ip, port, error_message) ||
-        !socket_.set_reuse_address(true, error_message) ||
+    const UdpSocketBindOptions bind_options {true};
+    if (!socket_.open_and_bind(bind_ip, port, bind_options, error_message) ||
         !socket_.set_non_blocking(true, error_message) ||
         !socket_.set_receive_buffer(4 * 1024 * 1024, error_message)) {
         std::lock_guard<std::mutex> lock(error_mutex_);
         last_error_ = error_message;
         socket_.close();
         return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(error_mutex_);
+        last_error_.clear();
     }
 
     running_.store(true, std::memory_order_release);
