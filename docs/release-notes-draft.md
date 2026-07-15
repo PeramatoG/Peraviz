@@ -22,6 +22,8 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.
+
 - Added the first native BeamOptics foundation: setup-time Beam profiles, native Zoom ChannelFunction compilation, target-oriented BeamOptics rows, cached optics targets, official/model/render aperture-radius diagnostics, and parametric Lightweight Prism near/far spread updates, corrected lens-side/far-end axial radius mapping, and packed shader instance parameters to stay within Godot renderer limits, while using explicit GDTF BeamRadius as the preferred beam-only near-aperture source when available.
 - Kept BeamOptics scale corrections limited to beam geometry and preserved imported 3D model sizes unchanged.
 - Kept renderer color state target-local so Dimmer, Color and BeamOptics updates reuse cached per-Beam color/gain/intensity without fixture-wide color bleed.

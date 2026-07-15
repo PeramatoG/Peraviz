@@ -129,6 +129,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
@@ -253,6 +254,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_visual_runtime_tests
         tests/visual_runtime_core_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp

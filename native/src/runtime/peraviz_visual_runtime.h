@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/visual_frame_schema.h"
+#include "runtime/visual_runtime_types.h"
 
 #include <array>
 #include <cstdint>
@@ -130,7 +131,7 @@ private:
     static bool nearly_equal(float a, float b, float epsilon);
     static bool program_uses_changed_offset(const CompiledDmxSourceProgram &program, const std::vector<int> &changed_offsets);
     static float color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated);
-    static CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target);
+    CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target) const;
     void add_visual_mask_stats(uint32_t visual_mask);
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
     FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);
@@ -145,6 +146,8 @@ private:
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
     std::unordered_map<int32_t, InstalledSourceProgram> source_programs_by_id_;
+    std::unordered_map<int32_t, CompiledEmitterResource> emitter_resources_by_id_;
+    std::unordered_map<int32_t, CompiledFilterResource> filter_resources_by_id_;
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;

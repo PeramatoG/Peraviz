@@ -8,6 +8,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <functional>
+#include <cmath>
+#include <sstream>
 #include <unordered_map>
 
 namespace peraviz::gdtf_runtime {
@@ -76,6 +78,17 @@ bool match_official_pattern(const std::string &name, const AttributePattern &pat
 // Returns a case-insensitive XML attribute value from parser-owned GDTF traversal.
 std::string read_attr(tinyxml2::XMLElement *element, const char *upper, const char *lower) {
     return dmx::read_attr_ci(element, upper, lower);
+}
+
+// Parses a physical ColorCIE attribute and normalizes percentage-style Y values.
+bool parse_color_cie_value(const std::string &raw, PhysicalColorCIE &out) {
+    std::string value = raw;
+    for (char &ch : value) if (ch == ',' || ch == ';') ch = ' ';
+    std::istringstream stream(value);
+    if (!(stream >> out.x >> out.y >> out.Y)) return false;
+    if (out.Y > 1.0) out.Y *= 0.01;
+    out.valid = std::isfinite(out.x) && std::isfinite(out.y) && std::isfinite(out.Y) && out.x >= 0.0 && out.y > 0.0 && out.Y >= 0.0;
+    return out.valid;
 }
 
 // Reads a float XML attribute with common GDTF casing variants.
@@ -243,6 +256,67 @@ int32_t geometry_id_for(CompiledGdtfFixtureType &fixture, std::unordered_map<std
     return id;
 }
 
+// Parses physical color measurements from an Emitter or Filter resource.
+void parse_physical_measurements(tinyxml2::XMLElement *resource, std::vector<PhysicalColorMeasurement> &measurements) {
+    for (tinyxml2::XMLElement *measurement : dmx::collect_direct_children_by_name(resource, "measurement")) {
+        PhysicalColorMeasurement parsed;
+        read_float_attr(measurement, "Physical", "physical", parsed.physical_percent);
+        read_float_attr(measurement, "LuminousIntensity", "luminousintensity", parsed.luminous_intensity);
+        read_float_attr(measurement, "Transmission", "transmission", parsed.transmission);
+        const std::string interpolation = dmx::trim_ascii(read_attr(measurement, "InterpolationTo", "interpolationto"));
+        if (!interpolation.empty()) parsed.interpolation_to = interpolation;
+        for (tinyxml2::XMLElement *point : dmx::collect_direct_children_by_name(measurement, "measurementpoint")) {
+            PhysicalSpectralPoint spectral;
+            if (read_float_attr(point, "WaveLength", "wavelength", spectral.wavelength_nm) && read_float_attr(point, "Energy", "energy", spectral.energy)) {
+                parsed.spectral_points.push_back(spectral);
+            }
+        }
+        measurements.push_back(parsed);
+    }
+    std::sort(measurements.begin(), measurements.end(), [](const PhysicalColorMeasurement &a, const PhysicalColorMeasurement &b) { return a.physical_percent < b.physical_percent; });
+}
+
+// Parses parser-owned immutable Emitter and Filter physical color resources.
+void parse_physical_color_resources(tinyxml2::XMLElement *root, CompiledGdtfFixtureType &fixture) {
+    int32_t next_emitter_id = 1;
+    int32_t next_filter_id = 1;
+    for (tinyxml2::XMLElement *physical : dmx::collect_elements_by_name(root, "physicaldescriptions")) {
+        for (tinyxml2::XMLElement *emitters : dmx::collect_direct_children_by_name(physical, "emitters")) {
+            for (tinyxml2::XMLElement *emitter : dmx::collect_direct_children_by_name(emitters, "emitter")) {
+                PhysicalEmitterResource parsed;
+                parsed.id = next_emitter_id++;
+                parsed.name = dmx::trim_ascii(read_attr(emitter, "Name", "name"));
+                if (parsed.name.empty()) continue;
+                parse_color_cie_value(read_attr(emitter, "Color", "color"), parsed.color);
+                parsed.has_dominant_wavelength = read_float_attr(emitter, "DominantWaveLength", "dominantwavelength", parsed.dominant_wavelength_nm);
+                parse_physical_measurements(emitter, parsed.measurements);
+                fixture.emitters.push_back(parsed);
+            }
+        }
+        for (tinyxml2::XMLElement *filters : dmx::collect_direct_children_by_name(physical, "filters")) {
+            for (tinyxml2::XMLElement *filter : dmx::collect_direct_children_by_name(filters, "filter")) {
+                PhysicalFilterResource parsed;
+                parsed.id = next_filter_id++;
+                parsed.name = dmx::trim_ascii(read_attr(filter, "Name", "name"));
+                if (parsed.name.empty()) continue;
+                parse_color_cie_value(read_attr(filter, "Color", "color"), parsed.color);
+                parse_physical_measurements(filter, parsed.measurements);
+                fixture.filters.push_back(parsed);
+            }
+        }
+    }
+}
+
+// Resolves a ChannelFunction physical resource link to a parser-owned stable integer ID.
+template <typename Resource>
+int32_t resolve_physical_resource_link(const std::vector<Resource> &resources, const std::string &name) {
+    if (name.empty()) return 0;
+    for (const Resource &resource : resources) {
+        if (resource.name == name) return resource.id;
+    }
+    return -1;
+}
+
 } // namespace
 
 // Produces the canonical serialization-neutral identity used by Peraviz and Perastage test vectors.
@@ -290,6 +364,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         return fixture;
     }
     fixture.selected_modes_found = 1;
+    parse_physical_color_resources(doc.RootElement(), fixture);
     fixture.dmxchannels_containers_found = count_mode_dmxchannels_containers(selected_mode);
     const std::unordered_map<std::string, std::string> geometry_paths =
         build_geometry_paths(doc.RootElement(), dmx::trim_ascii(read_attr(selected_mode, "Geometry", "geometry")));
@@ -374,6 +449,11 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 program.physical_to = physical_to;
                 program.attribute_name = attribute_name;
                 program.function_name = function_name;
+                program.emitter_resource_id = resolve_physical_resource_link(fixture.emitters, dmx::trim_ascii(read_attr(fn, "Emitter", "emitter")));
+                program.filter_resource_id = resolve_physical_resource_link(fixture.filters, dmx::trim_ascii(read_attr(fn, "Filter", "filter")));
+                program.color_space_name = dmx::trim_ascii(read_attr(fn, "ColorSpace", "colorspace"));
+                if (program.emitter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-EMITTER-LINK-MISSING", "warning", "ChannelFunction references an unknown Emitter.", attribute_name});
+                if (program.filter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-FILTER-LINK-MISSING", "warning", "ChannelFunction references an unknown Filter.", attribute_name});
                 fixture.channel_programs.push_back(program);
                 if (dmx::lower_ascii(attribute_name) == "dimmer") ++fixture.dimmer_program_count;
                 if (dmx::lower_ascii(attribute_name) == "pan") ++fixture.pan_program_count;

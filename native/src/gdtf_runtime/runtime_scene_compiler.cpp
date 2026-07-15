@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
+#include "runtime/color_science.h"
 
 namespace peraviz::gdtf_runtime {
 namespace {
@@ -41,6 +42,13 @@ runtime::CompiledSemantic semantic_for_attribute(const AttributeIdentity &attrib
     if (lower == "coloradd_w") return runtime::CompiledSemantic::ColorAddWhite;
     if (lower == "coloradd_ry") return runtime::CompiledSemantic::ColorAddAmber;
     if (lower == "coloradd_gy") return runtime::CompiledSemantic::ColorAddLime;
+    if (lower == "cie_x") return runtime::CompiledSemantic::CieX;
+    if (lower == "cie_y") return runtime::CompiledSemantic::CieY;
+    if (lower == "cie_brightness") return runtime::CompiledSemantic::CieBrightness;
+    if (lower == "cto") return runtime::CompiledSemantic::Cto;
+    if (lower == "ctb") return runtime::CompiledSemantic::Ctb;
+    if (lower == "ctc") return runtime::CompiledSemantic::Ctc;
+    if (lower == "tint") return runtime::CompiledSemantic::Tint;
     if (lower == "colorsub_c" || lower == "cyan") return runtime::CompiledSemantic::ColorSubCyan;
     if (lower == "colorsub_m" || lower == "magenta") return runtime::CompiledSemantic::ColorSubMagenta;
     if (lower == "colorsub_y" || lower == "yellow") return runtime::CompiledSemantic::ColorSubYellow;
@@ -54,7 +62,7 @@ runtime::CompiledSemantic semantic_for_attribute(const AttributeIdentity &attrib
 
 // Returns true when the corrected color slice supports this semantic end to end.
 bool is_supported_color_semantic(runtime::CompiledSemantic semantic) {
-    return semantic == runtime::CompiledSemantic::ColorAddRed || semantic == runtime::CompiledSemantic::ColorAddGreen || semantic == runtime::CompiledSemantic::ColorAddBlue || semantic == runtime::CompiledSemantic::ColorAddWhite || semantic == runtime::CompiledSemantic::ColorAddAmber || semantic == runtime::CompiledSemantic::ColorAddLime || semantic == runtime::CompiledSemantic::ColorSubCyan || semantic == runtime::CompiledSemantic::ColorSubMagenta || semantic == runtime::CompiledSemantic::ColorSubYellow;
+    return semantic == runtime::CompiledSemantic::ColorAddRed || semantic == runtime::CompiledSemantic::ColorAddGreen || semantic == runtime::CompiledSemantic::ColorAddBlue || semantic == runtime::CompiledSemantic::ColorAddWhite || semantic == runtime::CompiledSemantic::ColorAddAmber || semantic == runtime::CompiledSemantic::ColorAddLime || semantic == runtime::CompiledSemantic::ColorSubCyan || semantic == runtime::CompiledSemantic::ColorSubMagenta || semantic == runtime::CompiledSemantic::ColorSubYellow || semantic == runtime::CompiledSemantic::CieX || semantic == runtime::CompiledSemantic::CieY || semantic == runtime::CompiledSemantic::CieBrightness || semantic == runtime::CompiledSemantic::Cto || semantic == runtime::CompiledSemantic::Ctb || semantic == runtime::CompiledSemantic::Ctc || semantic == runtime::CompiledSemantic::Tint;
 }
 
 // Finds a parser-owned attribute identity by ID.
@@ -292,6 +300,9 @@ void append_color_targets(runtime::CompiledRuntimeScene &scene,
         runtime_program.function_name = parser_program.function_name.empty() ? parser_program.attribute_name : parser_program.function_name;
         runtime_program.geometry_id = parser_program.geometry_instance_id;
         runtime_program.geometry_name = geometry_it->second->path;
+        runtime_program.emitter_resource_id = parser_program.emitter_resource_id > 0 ? stable_id(patch.fixture_uuid, "emitter:" + std::to_string(parser_program.emitter_resource_id)) : 0;
+        runtime_program.filter_resource_id = parser_program.filter_resource_id > 0 ? stable_id(patch.fixture_uuid, "filter:" + std::to_string(parser_program.filter_resource_id)) : 0;
+        runtime_program.color_space_name = parser_program.color_space_name;
         scene.source_programs.push_back(runtime_program);
         for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
             if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
@@ -307,7 +318,7 @@ void append_color_targets(runtime::CompiledRuntimeScene &scene,
             const bool additive = semantic == runtime::CompiledSemantic::ColorAddRed || semantic == runtime::CompiledSemantic::ColorAddGreen || semantic == runtime::CompiledSemantic::ColorAddBlue || semantic == runtime::CompiledSemantic::ColorAddWhite || semantic == runtime::CompiledSemantic::ColorAddAmber || semantic == runtime::CompiledSemantic::ColorAddLime;
             target.additive_source = target.additive_source || additive;
             const bool valid_additive_physical = !additive || (parser_program.physical_from >= 0.0 && parser_program.physical_from <= 1.0 && parser_program.physical_to >= 0.0 && parser_program.physical_to <= 1.0);
-            target.inputs.push_back({runtime_program.program_id, semantic, 0.0, !valid_additive_physical});
+            target.inputs.push_back({runtime_program.program_id, semantic, 0.0, !valid_additive_physical, runtime_program.emitter_resource_id, runtime_program.filter_resource_id});
         }
     }
     for (auto &[_, target] : targets_by_beam_id) {
@@ -341,6 +352,59 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const CompiledGdtfFixtureType &fixture_type = cache_it->second;
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
+        }
+        for (const PhysicalEmitterResource &emitter : fixture_type.emitters) {
+            runtime::CompiledEmitterResource compiled;
+            compiled.resource_id = stable_id(patch.fixture_uuid, "emitter:" + std::to_string(emitter.id));
+            compiled.name = emitter.name;
+            compiled.color = {emitter.color.x, emitter.color.y, emitter.color.Y, emitter.color.valid};
+            compiled.dominant_wavelength_nm = emitter.dominant_wavelength_nm;
+            compiled.has_dominant_wavelength = emitter.has_dominant_wavelength;
+            for (const PhysicalColorMeasurement &measurement : emitter.measurements) {
+                runtime::CompiledColorMeasurement cm;
+                cm.physical_percent = measurement.physical_percent;
+                cm.luminous_intensity = measurement.luminous_intensity;
+                cm.transmission = measurement.transmission;
+                cm.interpolation_to = measurement.interpolation_to;
+                for (const PhysicalSpectralPoint &point : measurement.spectral_points) cm.spectral_points.push_back({point.wavelength_nm, point.energy});
+                std::vector<runtime::SpectralSample> samples;
+                for (const runtime::CompiledSpectralPoint &point : cm.spectral_points) samples.push_back({point.wavelength_nm, point.energy});
+                const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
+                cm.has_spectrum_xyz = xyz.valid;
+                cm.xyz_x = xyz.x; cm.xyz_y = xyz.y; cm.xyz_z = xyz.z;
+                compiled.measurements.push_back(cm);
+            }
+            const runtime::CieXyz xyz = compiled.color.valid ? runtime::cie_xyy_to_xyz({compiled.color.x, compiled.color.y, compiled.color.Y, true}) : runtime::dominant_wavelength_to_xyz(compiled.dominant_wavelength_nm);
+            const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
+            compiled.fallback_linear_r = rgb.r; compiled.fallback_linear_g = rgb.g; compiled.fallback_linear_b = rgb.b;
+            compiled.valid = xyz.valid || !compiled.measurements.empty();
+            out.emitter_resources.push_back(compiled);
+        }
+        for (const PhysicalFilterResource &filter : fixture_type.filters) {
+            runtime::CompiledFilterResource compiled;
+            compiled.resource_id = stable_id(patch.fixture_uuid, "filter:" + std::to_string(filter.id));
+            compiled.name = filter.name;
+            compiled.color = {filter.color.x, filter.color.y, filter.color.Y, filter.color.valid};
+            for (const PhysicalColorMeasurement &measurement : filter.measurements) {
+                runtime::CompiledColorMeasurement cm;
+                cm.physical_percent = measurement.physical_percent;
+                cm.luminous_intensity = measurement.luminous_intensity;
+                cm.transmission = measurement.transmission;
+                cm.interpolation_to = measurement.interpolation_to;
+                for (const PhysicalSpectralPoint &point : measurement.spectral_points) cm.spectral_points.push_back({point.wavelength_nm, point.energy});
+                std::vector<runtime::SpectralSample> samples;
+                for (const runtime::CompiledSpectralPoint &point : cm.spectral_points) samples.push_back({point.wavelength_nm, point.energy});
+                const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
+                cm.has_spectrum_xyz = xyz.valid;
+                cm.xyz_x = xyz.x; cm.xyz_y = xyz.y; cm.xyz_z = xyz.z;
+                compiled.measurements.push_back(cm);
+            }
+            const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({compiled.color.x, compiled.color.y, compiled.color.Y, compiled.color.valid});
+            const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
+            compiled.fallback_linear_r = rgb.r; compiled.fallback_linear_g = rgb.g; compiled.fallback_linear_b = rgb.b;
+            compiled.fallback_transmission = compiled.color.valid ? std::clamp(compiled.color.Y, 0.0, 1.0) : 1.0;
+            compiled.valid = xyz.valid || !compiled.measurements.empty();
+            out.filter_resources.push_back(compiled);
         }
         out.fixtures.push_back({fixture_id, patch.fixture_uuid, patch.gdtf_path, patch.dmx_mode, artnet_universe, patch.mvr_address, 10000.0, 25.0, 1.0, 20.0});
         append_beam_profiles(out, scene, patch, fixture_id);

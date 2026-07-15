@@ -1,4 +1,5 @@
 #include "runtime/peraviz_visual_runtime.h"
+#include "runtime/color_science.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "archive/zip_archive.h"
 
@@ -7,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 #include <vector>
 
 namespace {
@@ -519,6 +521,72 @@ bool test_color_inheritance_compiles_to_beam_targets() {
     return true;
 }
 
+// Verifies native CIE conversion and gain decomposition reference values.
+bool test_physical_color_science_references() {
+    const peraviz::runtime::CieXyz white = peraviz::runtime::cie_xyy_to_xyz({0.3127, 0.3290, 1.0, true});
+    if (!white.valid || std::fabs(white.x - 0.9504) > 0.001 || std::fabs(white.y - 1.0) > 0.001 || std::fabs(white.z - 1.0889) > 0.002) return fail("Expected D65 xyY to convert to reference XYZ");
+    const peraviz::runtime::LinearRgb rgb = peraviz::runtime::xyz_to_linear_srgb(white);
+    if (std::fabs(rgb.r - 1.0) > 0.002 || std::fabs(rgb.g - 1.0) > 0.002 || std::fabs(rgb.b - 1.0) > 0.002) return fail("Expected D65 XYZ to round trip to linear sRGB white");
+    double gain = 0.0;
+    const peraviz::runtime::LinearRgb normalized = peraviz::runtime::normalize_color_gain({2.0, 1.0, 0.5}, gain);
+    if (std::fabs(gain - 2.0) > 0.0001 || std::fabs(normalized.r - 1.0) > 0.0001 || std::fabs(normalized.g - 0.5) > 0.0001 || std::fabs(normalized.b - 0.25) > 0.0001) return fail("Expected color gain to be separated once from chromaticity");
+    if (peraviz::runtime::dominant_wavelength_to_xyz(365.0).valid) return fail("Expected non-visible UV wavelength to be rejected");
+    std::vector<peraviz::runtime::SpectralSample> samples = {{450.0, 1.0}, {500.0, 0.5}, {550.0, 0.25}};
+    if (!peraviz::runtime::spectrum_to_xyz(samples).valid) return fail("Expected ordered finite spectrum to integrate to XYZ");
+    return true;
+}
+
+// Verifies linked physical Emitter and Filter resources stay native and preserve the renderer payload contract.
+bool test_physical_emitter_filter_runtime_contract() {
+    peraviz::runtime::CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture", "type", "mode", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({10, peraviz::runtime::CompiledSemantic::ColorAddRed, {{10, 1, 0}}, 0, 255, 0.0, 1.0, "ColorAdd_R", "Red", 1, "Beam", 101, 0, ""});
+    scene.source_programs.push_back({11, peraviz::runtime::CompiledSemantic::ColorSubCyan, {{10, 2, 0}}, 0, 255, 0.0, 1.0, "ColorSub_C", "Cyan", 1, "Beam", 0, 201, ""});
+    peraviz::runtime::CompiledEmitterResource emitter;
+    emitter.resource_id = 101;
+    emitter.name = "Deep Red";
+    emitter.color = {0.70, 0.29, 1.0, true};
+    const peraviz::runtime::LinearRgb emitter_rgb = peraviz::runtime::xyz_to_linear_srgb(peraviz::runtime::cie_xyy_to_xyz({0.70, 0.29, 1.0, true}));
+    emitter.fallback_linear_r = emitter_rgb.r;
+    emitter.fallback_linear_g = emitter_rgb.g;
+    emitter.fallback_linear_b = emitter_rgb.b;
+    emitter.valid = true;
+    scene.emitter_resources.push_back(emitter);
+    peraviz::runtime::CompiledFilterResource filter;
+    filter.resource_id = 201;
+    filter.name = "Half Transmission";
+    filter.color = {0.3127, 0.3290, 0.5, true};
+    filter.fallback_linear_r = 1.0;
+    filter.fallback_linear_g = 1.0;
+    filter.fallback_linear_b = 1.0;
+    filter.fallback_transmission = 0.5;
+    filter.valid = true;
+    scene.filter_resources.push_back(filter);
+    peraviz::runtime::CompiledColorTargetProgram target;
+    target.color_target_id = 1;
+    target.fixture_id = 1;
+    target.beam_render_target_id = 77;
+    target.geometry_id = 1;
+    target.additive_source = true;
+    target.inputs.push_back({10, peraviz::runtime::CompiledSemantic::ColorAddRed, 0.0, false, 101, 0});
+    target.inputs.push_back({11, peraviz::runtime::CompiledSemantic::ColorSubCyan, 0.0, false, 0, 201});
+    scene.color_targets.push_back(target);
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> frame(512, 0);
+    frame[1] = 255;
+    frame[2] = 255;
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    const peraviz::runtime::SectionedVisualFrame visual = runtime.consume_latest_visual_frame();
+    const int color_offset = first_color_float_offset(visual);
+    if (color_offset < 0) return fail("Expected physical color update to emit one EmitterColor row");
+    if (visual.integers.size() != 3 || visual.floats.size() != 4) return fail("Expected physical color to preserve compact EmitterColor payload shape");
+    if (visual.floats[color_offset + 3] <= 0.0f || visual.floats[color_offset + 3] >= static_cast<float>(std::max(emitter_rgb.r, std::max(emitter_rgb.g, emitter_rgb.b)))) return fail("Expected linked Filter transmission to reduce physical emitter gain");
+    runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected static physical color to emit no repeated row");
+    return true;
+}
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -532,5 +600,7 @@ int main() {
     if (!test_native_color_mixing_rows()) return 1;
     if (!test_native_color_gain_decomposition()) return 1;
     if (!test_color_inheritance_compiles_to_beam_targets()) return 1;
+    if (!test_physical_color_science_references()) return 1;
+    if (!test_physical_emitter_filter_runtime_contract()) return 1;
     return 0;
 }
