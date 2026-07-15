@@ -211,9 +211,6 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 		_dmx_receiver.stop()
 		var started: bool = _dmx_receiver.start("0.0.0.0", 6454)
 		if not started:
-			_dmx_receiver.stop()
-			started = _dmx_receiver.start("0.0.0.0", 6454)
-		if not started:
 			if _dmx_toggle_button != null:
 				_dmx_toggle_button.button_pressed = false
 				_dmx_toggle_button.text = "DMX OFF"

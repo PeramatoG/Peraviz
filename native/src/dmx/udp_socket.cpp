@@ -31,8 +31,8 @@ UdpSocket::~UdpSocket() {
     close();
 }
 
-// Opens a UDP socket and binds it to the requested endpoint.
-bool UdpSocket::open_and_bind(const std::string &bind_ip, uint16_t port, std::string &error_message) {
+// Opens a UDP socket, applies pre-bind options, and binds it to the requested endpoint.
+bool UdpSocket::open_and_bind(const std::string &bind_ip, uint16_t port, const UdpSocketBindOptions &options, std::string &error_message) {
     close();
 
     const SocketHandle handle = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -41,6 +41,14 @@ bool UdpSocket::open_and_bind(const std::string &bind_ip, uint16_t port, std::st
         return false;
     }
     socket_handle_ = handle;
+
+    if (options.reuse_address && !set_reuse_address(true, error_message)) {
+        if (error_message.empty()) {
+            error_message = "Failed to apply UDP socket address reuse before bind";
+        }
+        close();
+        return false;
+    }
 
     sockaddr_in address {};
     address.sin_family = AF_INET;
