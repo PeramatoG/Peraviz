@@ -14,6 +14,8 @@ var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
 var _dimmer_emitter_owner_by_key: Dictionary = {}
 var _beam_profiles_by_geometry_key: Dictionary = {}
+var _beam_output_records_by_geometry_key: Dictionary = {}
+var _beam_output_records_by_id: Dictionary = {}
 var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 
@@ -33,6 +35,8 @@ func clear() -> void:
 	_geometry_targets_by_key.clear()
 	_dimmer_emitter_owner_by_key.clear()
 	_beam_profiles_by_geometry_key.clear()
+	_beam_output_records_by_geometry_key.clear()
+	_beam_output_records_by_id.clear()
 	_lens_material_cache.clear()
 	_summary = _new_summary()
 
@@ -216,6 +220,7 @@ func _index_beam_profiles(renderer_manifest: Array) -> void:
 				continue
 			var profile: Dictionary = target.get("beam_optical_profile", {})
 			profile["geometry_key"] = geometry_key
+			profile["beam_render_target_id"] = int(target.get("render_target_id", target.get("target_id", 0)))
 			_beam_profiles_by_geometry_key[geometry_key] = profile
 			_increment_counter("beam_profiles_indexed")
 			if bool(profile.get("has_projected_beam", true)):
@@ -249,7 +254,7 @@ func _register_axis_target(targets: Dictionary, manifest_row: Dictionary, target
 	targets[target_id] = target
 	_increment_counter("%s_resolved" % role)
 
-func _resolve_beam_target_resources(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String, role: String, cache_suffix: String = "") -> Dictionary:
+func _resolve_beam_target_resources(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String, role: String, _cache_suffix: String = "") -> Dictionary:
 	if geometry_key.is_empty():
 		_increment_counter("empty_manifest_geometry_keys")
 		_register_target_failure(manifest_row, target_id, role, "Manifest target has an empty canonical geometry key.")
@@ -258,16 +263,70 @@ func _resolve_beam_target_resources(manifest_row: Dictionary, target_id: int, fi
 	if target == null:
 		_register_target_failure(manifest_row, target_id, role, "No imported geometry node has canonical geometry key %s" % geometry_key)
 		return {}
-	var target_nodes: Array = [target]
 	var emitter_nodes: Array = _collect_descendant_emitters(geometry_key)
 	if role == "dimmer":
 		emitter_nodes = _filter_dimmer_target_emitters(manifest_row, target_id, emitter_nodes)
-	var cache_key: String = "%s:%d%s" % [fixture_uuid, target_id, cache_suffix]
-	var emitter_anchors: Array = _call_array("collect_emitter_lights", [cache_key, emitter_nodes])
-	var emitter_records: Array = _build_emitter_records(emitter_nodes, emitter_anchors)
-	var lens_material_targets: Array = _prepare_lens_materials(cache_key, target_nodes + emitter_nodes)
+	var output_records: Array = []
+	for emitter_node in emitter_nodes:
+		var output_record: Dictionary = _resolve_beam_output_record(fixture_uuid, emitter_node as Node3D, target_id)
+		if not output_record.is_empty():
+			output_records.append(output_record)
+	return _build_semantic_target_record(manifest_row, target_id, fixture_uuid, geometry_key, target, output_records)
+
+func _resolve_beam_output_record(fixture_uuid: String, emitter_node: Node3D, fallback_target_id: int) -> Dictionary:
+	if emitter_node == null:
+		return {}
+	var geometry_key: String = str(emitter_node.get_meta("peraviz_gdtf_geometry_key", ""))
+	if geometry_key.is_empty():
+		return {}
+	if _beam_output_records_by_geometry_key.has(geometry_key):
+		return _beam_output_records_by_geometry_key.get(geometry_key, {})
+	var profile: Dictionary = _profile_for_geometry_key(geometry_key)
+	if profile.is_empty():
+		_increment_counter("emitter_nodes_missing_beam_profile")
+		profile = _default_profile_for_geometry_key(geometry_key)
+	var beam_render_target_id: int = int(profile.get("beam_render_target_id", fallback_target_id))
+	var emitter_anchors: Array = _call_array("collect_emitter_lights", [geometry_key, [emitter_node]])
+	var emitter_records: Array = _build_emitter_records([emitter_node], emitter_anchors)
+	var lens_material_targets: Array = _prepare_lens_materials(geometry_key, [emitter_node])
 	_apply_lens_profiles(lens_material_targets)
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
+	var output_record: Dictionary = {
+		"beam_render_target_id": beam_render_target_id,
+		"fixture_uuid": fixture_uuid,
+		"geometry_key": geometry_key,
+		"owner_geometry_key": geometry_key,
+		"emitter_node": emitter_node,
+		"emitter_nodes": [emitter_node],
+		"emitter_anchors": emitter_anchors,
+		"optional_spotlights": emitter_anchors,
+		"beam_instances": beam_instances,
+		"lens_material_targets": lens_material_targets,
+		"emitter_records": emitter_records,
+		"emitter_photometrics": emitter_records,
+		"beam_optical_profile": profile,
+		"projected_lumen_scale": float(profile.get("projected_lumen_scale", 1.0)),
+		"emission_lumen_scale": float(profile.get("emission_lumen_scale", 1.0)),
+		"has_projected_beam": bool(profile.get("has_projected_beam", true)),
+	}
+	_beam_output_records_by_geometry_key[geometry_key] = output_record
+	if beam_render_target_id > 0:
+		_beam_output_records_by_id[beam_render_target_id] = output_record
+	return output_record
+
+func _build_semantic_target_record(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String, target: Node3D, output_records: Array) -> Dictionary:
+	var emitter_nodes: Array = []
+	var emitter_anchors: Array = []
+	var beam_instances: Array = []
+	var lens_material_targets: Array = []
+	var emitter_records: Array = []
+	for output_item in output_records:
+		var output_record: Dictionary = output_item
+		emitter_nodes.append_array(output_record.get("emitter_nodes", []))
+		emitter_anchors.append_array(output_record.get("emitter_anchors", []))
+		beam_instances.append_array(output_record.get("beam_instances", []))
+		lens_material_targets.append_array(output_record.get("lens_material_targets", []))
+		emitter_records.append_array(output_record.get("emitter_records", []))
 	return {
 		"fixture_uuid": fixture_uuid,
 		"property_id": int(manifest_row.get("property_id", 0)),
@@ -276,7 +335,7 @@ func _resolve_beam_target_resources(manifest_row: Dictionary, target_id: int, fi
 		"target_id": target_id,
 		"owner_geometry_key": geometry_key,
 		"owner_geometry_node": target,
-		"geometry_nodes": target_nodes,
+		"geometry_nodes": [target],
 		"emitter_nodes": emitter_nodes,
 		"emitter_anchors": emitter_anchors,
 		"optional_spotlights": emitter_anchors,
@@ -284,6 +343,7 @@ func _resolve_beam_target_resources(manifest_row: Dictionary, target_id: int, fi
 		"lens_material_targets": lens_material_targets,
 		"emitter_records": emitter_records,
 		"emitter_photometrics": emitter_records,
+		"beam_output_records": output_records,
 	}
 
 func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:

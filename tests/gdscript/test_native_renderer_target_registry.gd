@@ -8,6 +8,7 @@ class RegistryHarness:
 	var renderer = LegacyConeBeamRendererScript.new()
 	var node_index: Dictionary = {}
 	var light_cache: Dictionary = {}
+	var collect_emitter_light_calls: int = 0
 	var photometrics: Dictionary = {"fixture-a": [{"luminous_flux": 10000.0, "beam_angle": 25.0, "field_angle": 25.0, "beam_radius": 0.05}]}
 
 	func add_geometry(key: String, is_emitter: bool = false, with_lens_material: bool = false) -> Node3D:
@@ -27,19 +28,22 @@ class RegistryHarness:
 		node_index[key] = node
 		return node
 
-	func collect_emitter_lights(cache_key: String, emitter_nodes: Array) -> Array:
-		if light_cache.has(cache_key):
-			return light_cache.get(cache_key, [])
+	func collect_emitter_lights(_cache_key: String, emitter_nodes: Array) -> Array:
+		collect_emitter_light_calls += 1
 		var lights: Array = []
 		for emitter_node in emitter_nodes:
 			var node3d: Node3D = emitter_node as Node3D
 			if node3d == null:
 				continue
+			var geometry_key: String = str(node3d.get_meta("peraviz_gdtf_geometry_key", ""))
+			if light_cache.has(geometry_key):
+				lights.append(light_cache.get(geometry_key))
+				continue
 			var light := SpotLight3D.new()
 			light.name = "PeravizEmitterLight"
 			node3d.add_child(light)
+			light_cache[geometry_key] = light
 			lights.append(light)
-		light_cache[cache_key] = lights
 		return lights
 
 	func get_emitter_photometrics(fixture_uuid: String) -> Array:
@@ -128,13 +132,24 @@ func _init() -> void:
 	assert(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1)
 	assert(registry.get_target_failure(202) is Dictionary)
 
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base/EmitterLens"), _target("fixture-a", "color", 301, "fixture-a/Base/EmitterLens")]}])
+	harness.collect_emitter_light_calls = 0
+	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [
+		_target("fixture-a", "beam_profile", 401, "fixture-a/Base/EmitterLens", {"beam_type": "Wash", "has_projected_beam": true, "projected_lumen_scale": 0.25, "emission_lumen_scale": 0.25}),
+		_target("fixture-a", "dimmer", 201, "fixture-a/Base/EmitterLens"),
+		_target("fixture-a", "color", 401, "fixture-a/Base/EmitterLens"),
+		_target("fixture-a", "beam_profile", 401, "fixture-a/Base/EmitterLens", {"beam_type": "Wash", "has_projected_beam": true, "projected_lumen_scale": 0.25, "emission_lumen_scale": 0.25}),
+	]}])
 	var color_summary: Dictionary = registry.get_summary().get("registry_summary", {})
+	var shared_dimmer_record: Dictionary = registry.get_dimmer_target_record(201)
+	var shared_color_record: Dictionary = registry.get_color_target_record(401)
 	assert(registry.has_dimmer_target(201))
-	assert(registry.has_color_target(301))
+	assert(registry.has_color_target(401))
 	assert(int(color_summary.get("dimmer_requested", 0)) == 1)
 	assert(int(color_summary.get("color_requested", 0)) == 1)
 	assert(int(color_summary.get("dimmer_target_overlaps", 0)) == 0)
+	assert(harness.collect_emitter_light_calls == 1)
+	assert(shared_dimmer_record.get("emitter_anchors", [])[0] == shared_color_record.get("emitter_anchors", [])[0])
+	assert(shared_dimmer_record.get("beam_instances", [])[0] == shared_color_record.get("beam_instances", [])[0])
 
 
 	var keyed_harness := RegistryHarness.new()
