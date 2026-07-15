@@ -101,6 +101,14 @@ func get_color_target_record(color_target_id: int) -> Dictionary:
 		return {}
 	return _color_targets.get(color_target_id, {})
 
+func has_beam_output_record(beam_target_id: int) -> bool:
+	return beam_target_id > 0 and _beam_output_records_by_id.has(beam_target_id)
+
+func get_beam_output_record(beam_target_id: int) -> Dictionary:
+	if beam_target_id <= 0:
+		return {}
+	return _beam_output_records_by_id.get(beam_target_id, {})
+
 func get_target_failure(target_id: int) -> Variant:
 	return _target_resolution_failures.get(target_id, null)
 

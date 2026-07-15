@@ -22,7 +22,7 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
-- Native GDTF color-wheel protocol groundwork now separates renderer-ready wheel optical and motion rows from the legacy gobo placeholder path, with documented PlacementOffset phase mapping and deterministic random-wheel helpers.
+- Native GDTF color-wheel support now includes a verified seated discrete selection slice: parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native DMX evaluation, WheelSelection rows, packed-scene transfer, and target-local renderer mutation for SpotLight, beam and lens resources. Indexed split, spin, random and Audio remain deferred.
 
 - Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.
 

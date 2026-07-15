@@ -317,6 +317,84 @@ int32_t resolve_physical_resource_link(const std::vector<Resource> &resources, c
     return -1;
 }
 
+// Parses ordered GDTF wheel slots and their direct color/filter metadata.
+void parse_wheels(tinyxml2::XMLElement *root, CompiledGdtfFixtureType &fixture) {
+    int32_t next_wheel_id = 1;
+    for (tinyxml2::XMLElement *wheels : dmx::collect_elements_by_name(root, "wheels")) {
+        for (tinyxml2::XMLElement *wheel_node : dmx::collect_direct_children_by_name(wheels, "wheel")) {
+            ParsedWheel wheel;
+            wheel.id = next_wheel_id++;
+            wheel.name = dmx::trim_ascii(read_attr(wheel_node, "Name", "name"));
+            if (wheel.name.empty()) {
+                fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-NAME-MISSING", "warning", "Wheel has no Name and cannot be linked by ChannelFunction.Wheel.", "Wheels"});
+                continue;
+            }
+            int32_t slot_index = 1;
+            for (tinyxml2::XMLElement *slot_node : dmx::collect_direct_children_by_name(wheel_node, "slot")) {
+                ParsedWheelSlot slot;
+                slot.slot_index = slot_index++;
+                slot.name = dmx::trim_ascii(read_attr(slot_node, "Name", "name"));
+                slot.media_file_name = dmx::trim_ascii(read_attr(slot_node, "MediaFileName", "mediafilename"));
+                const std::string filter_name = dmx::trim_ascii(read_attr(slot_node, "Filter", "filter"));
+                const std::string color_value = dmx::trim_ascii(read_attr(slot_node, "Color", "color"));
+                if (!filter_name.empty()) {
+                    slot.filter_resource_id = resolve_physical_resource_link(fixture.filters, filter_name);
+                    slot.provenance = "filter:" + filter_name;
+                    if (slot.filter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-LINK-MISSING", "warning", "Wheel Slot references an unknown Filter.", wheel.name + ":" + slot.name});
+                    if (!color_value.empty()) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COLOR-IGNORED", "info", "Wheel Slot has both Filter and Color; Filter takes precedence.", wheel.name + ":" + slot.name});
+                } else if (!color_value.empty()) {
+                    if (parse_color_cie_value(color_value, slot.color)) {
+                        slot.provenance = "slot_color_cie";
+                    } else {
+                        slot.provenance = "malformed_color_fallback_white";
+                        fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COLOR-INVALID", "warning", "Wheel Slot ColorCIE is malformed; using diagnostic white fallback.", wheel.name + ":" + slot.name});
+                    }
+                } else {
+                    slot.provenance = "default_white";
+                }
+                wheel.slots.push_back(slot);
+            }
+            if (wheel.slots.empty()) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-EMPTY", "warning", "Wheel has no ordered Slot children.", wheel.name});
+            fixture.wheels.push_back(wheel);
+        }
+    }
+}
+
+// Resolves an exact ChannelFunction.Wheel link to a parser-owned wheel ID.
+int32_t resolve_wheel_link(const CompiledGdtfFixtureType &fixture, const std::string &wheel_name) {
+    if (wheel_name.empty()) return 0;
+    for (const ParsedWheel &wheel : fixture.wheels) {
+        if (wheel.name == wheel_name) return wheel.id;
+    }
+    return -1;
+}
+
+// Reads ordered ChannelSet rows with exact one-based WheelSlotIndex metadata.
+std::vector<ParsedWheelChannelSet> parse_wheel_channel_sets(tinyxml2::XMLElement *fn, size_t source_count, CompiledGdtfFixtureType &fixture, const ParsedWheel *wheel) {
+    std::vector<ParsedWheelChannelSet> sets;
+    uint32_t previous_from = 0;
+    bool has_previous = false;
+    for (tinyxml2::XMLElement *set_node : dmx::collect_direct_children_by_name(fn, "channelset")) {
+        ParsedWheelChannelSet set;
+        set.name = dmx::trim_ascii(read_attr(set_node, "Name", "name"));
+        if (!parse_dmx_value(read_attr(set_node, "DMXFrom", "dmxfrom"), source_count, set.dmx_from)) set.dmx_from = has_previous ? previous_from : 0;
+        if (!parse_dmx_value(read_attr(set_node, "DMXTo", "dmxto"), source_count, set.dmx_to)) set.dmx_to = max_for_source_count(source_count);
+        int parsed_slot = 0;
+        const std::string slot_raw = read_attr(set_node, "WheelSlotIndex", "wheelslotindex");
+        if (!slot_raw.empty()) parsed_slot = std::atoi(slot_raw.c_str());
+        set.wheel_slot_index = parsed_slot;
+        if (!wheel || parsed_slot < 1 || parsed_slot > static_cast<int32_t>(wheel->slots.size())) {
+            fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-INVALID", "warning", "ChannelSet WheelSlotIndex is outside the linked wheel slot range.", set.name});
+            continue;
+        }
+        sets.push_back(set);
+        previous_from = set.dmx_to + 1U;
+        has_previous = true;
+    }
+    std::stable_sort(sets.begin(), sets.end(), [](const ParsedWheelChannelSet &a, const ParsedWheelChannelSet &b) { return a.dmx_from < b.dmx_from; });
+    return sets;
+}
+
 } // namespace
 
 // Produces the canonical serialization-neutral identity used by Peraviz and Perastage test vectors.
@@ -365,6 +443,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
     }
     fixture.selected_modes_found = 1;
     parse_physical_color_resources(doc.RootElement(), fixture);
+    parse_wheels(doc.RootElement(), fixture);
     fixture.dmxchannels_containers_found = count_mode_dmxchannels_containers(selected_mode);
     const std::unordered_map<std::string, std::string> geometry_paths =
         build_geometry_paths(doc.RootElement(), dmx::trim_ascii(read_attr(selected_mode, "Geometry", "geometry")));
@@ -436,6 +515,11 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (!has_physical) fixture.diagnostics.push_back({"PVZ-GDTF-PHYSICAL-MISSING", "warning", "ChannelFunction is missing PhysicalFrom/PhysicalTo.", attribute_name});
                 const std::string read_function_name = dmx::trim_ascii(read_attr(fn, "Name", "name"));
                 const std::string function_name = read_function_name.empty() ? attribute_name : read_function_name;
+                const std::string wheel_link = dmx::trim_ascii(read_attr(fn, "Wheel", "wheel"));
+                const int32_t resolved_wheel_id = resolve_wheel_link(fixture, wheel_link);
+                const ParsedWheel *resolved_wheel = nullptr;
+                for (const ParsedWheel &wheel : fixture.wheels) if (wheel.id == resolved_wheel_id) resolved_wheel = &wheel;
+                if (!wheel_link.empty() && resolved_wheel_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-LINK-MISSING", "warning", "ChannelFunction references an unknown Wheel.", attribute_name + " wheel=" + wheel_link});
                 ChannelProgram program;
                 program.id = next_program_id++;
                 for (int offset : offsets) program.dmx_offsets_1_based.push_back(offset);
@@ -452,6 +536,10 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 program.emitter_resource_id = resolve_physical_resource_link(fixture.emitters, dmx::trim_ascii(read_attr(fn, "Emitter", "emitter")));
                 program.filter_resource_id = resolve_physical_resource_link(fixture.filters, dmx::trim_ascii(read_attr(fn, "Filter", "filter")));
                 program.color_space_name = dmx::trim_ascii(read_attr(fn, "ColorSpace", "colorspace"));
+                program.wheel_id = resolved_wheel_id > 0 ? resolved_wheel_id : 0;
+                program.wheel_family_number = normalize_attribute_identity(0, attribute_name).primary_index;
+                program.snap = dmx::lower_ascii(dmx::trim_ascii(read_attr(logical, "Snap", "snap"))) == "yes" || dmx::lower_ascii(dmx::trim_ascii(read_attr(logical, "Snap", "snap"))) == "true" || dmx::trim_ascii(read_attr(logical, "Snap", "snap")) == "1";
+                if (program.wheel_id > 0) program.wheel_channel_sets = parse_wheel_channel_sets(fn, offsets.size(), fixture, resolved_wheel);
                 if (program.emitter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-EMITTER-LINK-MISSING", "warning", "ChannelFunction references an unknown Emitter.", attribute_name});
                 if (program.filter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-FILTER-LINK-MISSING", "warning", "ChannelFunction references an unknown Filter.", attribute_name});
                 fixture.channel_programs.push_back(program);

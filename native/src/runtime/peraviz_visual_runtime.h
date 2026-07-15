@@ -68,11 +68,29 @@ private:
         std::vector<ColorInputRuntime> inputs;
     };
 
+    struct WheelBindingRuntime {
+        CompiledWheelTargetBinding binding;
+    };
+
+    struct WheelTargetState {
+        int32_t slot_a = 0;
+        int32_t slot_b = 0;
+        float srgb_red = 1.0f;
+        float srgb_green = 1.0f;
+        float srgb_blue = 1.0f;
+        float gain = 1.0f;
+        int32_t revision = 0;
+        bool initialized = false;
+    };
+
     struct UniverseState {
         std::vector<CompiledPropertyProgram> properties;
         std::vector<ColorTargetRuntime> color_targets;
         std::unordered_map<int, std::vector<int>> property_indices_by_offset;
         std::unordered_map<int, std::vector<int>> color_target_indices_by_offset;
+        std::vector<WheelBindingRuntime> wheel_bindings;
+        std::unordered_map<int, std::vector<int>> wheel_binding_indices_by_offset;
+        std::unordered_map<int32_t, std::vector<int>> wheel_binding_indices_by_target;
         std::vector<int> interest_offsets;
         std::array<uint8_t, 512> last_relevant_values{};
         std::vector<uint8_t> latest_frame;
@@ -132,6 +150,7 @@ private:
     static bool program_uses_changed_offset(const CompiledDmxSourceProgram &program, const std::vector<int> &changed_offsets);
     static float color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated);
     CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target) const;
+    CookedEmitterColor apply_wheel_slot_to_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot) const;
     void add_visual_mask_stats(uint32_t visual_mask);
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
     FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);
@@ -142,6 +161,8 @@ private:
     std::unordered_map<int, ComponentState> transform_state_by_fixture_;
     std::unordered_map<int32_t, ComponentState> property_state_by_property_;
     std::unordered_map<int32_t, CookedEmitterColor> color_state_by_target_;
+    std::unordered_map<int32_t, CompiledWheelPalette> wheel_palettes_by_id_;
+    std::unordered_map<int32_t, WheelTargetState> wheel_state_by_binding_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;

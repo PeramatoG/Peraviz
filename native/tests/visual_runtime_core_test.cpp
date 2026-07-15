@@ -1,6 +1,7 @@
 #include "runtime/peraviz_visual_runtime.h"
 #include "runtime/color_science.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
+#include "gdtf_runtime/compiled_gdtf_fixture.h"
 #include "archive/zip_archive.h"
 
 #include <cmath>
@@ -587,6 +588,89 @@ bool test_physical_emitter_filter_runtime_contract() {
     return true;
 }
 
+// Reads the first wheel selection descriptor details.
+bool first_wheel_selection_row(const peraviz::runtime::SectionedVisualFrame &frame, int &int_offset, int &float_offset) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::WheelSelection)) {
+            int_offset = frame.descriptors[index + 2];
+            float_offset = frame.descriptors[index + 3];
+            return true;
+        }
+    }
+    return false;
+}
+
+// Verifies a test-generated GDTF color wheel parses, binds, evaluates DMX, and emits Red then Blue rows.
+bool test_gdtf_color_wheel_vertical_slice() {
+    const std::filesystem::path root = repo_root_from_source();
+    const std::filesystem::path gdtf_path = root / "native" / "build" / "color_wheel_vertical_slice.gdtf";
+    std::filesystem::create_directories(gdtf_path.parent_path());
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF>
+  <FixtureType Name="Wheel Slice">
+    <PhysicalDescriptions />
+    <Wheels>
+      <Wheel Name="ColorWheel1">
+        <Slot Name="Open" Color="0.3127,0.3290,1" />
+        <Slot Name="Red" Color="0.7000,0.3000,1" />
+        <Slot Name="Blue" Color="0.1500,0.0600,1" />
+      </Wheel>
+    </Wheels>
+    <Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries>
+    <DMXModes><DMXMode Name="Mode 1" Geometry="Root"><DMXChannels>
+      <DMXChannel Offset="1" Geometry="Beam"><LogicalChannel Attribute="Color1" Snap="Yes"><ChannelFunction Name="Color Select" Attribute="Color1" Wheel="ColorWheel1" DMXFrom="0" DMXTo="255">
+        <ChannelSet Name="Open" DMXFrom="0" DMXTo="84" WheelSlotIndex="1" />
+        <ChannelSet Name="Red" DMXFrom="85" DMXTo="169" WheelSlotIndex="2" />
+        <ChannelSet Name="Blue" DMXFrom="170" DMXTo="255" WheelSlotIndex="3" />
+      </ChannelFunction></LogicalChannel></DMXChannel>
+    </DMXChannels></DMXMode></DMXModes>
+  </FixtureType>
+</GDTF>)XML";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Expected synthetic color-wheel GDTF archive to be written") == 0;
+    const auto fixture = peraviz::gdtf_runtime::compile_gdtf_fixture_type(gdtf_path.string(), "Mode 1");
+    if (fixture.wheels.size() != 1 || fixture.wheels[0].slots.size() != 3) return fail("Expected parser to preserve one wheel with three ordered slots") == 0;
+    peraviz::SceneModel scene_model;
+    peraviz::SceneModel::FixturePatch patch;
+    patch.fixture_uuid = "wheel-fixture";
+    patch.gdtf_path = gdtf_path.string();
+    patch.dmx_mode = "Mode 1";
+    patch.mvr_universe = 1;
+    patch.mvr_address = 1;
+    scene_model.fixture_patches.push_back(patch);
+    peraviz::SceneNode beam;
+    beam.node_id = "wheel-fixture/Root/Beam";
+    beam.name = "Beam";
+    beam.gdtf_geometry_path = "Root/Beam";
+    beam.gdtf_geometry_key = "wheel-fixture/Root/Beam";
+    beam.is_fixture = true;
+    beam.is_beam = true;
+    scene_model.nodes.push_back(beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(scene_model, 0);
+    if (scene.wheel_palettes.empty() || scene.wheel_bindings.empty()) return fail("Expected compiled scene to contain a wheel palette and exact Beam binding") == 0;
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    bool schema_has_wheel = false;
+    for (const auto &section : runtime.schema().sections) schema_has_wheel = schema_has_wheel || section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::WheelSelection);
+    if (!schema_has_wheel) return fail("Expected installed runtime schema to enable WheelSelection") == 0;
+    std::vector<uint8_t> dmx(512, 0);
+    dmx[0] = 100;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto red = runtime.consume_latest_visual_frame();
+    int int_offset = -1, float_offset = -1;
+    if (!first_wheel_selection_row(red, int_offset, float_offset)) return fail("Expected Red DMX value to emit one WheelSelection row") == 0;
+    if (red.integers[int_offset + 4] != 2 || red.integers[int_offset + 5] != 2) return fail("Expected Red ChannelSet WheelSlotIndex 2 in slot A/B") == 0;
+    if (!(red.floats[float_offset + 3] > red.floats[float_offset + 5])) return fail("Expected Red aggregate sRGB to be red-dominant") == 0;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged seated wheel slot to emit no repeated row") == 0;
+    dmx[0] = 200;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto blue = runtime.consume_latest_visual_frame();
+    if (!first_wheel_selection_row(blue, int_offset, float_offset)) return fail("Expected Blue DMX value to emit one WheelSelection row") == 0;
+    if (blue.integers[int_offset + 4] != 3 || blue.integers[int_offset + 5] != 3) return fail("Expected Blue ChannelSet WheelSlotIndex 3 in slot A/B") == 0;
+    if (!(blue.floats[float_offset + 5] > blue.floats[float_offset + 3])) return fail("Expected Blue aggregate sRGB to be blue-dominant") == 0;
+    return true;
+}
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -602,5 +686,6 @@ int main() {
     if (!test_color_inheritance_compiles_to_beam_targets()) return 1;
     if (!test_physical_color_science_references()) return 1;
     if (!test_physical_emitter_filter_runtime_contract()) return 1;
+    if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     return 0;
 }

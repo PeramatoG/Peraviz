@@ -288,11 +288,19 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		"intensity_max": 50.0,
 	}
 
-func apply_wheel_optical_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, mode: int, slot_a: int, slot_b: int, changed_mask: int, revision_flags: int, normalized_phase: float, split_fraction: float, boundary_angle_degrees: float, aggregate_srgb: Color, aggregate_gain: float, edge_softness: float) -> Dictionary:
+func apply_wheel_optical_state(loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, mode: int, slot_a: int, slot_b: int, changed_mask: int, revision_flags: int, normalized_phase: float, split_fraction: float, boundary_angle_degrees: float, aggregate_srgb: Color, aggregate_gain: float, edge_softness: float) -> Dictionary:
+	if beam_target_id <= 0 or not loader.has_method("_has_native_beam_output_record") or not loader._has_native_beam_output_record(beam_target_id):
+		return {"applied": false, "wheel_state_applied": false, "target_resolved": false, "failed": 1, "failure_reason": "beam target not registered", "beam_target_id": beam_target_id}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	var output_record: Dictionary = loader._get_native_beam_output_record(beam_target_id)
+	_set_target_color_state(beam_target_id, fixture_uuid, aggregate_srgb, aggregate_gain)
+	var state: Dictionary = _target_state(beam_target_id, fixture_uuid)
+	var dimmer_norm: float = float(state.get("dimmer", 0.0))
+	var result: Dictionary = _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, dimmer_norm, aggregate_srgb, max(aggregate_gain, 0.0))
+	var mutations: int = int(result.get("lights_mutated", 0)) + int(result.get("beams_mutated", 0)) + int(result.get("materials_mutated", 0))
 	var key: String = _fixture_state_key(fixture_uuid) + ":wheel:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
-	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizWheelCoverageApproximation"}
-	return {"applied": true, "wheel_state_applied": true, "topology_rebuilds": 0}
+	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizWheelCoverageApproximation", "mutations": mutations}
+	return {"applied": mutations > 0, "wheel_state_applied": mutations > 0, "target_resolved": true, "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0)), "topology_rebuilds": 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no wheel renderer resource changed"}
 
 func apply_wheel_motion_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, motion_mode: int, changed_mask: int, revision: int, authoritative_phase: float, angular_velocity_degrees_per_second: float, reference_seconds: float, random_frequency_hz: float) -> Dictionary:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1

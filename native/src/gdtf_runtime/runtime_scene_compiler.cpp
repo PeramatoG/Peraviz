@@ -326,6 +326,108 @@ void append_color_targets(runtime::CompiledRuntimeScene &scene,
     }
 }
 
+// Finds a parser-owned wheel by local ID.
+const ParsedWheel *find_wheel(const CompiledGdtfFixtureType &fixture, int32_t wheel_id) {
+    for (const ParsedWheel &wheel : fixture.wheels) if (wheel.id == wheel_id) return &wheel;
+    return nullptr;
+}
+
+// Cooks one wheel slot into immutable renderer-ready optical data.
+runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &fixture_type, const ParsedWheelSlot &slot) {
+    runtime::CompiledWheelPaletteSlot out;
+    out.slot_index = slot.slot_index;
+    out.media_file_name = slot.media_file_name;
+    out.provenance = slot.provenance;
+    runtime::LinearRgb linear{1.0, 1.0, 1.0};
+    if (slot.filter_resource_id > 0) {
+        for (const PhysicalFilterResource &filter : fixture_type.filters) {
+            if (filter.id != slot.filter_resource_id) continue;
+            const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({filter.color.x, filter.color.y, filter.color.Y, filter.color.valid});
+            linear = runtime::xyz_to_linear_srgb(xyz);
+            out.gain = static_cast<float>(filter.color.valid ? std::clamp(filter.color.Y, 0.0, 1.0) : 1.0);
+            break;
+        }
+    } else if (slot.color.valid) {
+        linear = runtime::xyz_to_linear_srgb({slot.color.x * (slot.color.Y / slot.color.y), slot.color.Y, (1.0 - slot.color.x - slot.color.y) * (slot.color.Y / slot.color.y), true});
+    }
+    out.linear_red = static_cast<float>(std::clamp(linear.r, 0.0, 1.0));
+    out.linear_green = static_cast<float>(std::clamp(linear.g, 0.0, 1.0));
+    out.linear_blue = static_cast<float>(std::clamp(linear.b, 0.0, 1.0));
+    double gain = 0.0;
+    const runtime::LinearRgb normalized = runtime::normalize_color_gain(linear, gain);
+    out.srgb_red = static_cast<float>(runtime::srgb_encode(normalized.r));
+    out.srgb_green = static_cast<float>(runtime::srgb_encode(normalized.g));
+    out.srgb_blue = static_cast<float>(runtime::srgb_encode(normalized.b));
+    if (slot.filter_resource_id <= 0) out.gain = static_cast<float>(gain <= 0.0 ? 0.0 : gain);
+    out.identity = out.media_file_name.empty() && std::fabs(out.linear_red - 1.0f) < 0.001f && std::fabs(out.linear_green - 1.0f) < 0.001f && std::fabs(out.linear_blue - 1.0f) < 0.001f && std::fabs(out.gain - 1.0f) < 0.001f;
+    if (!std::isfinite(out.srgb_red) || !std::isfinite(out.srgb_green) || !std::isfinite(out.srgb_blue)) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COOK-FALLBACK", "warning", "Wheel Slot color cooked to invalid RGB; using white fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
+        out.srgb_red = out.srgb_green = out.srgb_blue = out.linear_red = out.linear_green = out.linear_blue = out.gain = 1.0f;
+        out.identity = true;
+    }
+    return out;
+}
+
+// Appends color-wheel palettes and exact Beam target bindings for seated selection.
+void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
+                          const SceneModel::FixturePatch &patch,
+                          const CompiledGdtfFixtureType &fixture_type,
+                          int artnet_universe,
+                          int32_t fixture_id,
+                          int32_t &next_program_id) {
+    std::unordered_map<int32_t, const AttributeIdentity *> attributes_by_id;
+    std::unordered_map<int32_t, const GeometryInstance *> geometries_by_id;
+    for (const AttributeIdentity &attribute : fixture_type.attributes) attributes_by_id[attribute.id] = &attribute;
+    for (const GeometryInstance &geometry : fixture_type.geometries) geometries_by_id[geometry.id] = &geometry;
+    std::unordered_map<int32_t, int32_t> renderer_id_by_wheel;
+    for (const ParsedWheel &wheel : fixture_type.wheels) {
+        if (wheel.slots.empty()) continue;
+        runtime::CompiledWheelPalette palette;
+        palette.fixture_id = fixture_id;
+        palette.wheel_renderer_id = stable_id(patch.fixture_uuid, "wheel:palette:" + wheel.name);
+        palette.name = wheel.name;
+        for (const ParsedWheelSlot &slot : wheel.slots) palette.slots.push_back(cook_wheel_slot(scene, patch, fixture_type, slot));
+        renderer_id_by_wheel[wheel.id] = palette.wheel_renderer_id;
+        scene.wheel_palettes.push_back(palette);
+    }
+    for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
+        if (parser_program.wheel_id <= 0 || parser_program.wheel_channel_sets.empty()) continue;
+        auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
+        auto geometry_it = geometries_by_id.find(parser_program.geometry_instance_id);
+        if (attribute_it == attributes_by_id.end() || geometry_it == geometries_by_id.end()) continue;
+        if (attribute_it->second->canonical_family != "Color") continue;
+        runtime::CompiledDmxSourceProgram runtime_program;
+        runtime_program.program_id = next_program_id++;
+        runtime_program.semantic = runtime::CompiledSemantic::Unknown;
+        runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+        if (runtime_program.sources.empty()) continue;
+        runtime_program.dmx_from = parser_program.dmx_from;
+        runtime_program.dmx_to = parser_program.dmx_to;
+        runtime_program.physical_from = parser_program.physical_from;
+        runtime_program.physical_to = parser_program.physical_to;
+        runtime_program.attribute_name = parser_program.attribute_name;
+        runtime_program.function_name = parser_program.function_name.empty() ? parser_program.attribute_name : parser_program.function_name;
+        runtime_program.geometry_id = parser_program.geometry_instance_id;
+        runtime_program.geometry_name = geometry_it->second->path;
+        scene.source_programs.push_back(runtime_program);
+        for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
+            if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
+            runtime::CompiledWheelTargetBinding binding;
+            binding.binding_id = stable_id(patch.fixture_uuid, "wheel:binding:" + std::to_string(parser_program.id) + ":" + beam.geometry_path);
+            binding.fixture_id = fixture_id;
+            binding.beam_render_target_id = beam.render_target_id;
+            binding.wheel_renderer_id = renderer_id_by_wheel[parser_program.wheel_id];
+            binding.source_program_id = runtime_program.program_id;
+            binding.mode = runtime::CompiledWheelMode::Select;
+            binding.snap = parser_program.snap;
+            for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.dmx_from, set.dmx_to, set.wheel_slot_index, set.name});
+            if (binding.wheel_renderer_id > 0) scene.wheel_bindings.push_back(binding);
+        }
+    }
+    scene.wheel_palette_count = static_cast<int32_t>(scene.wheel_palettes.size());
+    scene.wheel_binding_count = static_cast<int32_t>(scene.wheel_bindings.size());
+}
+
 } // namespace
 
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
@@ -413,6 +515,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const size_t property_start = out.properties.size();
         for (const ComponentBinding &component : fixture_type.components) append_property(out, patch, fixture_type, component, programs_by_component[component.component_id], artnet_universe, fixture_id, next_program_id);
         append_color_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
+        append_wheel_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
         if (out.properties.size() == property_start && out.color_targets.empty()) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
     }
     for (const auto &property : out.properties) {
