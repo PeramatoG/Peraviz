@@ -600,6 +600,103 @@ bool first_wheel_selection_row(const peraviz::runtime::SectionedVisualFrame &fra
     return false;
 }
 
+
+// Verifies wheel Filter optics store shape and scalar gain without double-counting transmission.
+bool test_wheel_filter_transmission_cooking() {
+    const std::filesystem::path root = repo_root_from_source();
+    const std::filesystem::path gdtf_path = root / "native" / "build" / "color_wheel_filter_transmission.gdtf";
+    std::filesystem::create_directories(gdtf_path.parent_path());
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF>
+  <FixtureType Name="Wheel Filter Transmission">
+    <PhysicalDescriptions>
+      <Filters>
+        <Filter Name="White50" Color="0.3127,0.3290,0.5" />
+        <Filter Name="White10" Color="0.3127,0.3290,0.1" />
+        <Filter Name="Red10" Color="0.7000,0.3000,0.1" />
+        <Filter Name="Spec035"><Measurement Physical="100" Transmission="0.35"><MeasurementPoint WaveLength="450" Energy="0.1" /><MeasurementPoint WaveLength="620" Energy="1.0" /></Measurement></Filter>
+        <Filter Name="Spec035Scaled"><Measurement Physical="100" Transmission="0.35"><MeasurementPoint WaveLength="450" Energy="10" /><MeasurementPoint WaveLength="620" Energy="100" /></Measurement></Filter>
+        <Filter Name="CieShapeTransmission" Color="0.1500,0.0600,0.2"><Measurement Physical="100" Transmission="0.35" /></Filter>
+        <Filter Name="Closed" Color="0.3127,0.3290,0" />
+      </Filters>
+    </PhysicalDescriptions>
+    <Wheels>
+      <Wheel Name="ColorWheel1">
+        <Slot Name="Open" Color="0.3127,0.3290,1" />
+        <Slot Name="White50" Filter="White50" />
+        <Slot Name="White10" Filter="White10" />
+        <Slot Name="Red10" Filter="Red10" />
+        <Slot Name="Spec035" Filter="Spec035" />
+        <Slot Name="Spec035Scaled" Filter="Spec035Scaled" />
+        <Slot Name="CieShapeTransmission" Filter="CieShapeTransmission" />
+        <Slot Name="Closed" Filter="Closed" />
+      </Wheel>
+    </Wheels>
+    <Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries>
+    <DMXModes><DMXMode Name="Mode 1" Geometry="Root"><DMXChannels>
+      <DMXChannel Offset="1" Geometry="Beam"><LogicalChannel Attribute="Color1" Snap="Yes"><ChannelFunction Name="Color Select" Attribute="Color1" Wheel="ColorWheel1" DMXFrom="0" DMXTo="255">
+        <ChannelSet Name="Open" DMXFrom="0/1" WheelSlotIndex="1" />
+        <ChannelSet Name="White50" DMXFrom="32/1" WheelSlotIndex="2" />
+        <ChannelSet Name="White10" DMXFrom="64/1" WheelSlotIndex="3" />
+        <ChannelSet Name="Red10" DMXFrom="96/1" WheelSlotIndex="4" />
+        <ChannelSet Name="Spec035" DMXFrom="128/1" WheelSlotIndex="5" />
+        <ChannelSet Name="Spec035Scaled" DMXFrom="160/1" WheelSlotIndex="6" />
+        <ChannelSet Name="CieShapeTransmission" DMXFrom="192/1" WheelSlotIndex="7" />
+        <ChannelSet Name="Closed" DMXFrom="224/1" WheelSlotIndex="8" />
+      </ChannelFunction></LogicalChannel></DMXChannel>
+    </DMXChannels></DMXMode></DMXModes>
+  </FixtureType>
+</GDTF>)XML";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Expected filter transmission GDTF archive to be written") == 0;
+    peraviz::SceneModel scene_model;
+    peraviz::SceneModel::FixturePatch patch;
+    patch.fixture_uuid = "wheel-filter-fixture";
+    patch.gdtf_path = gdtf_path.string();
+    patch.dmx_mode = "Mode 1";
+    patch.mvr_universe = 1;
+    patch.mvr_address = 1;
+    scene_model.fixture_patches.push_back(patch);
+    peraviz::SceneNode beam;
+    beam.node_id = "wheel-filter-fixture/Root/Beam";
+    beam.name = "Beam";
+    beam.gdtf_geometry_path = "Root/Beam";
+    beam.gdtf_geometry_key = "wheel-filter-fixture/Root/Beam";
+    beam.is_fixture = true;
+    beam.is_beam = true;
+    scene_model.nodes.push_back(beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(scene_model, 0);
+    if (scene.wheel_palettes.empty() || scene.wheel_palettes[0].slots.size() != 8) return fail("Expected eight cooked wheel palette slots") == 0;
+    const auto &slots = scene.wheel_palettes[0].slots;
+    auto nearly = [](float a, float b, float tolerance) { return std::fabs(a - b) <= tolerance; };
+    if (!nearly(slots[1].gain, 0.5f, 0.04f)) return fail("Expected Filter ColorCIE Y=0.5 to cook to gain 0.5, not 0.25") == 0;
+    if (!nearly(slots[2].gain, 0.1f, 0.02f)) return fail("Expected Filter ColorCIE Y=0.1 to cook to gain 0.1, not 0.01") == 0;
+    const float red_shape_max = std::max(slots[3].linear_red, std::max(slots[3].linear_green, slots[3].linear_blue));
+    if (!(slots[3].gain > 0.0f && nearly(red_shape_max, 1.0f, 0.001f) && slots[3].linear_red >= 0.0f && slots[3].linear_green >= 0.0f && slots[3].linear_blue >= 0.0f)) return fail("Expected saturated Filter ColorCIE to produce bounded non-negative shape and non-zero gain") == 0;
+    if (!nearly(slots[4].gain, 0.35f, 0.001f)) return fail("Expected Measurement.Transmission to be applied exactly once") == 0;
+    if (!nearly(slots[5].gain, 0.35f, 0.001f)) return fail("Expected scaled spectrum to preserve explicit Measurement.Transmission gain") == 0;
+    if (!nearly(slots[4].linear_red, slots[5].linear_red, 0.001f) || !nearly(slots[4].linear_green, slots[5].linear_green, 0.001f) || !nearly(slots[4].linear_blue, slots[5].linear_blue, 0.001f)) return fail("Expected spectrum shape normalization to ignore arbitrary spectral scale") == 0;
+    if (!nearly(slots[6].gain, 0.35f, 0.001f)) return fail("Expected measurement without spectrum to use Measurement.Transmission as scalar gain") == 0;
+    if (!slots[0].identity || !nearly(slots[0].gain, 1.0f, 0.001f)) return fail("Expected Open slot to preserve identity transmission") == 0;
+    if (!nearly(slots[7].gain, 0.0f, 0.001f)) return fail("Expected zero ColorCIE Y slot to cook as closed with zero gain") == 0;
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(512, 0);
+    dmx[0] = 96;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto red_frame = runtime.consume_latest_visual_frame();
+    int int_offset = -1, float_offset = -1;
+    if (!first_wheel_selection_row(red_frame, int_offset, float_offset)) return fail("Expected Red10 filter to emit a WheelSelection row") == 0;
+    if (!(red_frame.floats[float_offset + 3] > red_frame.floats[float_offset + 4] && red_frame.floats[float_offset + 6] > 0.0f)) return fail("Expected upstream white through red filter to remain visible and red-dominant") == 0;
+    dmx[0] = 224;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto closed_frame = runtime.consume_latest_visual_frame();
+    if (!first_wheel_selection_row(closed_frame, int_offset, float_offset)) return fail("Expected Closed filter to emit a WheelSelection row") == 0;
+    if (!nearly(closed_frame.floats[float_offset + 6], 0.0f, 0.001f)) return fail("Expected closed filter final gain to be zero") == 0;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged Filter slot to emit no repeated work") == 0;
+    return true;
+}
+
 // Verifies a test-generated GDTF color wheel parses, binds, evaluates DMX, and emits Red then Blue rows.
 bool test_gdtf_color_wheel_vertical_slice() {
     const std::filesystem::path root = repo_root_from_source();
@@ -703,6 +800,7 @@ int main() {
     if (!test_color_inheritance_compiles_to_beam_targets()) return 1;
     if (!test_physical_color_science_references()) return 1;
     if (!test_physical_emitter_filter_runtime_contract()) return 1;
+    if (!test_wheel_filter_transmission_cooking()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     return 0;
 }

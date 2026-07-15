@@ -332,60 +332,137 @@ const ParsedWheel *find_wheel(const CompiledGdtfFixtureType &fixture, int32_t wh
     return nullptr;
 }
 
+struct WheelTransmissionCook {
+    runtime::LinearRgb shape{1.0, 1.0, 1.0};
+    double gain = 1.0;
+    bool valid = true;
+    bool closed = false;
+    bool clamped_negative = false;
+};
+
+// Clamps passive filter scalar transmission to the renderer-supported range.
+double clamp_passive_filter_gain(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const std::string &subject, double gain) {
+    if (!std::isfinite(gain) || gain < 0.0) return 0.0;
+    if (gain > 1.0) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-TRANSMISSION-CLAMPED", "warning", "Passive wheel Filter transmission above 1.0 was clamped to avoid creating energy.", patch.fixture_uuid + " " + subject + " gain=" + std::to_string(gain)});
+        return 1.0;
+    }
+    return gain;
+}
+
+// Converts linear RGB into bounded transmission shape and an optional scalar gain.
+WheelTransmissionCook cook_transmission_from_linear(runtime::CompiledRuntimeScene &scene,
+                                                    const SceneModel::FixturePatch &patch,
+                                                    const std::string &subject,
+                                                    runtime::LinearRgb linear,
+                                                    bool extract_gain,
+                                                    bool zero_source_means_closed) {
+    WheelTransmissionCook cooked;
+    const double values[3] = {linear.r, linear.g, linear.b};
+    cooked.clamped_negative = values[0] < 0.0 || values[1] < 0.0 || values[2] < 0.0;
+    if (cooked.clamped_negative) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-RGB-CLAMPED", "warning", "Wheel Filter RGB transmission contained negative components that were clamped for subtractive rendering.", patch.fixture_uuid + " " + subject});
+    }
+    runtime::LinearRgb safe{std::isfinite(linear.r) ? std::max(0.0, linear.r) : 0.0,
+                            std::isfinite(linear.g) ? std::max(0.0, linear.g) : 0.0,
+                            std::isfinite(linear.b) ? std::max(0.0, linear.b) : 0.0};
+    const double max_component = std::max(safe.r, std::max(safe.g, safe.b));
+    if (max_component <= 0.0 || !std::isfinite(max_component)) {
+        if (zero_source_means_closed) {
+            cooked.shape = {1.0, 1.0, 1.0};
+            cooked.gain = 0.0;
+            cooked.closed = true;
+            return cooked;
+        }
+        cooked.valid = false;
+        return cooked;
+    }
+    cooked.shape = {std::clamp(safe.r / max_component, 0.0, 1.0),
+                    std::clamp(safe.g / max_component, 0.0, 1.0),
+                    std::clamp(safe.b / max_component, 0.0, 1.0)};
+    cooked.gain = extract_gain ? max_component : 1.0;
+    return cooked;
+}
+
+// Derives a bounded transmission shape from a ColorCIE value and extracts Y-derived energy once when requested.
+WheelTransmissionCook cook_transmission_from_cie(runtime::CompiledRuntimeScene &scene,
+                                                 const SceneModel::FixturePatch &patch,
+                                                 const std::string &subject,
+                                                 const PhysicalColorCIE &color,
+                                                 bool extract_gain) {
+    const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({color.x, color.y, color.Y, true});
+    const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
+    return cook_transmission_from_linear(scene, patch, subject, rgb, extract_gain, color.Y <= 0.0);
+}
+
+// Chooses the most complete Filter measurement for full-insertion wheel slots.
+const PhysicalColorMeasurement *select_filter_measurement(const PhysicalFilterResource &filter) {
+    const PhysicalColorMeasurement *measurement = nullptr;
+    for (const PhysicalColorMeasurement &candidate : filter.measurements) {
+        if (measurement == nullptr || candidate.physical_percent >= measurement->physical_percent) measurement = &candidate;
+    }
+    return measurement;
+}
+
 // Cooks one wheel slot into immutable renderer-ready optical data.
 runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &fixture_type, const ParsedWheelSlot &slot) {
     runtime::CompiledWheelPaletteSlot out;
     out.slot_index = slot.slot_index;
     out.media_file_name = slot.media_file_name;
     out.provenance = slot.provenance;
-    runtime::LinearRgb linear{1.0, 1.0, 1.0};
-    double transmission_gain = 1.0;
+    WheelTransmissionCook cooked;
     if (slot.filter_resource_id > 0) {
+        bool found_filter = false;
         for (const PhysicalFilterResource &filter : fixture_type.filters) {
             if (filter.id != slot.filter_resource_id) continue;
-            const PhysicalColorMeasurement *measurement = nullptr;
-            for (const PhysicalColorMeasurement &candidate : filter.measurements) {
-                if (measurement == nullptr || candidate.physical_percent >= measurement->physical_percent) measurement = &candidate;
-            }
+            found_filter = true;
+            const PhysicalColorMeasurement *measurement = select_filter_measurement(filter);
             if (measurement != nullptr) {
-                transmission_gain = std::clamp(measurement->transmission, 0.0, 10.0);
+                cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
                 std::vector<runtime::SpectralSample> samples;
                 for (const PhysicalSpectralPoint &point : measurement->spectral_points) samples.push_back({point.wavelength_nm, point.energy});
                 const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
                 if (xyz.valid) {
-                    linear = runtime::xyz_to_linear_srgb(xyz);
-                    out.provenance = "filter_measurement_spectrum:" + filter.name;
+                    cooked = cook_transmission_from_linear(scene, patch, "filter=" + filter.name, runtime::xyz_to_linear_srgb(xyz), false, false);
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                    out.provenance = "filter_measurement_spectrum_relative_shape:" + filter.name;
+                    scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-SPECTRUM-RELATIVE", "info", "Wheel Filter measurement spectrum is used as relative chromatic shape; Measurement.Transmission supplies scalar gain.", patch.fixture_uuid + " filter=" + filter.name});
                 } else if (filter.color.valid) {
-                    linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({filter.color.x, filter.color.y, filter.color.Y, true}));
-                    out.provenance = "filter_measurement_color_cie:" + filter.name;
+                    cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, false);
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                    out.provenance = "filter_measurement_color_cie_shape:" + filter.name;
                 } else {
-                    out.provenance = "filter_measurement_transmission:" + filter.name;
+                    cooked.shape = {1.0, 1.0, 1.0};
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                    out.provenance = "filter_measurement_neutral_shape:" + filter.name;
                 }
             } else if (filter.color.valid) {
-                linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({filter.color.x, filter.color.y, filter.color.Y, true}));
-                transmission_gain = std::clamp(filter.color.Y, 0.0, 10.0);
-                out.provenance = "filter_color_cie:" + filter.name;
+                cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, true);
+                cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, cooked.gain);
+                out.provenance = "filter_color_cie_shape_gain:" + filter.name;
+                scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-COLORCIE-NO-MEASUREMENT", "info", "Wheel Filter ColorCIE is used for both relative chromatic shape and scalar transmission because no measurement transmission is present.", patch.fixture_uuid + " filter=" + filter.name});
             }
             break;
         }
+        if (!found_filter) {
+            scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-LINK-MISSING", "warning", "Wheel Slot references a missing Filter; using identity transmission fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
+        }
     } else if (slot.color.valid) {
-        linear = runtime::xyz_to_linear_srgb(runtime::cie_xyy_to_xyz({slot.color.x, slot.color.y, slot.color.Y, true}));
+        cooked = cook_transmission_from_cie(scene, patch, "slot=" + std::to_string(slot.slot_index), slot.color, true);
+        cooked.gain = clamp_passive_filter_gain(scene, patch, "slot=" + std::to_string(slot.slot_index), cooked.gain);
     }
-    double color_gain = 0.0;
-    const runtime::LinearRgb normalized = runtime::normalize_color_gain(linear, color_gain);
-    if (color_gain <= 0.0 || !std::isfinite(color_gain)) {
-        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COOK-FALLBACK", "warning", "Wheel Slot color cooked to invalid RGB; using white fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
-        out.srgb_red = out.srgb_green = out.srgb_blue = out.linear_red = out.linear_green = out.linear_blue = out.gain = 1.0f;
-        out.identity = true;
-        return out;
+    if (!cooked.valid) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COOK-FALLBACK", "warning", "Wheel Slot color cooked to invalid RGB; using identity fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
+        cooked.shape = {1.0, 1.0, 1.0};
+        cooked.gain = 1.0;
     }
-    out.linear_red = static_cast<float>(normalized.r);
-    out.linear_green = static_cast<float>(normalized.g);
-    out.linear_blue = static_cast<float>(normalized.b);
-    out.gain = static_cast<float>(color_gain * transmission_gain);
-    out.srgb_red = static_cast<float>(runtime::srgb_encode(normalized.r));
-    out.srgb_green = static_cast<float>(runtime::srgb_encode(normalized.g));
-    out.srgb_blue = static_cast<float>(runtime::srgb_encode(normalized.b));
+    out.linear_red = static_cast<float>(cooked.shape.r);
+    out.linear_green = static_cast<float>(cooked.shape.g);
+    out.linear_blue = static_cast<float>(cooked.shape.b);
+    out.gain = static_cast<float>(cooked.gain);
+    out.srgb_red = cooked.gain <= 0.0 ? 0.0f : static_cast<float>(runtime::srgb_encode(cooked.shape.r));
+    out.srgb_green = cooked.gain <= 0.0 ? 0.0f : static_cast<float>(runtime::srgb_encode(cooked.shape.g));
+    out.srgb_blue = cooked.gain <= 0.0 ? 0.0f : static_cast<float>(runtime::srgb_encode(cooked.shape.b));
     out.identity = out.media_file_name.empty() && std::fabs(out.linear_red - 1.0f) < 0.001f && std::fabs(out.linear_green - 1.0f) < 0.001f && std::fabs(out.linear_blue - 1.0f) < 0.001f && std::fabs(out.gain - 1.0f) < 0.001f;
     return out;
 }
