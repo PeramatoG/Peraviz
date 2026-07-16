@@ -22,7 +22,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     peraviz::runtime::CompiledRuntimeScene scene;
     PackedInt32Array integers = packed_scene.get("integers", PackedInt32Array());
     PackedFloat32Array floats = packed_scene.get("floats", PackedFloat32Array());
-    if (integers.size() < 6 || integers[0] != 1) {
+    if (integers.size() < 6 || integers[0] < 1 || integers[0] > 3) {
         core_.install_compiled_scene(scene);
         return;
     }
@@ -31,6 +31,12 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     const int program_count = integers[cursor++];
     const int property_count = integers[cursor++];
     const int color_target_count = integers[cursor++];
+    int wheel_palette_count = 0;
+    int wheel_binding_count = 0;
+    if (integers[0] >= 2 && integers.size() >= 8) {
+        wheel_palette_count = integers[cursor++];
+        wheel_binding_count = integers[cursor++];
+    }
     cursor++;
     for (int index = 0; index < fixture_count && cursor + 6 <= integers.size(); ++index) {
         peraviz::runtime::CompiledFixtureInstance fixture;
@@ -91,16 +97,71 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         target.geometry_id = integers[cursor++];
         target.additive_source = integers[cursor++] != 0;
         const int input_count = integers[cursor++];
-        for (int input_index = 0; input_index < input_count && cursor + 4 <= integers.size(); ++input_index) {
+        for (int input_index = 0; input_index < input_count && cursor + (integers[0] >= 3 ? 6 : 4) <= integers.size(); ++input_index) {
             peraviz::runtime::CompiledColorInputBinding input;
             input.source_program_id = integers[cursor++];
             input.semantic = static_cast<peraviz::runtime::CompiledSemantic>(integers[cursor++]);
             const int default_value_index = integers[cursor++];
             input.default_value = default_value_index >= 0 && default_value_index < floats.size() ? floats[default_value_index] : 0.0;
             input.use_normalized_value = integers[cursor++] != 0;
+            if (integers[0] >= 3) {
+                input.emitter_resource_id = integers[cursor++];
+                input.filter_resource_id = integers[cursor++];
+            }
             target.inputs.push_back(input);
         }
         scene.color_targets.push_back(target);
+    }
+
+    for (int index = 0; index < wheel_palette_count && cursor + 4 <= integers.size(); ++index) {
+        peraviz::runtime::CompiledWheelPalette palette;
+        palette.wheel_renderer_id = integers[cursor++];
+        palette.fixture_id = integers[cursor++];
+        const int placement_index = integers[cursor++];
+        palette.placement_offset_degrees = placement_index >= 0 && placement_index < floats.size() ? floats[placement_index] : palette.placement_offset_degrees;
+        const int slot_count = integers[cursor++];
+        for (int slot_index = 0; slot_index < slot_count && cursor + 9 <= integers.size(); ++slot_index) {
+            peraviz::runtime::CompiledWheelPaletteSlot slot;
+            slot.slot_index = integers[cursor++];
+            const int sr = integers[cursor++];
+            const int sg = integers[cursor++];
+            const int sb = integers[cursor++];
+            const int lr = integers[cursor++];
+            const int lg = integers[cursor++];
+            const int lb = integers[cursor++];
+            const int gain = integers[cursor++];
+            slot.srgb_red = sr >= 0 && sr < floats.size() ? floats[sr] : slot.srgb_red;
+            slot.srgb_green = sg >= 0 && sg < floats.size() ? floats[sg] : slot.srgb_green;
+            slot.srgb_blue = sb >= 0 && sb < floats.size() ? floats[sb] : slot.srgb_blue;
+            slot.linear_red = lr >= 0 && lr < floats.size() ? floats[lr] : slot.linear_red;
+            slot.linear_green = lg >= 0 && lg < floats.size() ? floats[lg] : slot.linear_green;
+            slot.linear_blue = lb >= 0 && lb < floats.size() ? floats[lb] : slot.linear_blue;
+            slot.gain = gain >= 0 && gain < floats.size() ? floats[gain] : slot.gain;
+            slot.identity = integers[cursor++] != 0;
+            palette.slots.push_back(slot);
+        }
+        scene.wheel_palettes.push_back(palette);
+    }
+    for (int index = 0; index < wheel_binding_count && cursor + 9 <= integers.size(); ++index) {
+        peraviz::runtime::CompiledWheelTargetBinding binding;
+        binding.binding_id = integers[cursor++];
+        binding.fixture_id = integers[cursor++];
+        binding.beam_render_target_id = integers[cursor++];
+        binding.wheel_renderer_id = integers[cursor++];
+        binding.source_program_id = integers[cursor++];
+        binding.mode = static_cast<peraviz::runtime::CompiledWheelMode>(integers[cursor++]);
+        binding.snap = integers[cursor++] != 0;
+        const int placement_index = integers[cursor++];
+        binding.placement_offset_degrees = placement_index >= 0 && placement_index < floats.size() ? floats[placement_index] : binding.placement_offset_degrees;
+        const int set_count = integers[cursor++];
+        for (int set_index = 0; set_index < set_count && cursor + 3 <= integers.size(); ++set_index) {
+            peraviz::runtime::CompiledWheelChannelSet set;
+            set.dmx_from = static_cast<uint32_t>(integers[cursor++]);
+            set.dmx_to = static_cast<uint32_t>(integers[cursor++]);
+            set.wheel_slot_index = integers[cursor++];
+            binding.channel_sets.push_back(set);
+        }
+        scene.wheel_bindings.push_back(binding);
     }
     core_.install_compiled_scene(scene);
 }
@@ -184,6 +245,9 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["changed_gobo_rotation"] = static_cast<int64_t>(stats.changed_gobo_rotation);
     out["gobo_topology_updates"] = static_cast<int64_t>(stats.gobo_topology_updates);
     out["gobo_parametric_updates"] = static_cast<int64_t>(stats.gobo_parametric_updates);
+    out["wheel_inputs_evaluated"] = static_cast<int64_t>(stats.wheel_inputs_evaluated);
+    out["wheel_targets_dirty"] = static_cast<int64_t>(stats.wheel_targets_dirty);
+    out["wheel_selection_rows"] = static_cast<int64_t>(stats.wheel_selection_rows);
     return out;
 }
 

@@ -326,6 +326,221 @@ void append_color_targets(runtime::CompiledRuntimeScene &scene,
     }
 }
 
+// Finds a parser-owned wheel by local ID.
+const ParsedWheel *find_wheel(const CompiledGdtfFixtureType &fixture, int32_t wheel_id) {
+    for (const ParsedWheel &wheel : fixture.wheels) if (wheel.id == wheel_id) return &wheel;
+    return nullptr;
+}
+
+struct WheelTransmissionCook {
+    runtime::LinearRgb shape{1.0, 1.0, 1.0};
+    double gain = 1.0;
+    bool valid = true;
+    bool closed = false;
+    bool clamped_negative = false;
+};
+
+// Clamps passive filter scalar transmission to the renderer-supported range.
+double clamp_passive_filter_gain(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const std::string &subject, double gain) {
+    if (!std::isfinite(gain) || gain < 0.0) return 0.0;
+    if (gain > 1.0) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-TRANSMISSION-CLAMPED", "warning", "Passive wheel Filter transmission above 1.0 was clamped to avoid creating energy.", patch.fixture_uuid + " " + subject + " gain=" + std::to_string(gain)});
+        return 1.0;
+    }
+    return gain;
+}
+
+// Converts linear RGB into bounded transmission shape and an optional scalar gain.
+WheelTransmissionCook cook_transmission_from_linear(runtime::CompiledRuntimeScene &scene,
+                                                    const SceneModel::FixturePatch &patch,
+                                                    const std::string &subject,
+                                                    runtime::LinearRgb linear,
+                                                    bool extract_gain,
+                                                    bool zero_source_means_closed) {
+    WheelTransmissionCook cooked;
+    const double values[3] = {linear.r, linear.g, linear.b};
+    cooked.clamped_negative = values[0] < 0.0 || values[1] < 0.0 || values[2] < 0.0;
+    if (cooked.clamped_negative) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-RGB-CLAMPED", "warning", "Wheel Filter RGB transmission contained negative components that were clamped for subtractive rendering.", patch.fixture_uuid + " " + subject});
+    }
+    runtime::LinearRgb safe{std::isfinite(linear.r) ? std::max(0.0, linear.r) : 0.0,
+                            std::isfinite(linear.g) ? std::max(0.0, linear.g) : 0.0,
+                            std::isfinite(linear.b) ? std::max(0.0, linear.b) : 0.0};
+    const double max_component = std::max(safe.r, std::max(safe.g, safe.b));
+    if (max_component <= 0.0 || !std::isfinite(max_component)) {
+        if (zero_source_means_closed) {
+            cooked.shape = {1.0, 1.0, 1.0};
+            cooked.gain = 0.0;
+            cooked.closed = true;
+            return cooked;
+        }
+        cooked.valid = false;
+        return cooked;
+    }
+    cooked.shape = {std::clamp(safe.r / max_component, 0.0, 1.0),
+                    std::clamp(safe.g / max_component, 0.0, 1.0),
+                    std::clamp(safe.b / max_component, 0.0, 1.0)};
+    cooked.gain = extract_gain ? max_component : 1.0;
+    return cooked;
+}
+
+// Derives a bounded transmission shape from a ColorCIE value and extracts Y-derived energy once when requested.
+WheelTransmissionCook cook_transmission_from_cie(runtime::CompiledRuntimeScene &scene,
+                                                 const SceneModel::FixturePatch &patch,
+                                                 const std::string &subject,
+                                                 const PhysicalColorCIE &color,
+                                                 bool extract_gain) {
+    const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({color.x, color.y, color.Y, true});
+    const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
+    return cook_transmission_from_linear(scene, patch, subject, rgb, extract_gain, color.Y <= 0.0);
+}
+
+// Chooses the most complete Filter measurement for full-insertion wheel slots.
+const PhysicalColorMeasurement *select_filter_measurement(const PhysicalFilterResource &filter) {
+    const PhysicalColorMeasurement *measurement = nullptr;
+    for (const PhysicalColorMeasurement &candidate : filter.measurements) {
+        if (measurement == nullptr || candidate.physical_percent >= measurement->physical_percent) measurement = &candidate;
+    }
+    return measurement;
+}
+
+// Cooks one wheel slot into immutable renderer-ready optical data.
+runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &fixture_type, const ParsedWheelSlot &slot) {
+    runtime::CompiledWheelPaletteSlot out;
+    out.slot_index = slot.slot_index;
+    out.media_file_name = slot.media_file_name;
+    out.provenance = slot.provenance;
+    WheelTransmissionCook cooked;
+    if (slot.filter_resource_id > 0) {
+        bool found_filter = false;
+        for (const PhysicalFilterResource &filter : fixture_type.filters) {
+            if (filter.id != slot.filter_resource_id) continue;
+            found_filter = true;
+            const PhysicalColorMeasurement *measurement = select_filter_measurement(filter);
+            if (measurement != nullptr) {
+                cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                std::vector<runtime::SpectralSample> samples;
+                for (const PhysicalSpectralPoint &point : measurement->spectral_points) samples.push_back({point.wavelength_nm, point.energy});
+                const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
+                if (xyz.valid) {
+                    cooked = cook_transmission_from_linear(scene, patch, "filter=" + filter.name, runtime::xyz_to_linear_srgb(xyz), false, false);
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                    out.provenance = "filter_measurement_spectrum_relative_shape:" + filter.name;
+                    scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-SPECTRUM-RELATIVE", "info", "Wheel Filter measurement spectrum is used as relative chromatic shape; Measurement.Transmission supplies scalar gain.", patch.fixture_uuid + " filter=" + filter.name});
+                } else if (filter.color.valid) {
+                    cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, false);
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                    out.provenance = "filter_measurement_color_cie_shape:" + filter.name;
+                } else {
+                    cooked.shape = {1.0, 1.0, 1.0};
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                    out.provenance = "filter_measurement_neutral_shape:" + filter.name;
+                }
+            } else if (filter.color.valid) {
+                cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, true);
+                cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, cooked.gain);
+                out.provenance = "filter_color_cie_shape_gain:" + filter.name;
+                scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-COLORCIE-NO-MEASUREMENT", "info", "Wheel Filter ColorCIE is used for both relative chromatic shape and scalar transmission because no measurement transmission is present.", patch.fixture_uuid + " filter=" + filter.name});
+            }
+            break;
+        }
+        if (!found_filter) {
+            scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-LINK-MISSING", "warning", "Wheel Slot references a missing Filter; using identity transmission fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
+        }
+    } else if (slot.color.valid) {
+        cooked = cook_transmission_from_cie(scene, patch, "slot=" + std::to_string(slot.slot_index), slot.color, true);
+        cooked.gain = clamp_passive_filter_gain(scene, patch, "slot=" + std::to_string(slot.slot_index), cooked.gain);
+    }
+    if (!cooked.valid) {
+        scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COOK-FALLBACK", "warning", "Wheel Slot color cooked to invalid RGB; using identity fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
+        cooked.shape = {1.0, 1.0, 1.0};
+        cooked.gain = 1.0;
+    }
+    out.linear_red = static_cast<float>(cooked.shape.r);
+    out.linear_green = static_cast<float>(cooked.shape.g);
+    out.linear_blue = static_cast<float>(cooked.shape.b);
+    out.gain = static_cast<float>(cooked.gain);
+    out.srgb_red = cooked.gain <= 0.0 ? 0.0f : static_cast<float>(runtime::srgb_encode(cooked.shape.r));
+    out.srgb_green = cooked.gain <= 0.0 ? 0.0f : static_cast<float>(runtime::srgb_encode(cooked.shape.g));
+    out.srgb_blue = cooked.gain <= 0.0 ? 0.0f : static_cast<float>(runtime::srgb_encode(cooked.shape.b));
+    out.identity = out.media_file_name.empty() && std::fabs(out.linear_red - 1.0f) < 0.001f && std::fabs(out.linear_green - 1.0f) < 0.001f && std::fabs(out.linear_blue - 1.0f) < 0.001f && std::fabs(out.gain - 1.0f) < 0.001f;
+    return out;
+}
+
+
+// Classifies GDTF color-wheel attributes into the supported native wheel runtime modes.
+runtime::CompiledWheelMode classify_wheel_mode(const std::string &attribute_name) {
+    const std::string lower = dmx::lower_ascii(dmx::trim_ascii(attribute_name));
+    if (lower.find("wheelaudio") != std::string::npos) return runtime::CompiledWheelMode::AudioUnsupported;
+    if (lower.find("wheelrandom") != std::string::npos) return runtime::CompiledWheelMode::Random;
+    if (lower.find("wheelspin") != std::string::npos) return runtime::CompiledWheelMode::Spin;
+    if (lower.find("wheelindex") != std::string::npos) return runtime::CompiledWheelMode::Index;
+    return runtime::CompiledWheelMode::Select;
+}
+
+// Appends color-wheel palettes and exact Beam target bindings for seated selection.
+void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
+                          const SceneModel::FixturePatch &patch,
+                          const CompiledGdtfFixtureType &fixture_type,
+                          int artnet_universe,
+                          int32_t fixture_id,
+                          int32_t &next_program_id) {
+    std::unordered_map<int32_t, const AttributeIdentity *> attributes_by_id;
+    std::unordered_map<int32_t, const GeometryInstance *> geometries_by_id;
+    for (const AttributeIdentity &attribute : fixture_type.attributes) attributes_by_id[attribute.id] = &attribute;
+    for (const GeometryInstance &geometry : fixture_type.geometries) geometries_by_id[geometry.id] = &geometry;
+    std::unordered_map<int32_t, int32_t> renderer_id_by_wheel;
+    for (const ParsedWheel &wheel : fixture_type.wheels) {
+        if (wheel.slots.empty()) continue;
+        runtime::CompiledWheelPalette palette;
+        palette.fixture_id = fixture_id;
+        palette.wheel_renderer_id = stable_id(patch.fixture_uuid, "wheel:palette:" + wheel.name);
+        palette.name = wheel.name;
+        for (const ParsedWheelSlot &slot : wheel.slots) palette.slots.push_back(cook_wheel_slot(scene, patch, fixture_type, slot));
+        renderer_id_by_wheel[wheel.id] = palette.wheel_renderer_id;
+        scene.wheel_palettes.push_back(palette);
+    }
+    for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
+        if (parser_program.wheel_id <= 0) continue;
+        const runtime::CompiledWheelMode wheel_mode = classify_wheel_mode(parser_program.attribute_name);
+        if (wheel_mode == runtime::CompiledWheelMode::Select && parser_program.wheel_channel_sets.empty()) continue;
+        if (wheel_mode == runtime::CompiledWheelMode::Index) scene.diagnostics.push_back({"PVZ-WHEEL-INDEX-AGGREGATE-FALLBACK", "info", "Color wheel index uses PeravizIndexedWheelAggregateFallback until spatial split rendering is implemented.", patch.fixture_uuid + " attribute=" + parser_program.attribute_name});
+        auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
+        auto geometry_it = geometries_by_id.find(parser_program.geometry_instance_id);
+        if (attribute_it == attributes_by_id.end() || geometry_it == geometries_by_id.end()) continue;
+        if (attribute_it->second->canonical_family != "Color" && dmx::lower_ascii(parser_program.attribute_name).find("color") == std::string::npos) continue;
+        runtime::CompiledDmxSourceProgram runtime_program;
+        runtime_program.program_id = next_program_id++;
+        runtime_program.semantic = runtime::CompiledSemantic::Unknown;
+        runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+        if (runtime_program.sources.empty()) continue;
+        runtime_program.dmx_from = parser_program.dmx_from;
+        runtime_program.dmx_to = parser_program.dmx_to;
+        runtime_program.physical_from = parser_program.physical_from;
+        runtime_program.physical_to = parser_program.physical_to;
+        runtime_program.attribute_name = parser_program.attribute_name;
+        runtime_program.function_name = parser_program.function_name.empty() ? parser_program.attribute_name : parser_program.function_name;
+        runtime_program.geometry_id = parser_program.geometry_instance_id;
+        runtime_program.geometry_name = geometry_it->second->path;
+        scene.source_programs.push_back(runtime_program);
+        for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
+            if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
+            runtime::CompiledWheelTargetBinding binding;
+            binding.binding_id = stable_id(patch.fixture_uuid, "wheel:binding:" + std::to_string(parser_program.id) + ":" + beam.geometry_path);
+            binding.fixture_id = fixture_id;
+            binding.beam_render_target_id = beam.render_target_id;
+            binding.wheel_renderer_id = renderer_id_by_wheel[parser_program.wheel_id];
+            binding.source_program_id = runtime_program.program_id;
+            binding.mode = wheel_mode;
+            binding.snap = parser_program.snap;
+            for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name});
+            if (binding.wheel_renderer_id > 0) scene.wheel_bindings.push_back(binding);
+        }
+    }
+    scene.wheel_palette_count = static_cast<int32_t>(scene.wheel_palettes.size());
+    scene.wheel_binding_count = static_cast<int32_t>(scene.wheel_bindings.size());
+}
+
 } // namespace
 
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
@@ -413,6 +628,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const size_t property_start = out.properties.size();
         for (const ComponentBinding &component : fixture_type.components) append_property(out, patch, fixture_type, component, programs_by_component[component.component_id], artnet_universe, fixture_id, next_program_id);
         append_color_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
+        append_wheel_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
         if (out.properties.size() == property_start && out.color_targets.empty()) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
     }
     for (const auto &property : out.properties) {

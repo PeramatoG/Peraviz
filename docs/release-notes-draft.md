@@ -22,6 +22,8 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Native GDTF color-wheel support now includes a verified seated discrete selection slice: standard DMXFrom-only ChannelSet range inference, parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native linear wheel composition with separated filter transmission shape/gain, preserved physical resource IDs across packed-scene transfer, WheelSelection rows, and target-local renderer mutation for SpotLight, beam and lens resources. WheelIndex now keeps adjacent-slot/split metadata and uses a temporary aggregate fallback; final spatial split, spin, random and Audio remain deferred.
+
 - Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.
 
 - Added the first native BeamOptics foundation: setup-time Beam profiles, native Zoom ChannelFunction compilation, target-oriented BeamOptics rows, cached optics targets, official/model/render aperture-radius diagnostics, and parametric Lightweight Prism near/far spread updates, corrected lens-side/far-end axial radius mapping, and packed shader instance parameters to stay within Godot renderer limits, while using explicit GDTF BeamRadius as the preferred beam-only near-aperture source when available.

@@ -164,13 +164,13 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	_visual_apply_counters["beam_visible_count"] = int(_visual_apply_counters.get("beam_visible_count", 0)) + visible_beams
 	_visual_apply_counters["spotlight_visible_count"] = int(_visual_apply_counters.get("spotlight_visible_count", 0)) + visible_lights
 	var beam_instances: Array = target_record.get("beam_instances", [])
-	var lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
-	var mutable_resources: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size()) + beam_instances.size() + lens_material_targets.size()
+	var resolved_lens_material_targets: Array = target_record.get("lens_material_targets", target_record.get("emissive_materials", []))
+	var mutable_resources: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size()) + beam_instances.size() + resolved_lens_material_targets.size()
 	var mutations: int = lights_mutated + beams_mutated + materials_mutated
 	if mutable_resources <= 0:
 		return {"dimmer_requested": true, "target_resolved": true, "lights_considered": 0, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "visible_output_after_apply": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target has no mutable Dimmer resources"}
 	var emitter_lights_count: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size())
-	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
+	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": resolved_lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
 
 func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: int, changed_mask: int, beam_color: Color, color_gain: float) -> Dictionary:
 	if color_target_id <= 0 or (loader.has_method("_has_native_color_target") and not loader._has_native_color_target(color_target_id)):
@@ -288,6 +288,29 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		"intensity_max": 50.0,
 	}
 
+func apply_wheel_optical_state(loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, mode: int, slot_a: int, slot_b: int, changed_mask: int, revision_flags: int, normalized_phase: float, split_fraction: float, boundary_angle_degrees: float, aggregate_srgb: Color, aggregate_gain: float, edge_softness: float) -> Dictionary:
+	if beam_target_id <= 0 or not loader.has_method("_has_native_beam_output_record") or not loader._has_native_beam_output_record(beam_target_id):
+		return {"applied": false, "wheel_state_applied": false, "target_resolved": false, "failed": 1, "failure_reason": "beam target not registered", "beam_target_id": beam_target_id}
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	var output_record: Dictionary = loader._get_native_beam_output_record(beam_target_id)
+	var previous_state: Dictionary = _target_state(beam_target_id, fixture_uuid)
+	var was_unchanged: bool = previous_state.has("beam_color") and previous_state.get("beam_color", Color.WHITE) == aggregate_srgb and is_equal_approx(float(previous_state.get("color_gain", 1.0)), aggregate_gain)
+	_set_target_color_state(beam_target_id, fixture_uuid, aggregate_srgb, aggregate_gain)
+	var state: Dictionary = _target_state(beam_target_id, fixture_uuid)
+	var dimmer_norm: float = float(state.get("dimmer", 0.0))
+	var result: Dictionary = _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, dimmer_norm, aggregate_srgb, max(aggregate_gain, 0.0))
+	var mutations: int = int(result.get("lights_mutated", 0)) + int(result.get("beams_mutated", 0)) + int(result.get("materials_mutated", 0))
+	var key: String = _fixture_state_key(fixture_uuid) + ":wheel:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
+	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizWheelCoverageApproximation", "mutations": mutations, "visibility_diagnostics": result.get("visibility_diagnostics", {})}
+	var accepted: bool = mutations > 0 or was_unchanged
+	return {"applied": accepted, "wheel_state_applied": accepted, "unchanged": was_unchanged and mutations == 0, "target_resolved": true, "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0)), "topology_rebuilds": 0, "failed": 0 if accepted else 1, "failure_reason": "" if accepted else "no wheel renderer resource changed"}
+
+func apply_wheel_motion_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, motion_mode: int, changed_mask: int, revision: int, authoritative_phase: float, angular_velocity_degrees_per_second: float, reference_seconds: float, random_frequency_hz: float) -> Dictionary:
+	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
+	var key: String = _fixture_state_key(fixture_uuid) + ":wheel_motion:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
+	_diagnostic_info_keys[key] = {"motion_mode": motion_mode, "changed_mask": changed_mask, "revision": revision, "authoritative_phase": authoritative_phase, "angular_velocity_degrees_per_second": angular_velocity_degrees_per_second, "reference_seconds": reference_seconds, "random_frequency_hz": random_frequency_hz}
+	return {"applied": true, "wheel_motion_applied": true, "topology_rebuilds": 0}
+
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_gobo_selection(fixture_uuid, gobo_norm)
@@ -310,6 +333,15 @@ func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: flo
 func _output_id_from_record(output_record: Dictionary, fallback_target_id: int) -> int:
 	return int(output_record.get("beam_render_target_id", fallback_target_id))
 
+
+func _wheel_visual_beam_gain(physical_gain: float) -> float:
+	const CLOSED_EPSILON := 0.000001
+	if physical_gain <= CLOSED_EPSILON:
+		return 0.0
+	var clamped_gain: float = clamp(physical_gain, 0.0, 1.0)
+	var perceptual_gain: float = pow(clamped_gain, 1.0 / 2.2)
+	return lerp(1.0, perceptual_gain, 0.75)
+
 func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record: Dictionary, changed_mask: int, dimmer_norm: float, beam_color: Color, color_gain: float) -> Dictionary:
 	var output_id: int = _output_id_from_record(output_record, int(output_record.get("target_id", 0)))
 	var state: Dictionary = _target_state(output_id, fixture_uuid)
@@ -318,15 +350,17 @@ func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record
 		var records: Array = output_record.get("emitter_records", [])
 		if not records.is_empty() and records[0] is Dictionary:
 			photometric = records[0]
+	var visual_beam_gain: float = _wheel_visual_beam_gain(color_gain)
 	var final_beam_energy: float = float(state.get("beam_energy", 0.0)) * color_gain
 	var final_spot_energy: float = float(state.get("spot_energy", 0.0)) * color_gain
-	var final_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * color_gain
+	var final_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * visual_beam_gain
 	var final_material_energy: float = float(state.get("material_energy", 0.0)) * color_gain
 	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, output_record.get("emitter_nodes", []), beam_color, final_material_energy, output_record.get("lens_material_targets", []), true)
 	var lights_mutated: int = 0
 	var beams_mutated: int = 0
 	var visible_light: bool = false
 	var visible_beam: bool = false
+	var last_visibility_diagnostics: Dictionary = {}
 	for light in output_record.get("emitter_anchors", []):
 		var spot: SpotLight3D = light as SpotLight3D
 		if spot == null or not is_instance_valid(spot):
@@ -336,14 +370,17 @@ func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record
 		beams_mutated += int(light_result.get("beams_mutated", 0))
 		visible_light = visible_light or _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001)
 		visible_beam = visible_beam or bool(light_result.get("beam_visible", false))
-	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_light": visible_light, "visible_beam": visible_beam}
+		last_visibility_diagnostics = light_result.get("visibility_diagnostics", {})
+	last_visibility_diagnostics["physical_color_gain"] = color_gain
+	last_visibility_diagnostics["visual_beam_gain"] = visual_beam_gain
+	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_light": visible_light, "visible_beam": visible_beam, "visibility_diagnostics": last_visibility_diagnostics}
 
 func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float, beam_color: Color) -> Dictionary:
 	var projected_scale: float = max(float(photometric.get("projected_lumen_scale", 1.0)), 0.0)
 	var scaled_beam_energy: float = _scaled_projected_value(beam_energy, photometric)
 	var scaled_spot_energy: float = _scaled_projected_value(spot_energy, photometric)
 	var scaled_beam_intensity: float = _clamped_beam_intensity(_scaled_projected_value(beam_intensity, photometric))
-	var visible: bool = dimmer_norm > 0.0001 and projected_scale > 0.0
+	var visible: bool = dimmer_norm > 0.0001 and projected_scale > 0.0 and beam_intensity > 0.000001
 	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
 	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
@@ -366,7 +403,9 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 	var beam_visible: bool = beam != null and is_instance_valid(beam) and beam.visible
 	var beams_mutated: int = 1 if beam != null and is_instance_valid(beam) and (beam_visible != previous_beam_visible or (beam_visible and scaled_beam_intensity > 0.0001)) else 0
-	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "beam_visible": beam_visible}
+	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
+	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
+	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "beam_visible": beam_visible, "visibility_diagnostics": {"base_beam_intensity": beam_intensity, "projected_lumen_scale": projected_scale, "scaled_beam_intensity": scaled_beam_intensity, "visibility_threshold": threshold, "final_visible": beam_visible}}
 
 func _any_beam_instance_visible(beam_instances: Array) -> bool:
 	for beam in beam_instances:

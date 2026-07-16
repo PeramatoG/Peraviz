@@ -262,6 +262,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     integers.push_back(static_cast<int32_t>(scene.source_programs.size()));
     integers.push_back(static_cast<int32_t>(scene.properties.size()));
     integers.push_back(static_cast<int32_t>(scene.color_targets.size()));
+    integers.push_back(static_cast<int32_t>(scene.wheel_palettes.size()));
+    integers.push_back(static_cast<int32_t>(scene.wheel_bindings.size()));
     integers.push_back(static_cast<int32_t>(scene.diagnostics.size()));
     auto push_float = [&floats](double value) -> int32_t {
         const int32_t index = static_cast<int32_t>(floats.size());
@@ -316,6 +318,42 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             integers.push_back(static_cast<int32_t>(input.semantic));
             integers.push_back(push_float(input.default_value));
             integers.push_back(input.use_normalized_value ? 1 : 0);
+            integers.push_back(input.emitter_resource_id);
+            integers.push_back(input.filter_resource_id);
+        }
+    }
+
+    for (const peraviz::runtime::CompiledWheelPalette &palette : scene.wheel_palettes) {
+        integers.push_back(palette.wheel_renderer_id);
+        integers.push_back(palette.fixture_id);
+        integers.push_back(push_float(palette.placement_offset_degrees));
+        integers.push_back(static_cast<int32_t>(palette.slots.size()));
+        for (const peraviz::runtime::CompiledWheelPaletteSlot &slot : palette.slots) {
+            integers.push_back(slot.slot_index);
+            integers.push_back(push_float(slot.srgb_red));
+            integers.push_back(push_float(slot.srgb_green));
+            integers.push_back(push_float(slot.srgb_blue));
+            integers.push_back(push_float(slot.linear_red));
+            integers.push_back(push_float(slot.linear_green));
+            integers.push_back(push_float(slot.linear_blue));
+            integers.push_back(push_float(slot.gain));
+            integers.push_back(slot.identity ? 1 : 0);
+        }
+    }
+    for (const peraviz::runtime::CompiledWheelTargetBinding &binding : scene.wheel_bindings) {
+        integers.push_back(binding.binding_id);
+        integers.push_back(binding.fixture_id);
+        integers.push_back(binding.beam_render_target_id);
+        integers.push_back(binding.wheel_renderer_id);
+        integers.push_back(binding.source_program_id);
+        integers.push_back(static_cast<int32_t>(binding.mode));
+        integers.push_back(binding.snap ? 1 : 0);
+        integers.push_back(push_float(binding.placement_offset_degrees));
+        integers.push_back(static_cast<int32_t>(binding.channel_sets.size()));
+        for (const peraviz::runtime::CompiledWheelChannelSet &set : binding.channel_sets) {
+            integers.push_back(static_cast<int32_t>(set.dmx_from));
+            integers.push_back(static_cast<int32_t>(set.dmx_to));
+            integers.push_back(set.wheel_slot_index);
         }
     }
     Array diagnostics;
@@ -458,6 +496,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     int32_t zoom_property_count = 0;
     int32_t color_target_count = static_cast<int32_t>(scene.color_targets.size());
     int32_t beam_profile_count = static_cast<int32_t>(scene.beam_profiles.size());
+    int32_t wheel_palette_count = static_cast<int32_t>(scene.wheel_palettes.size());
+    int32_t wheel_binding_count = static_cast<int32_t>(scene.wheel_bindings.size());
     for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
         if (property.semantic == peraviz::runtime::CompiledSemantic::Dimmer) ++dimmer_property_count;
         if (property.semantic == peraviz::runtime::CompiledSemantic::Pan) ++pan_property_count;
@@ -489,6 +529,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     setup_summary["zoom_program_count"] = scene.zoom_program_count;
     setup_summary["color_program_count"] = scene.color_program_count;
     setup_summary["color_target_count"] = color_target_count;
+    setup_summary["wheel_palette_count"] = wheel_palette_count;
+    setup_summary["wheel_binding_count"] = wheel_binding_count;
     setup_summary["unique_dimmer_programs_per_fixture_type"] = scene.dimmer_program_count;
     setup_summary["unique_pan_programs_per_fixture_type"] = scene.pan_program_count;
     setup_summary["unique_tilt_programs_per_fixture_type"] = scene.tilt_program_count;
@@ -544,6 +586,40 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     integers.push_back(0);
     integers.push_back(0);
     integers.push_back(1);
+
+    for (const peraviz::runtime::CompiledWheelPalette &palette : scene.wheel_palettes) {
+        integers.push_back(palette.wheel_renderer_id);
+        integers.push_back(palette.fixture_id);
+        integers.push_back(push_float(palette.placement_offset_degrees));
+        integers.push_back(static_cast<int32_t>(palette.slots.size()));
+        for (const peraviz::runtime::CompiledWheelPaletteSlot &slot : palette.slots) {
+            integers.push_back(slot.slot_index);
+            integers.push_back(push_float(slot.srgb_red));
+            integers.push_back(push_float(slot.srgb_green));
+            integers.push_back(push_float(slot.srgb_blue));
+            integers.push_back(push_float(slot.linear_red));
+            integers.push_back(push_float(slot.linear_green));
+            integers.push_back(push_float(slot.linear_blue));
+            integers.push_back(push_float(slot.gain));
+            integers.push_back(slot.identity ? 1 : 0);
+        }
+    }
+    for (const peraviz::runtime::CompiledWheelTargetBinding &binding : scene.wheel_bindings) {
+        integers.push_back(binding.binding_id);
+        integers.push_back(binding.fixture_id);
+        integers.push_back(binding.beam_render_target_id);
+        integers.push_back(binding.wheel_renderer_id);
+        integers.push_back(binding.source_program_id);
+        integers.push_back(static_cast<int32_t>(binding.mode));
+        integers.push_back(binding.snap ? 1 : 0);
+        integers.push_back(push_float(binding.placement_offset_degrees));
+        integers.push_back(static_cast<int32_t>(binding.channel_sets.size()));
+        for (const peraviz::runtime::CompiledWheelChannelSet &set : binding.channel_sets) {
+            integers.push_back(static_cast<int32_t>(set.dmx_from));
+            integers.push_back(static_cast<int32_t>(set.dmx_to));
+            integers.push_back(set.wheel_slot_index);
+        }
+    }
     Array diagnostics;
     Dictionary diagnostic;
     diagnostic["code"] = "PVZ-GDTF-DMX-DISABLED";

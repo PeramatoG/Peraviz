@@ -69,6 +69,28 @@ struct PhysicalFilterResource {
     std::vector<PhysicalColorMeasurement> measurements;
 };
 
+struct ParsedWheelSlot {
+    int32_t slot_index = 0;
+    std::string name;
+    PhysicalColorCIE color;
+    int32_t filter_resource_id = 0;
+    std::string media_file_name;
+    std::string provenance;
+};
+
+struct ParsedWheel {
+    int32_t id = 0;
+    std::string name;
+    std::vector<ParsedWheelSlot> slots;
+};
+
+struct ParsedWheelChannelSet {
+    uint32_t declared_dmx_from = 0;
+    uint32_t effective_dmx_to = 255;
+    int32_t wheel_slot_index = 0;
+    std::string name;
+};
+
 struct ChannelProgram {
     int32_t id = 0;
     std::vector<int32_t> dmx_offsets_1_based;
@@ -85,6 +107,10 @@ struct ChannelProgram {
     int32_t emitter_resource_id = 0;
     int32_t filter_resource_id = 0;
     std::string color_space_name;
+    int32_t wheel_id = 0;
+    int32_t wheel_family_number = 0;
+    bool snap = false;
+    std::vector<ParsedWheelChannelSet> wheel_channel_sets;
 };
 
 struct RuntimeDiagnostic {
@@ -112,6 +138,7 @@ struct CompiledGdtfFixtureType {
     std::vector<AttributeIdentity> attributes;
     std::vector<PhysicalEmitterResource> emitters;
     std::vector<PhysicalFilterResource> filters;
+    std::vector<ParsedWheel> wheels;
     std::vector<GeometryInstance> geometries;
     std::vector<ComponentBinding> components;
     std::vector<ChannelProgram> channel_programs;
