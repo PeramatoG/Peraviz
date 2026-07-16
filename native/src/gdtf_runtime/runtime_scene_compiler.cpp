@@ -467,6 +467,17 @@ runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene 
     return out;
 }
 
+
+// Classifies GDTF color-wheel attributes into the supported native wheel runtime modes.
+runtime::CompiledWheelMode classify_wheel_mode(const std::string &attribute_name) {
+    const std::string lower = dmx::lower_ascii(dmx::trim_ascii(attribute_name));
+    if (lower.find("wheelaudio") != std::string::npos) return runtime::CompiledWheelMode::AudioUnsupported;
+    if (lower.find("wheelrandom") != std::string::npos) return runtime::CompiledWheelMode::Random;
+    if (lower.find("wheelspin") != std::string::npos) return runtime::CompiledWheelMode::Spin;
+    if (lower.find("wheelindex") != std::string::npos) return runtime::CompiledWheelMode::Index;
+    return runtime::CompiledWheelMode::Select;
+}
+
 // Appends color-wheel palettes and exact Beam target bindings for seated selection.
 void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                           const SceneModel::FixturePatch &patch,
@@ -490,11 +501,14 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         scene.wheel_palettes.push_back(palette);
     }
     for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
-        if (parser_program.wheel_id <= 0 || parser_program.wheel_channel_sets.empty()) continue;
+        if (parser_program.wheel_id <= 0) continue;
+        const runtime::CompiledWheelMode wheel_mode = classify_wheel_mode(parser_program.attribute_name);
+        if (wheel_mode == runtime::CompiledWheelMode::Select && parser_program.wheel_channel_sets.empty()) continue;
+        if (wheel_mode == runtime::CompiledWheelMode::Index) scene.diagnostics.push_back({"PVZ-WHEEL-INDEX-AGGREGATE-FALLBACK", "info", "Color wheel index uses PeravizIndexedWheelAggregateFallback until spatial split rendering is implemented.", patch.fixture_uuid + " attribute=" + parser_program.attribute_name});
         auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
         auto geometry_it = geometries_by_id.find(parser_program.geometry_instance_id);
         if (attribute_it == attributes_by_id.end() || geometry_it == geometries_by_id.end()) continue;
-        if (attribute_it->second->canonical_family != "Color") continue;
+        if (attribute_it->second->canonical_family != "Color" && dmx::lower_ascii(parser_program.attribute_name).find("color") == std::string::npos) continue;
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;
         runtime_program.semantic = runtime::CompiledSemantic::Unknown;
@@ -517,7 +531,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             binding.beam_render_target_id = beam.render_target_id;
             binding.wheel_renderer_id = renderer_id_by_wheel[parser_program.wheel_id];
             binding.source_program_id = runtime_program.program_id;
-            binding.mode = runtime::CompiledWheelMode::Select;
+            binding.mode = wheel_mode;
             binding.snap = parser_program.snap;
             for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name});
             if (binding.wheel_renderer_id > 0) scene.wheel_bindings.push_back(binding);

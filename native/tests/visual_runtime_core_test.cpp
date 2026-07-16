@@ -697,6 +697,71 @@ bool test_wheel_filter_transmission_cooking() {
     return true;
 }
 
+
+// Verifies Color(n)WheelIndex compiles as indexed state and uses aggregate fallback instead of full-slot selection.
+bool test_indexed_wheel_aggregate_fallback() {
+    const std::filesystem::path root = repo_root_from_source();
+    const std::filesystem::path gdtf_path = root / "native" / "build" / "color_wheel_index_aggregate.gdtf";
+    std::filesystem::create_directories(gdtf_path.parent_path());
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF>
+  <FixtureType Name="Wheel Index Aggregate">
+    <PhysicalDescriptions />
+    <Wheels><Wheel Name="ColorWheel1"><Slot Name="Open" Color="0.3127,0.3290,1" /><Slot Name="Red" Color="0.7000,0.3000,0.1" /><Slot Name="Blue" Color="0.1500,0.0600,0.1" /></Wheel></Wheels>
+    <Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries>
+    <DMXModes><DMXMode Name="Mode 1" Geometry="Root"><DMXChannels>
+      <DMXChannel Offset="1" Geometry="Beam"><LogicalChannel Attribute="Color1WheelIndex" Snap="No"><ChannelFunction Name="Color Wheel Index" Attribute="Color1WheelIndex" Wheel="ColorWheel1" DMXFrom="0" DMXTo="255" PhysicalFrom="-270" PhysicalTo="90" /></LogicalChannel></DMXChannel>
+    </DMXChannels></DMXMode></DMXModes>
+  </FixtureType>
+</GDTF>)XML";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Expected indexed color-wheel GDTF archive to be written") == 0;
+    peraviz::SceneModel scene_model;
+    peraviz::SceneModel::FixturePatch patch;
+    patch.fixture_uuid = "wheel-index-fixture";
+    patch.gdtf_path = gdtf_path.string();
+    patch.dmx_mode = "Mode 1";
+    patch.mvr_universe = 1;
+    patch.mvr_address = 1;
+    scene_model.fixture_patches.push_back(patch);
+    peraviz::SceneNode beam;
+    beam.node_id = "wheel-index-fixture/Root/Beam";
+    beam.name = "Beam";
+    beam.gdtf_geometry_path = "Root/Beam";
+    beam.gdtf_geometry_key = "wheel-index-fixture/Root/Beam";
+    beam.is_fixture = true;
+    beam.is_beam = true;
+    scene_model.nodes.push_back(beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(scene_model, 0);
+    if (scene.wheel_bindings.empty()) return fail("Expected indexed wheel binding") == 0;
+    if (scene.wheel_bindings[0].mode != peraviz::runtime::CompiledWheelMode::Index) return fail("Expected Color1WheelIndex to classify as Index, not Select") == 0;
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(512, 0);
+    dmx[0] = 0;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    auto frame = runtime.consume_latest_visual_frame();
+    int int_offset = -1, float_offset = -1;
+    if (!first_wheel_selection_row(frame, int_offset, float_offset)) return fail("Expected indexed wheel to emit initial state") == 0;
+    if (frame.integers[int_offset + 3] != static_cast<int32_t>(peraviz::runtime::CompiledWheelMode::Index)) return fail("Expected WheelSelection row mode Index") == 0;
+    if (frame.integers[int_offset + 4] != 1 || frame.integers[int_offset + 5] != 2 || std::fabs(frame.floats[float_offset + 1]) > 0.001f) return fail("Expected phase zero to start at Open with Red as adjacent slot") == 0;
+    const float open_gain = frame.floats[float_offset + 6];
+    dmx[0] = 43;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    frame = runtime.consume_latest_visual_frame();
+    if (!first_wheel_selection_row(frame, int_offset, float_offset)) return fail("Expected half-indexed wheel position to emit aggregate fallback") == 0;
+    const float half_fraction = frame.floats[float_offset + 1];
+    const float half_gain = frame.floats[float_offset + 6];
+    if (!(half_fraction > 0.45f && half_fraction < 0.56f)) return fail("Expected half-indexed wheel position to preserve split fraction") == 0;
+    if (frame.integers[int_offset + 4] != 1 || frame.integers[int_offset + 5] != 2) return fail("Expected half-indexed Open->Red state to preserve adjacent slots") == 0;
+    if (!(half_gain > 0.0f && half_gain < open_gain)) return fail("Expected Open->Red aggregate gain to be visible and below Open") == 0;
+    dmx[0] = 85;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    frame = runtime.consume_latest_visual_frame();
+    if (!first_wheel_selection_row(frame, int_offset, float_offset)) return fail("Expected full-sector indexed wheel position to emit") == 0;
+    if (frame.integers[int_offset + 4] != 2 || frame.integers[int_offset + 5] != 3 || frame.floats[float_offset + 1] > 0.01f) return fail("Expected full sector to become seated Red with Blue adjacent, not an abrupt early switch") == 0;
+    return true;
+}
+
 // Verifies a test-generated GDTF color wheel parses, binds, evaluates DMX, and emits Red then Blue rows.
 bool test_gdtf_color_wheel_vertical_slice() {
     const std::filesystem::path root = repo_root_from_source();
@@ -801,6 +866,7 @@ int main() {
     if (!test_physical_color_science_references()) return 1;
     if (!test_physical_emitter_filter_runtime_contract()) return 1;
     if (!test_wheel_filter_transmission_cooking()) return 1;
+    if (!test_indexed_wheel_aggregate_fallback()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     return 0;
 }

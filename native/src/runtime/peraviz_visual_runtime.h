@@ -79,6 +79,10 @@ private:
         float srgb_green = 1.0f;
         float srgb_blue = 1.0f;
         float gain = 1.0f;
+        float normalized_phase = 0.0f;
+        float split_fraction = 0.0f;
+        float boundary_angle_degrees = 0.0f;
+        CompiledWheelMode mode = CompiledWheelMode::Select;
         int32_t revision = 0;
         bool initialized = false;
     };
@@ -154,6 +158,7 @@ private:
     static float color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated);
     CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target) const;
     CookedEmitterColor apply_wheel_slot_to_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot) const;
+    CookedEmitterColor aggregate_indexed_wheel_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot_a, const CompiledWheelPaletteSlot &slot_b, float split_fraction) const;
     void add_visual_mask_stats(uint32_t visual_mask);
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
     FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);

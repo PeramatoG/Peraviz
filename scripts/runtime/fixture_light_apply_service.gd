@@ -333,6 +333,15 @@ func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: flo
 func _output_id_from_record(output_record: Dictionary, fallback_target_id: int) -> int:
 	return int(output_record.get("beam_render_target_id", fallback_target_id))
 
+
+func _wheel_visual_beam_gain(physical_gain: float) -> float:
+	const CLOSED_EPSILON := 0.000001
+	if physical_gain <= CLOSED_EPSILON:
+		return 0.0
+	var clamped_gain: float = clamp(physical_gain, 0.0, 1.0)
+	var perceptual_gain: float = pow(clamped_gain, 1.0 / 2.2)
+	return lerp(1.0, perceptual_gain, 0.75)
+
 func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record: Dictionary, changed_mask: int, dimmer_norm: float, beam_color: Color, color_gain: float) -> Dictionary:
 	var output_id: int = _output_id_from_record(output_record, int(output_record.get("target_id", 0)))
 	var state: Dictionary = _target_state(output_id, fixture_uuid)
@@ -341,9 +350,10 @@ func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record
 		var records: Array = output_record.get("emitter_records", [])
 		if not records.is_empty() and records[0] is Dictionary:
 			photometric = records[0]
+	var visual_beam_gain: float = _wheel_visual_beam_gain(color_gain)
 	var final_beam_energy: float = float(state.get("beam_energy", 0.0)) * color_gain
 	var final_spot_energy: float = float(state.get("spot_energy", 0.0)) * color_gain
-	var final_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * color_gain
+	var final_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * visual_beam_gain
 	var final_material_energy: float = float(state.get("material_energy", 0.0)) * color_gain
 	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, output_record.get("emitter_nodes", []), beam_color, final_material_energy, output_record.get("lens_material_targets", []), true)
 	var lights_mutated: int = 0
@@ -361,6 +371,8 @@ func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record
 		visible_light = visible_light or _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001)
 		visible_beam = visible_beam or bool(light_result.get("beam_visible", false))
 		last_visibility_diagnostics = light_result.get("visibility_diagnostics", {})
+	last_visibility_diagnostics["physical_color_gain"] = color_gain
+	last_visibility_diagnostics["visual_beam_gain"] = visual_beam_gain
 	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_light": visible_light, "visible_beam": visible_beam, "visibility_diagnostics": last_visibility_diagnostics}
 
 func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float, beam_color: Color) -> Dictionary:
@@ -368,7 +380,7 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var scaled_beam_energy: float = _scaled_projected_value(beam_energy, photometric)
 	var scaled_spot_energy: float = _scaled_projected_value(spot_energy, photometric)
 	var scaled_beam_intensity: float = _clamped_beam_intensity(_scaled_projected_value(beam_intensity, photometric))
-	var visible: bool = dimmer_norm > 0.0001 and projected_scale > 0.0
+	var visible: bool = dimmer_norm > 0.0001 and projected_scale > 0.0 and beam_intensity > 0.000001
 	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
 	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
