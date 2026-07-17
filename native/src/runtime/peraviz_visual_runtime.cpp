@@ -43,6 +43,7 @@ void PeravizVisualRuntimeCore::clear() {
     emitter_resources_by_id_.clear();
     filter_resources_by_id_.clear();
     wheel_palettes_by_id_.clear();
+    base_color_state_by_target_.clear();
     wheel_state_by_binding_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
@@ -298,18 +299,11 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             if (!input_changed) continue;
             ++stats_.color_targets_dirty;
             CookedEmitterColor cooked = cook_emitter_color(target);
-            CookedEmitterColor &previous = color_state_by_target_[target.target.beam_render_target_id];
+            base_color_state_by_target_[target.target.beam_render_target_id] = cooked;
+            base_color_state_by_target_[target.target.beam_render_target_id].initialized = true;
             ++stats_.color_targets_cooked;
             auto dependent_wheels = universe.wheel_binding_indices_by_target.find(target.target.beam_render_target_id);
             if (dependent_wheels != universe.wheel_binding_indices_by_target.end()) wheel_binding_indices.insert(dependent_wheels->second.begin(), dependent_wheels->second.end());
-            const bool changed = !previous.initialized || !nearly_equal(previous.srgb_red, cooked.srgb_red, kDefaultEpsilon) || !nearly_equal(previous.srgb_green, cooked.srgb_green, kDefaultEpsilon) || !nearly_equal(previous.srgb_blue, cooked.srgb_blue, kDefaultEpsilon) || !nearly_equal(previous.gain, cooked.gain, kDefaultEpsilon) || previous.valid != cooked.valid;
-            previous = cooked;
-            previous.initialized = true;
-            if (!changed) continue;
-            add_visual_mask_stats(VisualChangeColor);
-            ++stats_.fixtures_dirty;
-            ++stats_.color_rows;
-            rows.push_back({target.target.fixture_id, target.target.beam_render_target_id, VisualChangeColor, {}, cooked});
         }
 
 
@@ -339,7 +333,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 split_fraction = coordinate - std::floor(coordinate);
                 slot_a = &palette_it->second.slots[static_cast<size_t>(base_index)];
                 slot_b = &palette_it->second.slots[static_cast<size_t>((base_index + 1) % slot_count)];
-                cooked = aggregate_indexed_wheel_color(wheel.binding.beam_render_target_id, *slot_a, *slot_b, split_fraction);
+                cooked = aggregate_indexed_wheel_layer(*slot_a, *slot_b, split_fraction);
             } else if (wheel.binding.mode == CompiledWheelMode::Select) {
                 const CompiledWheelChannelSet *active_set = nullptr;
                 for (const CompiledWheelChannelSet &set : wheel.binding.channel_sets) {
@@ -350,7 +344,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                     if (candidate.slot_index == active_set->wheel_slot_index) { slot_a = &candidate; slot_b = &candidate; break; }
                 }
                 if (slot_a == nullptr) continue;
-                cooked = apply_wheel_slot_to_color(wheel.binding.beam_render_target_id, *slot_a);
+                cooked = cook_wheel_slot_layer(*slot_a);
             } else {
                 continue;
             }
@@ -365,15 +359,42 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             previous.normalized_phase = normalized_phase;
             previous.split_fraction = split_fraction;
             previous.boundary_angle_degrees = boundary_angle_degrees;
+            previous.beam_target_id = wheel.binding.beam_render_target_id;
             previous.srgb_red = cooked.srgb_red;
             previous.srgb_green = cooked.srgb_green;
             previous.srgb_blue = cooked.srgb_blue;
             previous.gain = cooked.gain;
+            previous.linear_red = cooked.linear_red;
+            previous.linear_green = cooked.linear_green;
+            previous.linear_blue = cooked.linear_blue;
             previous.revision += 1;
             ++stats_.wheel_targets_dirty;
             ++stats_.wheel_selection_rows;
             ++stats_.fixtures_dirty;
             rows.push_back({wheel.binding.fixture_id, wheel.binding.beam_render_target_id, VisualChangeColor, {}, cooked, wheel.binding.wheel_renderer_id, slot_a->slot_index, slot_b->slot_index, normalized_phase, split_fraction, boundary_angle_degrees, wheel.binding.mode, previous.revision, true});
+        }
+
+        std::set<int32_t> dirty_color_targets;
+        for (int target_index : color_target_indices) {
+            if (target_index >= 0 && target_index < static_cast<int>(universe.color_targets.size())) dirty_color_targets.insert(universe.color_targets[static_cast<size_t>(target_index)].target.beam_render_target_id);
+        }
+        for (int wheel_index : wheel_binding_indices) {
+            if (wheel_index >= 0 && wheel_index < static_cast<int>(universe.wheel_bindings.size())) dirty_color_targets.insert(universe.wheel_bindings[static_cast<size_t>(wheel_index)].binding.beam_render_target_id);
+        }
+        for (int32_t beam_target_id : dirty_color_targets) {
+            CookedEmitterColor composed = compose_ordered_target_color(beam_target_id);
+            CookedEmitterColor &previous = color_state_by_target_[beam_target_id];
+            const bool changed = !previous.initialized || !nearly_equal(previous.srgb_red, composed.srgb_red, kDefaultEpsilon) || !nearly_equal(previous.srgb_green, composed.srgb_green, kDefaultEpsilon) || !nearly_equal(previous.srgb_blue, composed.srgb_blue, kDefaultEpsilon) || !nearly_equal(previous.gain, composed.gain, kDefaultEpsilon) || previous.valid != composed.valid;
+            previous = composed;
+            previous.initialized = true;
+            if (!changed) { ++stats_.fixtures_skipped; continue; }
+            int fixture_id = 0;
+            for (const ColorTargetRuntime &target : universe.color_targets) if (target.target.beam_render_target_id == beam_target_id) { fixture_id = target.target.fixture_id; break; }
+            if (fixture_id == 0) for (const WheelBindingRuntime &wheel : universe.wheel_bindings) if (wheel.binding.beam_render_target_id == beam_target_id) { fixture_id = wheel.binding.fixture_id; break; }
+            add_visual_mask_stats(VisualChangeColor);
+            ++stats_.fixtures_dirty;
+            ++stats_.color_rows;
+            rows.push_back({fixture_id, beam_target_id, VisualChangeColor, {}, composed});
         }
         for (auto &[fixture_id, next_state] : pending_transform_by_fixture) {
             const auto params_it = render_params_by_fixture_.find(fixture_id);
@@ -726,40 +747,49 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emit
 }
 
 
-// Applies one cooked wheel slot as a subtractive layer over the current upstream color target.
-PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::apply_wheel_slot_to_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot) const {
-    CookedEmitterColor upstream;
-    auto upstream_it = color_state_by_target_.find(beam_target_id);
-    if (upstream_it != color_state_by_target_.end() && upstream_it->second.initialized) upstream = upstream_it->second;
-    runtime::LinearRgb final_linear;
-    final_linear.r = upstream.linear_red * static_cast<double>(slot.linear_red);
-    final_linear.g = upstream.linear_green * static_cast<double>(slot.linear_green);
-    final_linear.b = upstream.linear_blue * static_cast<double>(slot.linear_blue);
-    const float gain = upstream.gain * slot.gain;
-    double separated_gain = 0.0;
-    const runtime::LinearRgb normalized = runtime::normalize_color_gain(final_linear, separated_gain);
-    const float final_gain = gain * static_cast<float>(separated_gain);
-    if (final_gain <= 0.0f) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
-    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), final_gain, normalized.r, normalized.g, normalized.b, true, true};
+// Composes the authoritative final color from the target-local base state and ordered wheel layers.
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::compose_ordered_target_color(int32_t beam_target_id) const {
+    CookedEmitterColor base;
+    auto base_it = base_color_state_by_target_.find(beam_target_id);
+    if (base_it != base_color_state_by_target_.end() && base_it->second.initialized) base = base_it->second;
+    runtime::LinearRgb absolute = {base.linear_red * base.gain, base.linear_green * base.gain, base.linear_blue * base.gain};
+    std::vector<std::pair<int32_t, const WheelTargetState *>> layers;
+    for (const auto &entry : wheel_state_by_binding_) {
+        if (entry.second.initialized && entry.second.beam_target_id == beam_target_id) layers.push_back({entry.first, &entry.second});
+    }
+    std::sort(layers.begin(), layers.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    for (const auto &entry : layers) {
+        const WheelTargetState &layer = *entry.second;
+        absolute.r *= layer.linear_red * layer.gain;
+        absolute.g *= layer.linear_green * layer.gain;
+        absolute.b *= layer.linear_blue * layer.gain;
+    }
+    double gain = 0.0;
+    const runtime::LinearRgb normalized = runtime::normalize_color_gain(absolute, gain);
+    if (gain <= 0.0) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
+    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), static_cast<float>(gain), normalized.r, normalized.g, normalized.b, true, true};
 }
 
+// Cooks one seated wheel slot as a target-local optical layer without reading upstream color.
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_wheel_slot_layer(const CompiledWheelPaletteSlot &slot) const {
+    runtime::LinearRgb linear = {std::clamp<double>(slot.linear_red, 0.0, 1.0), std::clamp<double>(slot.linear_green, 0.0, 1.0), std::clamp<double>(slot.linear_blue, 0.0, 1.0)};
+    const float gain = std::max(0.0f, slot.gain);
+    if (gain <= 0.0f || (linear.r <= 0.0 && linear.g <= 0.0 && linear.b <= 0.0)) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
+    return {static_cast<float>(runtime::srgb_encode(linear.r)), static_cast<float>(runtime::srgb_encode(linear.g)), static_cast<float>(runtime::srgb_encode(linear.b)), gain, linear.r, linear.g, linear.b, true, true};
+}
 
-// Aggregates adjacent indexed wheel slots as a temporary non-spatial fallback in linear space.
-PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::aggregate_indexed_wheel_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot_a, const CompiledWheelPaletteSlot &slot_b, float split_fraction) const {
-    CookedEmitterColor upstream;
-    auto upstream_it = color_state_by_target_.find(beam_target_id);
-    if (upstream_it != color_state_by_target_.end() && upstream_it->second.initialized) upstream = upstream_it->second;
+// Aggregates adjacent indexed wheel slots as a temporary non-spatial optical layer.
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::aggregate_indexed_wheel_layer(const CompiledWheelPaletteSlot &slot_a, const CompiledWheelPaletteSlot &slot_b, float split_fraction) const {
     const double b_weight = std::clamp(static_cast<double>(split_fraction), 0.0, 1.0);
     const double a_weight = 1.0 - b_weight;
     runtime::LinearRgb aggregate;
-    aggregate.r = (upstream.linear_red * static_cast<double>(slot_a.linear_red) * static_cast<double>(slot_a.gain) * a_weight) + (upstream.linear_red * static_cast<double>(slot_b.linear_red) * static_cast<double>(slot_b.gain) * b_weight);
-    aggregate.g = (upstream.linear_green * static_cast<double>(slot_a.linear_green) * static_cast<double>(slot_a.gain) * a_weight) + (upstream.linear_green * static_cast<double>(slot_b.linear_green) * static_cast<double>(slot_b.gain) * b_weight);
-    aggregate.b = (upstream.linear_blue * static_cast<double>(slot_a.linear_blue) * static_cast<double>(slot_a.gain) * a_weight) + (upstream.linear_blue * static_cast<double>(slot_b.linear_blue) * static_cast<double>(slot_b.gain) * b_weight);
-    double separated_gain = 0.0;
-    const runtime::LinearRgb normalized = runtime::normalize_color_gain(aggregate, separated_gain);
-    const float final_gain = upstream.gain * static_cast<float>(separated_gain);
-    if (final_gain <= 0.0f) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
-    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), final_gain, normalized.r, normalized.g, normalized.b, true, true};
+    aggregate.r = std::clamp<double>(slot_a.linear_red, 0.0, 1.0) * std::max(0.0f, slot_a.gain) * a_weight + std::clamp<double>(slot_b.linear_red, 0.0, 1.0) * std::max(0.0f, slot_b.gain) * b_weight;
+    aggregate.g = std::clamp<double>(slot_a.linear_green, 0.0, 1.0) * std::max(0.0f, slot_a.gain) * a_weight + std::clamp<double>(slot_b.linear_green, 0.0, 1.0) * std::max(0.0f, slot_b.gain) * b_weight;
+    aggregate.b = std::clamp<double>(slot_a.linear_blue, 0.0, 1.0) * std::max(0.0f, slot_a.gain) * a_weight + std::clamp<double>(slot_b.linear_blue, 0.0, 1.0) * std::max(0.0f, slot_b.gain) * b_weight;
+    double gain = 0.0;
+    const runtime::LinearRgb normalized = runtime::normalize_color_gain(aggregate, gain);
+    if (gain <= 0.0) return {0.0f, 0.0f, 0.0f, 0.0f, 0.0, 0.0, 0.0, true, true};
+    return {static_cast<float>(runtime::srgb_encode(normalized.r)), static_cast<float>(runtime::srgb_encode(normalized.g)), static_cast<float>(runtime::srgb_encode(normalized.b)), static_cast<float>(gain), normalized.r, normalized.g, normalized.b, true, true};
 }
 
 // Adds cumulative per-category visual mask counters for diagnostics.

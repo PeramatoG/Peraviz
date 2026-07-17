@@ -292,18 +292,11 @@ func apply_wheel_optical_state(loader: Node, fixture_uuid: String, beam_target_i
 	if beam_target_id <= 0 or not loader.has_method("_has_native_beam_output_record") or not loader._has_native_beam_output_record(beam_target_id):
 		return {"applied": false, "wheel_state_applied": false, "target_resolved": false, "failed": 1, "failure_reason": "beam target not registered", "beam_target_id": beam_target_id}
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
-	var output_record: Dictionary = loader._get_native_beam_output_record(beam_target_id)
-	var previous_state: Dictionary = _target_state(beam_target_id, fixture_uuid)
-	var was_unchanged: bool = previous_state.has("beam_color") and previous_state.get("beam_color", Color.WHITE) == aggregate_srgb and is_equal_approx(float(previous_state.get("color_gain", 1.0)), aggregate_gain)
-	_set_target_color_state(beam_target_id, fixture_uuid, aggregate_srgb, aggregate_gain)
-	var state: Dictionary = _target_state(beam_target_id, fixture_uuid)
-	var dimmer_norm: float = float(state.get("dimmer", 0.0))
-	var result: Dictionary = _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, dimmer_norm, aggregate_srgb, max(aggregate_gain, 0.0))
-	var mutations: int = int(result.get("lights_mutated", 0)) + int(result.get("beams_mutated", 0)) + int(result.get("materials_mutated", 0))
 	var key: String = _fixture_state_key(fixture_uuid) + ":wheel:" + str(beam_target_id) + ":" + str(wheel_renderer_id)
-	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizWheelCoverageApproximation", "mutations": mutations, "visibility_diagnostics": result.get("visibility_diagnostics", {})}
-	var accepted: bool = mutations > 0 or was_unchanged
-	return {"applied": accepted, "wheel_state_applied": accepted, "unchanged": was_unchanged and mutations == 0, "target_resolved": true, "lights_mutated": int(result.get("lights_mutated", 0)), "beams_mutated": int(result.get("beams_mutated", 0)), "materials_mutated": int(result.get("materials_mutated", 0)), "topology_rebuilds": 0, "failed": 0 if accepted else 1, "failure_reason": "" if accepted else "no wheel renderer resource changed"}
+	var previous: Dictionary = _diagnostic_info_keys.get(key, {})
+	var metadata_changed: bool = previous.get("mode", -1) != mode or previous.get("slot_a", -1) != slot_a or previous.get("slot_b", -1) != slot_b or previous.get("revision_flags", -1) != revision_flags or not is_equal_approx(float(previous.get("normalized_phase", -1.0)), normalized_phase) or not is_equal_approx(float(previous.get("split_fraction", -1.0)), split_fraction)
+	_diagnostic_info_keys[key] = {"mode": mode, "slot_a": slot_a, "slot_b": slot_b, "changed_mask": changed_mask, "revision_flags": revision_flags, "normalized_phase": normalized_phase, "split_fraction": split_fraction, "boundary_angle_degrees": boundary_angle_degrees, "aggregate_srgb": aggregate_srgb, "aggregate_gain": aggregate_gain, "edge_softness": edge_softness, "coverage_model": "PeravizIndexedWheelAggregateFallback", "mutations": 0, "uniform_color_authority": "EmitterColor"}
+	return {"applied": true, "wheel_state_applied": metadata_changed, "unchanged": not metadata_changed, "target_resolved": true, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "topology_rebuilds": 0, "failed": 0, "failure_reason": ""}
 
 func apply_wheel_motion_state(_loader: Node, fixture_uuid: String, beam_target_id: int, wheel_renderer_id: int, motion_mode: int, changed_mask: int, revision: int, authoritative_phase: float, angular_velocity_degrees_per_second: float, reference_seconds: float, random_frequency_hz: float) -> Dictionary:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1

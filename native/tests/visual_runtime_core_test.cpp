@@ -850,6 +850,55 @@ bool test_gdtf_color_wheel_vertical_slice() {
     return true;
 }
 
+
+// Verifies multiple wheel bindings compose into one authoritative final Beam color row.
+bool test_ordered_multi_wheel_final_color_rows() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture", "type", "mode", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({40, CompiledSemantic::Unknown, {{10, 40, 0}}, 0, 255, 0.0, 1.0, "Color1", "Wheel1"});
+    scene.source_programs.push_back({41, CompiledSemantic::Unknown, {{10, 41, 0}}, 0, 255, 0.0, 1.0, "Color2", "Wheel2"});
+    CompiledWheelPalette wheel1;
+    wheel1.wheel_renderer_id = 401;
+    wheel1.fixture_id = 1;
+    wheel1.slots.push_back({1, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, true, "", "test"});
+    wheel1.slots.push_back({2, 1.0f, 0.48f, 0.48f, 1.0f, 0.20f, 0.20f, 1.0f, false, "", "test"});
+    CompiledWheelPalette wheel2;
+    wheel2.wheel_renderer_id = 402;
+    wheel2.fixture_id = 1;
+    wheel2.slots.push_back({1, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, true, "", "test"});
+    wheel2.slots.push_back({2, 0.48f, 0.48f, 1.0f, 0.20f, 0.20f, 1.0f, 1.0f, false, "", "test"});
+    scene.wheel_palettes.push_back(wheel1);
+    scene.wheel_palettes.push_back(wheel2);
+    scene.wheel_bindings.push_back({501, 1, 77, 401, 40, CompiledWheelMode::Select, true, 270.0f, {{0, 127, 1, "Open"}, {128, 255, 2, "Red"}}});
+    scene.wheel_bindings.push_back({502, 1, 77, 402, 41, CompiledWheelMode::Select, true, 270.0f, {{0, 127, 1, "Open"}, {128, 255, 2, "Blue"}}});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(512, 0);
+    dmx[40] = 255;
+    dmx[41] = 0;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    auto red_open = runtime.consume_latest_visual_frame();
+    int offset = first_color_float_offset(red_open);
+    if (first_color_row_count(red_open) != 1 || offset < 0) return fail("Expected red/open wheels to emit one final color row") == 0;
+    if (!(red_open.floats[offset] > red_open.floats[offset + 2])) return fail("Expected red/open wheels to produce red-dominant final color") == 0;
+    dmx[41] = 255;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    auto red_blue = runtime.consume_latest_visual_frame();
+    offset = first_color_float_offset(red_blue);
+    if (first_color_row_count(red_blue) != 1 || offset < 0) return fail("Expected red/blue wheels to emit exactly one final color row") == 0;
+    if (!(red_blue.floats[offset] > 0.0f && red_blue.floats[offset + 2] > 0.0f)) return fail("Expected red/blue composed color to preserve both transmissions") == 0;
+    dmx[40] = 0;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    auto open_blue = runtime.consume_latest_visual_frame();
+    offset = first_color_float_offset(open_blue);
+    if (first_color_row_count(open_blue) != 1 || offset < 0) return fail("Expected returning wheel 1 to Open to emit one final color row") == 0;
+    if (!(open_blue.floats[offset + 2] > open_blue.floats[offset])) return fail("Expected open/blue wheels to preserve blue wheel layer") == 0;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged multi-wheel state to emit no rows") == 0;
+    return true;
+}
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -867,6 +916,7 @@ int main() {
     if (!test_physical_emitter_filter_runtime_contract()) return 1;
     if (!test_wheel_filter_transmission_cooking()) return 1;
     if (!test_indexed_wheel_aggregate_fallback()) return 1;
+    if (!test_ordered_multi_wheel_final_color_rows()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     return 0;
 }
