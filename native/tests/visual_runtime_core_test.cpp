@@ -1077,7 +1077,71 @@ bool test_select_wheel_inactive_function_range() {
     if (active.integers[int_offset + 4] != 2) return fail("Expected active raw DMX value to resolve slot 2") == 0;
     dmx[60] = 200;
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
-    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected inactive high raw DMX value to emit no stale wheel row") == 0;
+    const auto inactive = runtime.consume_latest_visual_frame();
+    if (first_wheel_selection_row(inactive, int_offset, float_offset)) return fail("Expected inactive high raw DMX value to emit no stale wheel row") == 0;
+    if (first_color_row_count(inactive) != 1) return fail("Expected inactive high raw DMX value to clear stale optical layer through one final color row") == 0;
+    return true;
+}
+
+
+// Verifies Select and Index control ranges for one physical wheel replace one another instead of composing together.
+bool test_one_physical_wheel_select_index_exclusive() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture", "type", "mode", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({70, CompiledSemantic::Unknown, {{10, 70, 0}}, 0, 127, 0.0, 1.0, "Color1", "Color Select"});
+    scene.source_programs.push_back({71, CompiledSemantic::Unknown, {{10, 70, 0}}, 128, 255, 0.0, 360.0, "Color1WheelIndex", "Color Index"});
+    CompiledWheelPalette palette;
+    palette.wheel_renderer_id = 701;
+    palette.fixture_id = 1;
+    palette.slots.push_back({1, 1.0f, 0.48f, 0.48f, 1.0f, 0.20f, 0.20f, 1.0f, false, "", "red"});
+    palette.slots.push_back({2, 0.48f, 0.48f, 1.0f, 0.20f, 0.20f, 1.0f, 1.0f, false, "", "blue"});
+    palette.slots.push_back({3, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, true, "", "open"});
+    scene.wheel_palettes.push_back(palette);
+    scene.wheel_bindings.push_back({7010, 1, 77, 701, 70, CompiledWheelMode::Select, true, 0.0f, {{0, 63, 1, "Red"}, {64, 127, 2, "Blue"}}});
+    scene.wheel_bindings.push_back({7011, 1, 77, 701, 71, CompiledWheelMode::Index, false, 0.0f, {}});
+    auto evaluate = [&](PeravizVisualRuntimeCore &runtime, uint8_t value, SectionedVisualFrame &out) -> bool {
+        std::vector<uint8_t> dmx(512, 0);
+        dmx[70] = value;
+        runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+        out = runtime.consume_latest_visual_frame();
+        return true;
+    };
+    PeravizVisualRuntimeCore direct_runtime;
+    direct_runtime.install_compiled_scene(scene);
+    SectionedVisualFrame direct_blue;
+    evaluate(direct_runtime, 64, direct_blue);
+    int direct_int_offset = -1, direct_float_offset = -1;
+    if (!first_wheel_selection_row(direct_blue, direct_int_offset, direct_float_offset)) return fail("Expected direct Select blue to emit WheelSelection") == 0;
+    if (direct_blue.integers[direct_int_offset + 3] != static_cast<int32_t>(CompiledWheelMode::Select) || direct_blue.integers[direct_int_offset + 4] != 2) return fail("Expected direct path to select seated blue slot") == 0;
+    const int direct_color_offset = first_color_float_offset(direct_blue);
+    if (direct_color_offset < 0) return fail("Expected direct Select blue to emit final color") == 0;
+
+    PeravizVisualRuntimeCore transition_runtime;
+    transition_runtime.install_compiled_scene(scene);
+    SectionedVisualFrame red_frame;
+    evaluate(transition_runtime, 0, red_frame);
+    int red_int_offset = -1, red_float_offset = -1;
+    if (!first_wheel_selection_row(red_frame, red_int_offset, red_float_offset) || red_frame.integers[red_int_offset + 4] != 1) return fail("Expected Select red before Index transition") == 0;
+    SectionedVisualFrame index_frame;
+    evaluate(transition_runtime, 200, index_frame);
+    int index_int_offset = -1, index_float_offset = -1;
+    if (!first_wheel_selection_row(index_frame, index_int_offset, index_float_offset)) return fail("Expected Index transition to emit physical wheel metadata") == 0;
+    if (index_frame.integers[index_int_offset + 3] != static_cast<int32_t>(CompiledWheelMode::Index)) return fail("Expected active physical wheel mode to become Index") == 0;
+    const int index_color_offset = first_color_float_offset(index_frame);
+    if (index_color_offset < 0) return fail("Expected Index transition to emit final color") == 0;
+    if (!(index_frame.floats[index_color_offset] > 0.0f && index_frame.floats[index_color_offset + 2] > 0.0f)) return fail("Expected Index result to stand alone without multiplying stale Select red to black") == 0;
+    SectionedVisualFrame path_blue;
+    evaluate(transition_runtime, 64, path_blue);
+    int path_int_offset = -1, path_float_offset = -1;
+    if (!first_wheel_selection_row(path_blue, path_int_offset, path_float_offset)) return fail("Expected Index-to-Select transition to emit metadata") == 0;
+    if (path_blue.integers[path_int_offset + 3] != static_cast<int32_t>(CompiledWheelMode::Select) || path_blue.integers[path_int_offset + 4] != 2) return fail("Expected active physical wheel mode to return to seated blue") == 0;
+    const int path_color_offset = first_color_float_offset(path_blue);
+    if (path_color_offset < 0) return fail("Expected path Select blue to emit final color") == 0;
+    for (int component = 0; component < 4; ++component) {
+        if (std::fabs(direct_blue.floats[direct_color_offset + component] - path_blue.floats[path_color_offset + component]) > 0.0001f) return fail("Expected direct and transition paths to produce identical final color") == 0;
+    }
+    if (!(path_blue.integers[path_int_offset + 7] > direct_blue.integers[direct_int_offset + 7])) return fail("Expected physical wheel revision to advance across control-mode transitions") == 0;
     return true;
 }
 
@@ -1102,6 +1166,7 @@ int main() {
     if (!test_exact_color_wheel_slot_resolution()) return 1;
     if (!test_malformed_wheel_slot_preserves_indices()) return 1;
     if (!test_select_wheel_inactive_function_range()) return 1;
+    if (!test_one_physical_wheel_select_index_exclusive()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     return 0;
 }

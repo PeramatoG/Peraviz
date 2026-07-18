@@ -44,7 +44,7 @@ void PeravizVisualRuntimeCore::clear() {
     filter_resources_by_id_.clear();
     wheel_palettes_by_id_.clear();
     base_color_state_by_target_.clear();
-    wheel_state_by_binding_.clear();
+    wheel_state_by_physical_key_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
@@ -183,12 +183,16 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         UniverseState &universe = universes_[program_it->second.program.sources.front().universe_id];
         const int wheel_index = static_cast<int>(universe.wheel_bindings.size());
         universe.wheel_bindings.push_back({binding});
+        const int64_t physical_key = wheel_physical_key(binding.beam_render_target_id, binding.wheel_renderer_id);
         universe.wheel_binding_indices_by_target[binding.beam_render_target_id].push_back(wheel_index);
+        universe.wheel_binding_indices_by_physical_key[physical_key].push_back(wheel_index);
+        universe.wheel_physical_keys_by_target[binding.beam_render_target_id].push_back(physical_key);
         for (const CompiledDmxByteSource &source : program_it->second.program.sources) {
             universe.interest_offsets.push_back(source.address);
             universe.wheel_binding_indices_by_offset[source.address].push_back(wheel_index);
         }
-        wheel_state_by_binding_[binding.binding_id] = {};
+        wheel_state_by_physical_key_[physical_key].beam_target_id = binding.beam_render_target_id;
+        wheel_state_by_physical_key_[physical_key].wheel_renderer_id = binding.wheel_renderer_id;
         capabilities.has_wheel_selection = true;
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeColor;
         ++installed_wheel_bindings;
@@ -199,6 +203,34 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     for (auto &[_, universe] : universes_) {
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
         universe.interest_offsets.erase(std::unique(universe.interest_offsets.begin(), universe.interest_offsets.end()), universe.interest_offsets.end());
+        for (auto &[__, indices] : universe.wheel_binding_indices_by_physical_key) {
+            std::sort(indices.begin(), indices.end(), [&universe, this](int lhs, int rhs) {
+                const CompiledWheelTargetBinding &a = universe.wheel_bindings[static_cast<size_t>(lhs)].binding;
+                const CompiledWheelTargetBinding &b = universe.wheel_bindings[static_cast<size_t>(rhs)].binding;
+                const auto pa = source_programs_by_id_.find(a.source_program_id);
+                const auto pb = source_programs_by_id_.find(b.source_program_id);
+                const uint32_t a_from = pa != source_programs_by_id_.end() ? pa->second.program.dmx_from : 0U;
+                const uint32_t b_from = pb != source_programs_by_id_.end() ? pb->second.program.dmx_from : 0U;
+                if (a_from != b_from) return a_from < b_from;
+                const uint32_t a_to = pa != source_programs_by_id_.end() ? pa->second.program.dmx_to : 0U;
+                const uint32_t b_to = pb != source_programs_by_id_.end() ? pb->second.program.dmx_to : 0U;
+                if (a_to != b_to) return a_to < b_to;
+                return a.binding_id < b.binding_id;
+            });
+            for (size_t index = 1; index < indices.size(); ++index) {
+                const CompiledWheelTargetBinding &previous_binding = universe.wheel_bindings[static_cast<size_t>(indices[index - 1])].binding;
+                const CompiledWheelTargetBinding &next_binding = universe.wheel_bindings[static_cast<size_t>(indices[index])].binding;
+                const auto previous_program = source_programs_by_id_.find(previous_binding.source_program_id);
+                const auto next_program = source_programs_by_id_.find(next_binding.source_program_id);
+                if (previous_program != source_programs_by_id_.end() && next_program != source_programs_by_id_.end() && next_program->second.program.dmx_from <= previous_program->second.program.dmx_to) {
+                    diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-RANGE-OVERLAP", "warning", "Wheel control ChannelFunction ranges overlap for one physical wheel; runtime will use deterministic binding order.", std::to_string(previous_binding.beam_render_target_id) + ":" + std::to_string(previous_binding.wheel_renderer_id)});
+                }
+            }
+        }
+        for (auto &[__, keys] : universe.wheel_physical_keys_by_target) {
+            std::sort(keys.begin(), keys.end());
+            keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+        }
     }
     schema_ = make_visual_frame_schema(++next_schema_generation_, capabilities);
 }
@@ -307,27 +339,66 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
 
 
-        std::set<int32_t> wheel_dirty_targets;
+        std::set<int64_t> dirty_physical_wheels;
         for (int wheel_index : wheel_binding_indices) {
             if (wheel_index < 0 || wheel_index >= static_cast<int>(universe.wheel_bindings.size())) continue;
-            const WheelBindingRuntime &wheel = universe.wheel_bindings[static_cast<size_t>(wheel_index)];
-            auto program_it = source_programs_by_id_.find(wheel.binding.source_program_id);
-            auto palette_it = wheel_palettes_by_id_.find(wheel.binding.wheel_renderer_id);
-            if (program_it == source_programs_by_id_.end() || palette_it == wheel_palettes_by_id_.end()) continue;
-            const EvaluationResult evaluated = evaluate_source_program(universe.latest_frame, program_it->second, &diagnostics_);
-            if (!evaluated.valid) continue;
-            ++stats_.wheel_inputs_evaluated;
+            const CompiledWheelTargetBinding &binding = universe.wheel_bindings[static_cast<size_t>(wheel_index)].binding;
+            dirty_physical_wheels.insert(wheel_physical_key(binding.beam_render_target_id, binding.wheel_renderer_id));
+        }
+
+        std::set<int32_t> wheel_dirty_targets;
+        for (int64_t physical_key : dirty_physical_wheels) {
+            auto group_it = universe.wheel_binding_indices_by_physical_key.find(physical_key);
+            if (group_it == universe.wheel_binding_indices_by_physical_key.end()) continue;
+            const WheelBindingRuntime *active_wheel = nullptr;
+            const InstalledSourceProgram *active_program = nullptr;
+            EvaluationResult active_evaluation;
+            for (int wheel_index : group_it->second) {
+                if (wheel_index < 0 || wheel_index >= static_cast<int>(universe.wheel_bindings.size())) continue;
+                const WheelBindingRuntime &candidate = universe.wheel_bindings[static_cast<size_t>(wheel_index)];
+                auto program_it = source_programs_by_id_.find(candidate.binding.source_program_id);
+                if (program_it == source_programs_by_id_.end()) continue;
+                const EvaluationResult evaluated = evaluate_source_program(universe.latest_frame, program_it->second, &diagnostics_);
+                if (!evaluated.valid) continue;
+                ++stats_.wheel_inputs_evaluated;
+                if (evaluated.raw_value < program_it->second.program.dmx_from || evaluated.raw_value > program_it->second.program.dmx_to) continue;
+                if (active_wheel == nullptr) {
+                    active_wheel = &candidate;
+                    active_program = &program_it->second;
+                    active_evaluation = evaluated;
+                } else {
+                    diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-RANGE-OVERLAP", "warning", "Multiple wheel control bindings were active for one physical wheel; using deterministic binding order.", std::to_string(candidate.binding.beam_render_target_id) + ":" + std::to_string(candidate.binding.wheel_renderer_id)});
+                }
+            }
+            WheelTargetState &previous = wheel_state_by_physical_key_[physical_key];
+            if (active_wheel == nullptr || active_program == nullptr) {
+                if (previous.initialized) {
+                    const int32_t previous_revision = previous.revision;
+                    const int32_t beam_target_id = previous.beam_target_id;
+                    const int32_t wheel_renderer_id = previous.wheel_renderer_id;
+                    previous = {};
+                    previous.beam_target_id = beam_target_id;
+                    previous.wheel_renderer_id = wheel_renderer_id;
+                    previous.revision = previous_revision + 1;
+                    ++stats_.wheel_targets_dirty;
+                    wheel_dirty_targets.insert(beam_target_id);
+                }
+                continue;
+            }
+            const CompiledWheelTargetBinding &binding = active_wheel->binding;
+            auto palette_it = wheel_palettes_by_id_.find(binding.wheel_renderer_id);
+            if (palette_it == wheel_palettes_by_id_.end()) continue;
             const CompiledWheelPaletteSlot *slot_a = nullptr;
             const CompiledWheelPaletteSlot *slot_b = nullptr;
             float normalized_phase = 0.0f;
             float split_fraction = 0.0f;
             float boundary_angle_degrees = 0.0f;
             CookedEmitterColor cooked;
-            if (wheel.binding.mode == CompiledWheelMode::Index) {
+            if (binding.mode == CompiledWheelMode::Index) {
                 const int32_t slot_count = static_cast<int32_t>(palette_it->second.slots.size());
                 if (slot_count <= 0) continue;
                 auto normalize_degrees = [](float degrees) { float wrapped = std::fmod(degrees, 360.0f); return wrapped < 0.0f ? wrapped + 360.0f : wrapped; };
-                boundary_angle_degrees = normalize_degrees(evaluated.physical_value + wheel.binding.placement_offset_degrees);
+                boundary_angle_degrees = normalize_degrees(active_evaluation.physical_value + binding.placement_offset_degrees);
                 normalized_phase = boundary_angle_degrees / 360.0f;
                 const float coordinate = normalized_phase * static_cast<float>(slot_count);
                 const int32_t base_index = static_cast<int32_t>(std::floor(coordinate)) % slot_count;
@@ -335,11 +406,10 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 slot_a = &palette_it->second.slots[static_cast<size_t>(base_index)];
                 slot_b = &palette_it->second.slots[static_cast<size_t>((base_index + 1) % slot_count)];
                 cooked = aggregate_indexed_wheel_layer(*slot_a, *slot_b, split_fraction);
-            } else if (wheel.binding.mode == CompiledWheelMode::Select) {
-                if (evaluated.raw_value < program_it->second.program.dmx_from || evaluated.raw_value > program_it->second.program.dmx_to) continue;
+            } else if (binding.mode == CompiledWheelMode::Select) {
                 const CompiledWheelChannelSet *active_set = nullptr;
-                for (const CompiledWheelChannelSet &set : wheel.binding.channel_sets) {
-                    if (evaluated.raw_value >= set.dmx_from && evaluated.raw_value <= set.dmx_to) { active_set = &set; break; }
+                for (const CompiledWheelChannelSet &set : binding.channel_sets) {
+                    if (active_evaluation.raw_value >= set.dmx_from && active_evaluation.raw_value <= set.dmx_to) { active_set = &set; break; }
                 }
                 if (active_set == nullptr) continue;
                 int slot_match_count = 0;
@@ -350,25 +420,30 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                     ++slot_match_count;
                 }
                 if (slot_match_count != 1 || slot_a == nullptr) {
-                    diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-SLOT-LOOKUP", "error", "WheelSelection could not resolve exactly one palette slot for ChannelSet.WheelSlotIndex.", std::to_string(wheel.binding.binding_id) + " slot=" + std::to_string(active_set->wheel_slot_index)});
+                    diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-SLOT-LOOKUP", "error", "WheelSelection could not resolve exactly one palette slot for ChannelSet.WheelSlotIndex.", std::to_string(binding.binding_id) + " slot=" + std::to_string(active_set->wheel_slot_index)});
                     continue;
                 }
                 cooked = cook_wheel_slot_layer(*slot_a);
             } else {
-                continue;
+                cooked = cook_wheel_slot_layer(palette_it->second.slots.front());
+                slot_a = &palette_it->second.slots.front();
+                slot_b = slot_a;
             }
             if (slot_a == nullptr || slot_b == nullptr) continue;
-            WheelTargetState &previous = wheel_state_by_binding_[wheel.binding.binding_id];
-            const bool changed = !previous.initialized || previous.mode != wheel.binding.mode || previous.slot_a != slot_a->slot_index || previous.slot_b != slot_b->slot_index || !nearly_equal(previous.normalized_phase, normalized_phase, kDefaultEpsilon) || !nearly_equal(previous.split_fraction, split_fraction, kDefaultEpsilon) || !nearly_equal(previous.srgb_red, cooked.srgb_red, kDefaultEpsilon) || !nearly_equal(previous.srgb_green, cooked.srgb_green, kDefaultEpsilon) || !nearly_equal(previous.srgb_blue, cooked.srgb_blue, kDefaultEpsilon) || !nearly_equal(previous.gain, cooked.gain, kDefaultEpsilon);
+            const bool changed = !previous.initialized || previous.active_binding_id != binding.binding_id || previous.mode != binding.mode || previous.slot_a != slot_a->slot_index || previous.slot_b != slot_b->slot_index || !nearly_equal(previous.normalized_phase, normalized_phase, kDefaultEpsilon) || !nearly_equal(previous.split_fraction, split_fraction, kDefaultEpsilon) || !nearly_equal(previous.srgb_red, cooked.srgb_red, kDefaultEpsilon) || !nearly_equal(previous.srgb_green, cooked.srgb_green, kDefaultEpsilon) || !nearly_equal(previous.srgb_blue, cooked.srgb_blue, kDefaultEpsilon) || !nearly_equal(previous.gain, cooked.gain, kDefaultEpsilon);
             if (!changed) { ++stats_.wheel_states_skipped; continue; }
+            const int32_t next_revision = previous.revision + 1;
+            previous = {};
             previous.initialized = true;
-            previous.mode = wheel.binding.mode;
+            previous.active_binding_id = binding.binding_id;
+            previous.beam_target_id = binding.beam_render_target_id;
+            previous.wheel_renderer_id = binding.wheel_renderer_id;
+            previous.mode = binding.mode;
             previous.slot_a = slot_a->slot_index;
             previous.slot_b = slot_b->slot_index;
             previous.normalized_phase = normalized_phase;
             previous.split_fraction = split_fraction;
             previous.boundary_angle_degrees = boundary_angle_degrees;
-            previous.beam_target_id = wheel.binding.beam_render_target_id;
             previous.srgb_red = cooked.srgb_red;
             previous.srgb_green = cooked.srgb_green;
             previous.srgb_blue = cooked.srgb_blue;
@@ -376,12 +451,12 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             previous.linear_red = cooked.linear_red;
             previous.linear_green = cooked.linear_green;
             previous.linear_blue = cooked.linear_blue;
-            previous.revision += 1;
+            previous.revision = next_revision;
             ++stats_.wheel_targets_dirty;
-            wheel_dirty_targets.insert(wheel.binding.beam_render_target_id);
+            wheel_dirty_targets.insert(binding.beam_render_target_id);
             ++stats_.wheel_selection_rows;
             ++stats_.fixtures_dirty;
-            rows.push_back({wheel.binding.fixture_id, wheel.binding.beam_render_target_id, VisualChangeColor, {}, cooked, wheel.binding.wheel_renderer_id, slot_a->slot_index, slot_b->slot_index, normalized_phase, split_fraction, boundary_angle_degrees, wheel.binding.mode, previous.revision, true});
+            rows.push_back({binding.fixture_id, binding.beam_render_target_id, VisualChangeColor, {}, cooked, binding.wheel_renderer_id, slot_a->slot_index, slot_b->slot_index, normalized_phase, split_fraction, boundary_angle_degrees, binding.mode, previous.revision, true});
         }
 
         std::set<int32_t> dirty_color_targets;
@@ -674,6 +749,12 @@ float PeravizVisualRuntimeCore::color_value_from_evaluation(CompiledSemantic sem
     return std::clamp(evaluated.normalized_value, 0.0f, 1.0f);
 }
 
+// Builds a stable key for one physical wheel layer on one Beam target.
+int64_t PeravizVisualRuntimeCore::wheel_physical_key(int32_t beam_target_id, int32_t wheel_renderer_id) {
+    return (static_cast<int64_t>(beam_target_id) << 32) ^ static_cast<uint32_t>(wheel_renderer_id);
+}
+
+
 // Composes one complete color target once into renderer-ready sRGB plus linear gain.
 PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emitter_color(const ColorTargetRuntime &target) const {
     runtime::LinearRgb add;
@@ -762,8 +843,8 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::compose_o
     if (base_it != base_color_state_by_target_.end() && base_it->second.initialized) base = base_it->second;
     runtime::LinearRgb absolute = {base.linear_red * base.gain, base.linear_green * base.gain, base.linear_blue * base.gain};
     std::vector<std::pair<int32_t, const WheelTargetState *>> layers;
-    for (const auto &entry : wheel_state_by_binding_) {
-        if (entry.second.initialized && entry.second.beam_target_id == beam_target_id) layers.push_back({entry.first, &entry.second});
+    for (const auto &entry : wheel_state_by_physical_key_) {
+        if (entry.second.initialized && entry.second.beam_target_id == beam_target_id) layers.push_back({static_cast<int32_t>(entry.first & 0xffffffff), &entry.second});
     }
     std::sort(layers.begin(), layers.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
     for (const auto &entry : layers) {
