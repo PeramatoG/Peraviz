@@ -37,6 +37,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Corrected seated GDTF color-wheel slot diagnostics and runtime selection guardrails so discrete wheel rows only resolve while their ChannelFunction is active, preserve exact one-based slot identity, and report WheelSelection change masks from the correct payload field.
 - Fixed Art-Net startup on Windows when another compatible lighting application is already bound to UDP port 6454, allowing Peraviz DMX reception to start without requiring users to restart the other application.
 - Preserved multi-emitter photometric brightness when applying native Color rows so color gain now scales each Beam output’s existing luminous-flux distribution instead of overwriting every emitter with target-level energy.
 - Beam intensity now respects each exact GDTF Beam geometry LuminousFlux value, including the official 10000 lm default, so multi-lens fixtures sum their declared projected output instead of repeating one full fixture-wide beam per lens. None and Glow beams remain emission-only and no longer add projected cone output.

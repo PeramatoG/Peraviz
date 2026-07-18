@@ -307,6 +307,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
 
 
+        std::set<int32_t> wheel_dirty_targets;
         for (int wheel_index : wheel_binding_indices) {
             if (wheel_index < 0 || wheel_index >= static_cast<int>(universe.wheel_bindings.size())) continue;
             const WheelBindingRuntime &wheel = universe.wheel_bindings[static_cast<size_t>(wheel_index)];
@@ -335,15 +336,23 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 slot_b = &palette_it->second.slots[static_cast<size_t>((base_index + 1) % slot_count)];
                 cooked = aggregate_indexed_wheel_layer(*slot_a, *slot_b, split_fraction);
             } else if (wheel.binding.mode == CompiledWheelMode::Select) {
+                if (evaluated.raw_value < program_it->second.program.dmx_from || evaluated.raw_value > program_it->second.program.dmx_to) continue;
                 const CompiledWheelChannelSet *active_set = nullptr;
                 for (const CompiledWheelChannelSet &set : wheel.binding.channel_sets) {
                     if (evaluated.raw_value >= set.dmx_from && evaluated.raw_value <= set.dmx_to) { active_set = &set; break; }
                 }
                 if (active_set == nullptr) continue;
+                int slot_match_count = 0;
                 for (const CompiledWheelPaletteSlot &candidate : palette_it->second.slots) {
-                    if (candidate.slot_index == active_set->wheel_slot_index) { slot_a = &candidate; slot_b = &candidate; break; }
+                    if (candidate.slot_index != active_set->wheel_slot_index) continue;
+                    slot_a = &candidate;
+                    slot_b = &candidate;
+                    ++slot_match_count;
                 }
-                if (slot_a == nullptr) continue;
+                if (slot_match_count != 1 || slot_a == nullptr) {
+                    diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-SLOT-LOOKUP", "error", "WheelSelection could not resolve exactly one palette slot for ChannelSet.WheelSlotIndex.", std::to_string(wheel.binding.binding_id) + " slot=" + std::to_string(active_set->wheel_slot_index)});
+                    continue;
+                }
                 cooked = cook_wheel_slot_layer(*slot_a);
             } else {
                 continue;
@@ -369,6 +378,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             previous.linear_blue = cooked.linear_blue;
             previous.revision += 1;
             ++stats_.wheel_targets_dirty;
+            wheel_dirty_targets.insert(wheel.binding.beam_render_target_id);
             ++stats_.wheel_selection_rows;
             ++stats_.fixtures_dirty;
             rows.push_back({wheel.binding.fixture_id, wheel.binding.beam_render_target_id, VisualChangeColor, {}, cooked, wheel.binding.wheel_renderer_id, slot_a->slot_index, slot_b->slot_index, normalized_phase, split_fraction, boundary_angle_degrees, wheel.binding.mode, previous.revision, true});
@@ -378,9 +388,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         for (int target_index : color_target_indices) {
             if (target_index >= 0 && target_index < static_cast<int>(universe.color_targets.size())) dirty_color_targets.insert(universe.color_targets[static_cast<size_t>(target_index)].target.beam_render_target_id);
         }
-        for (int wheel_index : wheel_binding_indices) {
-            if (wheel_index >= 0 && wheel_index < static_cast<int>(universe.wheel_bindings.size())) dirty_color_targets.insert(universe.wheel_bindings[static_cast<size_t>(wheel_index)].binding.beam_render_target_id);
-        }
+        dirty_color_targets.insert(wheel_dirty_targets.begin(), wheel_dirty_targets.end());
         for (int32_t beam_target_id : dirty_color_targets) {
             CookedEmitterColor composed = compose_ordered_target_color(beam_target_id);
             CookedEmitterColor &previous = color_state_by_target_[beam_target_id];

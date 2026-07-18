@@ -899,6 +899,188 @@ bool test_ordered_multi_wheel_final_color_rows() {
     return true;
 }
 
+
+// Verifies seated Color wheel slots resolve by exact one-based WheelSlotIndex, not declaration assumptions or filter order.
+bool test_exact_color_wheel_slot_resolution() {
+    const std::filesystem::path root = repo_root_from_source();
+    const std::filesystem::path gdtf_path = root / "native" / "build" / "exact_color_wheel_slot_resolution.gdtf";
+    std::filesystem::create_directories(gdtf_path.parent_path());
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF>
+  <FixtureType Name="Exact Slot Resolution">
+    <PhysicalDescriptions>
+      <Filters>
+        <Filter Name="BlueFilter" Color="0.1500,0.0600,0.8" />
+        <Filter Name="AmberFilter" Color="0.5800,0.4000,0.8" />
+        <Filter Name="GreenFilter" Color="0.1700,0.7000,0.8" />
+      </Filters>
+    </PhysicalDescriptions>
+    <Wheels><Wheel Name="ColorWheelExact">
+      <Slot Name="GreenFirst" Filter="GreenFilter" />
+      <Slot Name="OpenSecond" />
+      <Slot Name="AmberThird" Filter="AmberFilter" />
+      <Slot Name="BlueFourth" Filter="BlueFilter" />
+    </Wheel></Wheels>
+    <Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries>
+    <DMXModes><DMXMode Name="Mode 1" Geometry="Root"><DMXChannels>
+      <DMXChannel Offset="1" Geometry="Beam"><LogicalChannel Attribute="Color1" Snap="Yes"><ChannelFunction Name="Color Select" Attribute="Color1" Wheel="ColorWheelExact" DMXFrom="0" DMXTo="255">
+        <ChannelSet Name="OpenRange" DMXFrom="0/1" WheelSlotIndex="2" />
+        <ChannelSet Name="BlueRange" DMXFrom="64/1" WheelSlotIndex="4" />
+        <ChannelSet Name="GreenRange" DMXFrom="128/1" WheelSlotIndex="1" />
+        <ChannelSet Name="AmberRange" DMXFrom="192/1" WheelSlotIndex="3" />
+        <ChannelSet Name="BlueRepeated" DMXFrom="224/1" WheelSlotIndex="4" />
+      </ChannelFunction></LogicalChannel></DMXChannel>
+    </DMXChannels></DMXMode></DMXModes>
+  </FixtureType>
+</GDTF>)XML";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Expected exact slot GDTF archive to be written") == 0;
+    peraviz::SceneModel scene_model;
+    peraviz::SceneModel::FixturePatch patch;
+    patch.fixture_uuid = "exact-slot-fixture";
+    patch.gdtf_path = gdtf_path.string();
+    patch.dmx_mode = "Mode 1";
+    patch.mvr_universe = 1;
+    patch.mvr_address = 1;
+    scene_model.fixture_patches.push_back(patch);
+    peraviz::SceneNode beam;
+    beam.node_id = "exact-slot-fixture/Root/Beam";
+    beam.name = "Beam";
+    beam.gdtf_geometry_path = "Root/Beam";
+    beam.gdtf_geometry_key = "exact-slot-fixture/Root/Beam";
+    beam.is_fixture = true;
+    beam.is_beam = true;
+    scene_model.nodes.push_back(beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(scene_model, 0);
+    if (scene.wheel_palettes.size() != 1 || scene.wheel_palettes[0].slots.size() != 4) return fail("Expected four declaration-order palette slots") == 0;
+    const auto &slots = scene.wheel_palettes[0].slots;
+    if (slots[0].slot_index != 1 || slots[0].name != "GreenFirst" || slots[0].provenance.find("GreenFilter") == std::string::npos) return fail("Expected slot 1 to preserve GreenFirst filter provenance") == 0;
+    if (slots[1].slot_index != 2 || slots[1].name != "OpenSecond" || !slots[1].identity) return fail("Expected slot 2 to remain the identity OpenSecond slot") == 0;
+    if (slots[2].slot_index != 3 || slots[2].name != "AmberThird" || slots[2].provenance.find("AmberFilter") == std::string::npos) return fail("Expected slot 3 to preserve AmberThird filter provenance") == 0;
+    if (slots[3].slot_index != 4 || slots[3].name != "BlueFourth" || slots[3].provenance.find("BlueFilter") == std::string::npos) return fail("Expected slot 4 to preserve BlueFourth filter provenance") == 0;
+    if (scene.wheel_bindings.empty() || scene.wheel_bindings[0].channel_sets.size() != 5) return fail("Expected five inferred ChannelSet ranges") == 0;
+    const auto &sets = scene.wheel_bindings[0].channel_sets;
+    if (sets[0].dmx_from != 0 || sets[0].dmx_to != 63 || sets[0].wheel_slot_index != 2) return fail("Expected 0..63 to resolve WheelSlotIndex 2") == 0;
+    if (sets[1].dmx_from != 64 || sets[1].dmx_to != 127 || sets[1].wheel_slot_index != 4) return fail("Expected 64..127 to resolve WheelSlotIndex 4") == 0;
+    if (sets[2].dmx_from != 128 || sets[2].dmx_to != 191 || sets[2].wheel_slot_index != 1) return fail("Expected 128..191 to resolve WheelSlotIndex 1") == 0;
+    if (sets[3].dmx_from != 192 || sets[3].dmx_to != 223 || sets[3].wheel_slot_index != 3) return fail("Expected 192..223 to resolve WheelSlotIndex 3") == 0;
+    if (sets[4].dmx_from != 224 || sets[4].dmx_to != 255 || sets[4].wheel_slot_index != 4) return fail("Expected repeated 224..255 to resolve WheelSlotIndex 4") == 0;
+    auto expect = [&](uint8_t value, int expected_slot, char dominance) -> bool {
+        peraviz::runtime::PeravizVisualRuntimeCore runtime;
+        runtime.install_compiled_scene(scene);
+        std::vector<uint8_t> dmx(512, 0);
+        dmx[0] = value;
+        runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+        const auto row = runtime.consume_latest_visual_frame();
+        int int_offset = -1, float_offset = -1;
+        if (!first_wheel_selection_row(row, int_offset, float_offset)) return fail("Expected exact slot DMX value to emit WheelSelection") == 0;
+        if (row.integers[int_offset + 4] != expected_slot || row.integers[int_offset + 5] != expected_slot) return fail("Expected WheelSelection to echo exact WheelSlotIndex") == 0;
+        const int color_offset = first_color_float_offset(row);
+        if (first_color_row_count(row) != 1 || color_offset < 0) return fail("Expected exact slot DMX value to emit one final color row") == 0;
+        const float red = row.floats[color_offset];
+        const float green = row.floats[color_offset + 1];
+        const float blue = row.floats[color_offset + 2];
+        if (dominance == 'w' && !(red > 0.99f && green > 0.99f && blue > 0.99f)) return fail("Expected identity white slot output") == 0;
+        if (dominance == 'g' && !(green > red && green > blue)) return fail("Expected green-dominant slot output") == 0;
+        if (dominance == 'a' && !(red > blue && green > blue)) return fail("Expected amber slot output") == 0;
+        if (dominance == 'b' && !(blue > red && blue > green)) return fail("Expected blue-dominant slot output") == 0;
+        return true;
+    };
+    if (!expect(0, 2, 'w')) return false;
+    if (!expect(63, 2, 'w')) return false;
+    if (!expect(64, 4, 'b')) return false;
+    if (!expect(127, 4, 'b')) return false;
+    if (!expect(128, 1, 'g')) return false;
+    if (!expect(191, 1, 'g')) return false;
+    if (!expect(192, 3, 'a')) return false;
+    if (!expect(223, 3, 'a')) return false;
+    if (!expect(224, 4, 'b')) return false;
+    if (!expect(255, 4, 'b')) return false;
+    return true;
+}
+
+// Verifies malformed slots keep their one-based index and later slots do not shift.
+bool test_malformed_wheel_slot_preserves_indices() {
+    const std::filesystem::path root = repo_root_from_source();
+    const std::filesystem::path gdtf_path = root / "native" / "build" / "malformed_wheel_slot_indices.gdtf";
+    std::filesystem::create_directories(gdtf_path.parent_path());
+    const std::string xml = R"XML(<?xml version="1.0" encoding="UTF-8"?>
+<GDTF><FixtureType Name="Malformed Slot Index"><Wheels><Wheel Name="ColorWheelBad">
+  <Slot Name="Green" Color="0.1700,0.7000,1" />
+  <Slot Name="Malformed" Color="not-a-color" />
+  <Slot Name="Blue" Color="0.1500,0.0600,1" />
+</Wheel></Wheels><Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries><DMXModes><DMXMode Name="Mode 1" Geometry="Root"><DMXChannels>
+<DMXChannel Offset="1" Geometry="Beam"><LogicalChannel Attribute="Color1"><ChannelFunction Name="Color Select" Attribute="Color1" Wheel="ColorWheelBad" DMXFrom="0" DMXTo="255">
+  <ChannelSet Name="Green" DMXFrom="0/1" WheelSlotIndex="1" />
+  <ChannelSet Name="Malformed" DMXFrom="85/1" WheelSlotIndex="2" />
+  <ChannelSet Name="Blue" DMXFrom="170/1" WheelSlotIndex="3" />
+</ChannelFunction></LogicalChannel></DMXChannel></DMXChannels></DMXMode></DMXModes></FixtureType></GDTF>)XML";
+    if (!write_gdtf_archive(gdtf_path, xml)) return fail("Expected malformed slot GDTF archive to be written") == 0;
+    peraviz::SceneModel scene_model;
+    peraviz::SceneModel::FixturePatch patch;
+    patch.fixture_uuid = "malformed-slot-fixture";
+    patch.gdtf_path = gdtf_path.string();
+    patch.dmx_mode = "Mode 1";
+    patch.mvr_universe = 1;
+    patch.mvr_address = 1;
+    scene_model.fixture_patches.push_back(patch);
+    peraviz::SceneNode beam;
+    beam.node_id = "malformed-slot-fixture/Root/Beam";
+    beam.name = "Beam";
+    beam.gdtf_geometry_path = "Root/Beam";
+    beam.gdtf_geometry_key = "malformed-slot-fixture/Root/Beam";
+    beam.is_fixture = true;
+    beam.is_beam = true;
+    scene_model.nodes.push_back(beam);
+    const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(scene_model, 0);
+    if (scene.wheel_palettes.empty() || scene.wheel_palettes[0].slots.size() != 3) return fail("Expected malformed slot to remain in palette") == 0;
+    if (scene.wheel_palettes[0].slots[1].slot_index != 2 || scene.wheel_palettes[0].slots[2].slot_index != 3) return fail("Expected malformed middle slot not to shift later slot indices") == 0;
+    bool saw_malformed = false;
+    for (const auto &diagnostic : scene.diagnostics) if (diagnostic.code == "PVZ-GDTF-WHEEL-SLOT-COLOR-INVALID") saw_malformed = true;
+    if (!saw_malformed) return fail("Expected malformed ColorCIE diagnostic") == 0;
+    peraviz::runtime::PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(512, 0);
+    dmx[0] = 170;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto row = runtime.consume_latest_visual_frame();
+    int int_offset = -1, float_offset = -1;
+    if (!first_wheel_selection_row(row, int_offset, float_offset)) return fail("Expected WheelSlotIndex 3 to resolve after malformed slot") == 0;
+    if (row.integers[int_offset + 4] != 3 || row.integers[int_offset + 5] != 3) return fail("Expected runtime to emit original slot index 3") == 0;
+    return true;
+}
+
+
+// Verifies discrete wheel selection does not retain a stale slot outside the active ChannelFunction range.
+bool test_select_wheel_inactive_function_range() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture", "type", "mode", 10, 1, 10000.0, 25.0, 1.0, 20.0});
+    scene.source_programs.push_back({60, CompiledSemantic::Unknown, {{10, 60, 0}}, 32, 160, 0.0, 1.0, "Color1", "PartialRangeWheel"});
+    CompiledWheelPalette palette;
+    palette.wheel_renderer_id = 601;
+    palette.fixture_id = 1;
+    palette.slots.push_back({1, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, true, "", "test"});
+    palette.slots.push_back({2, 1.0f, 0.48f, 0.48f, 1.0f, 0.20f, 0.20f, 1.0f, false, "", "test"});
+    scene.wheel_palettes.push_back(palette);
+    scene.wheel_bindings.push_back({6010, 1, 77, 601, 60, CompiledWheelMode::Select, true, 270.0f, {{32, 96, 1, "Open"}, {97, 160, 2, "Red"}}});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(512, 0);
+    dmx[60] = 16;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected inactive low raw DMX value to emit no wheel row") == 0;
+    dmx[60] = 120;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    auto active = runtime.consume_latest_visual_frame();
+    int int_offset = -1, float_offset = -1;
+    if (!first_wheel_selection_row(active, int_offset, float_offset)) return fail("Expected active raw DMX value to emit WheelSelection") == 0;
+    if (active.integers[int_offset + 4] != 2) return fail("Expected active raw DMX value to resolve slot 2") == 0;
+    dmx[60] = 200;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected inactive high raw DMX value to emit no stale wheel row") == 0;
+    return true;
+}
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -917,6 +1099,9 @@ int main() {
     if (!test_wheel_filter_transmission_cooking()) return 1;
     if (!test_indexed_wheel_aggregate_fallback()) return 1;
     if (!test_ordered_multi_wheel_final_color_rows()) return 1;
+    if (!test_exact_color_wheel_slot_resolution()) return 1;
+    if (!test_malformed_wheel_slot_preserves_indices()) return 1;
+    if (!test_select_wheel_inactive_function_range()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     return 0;
 }

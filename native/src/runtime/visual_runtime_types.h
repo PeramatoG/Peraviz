@@ -118,6 +118,8 @@ struct CompiledWheelPaletteSlot {
     bool identity = true;
     std::string media_file_name;
     std::string provenance;
+    std::string name;
+    int32_t filter_resource_id = 0;
 };
 
 struct CompiledWheelPalette {

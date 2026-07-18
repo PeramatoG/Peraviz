@@ -32,7 +32,7 @@ Status values:
 - Supported source widths for the slice: 8-bit, 16-bit, 24-bit, and 32-bit ordered source bytes, including non-adjacent byte addresses.
 - Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion. Transform rows carry separate Pan and Tilt component IDs, Intensity rows carry a Dimmer render-target ID, and setup resolves those IDs through `NativeRendererTargetRegistry` by full imported-node canonical GDTF geometry-instance keys; missing targets are categorized diagnostics, not successful fallback application.
 - Lightweight Prism BeamOptics now applies setup-time Beam profiles and corrects the lens-side/far-end radius mapping so normal Spot beams use a small near aperture and expand toward the far end. Active gobo-shaped prism masking, footprint alignment, and advanced volumetric quality remain deferred.
-- Unsupported or diagnostic-only: full ChannelSet selection, ModeMaster evaluation, Relations, DMXProfiles, complete ColorSpace/Gamut enforcement, complete wheel-slot resource selection, split colors, gobos, HSB controls, full gamut clipping, and CRI simulation. Multiple ChannelFunctions on one Dimmer/Pan/Tilt logical property are selected by raw DMX range.
+- Unsupported or diagnostic-only: full non-wheel ChannelSet selection, ModeMaster evaluation, Relations, DMXProfiles, complete ColorSpace/Gamut enforcement, split colors, gobos, HSB controls, full gamut clipping, and CRI simulation. Multiple ChannelFunctions on one Dimmer/Pan/Tilt logical property are selected by raw DMX range.
 
 ## Native BeamOptics foundation
 
