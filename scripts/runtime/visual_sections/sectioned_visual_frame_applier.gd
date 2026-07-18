@@ -220,8 +220,8 @@ func _target_failure_for(loader: Node, target_id: int) -> Variant:
 	return loader._get_native_target_failure(target_id)
 
 func _changed_mask_for_row(section_type: int, int_base: int, integers: PackedInt32Array) -> int:
-	if section_type == SECTION_WHEEL_SELECTION and int_base + 4 < integers.size():
-		return integers[int_base + 4]
+	if section_type == SECTION_WHEEL_SELECTION and int_base + 6 < integers.size():
+		return integers[int_base + 6]
 	if section_type == SECTION_WHEEL_MOTION and int_base + 2 < integers.size():
 		return integers[int_base + 2]
 	if section_type == SECTION_TEMPORAL_OUTPUT and int_base + 3 < integers.size():

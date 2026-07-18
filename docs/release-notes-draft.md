@@ -22,6 +22,7 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Native color-wheel composition now keeps one authoritative final Beam color: multiple seated or indexed physical wheel layers accumulate in C++ with the target's base color, control modes for the same physical wheel are mutually exclusive, Godot treats `WheelSelection` as metadata only, and each dirty snapshot emits at most one final `EmitterColor` row per Beam.
 - Native GDTF color-wheel support now includes a verified seated discrete selection slice: standard DMXFrom-only ChannelSet range inference, parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native linear wheel composition with separated filter transmission shape/gain, preserved physical resource IDs across packed-scene transfer, WheelSelection rows, and target-local renderer mutation for SpotLight, beam and lens resources. WheelIndex now keeps adjacent-slot/split metadata and uses a temporary aggregate fallback; final spatial split, spin, random and Audio remain deferred.
 
 - Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.
@@ -36,6 +37,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Corrected seated GDTF color-wheel slot diagnostics and runtime selection guardrails so discrete wheel rows only resolve while their ChannelFunction is active, preserve exact one-based slot identity, and report WheelSelection change masks from the correct payload field.
 - Fixed Art-Net startup on Windows when another compatible lighting application is already bound to UDP port 6454, allowing Peraviz DMX reception to start without requiring users to restart the other application.
 - Preserved multi-emitter photometric brightness when applying native Color rows so color gain now scales each Beam output’s existing luminous-flux distribution instead of overwriting every emitter with target-level energy.
 - Beam intensity now respects each exact GDTF Beam geometry LuminousFlux value, including the official 10000 lm default, so multi-lens fixtures sum their declared projected output instead of repeating one full fixture-wide beam per lens. None and Glow beams remain emission-only and no longer add projected cone output.

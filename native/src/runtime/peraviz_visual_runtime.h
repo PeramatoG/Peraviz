@@ -73,12 +73,18 @@ private:
     };
 
     struct WheelTargetState {
+        int32_t active_binding_id = 0;
+        int32_t beam_target_id = 0;
+        int32_t wheel_renderer_id = 0;
         int32_t slot_a = 0;
         int32_t slot_b = 0;
         float srgb_red = 1.0f;
         float srgb_green = 1.0f;
         float srgb_blue = 1.0f;
         float gain = 1.0f;
+        double linear_red = 1.0;
+        double linear_green = 1.0;
+        double linear_blue = 1.0;
         float normalized_phase = 0.0f;
         float split_fraction = 0.0f;
         float boundary_angle_degrees = 0.0f;
@@ -95,6 +101,8 @@ private:
         std::vector<WheelBindingRuntime> wheel_bindings;
         std::unordered_map<int, std::vector<int>> wheel_binding_indices_by_offset;
         std::unordered_map<int32_t, std::vector<int>> wheel_binding_indices_by_target;
+        std::unordered_map<int64_t, std::vector<int>> wheel_binding_indices_by_physical_key;
+        std::unordered_map<int32_t, std::vector<int64_t>> wheel_physical_keys_by_target;
         std::vector<int> interest_offsets;
         std::array<uint8_t, 512> last_relevant_values{};
         std::vector<uint8_t> latest_frame;
@@ -156,9 +164,11 @@ private:
     static bool nearly_equal(float a, float b, float epsilon);
     static bool program_uses_changed_offset(const CompiledDmxSourceProgram &program, const std::vector<int> &changed_offsets);
     static float color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated);
+    static int64_t wheel_physical_key(int32_t beam_target_id, int32_t wheel_renderer_id);
     CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target) const;
-    CookedEmitterColor apply_wheel_slot_to_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot) const;
-    CookedEmitterColor aggregate_indexed_wheel_color(int32_t beam_target_id, const CompiledWheelPaletteSlot &slot_a, const CompiledWheelPaletteSlot &slot_b, float split_fraction) const;
+    CookedEmitterColor compose_ordered_target_color(int32_t beam_target_id) const;
+    CookedEmitterColor cook_wheel_slot_layer(const CompiledWheelPaletteSlot &slot) const;
+    CookedEmitterColor aggregate_indexed_wheel_layer(const CompiledWheelPaletteSlot &slot_a, const CompiledWheelPaletteSlot &slot_b, float split_fraction) const;
     void add_visual_mask_stats(uint32_t visual_mask);
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
     FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);
@@ -168,9 +178,10 @@ private:
     std::vector<CompiledRuntimeDiagnostic> diagnostics_;
     std::unordered_map<int, ComponentState> transform_state_by_fixture_;
     std::unordered_map<int32_t, ComponentState> property_state_by_property_;
+    std::unordered_map<int32_t, CookedEmitterColor> base_color_state_by_target_;
     std::unordered_map<int32_t, CookedEmitterColor> color_state_by_target_;
     std::unordered_map<int32_t, CompiledWheelPalette> wheel_palettes_by_id_;
-    std::unordered_map<int32_t, WheelTargetState> wheel_state_by_binding_;
+    std::unordered_map<int64_t, WheelTargetState> wheel_state_by_physical_key_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;
