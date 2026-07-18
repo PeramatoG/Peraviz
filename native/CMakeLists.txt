@@ -101,6 +101,7 @@ add_library(peraviz_native SHARED
     src/coordinate_mapper.cpp
     src/mesh_3ds_loader.cpp
     src/peraviz_debug_runtime.cpp
+    src/runtime_storage.cpp
     src/gdtf_scene_builder.cpp
     src/gdtf_runtime/gdtf_geometry_identity.cpp
     src/mvr_scene_loader.cpp
@@ -185,6 +186,15 @@ if(WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_runtime_storage_tests
+        tests/runtime_storage_test.cpp
+        src/runtime_storage.cpp
+    )
+    target_include_directories(peraviz_native_runtime_storage_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    add_test(NAME peraviz_native_runtime_storage_tests COMMAND peraviz_native_runtime_storage_tests)
+
     add_executable(peraviz_native_mvr_xchange_tests
         tests/mvr_xchange_service_name_test.cpp
         src/mvrxchange/mvr_xchange_service_name.cpp
@@ -236,6 +246,7 @@ if(BUILD_TESTING)
         tests/fixture_dmx_binding_e2e_test.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
+        src/runtime_storage.cpp
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_control_offsets_resolver.cpp
         src/dmx/gdtf_gobo_catalog.cpp
@@ -269,6 +280,7 @@ if(BUILD_TESTING)
         src/dmx/gdtf_gobo_catalog.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
+        src/runtime_storage.cpp
     )
     target_include_directories(peraviz_native_visual_runtime_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -286,6 +298,7 @@ if(BUILD_TESTING)
         src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
+        src/runtime_storage.cpp
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_xml_reader.cpp
         src/runtime/visual_frame_schema.cpp

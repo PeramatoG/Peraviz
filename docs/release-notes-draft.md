@@ -22,6 +22,7 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Added session-owned runtime storage for native archive extraction caches so MVR/GDTF assets stay available while a loaded scene owns them and are removed automatically when the final owner is released.
 - Native GDTF color-wheel support now includes a verified seated discrete selection slice: standard DMXFrom-only ChannelSet range inference, parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native linear wheel composition with separated filter transmission shape/gain, preserved physical resource IDs across packed-scene transfer, WheelSelection rows, and target-local renderer mutation for SpotLight, beam and lens resources. WheelIndex now keeps adjacent-slot/split metadata and uses a temporary aggregate fallback; final spatial split, spin, random and Audio remain deferred.
 
 - Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.

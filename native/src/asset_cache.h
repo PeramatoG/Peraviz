@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include "runtime_storage.h"
 #include <set>
 #include <string>
 
@@ -11,6 +12,7 @@ public:
     explicit ZipAssetCache(std::string source_path);
 
     const std::filesystem::path &cache_dir() const;
+    runtime_storage::RuntimeDirectoryLease cache_lease() const;
     int extracted_assets() const;
 
     std::string ensure_extracted(const std::string &archive_relative_path);
@@ -23,6 +25,7 @@ private:
     std::filesystem::path source_path_;
     std::filesystem::path cache_dir_;
     std::set<std::string> extracted_;
+    runtime_storage::RuntimeDirectoryLease cache_lease_;
 };
 
 } // namespace peraviz
