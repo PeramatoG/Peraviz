@@ -57,7 +57,19 @@ The blocked results are a **missing prerequisite**, not a production/test defect
 
 ## Workflow and cache contract
 
-The job tests the exact PR head or push SHA on Ubuntu 24.04 Debug. Its vcpkg key includes OS, architecture, `x64-linux`, immutable vcpkg commit `9d7f79f56ae1a9b4704d6a7fb8237e347a974133`, manifest hash, GCC 14, and Debug. Downloads and binary archives are cached; installed trees are regenerated from the manifest. Pinned sccache is the C++ launcher. These boundaries prevent incompatible configuration, ABI, triplet, manifest, or baseline reuse.
+The job tests the exact PR head or push SHA on Ubuntu 24.04 Debug. Independent vcpkg download and binary-archive keys include OS, architecture, `x64-linux`, immutable vcpkg commit `9d7f79f56ae1a9b4704d6a7fb8237e347a974133`, manifest hash, the detected GCC version/target identity, and Debug. Explicit save steps run immediately after successful manifest resolution, before tests and policies can fail. Installed trees are regenerated from the manifest.
+
+Pinned sccache uses a stable `peraviz-ci-v2-linux-<architecture>-<compiler identity>-debug` namespace and workspace base directory. Statistics are reset before compilation, retained as text and JSON, and summarized with requests, hits, misses, hit percentage, and cache errors. The immutable Godot distribution has a separate key containing cache schema, OS, architecture, and exact Godot version; cache hits must still provide an executable that reports its version. The project `.godot` directory is not cached.
+
+Manual `workflow_dispatch` exposes `cache_warm`. When enabled, checkout and a second verification both require the current commit at the repository default branch. This trusted mode may stop after dependency resolution, the full native build, cache statistics, and Godot distribution preparation. Pull requests cannot select a source for shared warming, and ordinary PR runs always execute every required test and policy.
+
+## First authoritative run and correction
+
+[Run 30476712589, job 90660139729](https://github.com/PeramatoG/Peraviz/actions/runs/30476712589/job/90660139729) configured and built the complete native graph successfully, then executed all eight CTest registrations: 8 passed, 0 failed, and 0 skipped. It failed before Godot at the large-file policy. The policy used `find` from the checkout root, so it traversed untracked `.tools/vcpkg`, `.cache`, `out/linux-debug/_deps/godot-cpp`, and `out/linux-debug/vcpkg_installed` data and reported third-party OpenSSL, godot-cpp, zlib, mdns, and other generated sources. This is classified as a **test defect**: the intended subject is repository-owned source, while the implementation inspected the runner filesystem.
+
+The corrected policy consumes the NUL-delimited tracked inventory from `git ls-files -z` and applies the unchanged extension and line-limit rules. Its regression test creates a temporary Git repository, proves that a tracked 3,001-line source path containing whitespace fails, and proves that equally large untracked source-looking files under `out/` and `.tools/` are ignored. This changes the ownership boundary, not the protection threshold.
+
+The first run recorded 20 sccache hits and 1,005 misses, a 1.95% hit rate. Its combined vcpkg cache post-save was skipped after the policy failure. The corrected explicit saves and stable namespace require a corrected cold run and one compatible rerun before cache effectiveness or cold-versus-warm durations can be reported. Godot and all six GDScript tests were skipped in that first run; their authoritative status likewise remains pending the corrected run.
 
 ## Checkpoint recommendation
 

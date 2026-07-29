@@ -89,6 +89,8 @@ git diff --check
 
 `project.godot` currently declares Godot 4.7 compatibility, so use the current 4.7 stable executable. See `docs/developer/ci_test_audit.md` for prerequisites and evidence.
 
+Maintainers can manually run **CI Debug Tests** with the `cache_warm` input enabled to prepare vcpkg download/binary, sccache, and immutable Godot distribution caches. Cache warming always resolves and verifies the repository's current default-branch commit; it cannot publish shared caches from a requested pull-request ref. Normal pull-request runs never use this shortcut and always execute the complete test suite.
+
 If a dependency such as Godot or a compiler is unavailable, report the exact command and the reason it could not run.
 
 ## Review checklist

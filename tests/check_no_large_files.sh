@@ -8,22 +8,11 @@ soft_limit=1200
 hard_limit=3000
 status=0
 
-mapfile -t files < <(
-  find . \
-    -path './.git' -prune -o \
-    -path './build' -prune -o \
-    -path './*/build' -prune -o \
-    -path './cmake-build-*' -prune -o \
-    -path './*/cmake-build-*' -prune -o \
-    -path './.godot' -prune -o \
-    -type f \( \
-      -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o \
-      -name '*.h' -o -name '*.hpp' -o -name '*.hh' -o \
-      -name '*.gd' -o -name '*.shader' \
-    \) -print
-)
-
-for file in "${files[@]}"; do
+while IFS= read -r -d '' file; do
+  case "$file" in
+    *.cpp|*.cc|*.cxx|*.h|*.hpp|*.hh|*.gd|*.shader) ;;
+    *) continue ;;
+  esac
   lines=$(wc -l < "$file" | tr -d ' ')
   if (( lines >= hard_limit )); then
     echo "ERROR: $file has $lines LOC, which exceeds the hard limit. Split this file before adding major behavior." >&2
@@ -31,6 +20,6 @@ for file in "${files[@]}"; do
   elif (( lines >= soft_limit )); then
     echo "WARNING: $file has $lines LOC. Prefer extraction before adding new responsibilities." >&2
   fi
-done
+done < <(git ls-files -z)
 
 exit "$status"

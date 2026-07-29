@@ -22,7 +22,7 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
-- Added a reproducible Linux Debug continuous-integration harness covering all native CTest, architecture, and strict headless Godot regressions with portable diagnostics and dependency caching.
+- Added a reproducible Linux Debug continuous-integration harness covering all native CTest, architecture, and strict headless Godot regressions, with tracked-file policy scope, trusted cache warming, persistent dependency caches, and measurable compiler-cache diagnostics.
 
 - Added session-owned runtime storage for native archive extraction caches so MVR/GDTF assets stay available while a loaded scene owns them and are removed automatically when the final owner is released.
 - Native GDTF color-wheel support now includes a verified seated discrete selection slice: standard DMXFrom-only ChannelSet range inference, parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native linear wheel composition with separated filter transmission shape/gain, preserved physical resource IDs across packed-scene transfer, WheelSelection rows, and target-local renderer mutation for SpotLight, beam and lens resources. WheelIndex now keeps adjacent-slot/split metadata and uses a temporary aggregate fallback; final spatial split, spin, random and Audio remain deferred.
