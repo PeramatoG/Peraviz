@@ -769,6 +769,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
 
     ZipAssetCache mvr_cache(path);
     model.cache_path = mvr_cache.cache_dir().u8string();
+    model.cache_lease = mvr_cache.cache_lease();
 
     const std::string xml_content = read_xml_from_mvr(path);
     if (xml_content.empty()) {

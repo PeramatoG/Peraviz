@@ -22,6 +22,11 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Added session-owned runtime storage for native archive extraction caches so MVR/GDTF assets stay available while a loaded scene owns them and are removed automatically when the final owner is released.
+- Native GDTF color-wheel support now includes a verified seated discrete selection slice: standard DMXFrom-only ChannelSet range inference, parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native linear wheel composition with separated filter transmission shape/gain, preserved physical resource IDs across packed-scene transfer, WheelSelection rows, and target-local renderer mutation for SpotLight, beam and lens resources. WheelIndex now keeps adjacent-slot/split metadata and uses a temporary aggregate fallback; final spatial split, spin, random and Audio remain deferred.
+
+- Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.
+
 - Added the first native BeamOptics foundation: setup-time Beam profiles, native Zoom ChannelFunction compilation, target-oriented BeamOptics rows, cached optics targets, official/model/render aperture-radius diagnostics, and parametric Lightweight Prism near/far spread updates, corrected lens-side/far-end axial radius mapping, and packed shader instance parameters to stay within Godot renderer limits, while using explicit GDTF BeamRadius as the preferred beam-only near-aperture source when available.
 - Kept BeamOptics scale corrections limited to beam geometry and preserved imported 3D model sizes unchanged.
 - Kept renderer color state target-local so Dimmer, Color and BeamOptics updates reuse cached per-Beam color/gain/intensity without fixture-wide color bleed.
@@ -32,6 +37,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Corrected seated GDTF color-wheel slot diagnostics and runtime selection guardrails so discrete wheel rows only resolve while their ChannelFunction is active, preserve exact one-based slot identity, and report WheelSelection change masks from the correct payload field.
 - Fixed Art-Net startup on Windows when another compatible lighting application is already bound to UDP port 6454, allowing Peraviz DMX reception to start without requiring users to restart the other application.
 - Preserved multi-emitter photometric brightness when applying native Color rows so color gain now scales each Beam output’s existing luminous-flux distribution instead of overwriting every emitter with target-level energy.
 - Beam intensity now respects each exact GDTF Beam geometry LuminousFlux value, including the official 10000 lm default, so multi-lens fixtures sum their declared projected output instead of repeating one full fixture-wide beam per lens. None and Glow beams remain emission-only and no longer add projected cone output.

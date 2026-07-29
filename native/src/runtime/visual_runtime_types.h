@@ -26,6 +26,13 @@ enum class CompiledSemantic : int32_t {
     Tilt,
     Dimmer,
     Zoom,
+    CieX,
+    CieY,
+    CieBrightness,
+    Cto,
+    Ctb,
+    Ctc,
+    Tint,
     ColorAddRed,
     ColorAddGreen,
     ColorAddBlue,
@@ -42,6 +49,106 @@ struct CompiledDmxByteSource {
     int32_t byte_order = 0;
 };
 
+struct CompiledColorCIE {
+    double x = 0.0;
+    double y = 0.0;
+    double Y = 0.0;
+    bool valid = false;
+};
+
+struct CompiledSpectralPoint {
+    double wavelength_nm = 0.0;
+    double energy = 0.0;
+};
+
+struct CompiledColorMeasurement {
+    double physical_percent = 0.0;
+    double luminous_intensity = 1.0;
+    double transmission = 1.0;
+    std::string interpolation_to = "Linear";
+    std::vector<CompiledSpectralPoint> spectral_points;
+    double xyz_x = 0.0;
+    double xyz_y = 0.0;
+    double xyz_z = 0.0;
+    bool has_spectrum_xyz = false;
+};
+
+struct CompiledEmitterResource {
+    int32_t resource_id = 0;
+    std::string name;
+    CompiledColorCIE color;
+    double dominant_wavelength_nm = 0.0;
+    bool has_dominant_wavelength = false;
+    std::vector<CompiledColorMeasurement> measurements;
+    double fallback_linear_r = 0.0;
+    double fallback_linear_g = 0.0;
+    double fallback_linear_b = 0.0;
+    bool valid = false;
+};
+
+struct CompiledFilterResource {
+    int32_t resource_id = 0;
+    std::string name;
+    CompiledColorCIE color;
+    std::vector<CompiledColorMeasurement> measurements;
+    double fallback_linear_r = 1.0;
+    double fallback_linear_g = 1.0;
+    double fallback_linear_b = 1.0;
+    double fallback_transmission = 1.0;
+    bool valid = false;
+};
+
+enum class CompiledWheelMode : int32_t {
+    Select = 0,
+    Index = 1,
+    Spin = 2,
+    Random = 3,
+    AudioUnsupported = 4,
+};
+
+struct CompiledWheelPaletteSlot {
+    int32_t slot_index = 0;
+    float srgb_red = 1.0f;
+    float srgb_green = 1.0f;
+    float srgb_blue = 1.0f;
+    float linear_red = 1.0f;
+    float linear_green = 1.0f;
+    float linear_blue = 1.0f;
+    float gain = 1.0f;
+    bool identity = true;
+    std::string media_file_name;
+    std::string provenance;
+    std::string name;
+    int32_t filter_resource_id = 0;
+};
+
+struct CompiledWheelPalette {
+    int32_t wheel_renderer_id = 0;
+    int32_t fixture_id = 0;
+    std::string name;
+    float placement_offset_degrees = 270.0f;
+    std::vector<CompiledWheelPaletteSlot> slots;
+};
+
+struct CompiledWheelChannelSet {
+    uint32_t dmx_from = 0;
+    uint32_t dmx_to = 255;
+    int32_t wheel_slot_index = 0;
+    std::string name;
+};
+
+struct CompiledWheelTargetBinding {
+    int32_t binding_id = 0;
+    int32_t fixture_id = 0;
+    int32_t beam_render_target_id = 0;
+    int32_t wheel_renderer_id = 0;
+    int32_t source_program_id = 0;
+    CompiledWheelMode mode = CompiledWheelMode::Select;
+    bool snap = false;
+    float placement_offset_degrees = 270.0f;
+    std::vector<CompiledWheelChannelSet> channel_sets;
+};
+
 struct CompiledDmxSourceProgram {
     int32_t program_id = 0;
     CompiledSemantic semantic = CompiledSemantic::Unknown;
@@ -54,6 +161,9 @@ struct CompiledDmxSourceProgram {
     std::string function_name;
     int32_t geometry_id = 0;
     std::string geometry_name;
+    int32_t emitter_resource_id = 0;
+    int32_t filter_resource_id = 0;
+    std::string color_space_name;
 };
 
 enum class CompiledContributorOperation : int32_t {
@@ -82,6 +192,8 @@ struct CompiledColorInputBinding {
     CompiledSemantic semantic = CompiledSemantic::Unknown;
     double default_value = 0.0;
     bool use_normalized_value = false;
+    int32_t emitter_resource_id = 0;
+    int32_t filter_resource_id = 0;
 };
 
 struct CompiledColorTargetProgram {
@@ -145,7 +257,7 @@ struct CompiledRuntimeDiagnostic {
 };
 
 struct CompiledRuntimeScene {
-    int32_t contract_version = 1;
+    int32_t contract_version = 3;
     int32_t mvr_fixture_patches = 0;
     int32_t gdtf_files_opened = 0;
     int32_t selected_modes_found = 0;
@@ -158,10 +270,16 @@ struct CompiledRuntimeScene {
     int32_t tilt_program_count = 0;
     int32_t zoom_program_count = 0;
     int32_t color_program_count = 0;
+    int32_t wheel_palette_count = 0;
+    int32_t wheel_binding_count = 0;
     std::vector<CompiledFixtureInstance> fixtures;
+    std::vector<CompiledEmitterResource> emitter_resources;
+    std::vector<CompiledFilterResource> filter_resources;
     std::vector<CompiledDmxSourceProgram> source_programs;
     std::vector<CompiledComponentProperty> properties;
     std::vector<CompiledColorTargetProgram> color_targets;
+    std::vector<CompiledWheelPalette> wheel_palettes;
+    std::vector<CompiledWheelTargetBinding> wheel_bindings;
     std::vector<CompiledBeamOpticalProfile> beam_profiles;
     std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };
@@ -199,6 +317,10 @@ struct VisualFrameStats {
     uint64_t gobo_parametric_updates = 0;
     uint64_t beam_optics_rows = 0;
     uint64_t beam_optics_parametric_updates = 0;
+    uint64_t wheel_inputs_evaluated = 0;
+    uint64_t wheel_targets_dirty = 0;
+    uint64_t wheel_selection_rows = 0;
+    uint64_t wheel_states_skipped = 0;
 };
 
 } // namespace peraviz::runtime
