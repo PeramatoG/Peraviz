@@ -175,20 +175,23 @@ std::string parent_archive_dir(const std::string &normalized_path) {
 
 namespace peraviz {
 
-// Creates a cache rooted in the system temporary directory for one archive.
+// Creates a session-owned extraction cache for one archive.
 ZipAssetCache::ZipAssetCache(std::string source_path)
     : source_path_(std::filesystem::u8path(source_path)) {
-    const std::filesystem::path base = std::filesystem::temp_directory_path() / "peraviz_cache";
-    const std::string source_name = source_path_.filename().u8string();
+    const std::string source_name = sanitize_path_component_for_fs(source_path_.filename().u8string());
     const std::string cache_key = source_name + "_" + hash_file_contents(source_path_);
-    cache_dir_ = base / cache_key;
-    std::error_code ec;
-    std::filesystem::create_directories(cache_dir_, ec);
+    cache_lease_ = runtime_storage::create_session_cache_directory(cache_key);
+    cache_dir_ = cache_lease_.path();
 }
 
 // Returns the directory used to store extracted cache files.
 const std::filesystem::path &ZipAssetCache::cache_dir() const {
     return cache_dir_;
+}
+
+// Returns the shared lease that keeps extracted files available.
+runtime_storage::RuntimeDirectoryLease ZipAssetCache::cache_lease() const {
+    return cache_lease_;
 }
 
 // Returns metadata for assets extracted from the source archive.

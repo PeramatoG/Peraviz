@@ -2,6 +2,7 @@
 
 #include <map>
 #include <string>
+#include "runtime_storage.h"
 #include <vector>
 
 #include "table_model/runtime_table.h"
@@ -89,6 +90,7 @@ struct SceneModel {
     int support_count = 0;
     int extracted_asset_count = 0;
     std::string cache_path;
+    runtime_storage::RuntimeDirectoryLease cache_lease;
     std::vector<FixturePatch> fixture_patches;
     std::map<std::string, table_model::RuntimeTable> runtime_tables;
 };
