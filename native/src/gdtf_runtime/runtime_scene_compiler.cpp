@@ -408,6 +408,8 @@ const PhysicalColorMeasurement *select_filter_measurement(const PhysicalFilterRe
 runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &fixture_type, const ParsedWheelSlot &slot) {
     runtime::CompiledWheelPaletteSlot out;
     out.slot_index = slot.slot_index;
+    out.name = slot.name;
+    out.filter_resource_id = slot.filter_resource_id;
     out.media_file_name = slot.media_file_name;
     out.provenance = slot.provenance;
     WheelTransmissionCook cooked;
@@ -496,7 +498,15 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         palette.fixture_id = fixture_id;
         palette.wheel_renderer_id = stable_id(patch.fixture_uuid, "wheel:palette:" + wheel.name);
         palette.name = wheel.name;
-        for (const ParsedWheelSlot &slot : wheel.slots) palette.slots.push_back(cook_wheel_slot(scene, patch, fixture_type, slot));
+        int32_t expected_slot_index = 1;
+        for (const ParsedWheelSlot &slot : wheel.slots) {
+            runtime::CompiledWheelPaletteSlot compiled_slot = cook_wheel_slot(scene, patch, fixture_type, slot);
+            if (slot.slot_index != expected_slot_index || compiled_slot.slot_index != slot.slot_index) {
+                scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-INTEGRITY", "error", "Wheel Slot declaration order and compiled one-based index diverged.", patch.fixture_uuid + " wheel=" + wheel.name + " slot=" + std::to_string(slot.slot_index)});
+            }
+            palette.slots.push_back(compiled_slot);
+            ++expected_slot_index;
+        }
         renderer_id_by_wheel[wheel.id] = palette.wheel_renderer_id;
         scene.wheel_palettes.push_back(palette);
     }

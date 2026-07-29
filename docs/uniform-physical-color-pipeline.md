@@ -48,10 +48,13 @@ For each exact Beam output, Peraviz composes color deterministically in this ord
 2. Direct subtractive filters and CMY fallback filters.
 3. CCT correction from CTO/CTB/CTC resulting Kelvin values.
 4. Tint physical filter or fallback correction.
-5. Final gain/chromaticity decomposition and dirty-only `EmitterColor` emission.
+5. Ordered color-wheel layers for the same exact Beam target, sorted by compiled binding order as the deterministic fallback for ambiguous fixture ordering.
+6. Final gain/chromaticity decomposition and dirty-only `EmitterColor` emission.
+
+The runtime stores base/source color separately from the final composed renderer color. Wheel layers update persistent target-local optical state, then the target is recomposed once so one DMX snapshot emits at most one authoritative `EmitterColor` row per Beam. `WheelSelection` rows remain metadata for selected/indexed slots and future spatial rendering; they are not a competing uniform color authority in Godot.
 
 Godot does not receive CIE data, spectra, emitter/filter IDs, Kelvin values, Tint values, DMX ranges, or physical resource metadata.
 
 ## Deferred features
 
-Wheels, WheelSlot selection, split colors, gobos, animation wheels, prisms, spatial projector textures, HSB controls, full gamut clipping, and CRI simulation remain unsupported for runtime rendering in this stage.
+Spatial split rendering on beam/lens/footprint, WheelSpin, WheelRandom, WheelAudio, gobos, animation wheels, prisms, HSB controls, full gamut clipping, calibrated spectral rendering, and CRI simulation remain unsupported or deferred for runtime rendering in this stage.
