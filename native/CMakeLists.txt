@@ -26,13 +26,14 @@ include(CTest)
 
 set(GODOT_CPP_DIR "" CACHE PATH "Path to a local godot-cpp checkout")
 option(PERAVIZ_FETCH_GODOT_CPP "Fetch godot-cpp automatically when GODOT_CPP_DIR is not provided" ON)
+option(PERAVIZ_BUILD_GDEXTENSION "Build the Godot-facing peraviz_native shared library" ON)
 option(PERAVIZ_ENABLE_DMX "Enable DMX input (Art-Net RX)" ON)
 option(PERAVIZ_ENABLE_MVR_XCHANGE "Enable MVR-xchange discovery" ON)
 
 # Uses the standalone Peraviz repository root as the Godot project location.
 set(PERAVIZ_GODOT_PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Path to the Peraviz Godot project")
 
-if(NOT TARGET godot-cpp)
+if(PERAVIZ_BUILD_GDEXTENSION AND NOT TARGET godot-cpp)
     if(GODOT_CPP_DIR)
         if(EXISTS "${GODOT_CPP_DIR}/CMakeLists.txt")
             add_subdirectory("${GODOT_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/godot-cpp")
@@ -76,7 +77,7 @@ if(NOT TARGET tinyxml2::tinyxml2)
     )
 endif()
 
-if(PERAVIZ_ENABLE_MVR_XCHANGE)
+if(PERAVIZ_BUILD_GDEXTENSION AND PERAVIZ_ENABLE_MVR_XCHANGE)
     find_package(mdns CONFIG REQUIRED)
 endif()
 
@@ -94,6 +95,7 @@ else()
     endif()
 endif()
 
+if(PERAVIZ_BUILD_GDEXTENSION)
 add_library(peraviz_native SHARED
     src/hello_world.cpp
     src/archive/zip_archive.cpp
@@ -173,8 +175,9 @@ target_link_libraries(peraviz_native PRIVATE
 set_target_properties(peraviz_native PROPERTIES
     OUTPUT_NAME "peraviz_native"
 )
+endif()
 
-if(WIN32)
+if(PERAVIZ_BUILD_GDEXTENSION AND WIN32)
     add_custom_target(peraviz_native_check_dependencies
         COMMAND ${CMAKE_COMMAND}
             "-DPERAVIZ_TARGET_FILE=$<TARGET_FILE:peraviz_native>"
@@ -325,7 +328,7 @@ if(BUILD_TESTING)
     add_test(NAME peraviz_native_runtime_table_tests COMMAND peraviz_native_runtime_table_tests)
 endif()
 
-if(PERAVIZ_GODOT_PROJECT_DIR)
+if(PERAVIZ_BUILD_GDEXTENSION AND PERAVIZ_GODOT_PROJECT_DIR)
     set(_peraviz_bin_dir "${PERAVIZ_GODOT_PROJECT_DIR}/bin")
     file(MAKE_DIRECTORY "${_peraviz_bin_dir}")
 

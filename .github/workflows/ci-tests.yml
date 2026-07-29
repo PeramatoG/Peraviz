@@ -1,0 +1,154 @@
+name: CI Debug Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-debug-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-debug:
+    name: Linux Debug
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/.tools/vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-linux
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.cache/vcpkg-binary,readwrite
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.cache/vcpkg-downloads
+      VCPKG_COMMIT: 9d7f79f56ae1a9b4704d6a7fb8237e347a974133
+      GODOT_VERSION: 4.7.1
+      BUILD_DIR: ${{ github.workspace }}/out/linux-debug
+      LOG_DIR: ${{ github.workspace }}/out/ci-results
+    steps:
+      - name: Check out exact event commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Record exact source and environment
+        run: |
+          set -euo pipefail
+          mkdir -p "$LOG_DIR" "$VCPKG_DOWNLOADS" "${{ github.workspace }}/.cache/vcpkg-binary" "${{ github.workspace }}/.tools"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          { git rev-parse HEAD; uname -a; cmake --version; ninja --version; gcc --version; } | tee "$LOG_DIR/environment.txt"
+
+      - name: Install required build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential curl git ninja-build pkg-config python3 unzip zip
+
+      - name: Restore vcpkg caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/vcpkg-downloads
+            .cache/vcpkg-binary
+          key: vcpkg-v1-${{ runner.os }}-${{ runner.arch }}-x64-linux-${{ env.VCPKG_COMMIT }}-${{ hashFiles('native/vcpkg.json') }}-gcc14-debug
+          restore-keys: |
+            vcpkg-v1-${{ runner.os }}-${{ runner.arch }}-x64-linux-${{ env.VCPKG_COMMIT }}-
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --detach "$VCPKG_COMMIT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
+        with:
+          version: v0.15.0
+
+      - name: Configure native Debug tests
+        run: |
+          set -euo pipefail
+          cmake -S native -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_CXX_COMPILER_LAUNCHER="$SCCACHE_PATH" 2>&1 | tee "$LOG_DIR/cmake-configure.log"
+          test -f "$BUILD_DIR/compile_commands.json"
+          if grep -Eq '(^|[[:space:]\"])-DNDEBUG([[:space:]\"]|$)' "$BUILD_DIR/compile_commands.json"; then
+            echo "Debug tests must not compile with NDEBUG" >&2
+            exit 1
+          fi
+
+      - name: Generate and validate CTest inventory
+        run: |
+          ctest --test-dir "$BUILD_DIR" -N -V | tee "$LOG_DIR/ctest-inventory.txt"
+          ctest --test-dir "$BUILD_DIR" --show-only=json-v1 > "$LOG_DIR/ctest-inventory.json"
+          python3 .github/scripts/validate_ctest_inventory.py "$LOG_DIR/ctest-inventory.json"
+
+      - name: Build complete native test target set
+        run: cmake --build "$BUILD_DIR" --target all --verbose 2>&1 | tee "$LOG_DIR/build.log"
+
+      - name: Run complete unfiltered CTest suite
+        run: |
+          set +e
+          ctest --test-dir "$BUILD_DIR" --output-on-failure --verbose --timeout 120 \
+            --output-log "$LOG_DIR/ctest.log" --output-junit "$LOG_DIR/ctest.junit.xml"
+          status=$?
+          cp "$BUILD_DIR/Testing/Temporary/LastTest.log" "$LOG_DIR/LastTest.log" 2>/dev/null || true
+          cp "$BUILD_DIR/Testing/Temporary/LastTestsFailed.log" "$LOG_DIR/LastTestsFailed.log" 2>/dev/null || true
+          python3 -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.argv[1]).getroot(); total=int(root.get("tests", len(root.findall(".//testcase")))); failed=int(root.get("failures", 0))+int(root.get("errors", 0)); skipped=int(root.get("skipped", 0)); print(f"CTest total={total} passed={total-failed-skipped} failed={failed} skipped={skipped}"); sys.exit(0 if total == 8 else 1)' "$LOG_DIR/ctest.junit.xml"
+          summary_status=$?
+          (( status == 0 && summary_status == 0 ))
+
+      - name: Run repository shell policy checks
+        run: |
+          tests/check_no_large_files.sh
+          tests/check_runtime_architecture.sh
+
+      - name: Install Godot required by project
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" \
+            --output /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d "${{ runner.temp }}/godot"
+          echo "GODOT_BIN=${{ runner.temp }}/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Import project and register native classes
+        run: |
+          timeout 120 "$GODOT_BIN" --headless --audio-driver Dummy --rendering-method gl_compatibility --editor --path "${{ github.workspace }}" --quit 2>&1 | tee "$LOG_DIR/godot-import.log"
+
+      - name: Run every headless GDScript test
+        run: |
+          python3 .github/scripts/run_gdscript_tests.py --godot "$GODOT_BIN" --project "${{ github.workspace }}" --output "$LOG_DIR/gdscript" --timeout 60
+
+      - name: Capture compiler cache statistics
+        if: always()
+        run: |
+          "$SCCACHE_PATH" --show-stats | tee "$LOG_DIR/sccache.txt"
+
+      - name: Upload test inventories and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-debug-test-results-${{ github.run_attempt }}
+          path: out/ci-results
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-debug-failure-diagnostics-${{ github.run_attempt }}
+          path: |
+            out/ci-results
+            out/linux-debug/CMakeCache.txt
+            out/linux-debug/CMakeFiles/CMakeConfigureLog.yaml
+            out/linux-debug/compile_commands.json
+          if-no-files-found: warn
+          retention-days: 14
