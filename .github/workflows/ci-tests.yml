@@ -64,7 +64,9 @@ jobs:
       - name: Install required build tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential curl git ninja-build pkg-config python3 unzip zip
+          sudo apt-get install --yes --no-install-recommends build-essential curl git ninja-build pkg-config python3 ripgrep unzip zip
+          command -v rg
+          rg --version
 
       - name: Define compiler and cache compatibility
         id: compiler

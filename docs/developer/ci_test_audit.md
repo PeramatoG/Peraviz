@@ -71,6 +71,10 @@ The corrected policy consumes the NUL-delimited tracked inventory from `git ls-f
 
 The first run recorded 20 sccache hits and 1,005 misses, a 1.95% hit rate. Its combined vcpkg cache post-save was skipped after the policy failure. The corrected explicit saves and stable namespace require a corrected cold run and one compatible rerun before cache effectiveness or cold-versus-warm durations can be reported. Godot and all six GDScript tests were skipped in that first run; their authoritative status likewise remains pending the corrected run.
 
+[Run 30487800488, job 90697739555](https://github.com/PeramatoG/Peraviz/actions/runs/30487800488/job/90697739555) tested commit `9a8cb31eedc6167ee31de8c0cede2b91b8e97246`. It confirmed the tracked-file scope regression, configured and built the complete native target set, and again executed 8 CTests with 8 passed, 0 failed, and 0 skipped. Independent vcpkg download and binary cache save steps completed, and the Godot 4.7.1 distribution was downloaded, verified, and saved before policy execution. The policy then stopped at `[runtime-architecture] ripgrep (rg) is required.` because the Ubuntu tool-install step omitted the `ripgrep` package. This is classified as a **missing CI prerequisite**; the architecture policy remains unchanged and blocking.
+
+The focused correction installs `ripgrep` with the existing build tools and immediately verifies both `command -v rg` and `rg --version`. The run reported 1,025 sccache requests, 20 hits, 1,005 misses, 0 cache errors, and a 1.95% hit rate. This was the first run using the new v2 compiler namespace, so it is cold evidence rather than proof of reuse. Exact cache restore hits, a compatible warm-run rate and duration, and all six GDScript results remain pending the next authoritative run because Godot import and GDScript execution were skipped after the missing-tool failure.
+
 ## Checkpoint recommendation
 
 Checkpoint 02 should first inspect and stabilize the authoritative exact-head Linux run. Once Linux is green and repeatable, add Windows and macOS through shared helpers rather than duplicating the job wholesale.
