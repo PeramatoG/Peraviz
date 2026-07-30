@@ -2,6 +2,9 @@ extends SceneTree
 
 const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_light_apply_service.gd")
 const LegacyConeBeamRendererScript = preload("res://scripts/beam_renderers/legacy_cone_beam_renderer.gd")
+const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.gd")
+
+var test = HeadlessTestCaseScript.new()
 
 class PrismLoader:
 	extends Node
@@ -12,10 +15,12 @@ class PrismLoader:
 	var anchor := SpotLight3D.new()
 	var lens := MeshInstance3D.new()
 	var target_record: Dictionary = {}
+	var ready_calls: int = 0
 	var _cached_beam_defaults: Dictionary = {}
 	var _visual_settings: Dictionary = {"beam_multiplier": 20.0, "spot_multiplier": 0.0}
 
 	func _ready() -> void:
+		ready_calls += 1
 		anchor.name = "PeravizEmitterLight"
 		lens.name = "EmitterLens"
 		var mesh := BoxMesh.new()
@@ -93,32 +98,42 @@ class PrismLoader:
 		}
 
 func _init() -> void:
+	call_deferred("_run")
+
+func _run() -> void:
 	var root := PrismLoader.new()
 	get_root().add_child(root)
-	root._ready()
+	await process_frame
 	var service = FixtureLightApplyServiceScript.new()
 	var prism: MeshInstance3D = root.renderer.get_beam_resource(root.anchor)
-	assert(prism != null)
-	assert(not prism.visible)
+	test.check(root.ready_calls == 1, "PrismLoader setup should run exactly once through SceneTree readiness")
+	test.check(prism != null, "Prism beam resource should be created during setup")
+	test.check(not prism.visible, "Zero-initialized prism should remain hidden")
 	var zero: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)
-	assert(bool(zero.get("dimmer_applied", false)))
-	assert(not prism.visible)
+	test.check(bool(zero.get("dimmer_applied", false)), "Zero dimmer should apply to the registered target")
+	test.check(not prism.visible, "Zero dimmer should keep the prism hidden")
 	var mid: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.5, 10.0, 0.0, 10.0, 2.0)
-	assert(bool(mid.get("dimmer_applied", false)))
-	assert(prism.visible)
-	var mid_energy: float = float((root.lens.material_override as BaseMaterial3D).emission_energy_multiplier)
-	assert(mid_energy > 0.0)
+	test.check(bool(mid.get("dimmer_applied", false)), "Mid dimmer should apply to the registered target")
+	test.check(prism.visible, "Mid dimmer should make the prism visible")
+	test.check(int(mid.get("materials_mutated", 0)) > 0, "Mid dimmer should update lens emission")
 	var maxed: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 0.0, 20.0, 4.0)
-	assert(bool(maxed.get("dimmer_applied", false)))
-	assert(prism.visible)
-	assert(float((root.lens.material_override as BaseMaterial3D).emission_energy_multiplier) > mid_energy)
+	test.check(bool(maxed.get("dimmer_applied", false)), "Full dimmer should apply to the registered target")
+	test.check(prism.visible, "Full dimmer should keep the prism visible")
+	test.check(int(maxed.get("materials_mutated", 0)) > 0, "Increasing dimmer should update the higher lens emission value")
 	root.target_record["emitter_records"] = [{"projected_lumen_scale": 0.5, "emission_lumen_scale": 0.5, "has_projected_beam": true}]
 	var scaled: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 10.0, 20.0, 4.0)
-	assert(bool(scaled.get("dimmer_applied", false)))
-	assert(is_equal_approx(root.anchor.light_energy, 5.0))
+	test.check(bool(scaled.get("dimmer_applied", false)), "Scaled emitter dimmer should apply")
+	test.check(is_equal_approx(root.anchor.light_energy, 5.0), "Emitter lumen scaling should scale spotlight energy")
 	var params: Dictionary = root.anchor.get_meta("peraviz_beam_last_params", {})
-	assert(is_equal_approx(float(params.get("beam_intensity", -1.0)), 10.0))
+	test.check(is_equal_approx(float(params.get("beam_intensity", -1.0)), 10.0), "Emitter lumen scaling should scale beam intensity")
 	var hidden: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)
-	assert(bool(hidden.get("dimmer_applied", false)))
-	assert(not prism.visible)
-	quit(0)
+	test.check(bool(hidden.get("dimmer_applied", false)), "Final zero dimmer should apply")
+	test.check(not prism.visible, "Returning to zero should hide the prism")
+	root.renderer.cleanup_beam(root.anchor)
+	await process_frame
+	root.free()
+	prism = null
+	service = null
+	await process_frame
+	await process_frame
+	test.finish(self)

@@ -2,6 +2,9 @@ extends SceneTree
 
 const NativeRendererTargetRegistryScript = preload("res://scripts/runtime/native_renderer_target_registry.gd")
 const LegacyConeBeamRendererScript = preload("res://scripts/beam_renderers/legacy_cone_beam_renderer.gd")
+const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.gd")
+
+var test = HeadlessTestCaseScript.new()
 
 class RegistryHarness:
 	extends Node
@@ -58,6 +61,12 @@ class RegistryHarness:
 	func is_emitter_lens_mesh(mesh_instance: MeshInstance3D) -> bool:
 		return mesh_instance.name.to_lower().contains("lens")
 
+	func cleanup_resources() -> void:
+		for light in light_cache.values():
+			if light is SpotLight3D and is_instance_valid(light):
+				renderer.cleanup_beam(light)
+		light_cache.clear()
+
 func _make_registry(harness: RegistryHarness) -> NativeRendererTargetRegistry:
 	var registry: NativeRendererTargetRegistry = NativeRendererTargetRegistryScript.new()
 	registry.configure({
@@ -86,6 +95,9 @@ func _target(fixture_uuid: String, semantic: String, target_id: int, geometry_ke
 	}
 
 func _init() -> void:
+	call_deferred("_run")
+
+func _run() -> void:
 	var harness := RegistryHarness.new()
 	get_root().add_child(harness)
 	var pan := harness.add_geometry("fixture-a/Base/Pan")
@@ -94,7 +106,7 @@ func _init() -> void:
 	var emitter := harness.add_geometry("fixture-a/Base/EmitterLens", true, true)
 	var registry: NativeRendererTargetRegistry = _make_registry(harness)
 	var empty_summary: Dictionary = registry.get_summary()
-	assert(int(empty_summary.get("pan_targets_resolved", -1)) == 0)
+	test.check(int(empty_summary.get("pan_targets_resolved", -1)) == 0, "Registry contract check failed near source line 103")
 	registry.install_manifest([{
 		"fixture_uuid": "fixture-a",
 		"targets": [
@@ -104,33 +116,33 @@ func _init() -> void:
 		],
 	}])
 	var summary: Dictionary = registry.get_summary()
-	assert(int(summary.get("pan_targets_resolved", 0)) == 1)
-	assert(int(summary.get("tilt_targets_resolved", 0)) == 1)
-	assert(int(summary.get("dimmer_targets_resolved", 0)) == 1)
+	test.check(int(summary.get("pan_targets_resolved", 0)) == 1, "Registry contract check failed near source line 113")
+	test.check(int(summary.get("tilt_targets_resolved", 0)) == 1, "Registry contract check failed near source line 114")
+	test.check(int(summary.get("dimmer_targets_resolved", 0)) == 1, "Registry contract check failed near source line 115")
 	var transform_result: Dictionary = registry.apply_transform_targets(101, 102, 45.0, -20.0)
-	assert(bool(transform_result.get("pan_applied", false)))
-	assert(bool(transform_result.get("tilt_applied", false)))
-	assert(is_equal_approx(pan.rotation_degrees.y, 45.0))
-	assert(is_equal_approx(tilt.rotation_degrees.x, -20.0))
+	test.check(bool(transform_result.get("pan_applied", false)), "Registry contract check failed near source line 117")
+	test.check(bool(transform_result.get("tilt_applied", false)), "Registry contract check failed near source line 118")
+	test.check(is_equal_approx(pan.rotation_degrees.y, 45.0), "Registry contract check failed near source line 119")
+	test.check(is_equal_approx(tilt.rotation_degrees.x, -20.0), "Registry contract check failed near source line 120")
 	var initial_record: Dictionary = registry.get_dimmer_target_record(201)
-	assert(initial_record.get("emitter_anchors", []).size() == 1)
-	assert(initial_record.get("beam_instances", []).size() == 1)
-	assert(initial_record.get("lens_material_targets", []).size() >= 1)
-	assert(not (initial_record.get("beam_instances", [])[0] as MeshInstance3D).visible)
+	test.check(initial_record.get("emitter_anchors", []).size() == 1, "Registry contract check failed near source line 122")
+	test.check(initial_record.get("beam_instances", []).size() == 1, "Registry contract check failed near source line 123")
+	test.check(initial_record.get("lens_material_targets", []).size() >= 1, "Registry contract check failed near source line 124")
+	test.check(not (initial_record.get("beam_instances", [])[0] as MeshInstance3D).visible, "Registry contract check failed near source line 125")
 	registry.clear()
-	assert(not registry.has_dimmer_target(201))
+	test.check(not registry.has_dimmer_target(201), "Registry contract check failed near source line 127")
 
 	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Missing")]}])
-	assert(registry.get_target_failure(101) is Dictionary)
+	test.check(registry.get_target_failure(101) is Dictionary, "Registry contract check failed near source line 130")
 
 	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Base/Pan"), _target("fixture-a", "pan", 101, "fixture-a/Base/Pan")]}])
 	var duplicate_summary: Dictionary = registry.get_summary().get("registry_summary", {})
-	assert(int(duplicate_summary.get("duplicate_manifest_target_ids", 0)) == 1)
+	test.check(int(duplicate_summary.get("duplicate_manifest_target_ids", 0)) == 1, "Registry contract check failed near source line 134")
 
 	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base"), _target("fixture-a", "dimmer", 202, "fixture-a/Base/EmitterLens")]}])
 	var overlap_summary: Dictionary = registry.get_summary().get("registry_summary", {})
-	assert(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1)
-	assert(registry.get_target_failure(202) is Dictionary)
+	test.check(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1, "Registry contract check failed near source line 138")
+	test.check(registry.get_target_failure(202) is Dictionary, "Registry contract check failed near source line 139")
 
 	harness.collect_emitter_light_calls = 0
 	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [
@@ -142,14 +154,14 @@ func _init() -> void:
 	var color_summary: Dictionary = registry.get_summary().get("registry_summary", {})
 	var shared_dimmer_record: Dictionary = registry.get_dimmer_target_record(201)
 	var shared_color_record: Dictionary = registry.get_color_target_record(401)
-	assert(registry.has_dimmer_target(201))
-	assert(registry.has_color_target(401))
-	assert(int(color_summary.get("dimmer_requested", 0)) == 1)
-	assert(int(color_summary.get("color_requested", 0)) == 1)
-	assert(int(color_summary.get("dimmer_target_overlaps", 0)) == 0)
-	assert(harness.collect_emitter_light_calls == 1)
-	assert(shared_dimmer_record.get("emitter_anchors", [])[0] == shared_color_record.get("emitter_anchors", [])[0])
-	assert(shared_dimmer_record.get("beam_instances", [])[0] == shared_color_record.get("beam_instances", [])[0])
+	test.check(registry.has_dimmer_target(201), "Registry contract check failed near source line 151")
+	test.check(registry.has_color_target(401), "Registry contract check failed near source line 152")
+	test.check(int(color_summary.get("dimmer_requested", 0)) == 1, "Registry contract check failed near source line 153")
+	test.check(int(color_summary.get("color_requested", 0)) == 1, "Registry contract check failed near source line 154")
+	test.check(int(color_summary.get("dimmer_target_overlaps", 0)) == 0, "Registry contract check failed near source line 155")
+	test.check(harness.collect_emitter_light_calls == 1, "Registry contract check failed near source line 156")
+	test.check(shared_dimmer_record.get("emitter_anchors", [])[0] == shared_color_record.get("emitter_anchors", [])[0], "Registry contract check failed near source line 157")
+	test.check(shared_dimmer_record.get("beam_instances", [])[0] == shared_color_record.get("beam_instances", [])[0], "Registry contract check failed near source line 158")
 
 
 	var keyed_harness := RegistryHarness.new()
@@ -170,7 +182,7 @@ func _init() -> void:
 	]}])
 	var keyed_record: Dictionary = keyed_registry.get_dimmer_target_record(401)
 	var records: Array = keyed_record.get("emitter_records", [])
-	assert(records.size() == 3)
+	test.check(records.size() == 3, "Registry contract check failed near source line 179")
 	var projected_sum: float = 0.0
 	var aura_scale: float = -1.0
 	for keyed_record_item in records:
@@ -178,9 +190,9 @@ func _init() -> void:
 		projected_sum += float(keyed_emitter_record.get("projected_lumen_scale", 0.0))
 		if str(keyed_emitter_record.get("geometry_key", "")) == "fixture-b/Base/Aura":
 			aura_scale = float(keyed_emitter_record.get("emission_lumen_scale", -1.0))
-	assert(is_equal_approx(projected_sum, 1.0))
-	assert(is_equal_approx(aura_scale, 0.09))
-	assert(keyed_record.get("beam_instances", []).size() == 2)
+	test.check(is_equal_approx(projected_sum, 1.0), "Registry contract check failed near source line 187")
+	test.check(is_equal_approx(aura_scale, 0.09), "Registry contract check failed near source line 188")
+	test.check(keyed_record.get("beam_instances", []).size() == 2, "Registry contract check failed near source line 189")
 
 	var quantum_harness := RegistryHarness.new()
 	get_root().add_child(quantum_harness)
@@ -196,9 +208,24 @@ func _init() -> void:
 	var quantum_registry: NativeRendererTargetRegistry = _make_registry(quantum_harness)
 	quantum_registry.install_manifest([{"fixture_uuid": "fixture-q", "targets": quantum_targets}])
 	var quantum_record: Dictionary = quantum_registry.get_dimmer_target_record(800)
-	assert(quantum_record.get("beam_instances", []).size() == 50)
+	test.check(quantum_record.get("beam_instances", []).size() == 50, "Registry contract check failed near source line 205")
 	var quantum_sum: float = 0.0
 	for quantum_record_item in quantum_record.get("emitter_records", []):
 		quantum_sum += float((quantum_record_item as Dictionary).get("projected_lumen_scale", 0.0))
-	assert(abs(quantum_sum - 1.6) < 0.001)
-	quit(0)
+	test.check(abs(quantum_sum - 1.6) < 0.001, "Registry contract check failed near source line 209")
+	registry.clear()
+	keyed_registry.clear()
+	quantum_registry.clear()
+	harness.cleanup_resources()
+	keyed_harness.cleanup_resources()
+	quantum_harness.cleanup_resources()
+	await process_frame
+	harness.free()
+	keyed_harness.free()
+	quantum_harness.free()
+	call_deferred("_finish")
+
+func _finish() -> void:
+	await process_frame
+	await process_frame
+	test.finish(self)

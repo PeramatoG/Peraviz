@@ -22,6 +22,8 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Strengthened headless scene-test lifecycle, renderer resource cleanup, strict Godot diagnostic reporting, and native test-inventory validation.
+
 - Added a reproducible Linux Debug continuous-integration harness covering all native CTest, architecture, and strict headless Godot regressions, with verified tool prerequisites, tracked-file policy scope, trusted cache warming, persistent dependency caches, and measurable compiler-cache diagnostics.
 
 - Added session-owned runtime storage for native archive extraction caches so MVR/GDTF assets stay available while a loaded scene owns them and are removed automatically when the final owner is released.
