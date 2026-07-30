@@ -5,7 +5,7 @@
     <img alt="Release Status" src="https://img.shields.io/badge/release-unreleased-lightgrey?style=flat-square">
   </a>
   <img alt="Status" src="https://img.shields.io/badge/status-experimental-orange?style=flat-square">
-  <img alt="Godot" src="https://img.shields.io/badge/Godot-4.2%2B-478CBF?style=flat-square">
+  <img alt="Godot" src="https://img.shields.io/badge/Godot-4.7.1-478CBF?style=flat-square">
   <img alt="GDExtension" src="https://img.shields.io/badge/GDExtension-C%2B%2B-00599C?style=flat-square">
   <img alt="Art-Net" src="https://img.shields.io/badge/DMX-Art--Net-purple?style=flat-square">
   <img alt="MVR/GDTF" src="https://img.shields.io/badge/MVR%20%2F%20GDTF-supported-blue?style=flat-square">
@@ -134,8 +134,8 @@ Peraviz includes explicit tooling to make import correctness reproducible:
 
 ### Requirements
 
-* **Godot:** 4.2+
-* **godot-cpp:** compatible with the selected Godot 4.2.x line
+* **Godot runtime/editor:** 4.7.1 stable
+* **GDExtension API:** Godot 4.7, built from the pinned official `godot-cpp` revision in `native/cmake/GodotCompatibility.cmake`
 * **CMake**
 * **C++ compiler** compatible with the native extension build
 * Native dependencies used by the loader:

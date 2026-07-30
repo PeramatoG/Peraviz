@@ -23,6 +23,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(CTest)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GodotCompatibility.cmake")
 
 set(GODOT_CPP_DIR "" CACHE PATH "Path to a local godot-cpp checkout")
 option(PERAVIZ_FETCH_GODOT_CPP "Fetch godot-cpp automatically when GODOT_CPP_DIR is not provided" ON)
@@ -34,6 +35,8 @@ option(PERAVIZ_ENABLE_MVR_XCHANGE "Enable MVR-xchange discovery" ON)
 set(PERAVIZ_GODOT_PROJECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Path to the Peraviz Godot project")
 
 if(PERAVIZ_BUILD_GDEXTENSION AND NOT TARGET godot-cpp)
+    set(GODOTCPP_API_VERSION "${PERAVIZ_GODOT_API_VERSION}" CACHE STRING "Godot API version targeted by godot-cpp" FORCE)
+    message(STATUS "Peraviz Godot contract: runtime ${PERAVIZ_GODOT_RUNTIME_VERSION}, API ${GODOTCPP_API_VERSION}, godot-cpp ${PERAVIZ_GODOT_CPP_REVISION}")
     if(GODOT_CPP_DIR)
         if(EXISTS "${GODOT_CPP_DIR}/CMakeLists.txt")
             add_subdirectory("${GODOT_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/godot-cpp")
@@ -45,8 +48,7 @@ if(PERAVIZ_BUILD_GDEXTENSION AND NOT TARGET godot-cpp)
         FetchContent_Declare(
             godot-cpp
             GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
-            GIT_TAG godot-4.2.2-stable
-            GIT_SHALLOW TRUE
+            GIT_TAG ${PERAVIZ_GODOT_CPP_REVISION}
         )
         FetchContent_MakeAvailable(godot-cpp)
     else()

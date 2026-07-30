@@ -1,6 +1,6 @@
 [configuration]
 entry_symbol = "peraviz_library_init"
-compatibility_minimum = "4.2"
+compatibility_minimum = "4.7"
 
 [libraries]
 windows.debug.x86_64 = "res://bin/peraviz_native.dll"

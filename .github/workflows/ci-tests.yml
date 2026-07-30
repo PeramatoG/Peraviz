@@ -74,7 +74,8 @@ jobs:
           set -euo pipefail
           compiler_identity="gcc-$(gcc -dumpfullversion -dumpversion)-$(gcc -dumpmachine)"
           compiler_key="$(printf '%s' "$compiler_identity" | tr -c 'A-Za-z0-9._-' '-')"
-          namespace="peraviz-ci-v2-linux-${{ runner.arch }}-${compiler_key}-debug"
+          binding_key="$(sha256sum native/cmake/GodotCompatibility.cmake | cut -c1-16)"
+          namespace="peraviz-ci-v3-linux-${{ runner.arch }}-${compiler_key}-debug-${binding_key}"
           echo "identity=$compiler_identity" >> "$GITHUB_OUTPUT"
           echo "key=$compiler_key" >> "$GITHUB_OUTPUT"
           echo "namespace=$namespace" >> "$GITHUB_OUTPUT"
@@ -118,6 +119,7 @@ jobs:
       - name: Configure native Debug tests
         run: |
           set -euo pipefail
+          python3 .github/scripts/validate_godot_compatibility.py | tee "$LOG_DIR/godot-compatibility.txt"
           cmake -S native -B "$BUILD_DIR" -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
@@ -218,6 +220,12 @@ jobs:
         if: env.CACHE_WARMING != 'true'
         run: |
           timeout 120 "$GODOT_BIN" --headless --audio-driver Dummy --rendering-method gl_compatibility --editor --path "${{ github.workspace }}" --quit 2>&1 | tee "$LOG_DIR/godot-import.log"
+
+      - name: Verify native extension class registration
+        if: env.CACHE_WARMING != 'true'
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --audio-driver Dummy --rendering-method gl_compatibility \
+            --path "${{ github.workspace }}" --script .github/scripts/check_native_extension.gd 2>&1 | tee "$LOG_DIR/godot-extension-smoke.log"
 
       - name: Run every headless GDScript test
         if: env.CACHE_WARMING != 'true'
