@@ -1,5 +1,6 @@
 #include "dmx/fixture_dmx_binding.h"
 
+#include <algorithm>
 #include <unordered_set>
 #include <utility>
 
@@ -111,6 +112,12 @@ FixtureBindingBuildResult build_fixture_control_bindings(
                                              offsets, debug_reason)) {
             result.unbound.push_back({patch.fixture_uuid, debug_reason});
             continue;
+        }
+        if (offsets.asset_cache_lease.valid()) result.asset_cache_leases.push_back(offsets.asset_cache_lease);
+        for (FixtureUnboundReason warning : offsets.warnings) {
+            warning.fixture_uuid = patch.fixture_uuid;
+            const auto duplicate = std::find_if(result.warnings.begin(), result.warnings.end(), [&](const FixtureUnboundReason &existing) { return existing.reason == warning.reason && existing.fixture_uuid == warning.fixture_uuid; });
+            if (duplicate == result.warnings.end()) result.warnings.push_back(std::move(warning));
         }
 
         FixtureControlBinding binding;

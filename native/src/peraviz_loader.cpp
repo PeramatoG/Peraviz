@@ -6,6 +6,7 @@
 
 #ifdef PERAVIZ_ENABLE_DMX
 #include "dmx/fixture_dmx_binding.h"
+#include "dmx/gdtf_control_offsets_resolver.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/gdtf_geometry_identity.h"
 #include "runtime/visual_runtime_types.h"
@@ -137,6 +138,10 @@ void PeravizLoader::_bind_methods() {
 
 Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
                               bool peraviz_debug_coords) {
+#ifdef PERAVIZ_ENABLE_DMX
+    peraviz::dmx::clear_fixture_control_offsets_cache();
+#endif
+    gobo_asset_cache_leases_.clear();
     last_scene_model_ = peraviz::load_mvr(std::string(path.utf8().get_data()),
                                           peraviz_debug_baseline,
                                           peraviz_debug_coords);
@@ -638,7 +643,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
 }
 
 // Builds DMX control bindings for all patched fixtures.
-Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) const {
+Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
     Dictionary out;
     out["universe_offset"] = universe_offset;
 
@@ -658,6 +663,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) const 
     std::unordered_map<std::string, peraviz::dmx::FixtureControlBinding> lookup;
     const peraviz::dmx::FixtureBindingBuildResult result =
         peraviz::dmx::build_fixture_control_bindings(patches, universe_offset, lookup);
+    gobo_asset_cache_leases_ = result.asset_cache_leases;
 
     Array bindings;
     bindings.resize(static_cast<int64_t>(result.bindings.size()));
@@ -852,15 +858,25 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) const 
 
     out["bindings"] = bindings;
     out["unbound"] = unbound;
+    Array warnings;
+    for (const auto &warning : result.warnings) {
+        Dictionary warning_item;
+        warning_item["code"] = String("PVZ-GDTF-GOBO-MEDIA-MISSING");
+        warning_item["fixture_uuid"] = String(warning.fixture_uuid.c_str());
+        warning_item["detail"] = String(warning.reason.c_str());
+        warnings.push_back(warning_item);
+    }
+    out["warnings"] = warnings;
 #else
     out["bindings"] = Array();
     out["unbound"] = Array();
+    out["warnings"] = Array();
 #endif
     return out;
 }
 
 // Builds dimmer-focused DMX bindings for compatibility APIs.
-Dictionary PeravizLoader::build_fixture_dimmer_bindings(int universe_offset) const {
+Dictionary PeravizLoader::build_fixture_dimmer_bindings(int universe_offset) {
     UtilityFunctions::push_warning("[PeravizNative] build_fixture_dimmer_bindings is deprecated; use build_fixture_dmx_bindings instead.");
     return build_fixture_dmx_bindings(universe_offset);
 }

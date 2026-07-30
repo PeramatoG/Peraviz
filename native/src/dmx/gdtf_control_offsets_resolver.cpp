@@ -710,6 +710,10 @@ DimmerResolveCacheEntry resolve_uncached(const std::string &gdtf_path,
     }
 
     const peraviz::dmx::GoboWheelCatalog wheel_catalog = peraviz::dmx::build_gobo_wheel_catalog(gdtf_path, root);
+    out.offsets.asset_cache_lease = wheel_catalog.cache_lease;
+    for (const peraviz::dmx::GoboMediaDiagnostic &diagnostic : wheel_catalog.missing_media) {
+        out.offsets.warnings.push_back({{}, "PVZ-GDTF-GOBO-MEDIA-MISSING wheel=" + diagnostic.wheel_name + " slot=" + std::to_string(diagnostic.slot_index) + " reference=" + diagnostic.media_reference});
+    }
 
     std::vector<tinyxml2::XMLElement *> dmx_channels = peraviz::dmx::collect_elements_by_name(selected_mode, "dmxchannel");
     if (dmx_channels.empty()) {
@@ -808,6 +812,12 @@ bool resolve_fixture_control_offsets(const std::string &gdtf_path,
     out_offsets = resolved.offsets;
     out_debug_reason = resolved.reason;
     return resolved.ok;
+}
+
+// Releases cached offset metadata and its extracted-media leases at scene replacement.
+void clear_fixture_control_offsets_cache() {
+    const std::scoped_lock lock(g_cache_mutex);
+    g_cache.clear();
 }
 
 } // namespace peraviz::dmx

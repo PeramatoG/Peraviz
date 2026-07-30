@@ -180,7 +180,7 @@ ZipAssetCache::ZipAssetCache(std::string source_path)
     : source_path_(std::filesystem::u8path(source_path)) {
     const std::string source_name = sanitize_path_component_for_fs(source_path_.filename().u8string());
     const std::string cache_key = source_name + "_" + hash_file_contents(source_path_);
-    cache_lease_ = runtime_storage::create_session_cache_directory(cache_key);
+    cache_lease_ = runtime_storage::acquire_session_cache_directory(cache_key);
     cache_dir_ = cache_lease_.path();
 }
 

@@ -245,6 +245,7 @@ GoboWheelCatalog build_gobo_wheel_catalog(const std::string &gdtf_path, tinyxml2
     }
 
     peraviz::ZipAssetCache cache(gdtf_path);
+    out.cache_lease = cache.cache_lease();
     const std::vector<tinyxml2::XMLElement *> wheels = collect_elements_by_name(root, "wheel");
     for (tinyxml2::XMLElement *wheel : wheels) {
         const std::string wheel_name = lower_ascii(read_attr_ci(wheel, "Name", "name"));
@@ -269,7 +270,7 @@ GoboWheelCatalog build_gobo_wheel_catalog(const std::string &gdtf_path, tinyxml2
             }
             implicit_index = std::max(implicit_index, slot_index + 1);
 
-            GoboWheelDefinition &wheel_definition = out[wheel_name];
+            GoboWheelDefinition &wheel_definition = out.wheels[wheel_name];
             if (wheel_definition.declared_slots.insert(slot_index).second) {
                 wheel_definition.declared_slot_order.push_back(slot_index);
             }
@@ -282,6 +283,8 @@ GoboWheelCatalog build_gobo_wheel_catalog(const std::string &gdtf_path, tinyxml2
             const std::string extracted = ensure_gobo_media_extracted(gdtf_path, cache, media_file);
             if (!extracted.empty()) {
                 wheel_definition.slot_images[slot_index] = extracted;
+            } else {
+                out.missing_media.push_back({wheel_name, slot_index, media_file});
             }
         }
     }
@@ -339,8 +342,8 @@ void consume_gobo_channel_sets(tinyxml2::XMLElement *channel_function,
         return;
     }
 
-    auto wheel_it = wheel_catalog.find(wheel_name);
-    if (wheel_it == wheel_catalog.end()) {
+    auto wheel_it = wheel_catalog.wheels.find(wheel_name);
+    if (wheel_it == wheel_catalog.wheels.end()) {
         return;
     }
 

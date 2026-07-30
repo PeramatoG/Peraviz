@@ -43,6 +43,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Fixed repeated gobo image-loading errors by retaining extracted GDTF wheel media for the active scene, reusing media across repeated fixture instances, and reporting genuinely missing references once without publishing stale paths.
+
 - Fixed real-world GDTF color filters with contradictory zero-transmission measurements so visible wheel colors retain their authored hue and normalized physical gain, while coherent black filters remain black and malformed or missing measurements stay diagnosable.
 
 - Corrected seated GDTF color-wheel slot diagnostics and runtime selection guardrails so discrete wheel rows only resolve while their ChannelFunction is active, preserve exact one-based slot identity, and report WheelSelection change masks from the correct payload field.

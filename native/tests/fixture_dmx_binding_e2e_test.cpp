@@ -47,6 +47,60 @@ bool write_gdtf_archive(const std::filesystem::path &path, const std::string &de
     return archive.close();
 }
 
+// Writes a minimal media-bearing GDTF used to verify extracted-asset ownership.
+bool write_gobo_media_archive(const std::filesystem::path &path) {
+    const std::string xml = R"XML(<GDTF><FixtureType Name="Lease Fixture"><Wheels><Wheel Name="Gobo1"><Slot Name="Open"/><Slot Name="Star" MediaFileName="star"/><Slot Name="Missing" MediaFileName="missing.png"/></Wheel></Wheels><DMXModes><DMXMode Name="Mode"><DMXChannels><DMXChannel Offset="1"><LogicalChannel Attribute="Gobo1"><ChannelFunction Attribute="Gobo1" Wheel="Gobo1"><ChannelSet DMXFrom="0" WheelSlotIndex="1"/><ChannelSet DMXFrom="128" WheelSlotIndex="2"/></ChannelFunction></LogicalChannel></DMXChannel></DMXChannels></DMXMode></DMXModes></FixtureType></GDTF>)XML";
+    const unsigned char png_bytes[] = {
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+        0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+        0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+        0x4e, 0x44, 0xae, 0x42, 0x60, 0x82};
+    peraviz::archive::ZipArchive archive;
+    return archive.open_create_or_modify(path) && archive.write_file("description.xml", xml) &&
+           archive.write_file("wheels/star.png", std::string(reinterpret_cast<const char *>(png_bytes), sizeof(png_bytes))) && archive.close();
+}
+
+// Verifies binding-owned leases keep shared gobo media alive and clean it after release.
+int test_gobo_media_binding_lifetime() {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() / "peraviz_gobo_lease_test";
+    std::filesystem::remove_all(root);
+    peraviz::runtime_storage::set_runtime_root_for_tests(root / "runtime");
+    const std::filesystem::path archive_path = root / "Fixture with spaces ä.gdtf";
+    std::filesystem::create_directories(root);
+    if (!write_gobo_media_archive(archive_path)) return fail("Failed to create media-bearing GDTF");
+
+    std::string live_path;
+    std::filesystem::path cache_directory;
+    {
+        peraviz::dmx::FixturePatch first{"fixture-one", 1, 1, "Mode", archive_path.u8string()};
+        peraviz::dmx::FixturePatch second{"fixture-two", 1, 20, "Mode", archive_path.u8string()};
+        std::unordered_map<std::string, peraviz::dmx::FixtureControlBinding> lookup;
+        const auto result = peraviz::dmx::build_fixture_control_bindings({first, second}, 0, lookup);
+        if (result.bindings.size() != 2 || result.asset_cache_leases.size() != 2) return fail("Expected repeated fixtures to retain shared media leases");
+        if (result.bindings[0].gobo_slots.size() != 1 || result.bindings[1].gobo_slots.size() != 1) return fail("Expected only the valid gobo media path to be published");
+        live_path = result.bindings[0].gobo_slots[0].image_path;
+        if (live_path != result.bindings[1].gobo_slots[0].image_path || !std::filesystem::is_regular_file(std::filesystem::u8path(live_path))) return fail("Expected repeated fixtures to share a readable extracted image");
+        cache_directory = result.asset_cache_leases[0].path();
+        if (cache_directory != result.asset_cache_leases[1].path()) return fail("Expected one content-keyed cache generation per active archive");
+        if (result.warnings.size() != 2 || result.warnings[0].reason.find("PVZ-GDTF-GOBO-MEDIA-MISSING") == std::string::npos) return fail("Expected one structured missing-media warning per fixture");
+    }
+    peraviz::dmx::clear_fixture_control_offsets_cache();
+    if (std::filesystem::exists(cache_directory) || std::filesystem::exists(std::filesystem::u8path(live_path))) return fail("Expected extracted media cleanup after binding ownership ends");
+    {
+        peraviz::dmx::FixturePatch replacement{"fixture-reloaded", 1, 1, "Mode", archive_path.u8string()};
+        std::unordered_map<std::string, peraviz::dmx::FixtureControlBinding> replacement_lookup;
+        const auto replacement_result = peraviz::dmx::build_fixture_control_bindings({replacement}, 0, replacement_lookup);
+        if (replacement_result.bindings.empty() || replacement_result.bindings[0].gobo_slots.empty()) return fail("Expected scene replacement to publish a live replacement path");
+        const std::string replacement_path = replacement_result.bindings[0].gobo_slots[0].image_path;
+        if (replacement_path == live_path || !std::filesystem::is_regular_file(std::filesystem::u8path(replacement_path))) return fail("Expected scene replacement to avoid the released cache generation");
+    }
+    peraviz::dmx::clear_fixture_control_offsets_cache();
+    peraviz::runtime_storage::reset_runtime_root_for_tests();
+    std::filesystem::remove_all(root);
+    return 0;
+}
+
 const peraviz::dmx::FixtureGoboWheelOffset *find_wheel(
     const peraviz::dmx::FixtureControlOffsets &offsets,
     int wheel_number) {
@@ -621,5 +675,6 @@ int run_test() {
 
 // Entry point that runs the test program and returns its status.
 int main() {
+    if (const int lifetime_result = test_gobo_media_binding_lifetime(); lifetime_result != 0) return lifetime_result;
     return run_test();
 }

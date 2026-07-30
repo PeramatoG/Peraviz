@@ -22,9 +22,9 @@ public:
                    bool peraviz_debug_coords = false);
     Dictionary load_3ds_mesh_data(const String &path) const;
     Array get_fixtures_patch() const;
-    Dictionary build_fixture_dmx_bindings(int universe_offset = -1) const;
+    Dictionary build_fixture_dmx_bindings(int universe_offset = -1);
     Dictionary compile_visual_runtime_scene(int universe_offset = -1) const;
-    Dictionary build_fixture_dimmer_bindings(int universe_offset = -1) const;
+    Dictionary build_fixture_dimmer_bindings(int universe_offset = -1);
     Dictionary get_runtime_table_schema(const String &table_id) const;
     Array get_runtime_table_rows(const String &table_id) const;
     Dictionary get_runtime_table_row(const String &table_id, const String &row_uuid) const;
@@ -33,6 +33,7 @@ public:
 
 private:
     peraviz::SceneModel last_scene_model_;
+    std::vector<peraviz::runtime_storage::RuntimeDirectoryLease> gobo_asset_cache_leases_;
 };
 
 } // namespace godot

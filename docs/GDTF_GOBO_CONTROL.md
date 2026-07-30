@@ -123,3 +123,9 @@ The renderer keeps official optical radius separate from measured model aperture
 Lightweight Prism now exposes a real BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
 
 Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, active gobo selection/rotation, and high-quality volumetric rectangular rendering remain unsupported.
+
+## Extracted media lifetime
+
+Native gobo catalog cooking owns extracted wheel media through scene-generation `RuntimeDirectoryLease` values. Fixture bindings may publish paths only while the loader and active control-offset generation retain those leases. Duplicate fixture instances reuse the archive filename-plus-content-hash cache generation, and scene replacement releases the previous generation deterministically. Slots with absent `MediaFileName` remain media-free; genuinely missing references preserve wheel/range metadata but publish no image path and produce the structured `PVZ-GDTF-GOBO-MEDIA-MISSING` warning.
+
+The stale-path debugger flood predated the native color-wheel change: the binding catalog previously returned paths owned only by a function-local `ZipAssetCache`. The color-wheel work exposed the existing rebuild path but did not create the ownership defect, and gobo media remains separate from ColorCIE/filter-only wheel slots.

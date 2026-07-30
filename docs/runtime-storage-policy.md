@@ -20,3 +20,5 @@ Session caches are regenerable and versioned with `cache/v1`. They are scoped to
 Cleanup is containment-checked before deletion. Runtime storage refuses to remove paths that are not lexically inside the Peraviz runtime root and logs cleanup failures instead of throwing from destructors.
 
 Archive entries continue to use the native ZIP archive normalization path and are written under sanitized relative cache paths, preserving root-level MVR/GDTF compatibility while avoiding direct writes from archive names to arbitrary filesystem locations.
+
+Gobo media paths published through fixture-binding dictionaries follow the same rule. The native control-offset cache retains a shared, content-keyed extraction lease for the active scene generation; repeated fixture instances and binding rebuilds reuse that generation. `PeravizLoader::load_mvr()` clears the prior offset generation and its loader-held leases before replacing the scene, so the old directory is removed only after its final owner releases it. Missing referenced media never publishes an `image_path` and is returned as one structured `PVZ-GDTF-GOBO-MEDIA-MISSING` warning per fixture/wheel/slot/reference.

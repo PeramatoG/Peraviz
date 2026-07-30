@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "dmx/fixture_dmx_binding.h"
+#include "runtime_storage.h"
 
 #include <tinyxml2.h>
 
@@ -17,7 +18,18 @@ struct GoboWheelDefinition {
     std::unordered_map<int, std::string> slot_images;
 };
 
-using GoboWheelCatalog = std::unordered_map<std::string, GoboWheelDefinition>;
+struct GoboMediaDiagnostic {
+    std::string wheel_name;
+    int slot_index = -1;
+    std::string media_reference;
+};
+
+struct GoboWheelCatalog {
+    std::unordered_map<std::string, GoboWheelDefinition> wheels;
+    std::vector<GoboMediaDiagnostic> missing_media;
+    runtime_storage::RuntimeDirectoryLease cache_lease;
+
+};
 
 GoboWheelCatalog build_gobo_wheel_catalog(const std::string &gdtf_path, tinyxml2::XMLElement *root);
 

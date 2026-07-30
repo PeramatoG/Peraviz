@@ -7,6 +7,8 @@
 #include <sstream>
 #include <system_error>
 #include <thread>
+#include <mutex>
+#include <unordered_map>
 
 namespace {
 
@@ -204,6 +206,22 @@ RuntimeDirectoryLease create_session_cache_directory(const std::string &prefix) 
         return {};
     }
     return RuntimeDirectoryLease(path);
+}
+
+// Acquires one content-keyed cache directory shared by all active scene consumers.
+RuntimeDirectoryLease acquire_session_cache_directory(const std::string &prefix) {
+    static std::mutex mutex;
+    static std::unordered_map<std::string, std::weak_ptr<RuntimeDirectoryLease::State>> active;
+    const std::string key = sanitize_segment(prefix);
+    std::lock_guard<std::mutex> lock(mutex);
+    if (const auto existing = active[key].lock()) {
+        RuntimeDirectoryLease lease;
+        lease.state_ = existing;
+        return lease;
+    }
+    RuntimeDirectoryLease lease(create_unique_directory(cache_root(), key));
+    if (lease.valid()) active[key] = lease.state_;
+    return lease;
 }
 
 // Removes the current session root during clean shutdown.
