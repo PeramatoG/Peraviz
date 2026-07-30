@@ -203,7 +203,7 @@ jobs:
           status=$?
           cp "$BUILD_DIR/Testing/Temporary/LastTest.log" "$LOG_DIR/LastTest.log" 2>/dev/null || true
           cp "$BUILD_DIR/Testing/Temporary/LastTestsFailed.log" "$LOG_DIR/LastTestsFailed.log" 2>/dev/null || true
-          python3 -c 'import sys, xml.etree.ElementTree as ET; root=ET.parse(sys.argv[1]).getroot(); total=int(root.get("tests", len(root.findall(".//testcase")))); failed=int(root.get("failures", 0))+int(root.get("errors", 0)); skipped=int(root.get("skipped", 0)); print(f"CTest total={total} passed={total-failed-skipped} failed={failed} skipped={skipped}"); sys.exit(0 if total == 8 else 1)' "$LOG_DIR/ctest.junit.xml"
+          python3 .github/scripts/validate_ctest_inventory.py "$LOG_DIR/ctest-inventory.json" --junit "$LOG_DIR/ctest.junit.xml"
           summary_status=$?
           (( status == 0 && summary_status == 0 ))
 
