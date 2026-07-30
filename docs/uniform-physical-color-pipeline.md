@@ -58,3 +58,7 @@ Godot does not receive CIE data, spectra, emitter/filter IDs, Kelvin values, Tin
 ## Deferred features
 
 Spatial split rendering on beam/lens/footprint, WheelSpin, WheelRandom, WheelAudio, gobos, animation wheels, prisms, HSB controls, full gamut clipping, calibrated spectral rendering, and CRI simulation remain unsupported or deferred for runtime rendering in this stage.
+
+### Color-wheel transmission compatibility
+
+For linked wheel Filters, relative spectra have shape priority, valid `Measurement.Transmission` has scalar priority, Filter ColorCIE is the shape/scalar fallback, Slot ColorCIE is used only when linked Filter data cannot be used, and open/broken data falls back to diagnosable identity. Energy is never multiplied from both ColorCIE Y and Transmission. An explicit zero normally remains black. The separately documented `PVZ-GDTF-WHEEL-FILTER-CONTRADICTORY-ZERO` Peraviz fallback applies only to a lone full-insertion zero without spectrum that conflicts with visible linked Filter and Slot ColorCIE; normalized Filter Y then supplies positive physical gain without a brightness floor.

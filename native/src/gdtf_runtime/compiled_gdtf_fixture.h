@@ -45,10 +45,18 @@ struct PhysicalSpectralPoint {
     double energy = 0.0;
 };
 
+enum class ParsedNumericState : uint8_t {
+    Absent = 0,
+    Valid = 1,
+    Invalid = 2,
+};
+
 struct PhysicalColorMeasurement {
     double physical_percent = 0.0;
+    ParsedNumericState physical_state = ParsedNumericState::Absent;
     double luminous_intensity = 1.0;
     double transmission = 1.0;
+    ParsedNumericState transmission_state = ParsedNumericState::Absent;
     std::string interpolation_to = "Linear";
     std::vector<PhysicalSpectralPoint> spectral_points;
 };
