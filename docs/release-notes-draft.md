@@ -22,6 +22,8 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Aligned the native extension toolchain with the Godot 4.7 API through an immutable official godot-cpp revision, a validated repository-wide compatibility contract, and binding-aware compiler-cache isolation.
+
 - Strengthened headless scene-test lifecycle, renderer resource cleanup, strict Godot diagnostic reporting, and native test-inventory validation.
 
 - Added a reproducible Linux Debug continuous-integration harness covering all native CTest, architecture, and strict headless Godot regressions, with verified tool prerequisites, tracked-file policy scope, trusted cache warming, persistent dependency caches, and measurable compiler-cache diagnostics.

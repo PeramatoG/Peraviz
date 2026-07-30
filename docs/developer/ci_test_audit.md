@@ -31,6 +31,20 @@ Run 30521815871 issued 1,025 compiler requests with 20 hits, 1,005 misses (1.95%
 
 # Historical CI harness audit
 
+## Godot 4.7 toolchain closeout
+
+The production runtime/editor baseline is Godot 4.7.1 stable, while the generated GDExtension API target is Godot 4.7. The extension minimum is also 4.7: upstream compatibility is forward from an older generated API to a newer engine, not backward from a 4.7 API to an older engine. Peraviz therefore does not retain the former, unverified 4.2 minimum claim.
+
+The official `godotengine/godot-cpp` repository, its README compatibility guidance, tag inventory, bundled API definitions, and CMake configuration were inspected on 2026-07-30. No official Godot 4.7 stable tag existed. The v10 master line supported `GODOTCPP_API_VERSION=4.7`, identified 4.7 as its latest bundled API, and selected its bundled `gdextension/extension_api.json` for that value. Peraviz pins reviewed official commit `82c6c449b9432d1eae1fbaa087bd579c77e6e8d5` rather than following the floating branch. This exact SHA makes FetchContent reproducible and requires no vendored generated bindings. `GODOT_CPP_DIR` remains available for local source overrides, but Peraviz still forces the explicit 4.7 API target.
+
+`native/cmake/GodotCompatibility.cmake` is the authoritative contract for the runtime, API, immutable godot-cpp revision, and extension minimum. `.github/scripts/validate_godot_compatibility.py` checks `project.godot`, CI, CMake integration, README requirements, and the extension declaration against it. CI prints the validated values and incorporates a digest of the contract into the sccache namespace, preventing incompatible binding output from sharing compiler objects without caching the CMake build tree. The vcpkg download, vcpkg binary archive, and Godot distribution cache designs remain separate and unchanged.
+
+Clean local verification removed `out/godot47-clean` and the existing Linux extension before configuration. The clean Debug configuration used `BUILD_TESTING=ON`, fetched the pinned commit, reported the 4.7 API and bundled `gdextension/extension_api.json`, and generated 2,135 binding files. The complete native target build succeeded. Inventory validation found exactly eight required CTests and the unfiltered suite passed 8/8. Godot 4.7.1 stable imported the project and the strict runner passed 6/6 discovered GDScript tests. The focused extension smoke check found all six expected native classes: `HelloWorld`, `PeravizLoader`, `PeravizGoboVectorizer`, `PeravizDmxReceiver`, `PeravizVisualRuntime`, and `PeravizMvrXchangeClient`.
+
+The local editor import exited successfully without script, engine, resource, or RID errors, but Godot reported two leaked `ObjectDB` instances during shutdown. A second editor import and a normal headless project launch reproduced the same pre-existing shutdown warning, while the focused extension smoke and all six isolated GDScript processes exited cleanly. This warning remains a blocker for claiming the requested leak-free authoritative import; it has not been suppressed or attributed to the binding migration without evidence.
+
+The authoritative draft-PR Actions run URL, tested commit SHA, cold/warm cache restore results, and measured sccache statistics must be added here after both compatible executions complete. The branch must remain draft until that evidence is green.
+
 This audit records the test surface at commit `056af0d` before the first Linux Debug workflow was added. The checkpoint uses branch-head registrations and files rather than assuming that a zero exit code means every test was discovered or parsed.
 
 ## Dependency boundary
