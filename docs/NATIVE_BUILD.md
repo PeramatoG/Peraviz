@@ -35,6 +35,20 @@ cmake --build native/build --config Debug
 
 The resulting library is copied automatically to `bin/`.
 
+### Debug tests
+
+Configure CTest, inspect both inventories, build every target, and run without filters:
+
+```bash
+cmake -S native -B native/build-tests -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+ctest --test-dir native/build-tests -N -V
+ctest --test-dir native/build-tests --show-only=json-v1 > native/build-tests/ctest-inventory.json
+cmake --build native/build-tests --target all --verbose
+ctest --test-dir native/build-tests --output-on-failure --verbose --timeout 120
+```
+
+The default also builds the GDExtension for Godot tests. For focused pure-native development, `-DPERAVIZ_BUILD_GDEXTENSION=OFF` avoids resolving `godot-cpp` and mdns; tinyxml2 and libzip remain required. This does not change default builds or output paths.
+
 ### Windows static vcpkg build for exports
 
 For Windows exports, build from a Visual Studio Developer Command Prompt with vcpkg manifest mode and the static triplet:

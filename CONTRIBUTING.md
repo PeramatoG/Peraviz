@@ -68,6 +68,29 @@ git diff --check
 
 For native changes, configure and run the native CMake tests described in `docs/NATIVE_BUILD.md`. For GDScript behavior, run the relevant headless Godot scripts under `tests/`.
 
+The Linux Debug CI sequence can be reproduced from the repository root (set `VCPKG_ROOT` and `GODOT_BIN` first):
+
+```bash
+cmake -S native -B out/linux-debug -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+  -DVCPKG_TARGET_TRIPLET=x64-linux -DBUILD_TESTING=ON
+ctest --test-dir out/linux-debug -N -V
+ctest --test-dir out/linux-debug --show-only=json-v1 > out/ctest-inventory.json
+python3 .github/scripts/validate_ctest_inventory.py out/ctest-inventory.json
+cmake --build out/linux-debug --target all --verbose
+ctest --test-dir out/linux-debug --output-on-failure --verbose --timeout 120
+tests/check_no_large_files.sh
+tests/check_runtime_architecture.sh
+"$GODOT_BIN" --headless --audio-driver Dummy --rendering-method gl_compatibility --editor --path . --quit
+python3 .github/scripts/run_gdscript_tests.py --godot "$GODOT_BIN" --project . --output out/gdscript-results --timeout 60
+git diff --check
+```
+
+`project.godot` currently declares Godot 4.7 compatibility, so use the current 4.7 stable executable. See `docs/developer/ci_test_audit.md` for prerequisites and evidence.
+
+Maintainers can manually run **CI Debug Tests** with the `cache_warm` input enabled to prepare vcpkg download/binary, sccache, and immutable Godot distribution caches. Cache warming always resolves and verifies the repository's current default-branch commit; it cannot publish shared caches from a requested pull-request ref. Normal pull-request runs never use this shortcut and always execute the complete test suite.
+
 If a dependency such as Godot or a compiler is unavailable, report the exact command and the reason it could not run.
 
 ## Review checklist
