@@ -392,7 +392,9 @@ WheelTransmissionCook cook_transmission_from_cie(runtime::CompiledRuntimeScene &
                                                  bool extract_gain) {
     const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({color.x, color.y, color.Y, true});
     const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
-    return cook_transmission_from_linear(scene, patch, subject, rgb, extract_gain, color.Y <= 0.0);
+    WheelTransmissionCook cooked = cook_transmission_from_linear(scene, patch, subject, rgb, false, color.Y <= 0.0);
+    if (extract_gain && cooked.valid && !cooked.closed) cooked.gain = color.Y;
+    return cooked;
 }
 
 // Chooses the most complete Filter measurement for full-insertion wheel slots.
@@ -404,8 +406,16 @@ const PhysicalColorMeasurement *select_filter_measurement(const PhysicalFilterRe
     return measurement;
 }
 
+// Detects the narrow Peraviz compatibility case where an isolated zero conflicts with visible linked color metadata.
+bool is_contradictory_zero_measurement(const PhysicalFilterResource &filter, const ParsedWheelSlot &slot, const PhysicalColorMeasurement &measurement) {
+    return measurement.transmission_state == ParsedNumericState::Valid && measurement.transmission == 0.0 &&
+           measurement.physical_state == ParsedNumericState::Valid && measurement.physical_percent >= 100.0 &&
+           measurement.spectral_points.empty() && filter.measurements.size() == 1 && filter.color.valid && filter.color.Y > 0.0 &&
+           slot.color.valid && slot.color.Y > 0.0;
+}
+
 // Cooks one wheel slot into immutable renderer-ready optical data.
-runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &fixture_type, const ParsedWheelSlot &slot) {
+runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &fixture_type, const ParsedWheel &wheel, const ParsedWheelSlot &slot) {
     runtime::CompiledWheelPaletteSlot out;
     out.slot_index = slot.slot_index;
     out.name = slot.name;
@@ -420,23 +430,36 @@ runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene 
             found_filter = true;
             const PhysicalColorMeasurement *measurement = select_filter_measurement(filter);
             if (measurement != nullptr) {
-                cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
                 std::vector<runtime::SpectralSample> samples;
                 for (const PhysicalSpectralPoint &point : measurement->spectral_points) samples.push_back({point.wavelength_nm, point.energy});
                 const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
                 if (xyz.valid) {
                     cooked = cook_transmission_from_linear(scene, patch, "filter=" + filter.name, runtime::xyz_to_linear_srgb(xyz), false, false);
-                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
-                    out.provenance = "filter_measurement_spectrum_relative_shape:" + filter.name;
-                    scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-SPECTRUM-RELATIVE", "info", "Wheel Filter measurement spectrum is used as relative chromatic shape; Measurement.Transmission supplies scalar gain.", patch.fixture_uuid + " filter=" + filter.name});
-                } else if (filter.color.valid) {
+                    if (measurement->transmission_state == ParsedNumericState::Valid) {
+                        cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
+                        out.provenance = "filter_measurement_spectrum_and_transmission:" + filter.name;
+                    } else if (filter.color.valid) {
+                        cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, filter.color.Y);
+                        out.provenance = "filter_measurement_spectrum_filter_cie_gain:" + filter.name;
+                    }
+                    scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-SPECTRUM-RELATIVE", "info", "Wheel Filter measurement spectrum is used as relative chromatic shape; scalar energy is applied exactly once.", patch.fixture_uuid + " filter=" + filter.name});
+                } else if (is_contradictory_zero_measurement(filter, slot, *measurement)) {
+                    cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, true);
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, cooked.gain);
+                    out.provenance = "peraviz_contradictory_zero_filter_color_cie:" + filter.name;
+                    scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-CONTRADICTORY-ZERO", "warning", "A lone full-insertion zero Transmission without spectrum contradicts visible Filter and Wheel Slot ColorCIE; Peraviz uses linked Filter ColorCIE shape and normalized Y for visualization.", patch.fixture_uuid + " fixture=" + fixture_type.fixture_type_name + " wheel=" + wheel.name + " slot=" + slot.name + " filter=" + filter.name + " physical=" + std::to_string(measurement->physical_percent) + " transmission=0 ColorCIE.Y=" + std::to_string(filter.color.Y) + " fallback=FilterColorCIE provenance=PeravizContradictoryZeroFallback"});
+                } else if (filter.color.valid && measurement->transmission_state == ParsedNumericState::Valid) {
                     cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, false);
                     cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
-                    out.provenance = "filter_measurement_color_cie_shape:" + filter.name;
+                    out.provenance = measurement->transmission == 0.0 ? "confirmed_optical_blackout:" + filter.name : "filter_measurement_color_cie_shape:" + filter.name;
+                } else if (filter.color.valid) {
+                    cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, true);
+                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, cooked.gain);
+                    out.provenance = "filter_color_cie_missing_invalid_transmission:" + filter.name;
                 } else {
                     cooked.shape = {1.0, 1.0, 1.0};
-                    cooked.gain = clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission);
-                    out.provenance = "filter_measurement_neutral_shape:" + filter.name;
+                    cooked.gain = measurement->transmission_state == ParsedNumericState::Valid ? clamp_passive_filter_gain(scene, patch, "filter=" + filter.name, measurement->transmission) : 1.0;
+                    out.provenance = measurement->transmission_state == ParsedNumericState::Valid ? "filter_measurement_neutral_shape:" + filter.name : "identity_missing_invalid_filter_data:" + filter.name;
                 }
             } else if (filter.color.valid) {
                 cooked = cook_transmission_from_cie(scene, patch, "filter=" + filter.name, filter.color, true);
@@ -500,7 +523,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         palette.name = wheel.name;
         int32_t expected_slot_index = 1;
         for (const ParsedWheelSlot &slot : wheel.slots) {
-            runtime::CompiledWheelPaletteSlot compiled_slot = cook_wheel_slot(scene, patch, fixture_type, slot);
+            runtime::CompiledWheelPaletteSlot compiled_slot = cook_wheel_slot(scene, patch, fixture_type, wheel, slot);
             if (slot.slot_index != expected_slot_index || compiled_slot.slot_index != slot.slot_index) {
                 scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-INTEGRITY", "error", "Wheel Slot declaration order and compiled one-based index diverged.", patch.fixture_uuid + " wheel=" + wheel.name + " slot=" + std::to_string(slot.slot_index)});
             }

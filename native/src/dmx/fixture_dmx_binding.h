@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "runtime_storage.h"
 
 namespace peraviz::dmx {
 
@@ -132,6 +133,8 @@ struct FixtureUnboundReason {
 struct FixtureBindingBuildResult {
     std::vector<FixtureControlBinding> bindings;
     std::vector<FixtureUnboundReason> unbound;
+    std::vector<FixtureUnboundReason> warnings;
+    std::vector<runtime_storage::RuntimeDirectoryLease> asset_cache_leases;
 };
 
 struct FixtureGoboWheelOffset {
@@ -161,6 +164,8 @@ struct FixtureGoboWheelOffset {
 };
 
 struct FixtureControlOffsets {
+    runtime_storage::RuntimeDirectoryLease asset_cache_lease;
+    std::vector<FixtureUnboundReason> warnings;
     int dimmer_coarse_offset_1_based = -1;
     int dimmer_fine_offset_1_based = -1;
     int dimmer_ultra_fine_offset_1_based = -1;

@@ -34,3 +34,11 @@ The seated and aggregate-indexed paths keep native base color, per-wheel optical
 ## Peraviz visual response
 
 Physical wheel gain remains the native optical output. Godot applies a separate `PeravizBeamVisualResponse` only to volumetric beam presentation so small positive filter output stays legible in haze while SpotLight and lens energy continue to use physical gain. The response is monotonic, maps 0 to 0 and 1 to 1, and is not physical photometry. Final dual-sided spatial rendering is still deferred.
+
+## Filter measurement precedence and tolerant reading
+
+The compiler applies scalar energy exactly once using this order: a usable measurement spectrum supplies relative chromatic shape and a valid `Measurement.Transmission` supplies gain; without a valid scalar, linked `Filter.Color` supplies gain from normalized Y. Without usable spectrum, a valid measurement transmission remains authoritative and linked Filter ColorCIE supplies shape. If no valid transmission exists, linked Filter ColorCIE supplies both shape and gain; an unlinked slot ColorCIE is next; an open or unusable/missing link uses diagnosable identity transmission. A coherent explicit zero remains an optical blackout.
+
+`PVZ-GDTF-WHEEL-FILTER-CONTRADICTORY-ZERO` identifies a narrow Peraviz reader fallback, not GDTF semantics: when the sole full-insertion measurement explicitly says zero, has no usable spectrum, and both the linked Filter and selected Slot declare visible ColorCIE, Peraviz uses the linked Filter ColorCIE shape and normalized Y. The diagnostic records fixture, wheel, slot, filter, physical insertion, transmission, Y, decision, and provenance. Zero-Y ColorCIE, zero-integral spectral evidence, and other coherent blackout definitions remain zero. `PVZ-GDTF-FILTER-TRANSMISSION-INVALID` distinguishes malformed, non-finite, and out-of-range input from an absent attribute and from a valid explicit zero.
+
+This tolerance is reader-only. GDTF producers and canonicalizers should not emit contradictory physical data. Seated selection is uniform per Beam; final spatial split colors, WheelSpin, WheelRandom, and WheelAudio rendering remain unsupported or deferred.

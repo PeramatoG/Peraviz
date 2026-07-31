@@ -111,6 +111,17 @@ bool read_float_attr(tinyxml2::XMLElement *element, const char *upper, const cha
     return false;
 }
 
+// Parses a finite bounded numeric attribute while preserving absence and invalid authoring states.
+ParsedNumericState read_bounded_double_attr(tinyxml2::XMLElement *element, const char *upper, const char *lower, double minimum, double maximum, double &out) {
+    const std::string raw = dmx::trim_ascii(read_attr(element, upper, lower));
+    if (raw.empty()) return ParsedNumericState::Absent;
+    char *end = nullptr;
+    const double value = std::strtod(raw.c_str(), &end);
+    if (end == raw.c_str() || *end != '\0' || !std::isfinite(value) || value < minimum || value > maximum) return ParsedNumericState::Invalid;
+    out = value;
+    return ParsedNumericState::Valid;
+}
+
 // Returns the maximum raw value for a source byte count.
 uint32_t max_for_source_count(size_t source_count) {
     uint32_t max_value = 0;
@@ -267,12 +278,15 @@ int32_t geometry_id_for(CompiledGdtfFixtureType &fixture, std::unordered_map<std
 }
 
 // Parses physical color measurements from an Emitter or Filter resource.
-void parse_physical_measurements(tinyxml2::XMLElement *resource, std::vector<PhysicalColorMeasurement> &measurements) {
+void parse_physical_measurements(tinyxml2::XMLElement *resource, const std::string &resource_name, CompiledGdtfFixtureType &fixture, std::vector<PhysicalColorMeasurement> &measurements) {
     for (tinyxml2::XMLElement *measurement : dmx::collect_direct_children_by_name(resource, "measurement")) {
         PhysicalColorMeasurement parsed;
-        read_float_attr(measurement, "Physical", "physical", parsed.physical_percent);
+        parsed.physical_state = read_bounded_double_attr(measurement, "Physical", "physical", 0.0, 100.0, parsed.physical_percent);
         read_float_attr(measurement, "LuminousIntensity", "luminousintensity", parsed.luminous_intensity);
-        read_float_attr(measurement, "Transmission", "transmission", parsed.transmission);
+        parsed.transmission_state = read_bounded_double_attr(measurement, "Transmission", "transmission", 0.0, 1.0, parsed.transmission);
+        if (parsed.transmission_state == ParsedNumericState::Invalid) {
+            fixture.diagnostics.push_back({"PVZ-GDTF-FILTER-TRANSMISSION-INVALID", "warning", "Filter Measurement.Transmission is malformed, non-finite, or outside 0..1 and will not be used.", fixture.fixture_type_name + " filter=" + resource_name});
+        }
         const std::string interpolation = dmx::trim_ascii(read_attr(measurement, "InterpolationTo", "interpolationto"));
         if (!interpolation.empty()) parsed.interpolation_to = interpolation;
         for (tinyxml2::XMLElement *point : dmx::collect_direct_children_by_name(measurement, "measurementpoint")) {
@@ -299,7 +313,7 @@ void parse_physical_color_resources(tinyxml2::XMLElement *root, CompiledGdtfFixt
                 if (parsed.name.empty()) continue;
                 parse_color_cie_value(read_attr(emitter, "Color", "color"), parsed.color);
                 parsed.has_dominant_wavelength = read_float_attr(emitter, "DominantWaveLength", "dominantwavelength", parsed.dominant_wavelength_nm);
-                parse_physical_measurements(emitter, parsed.measurements);
+                parse_physical_measurements(emitter, parsed.name, fixture, parsed.measurements);
                 fixture.emitters.push_back(parsed);
             }
         }
@@ -310,7 +324,7 @@ void parse_physical_color_resources(tinyxml2::XMLElement *root, CompiledGdtfFixt
                 parsed.name = dmx::trim_ascii(read_attr(filter, "Name", "name"));
                 if (parsed.name.empty()) continue;
                 parse_color_cie_value(read_attr(filter, "Color", "color"), parsed.color);
-                parse_physical_measurements(filter, parsed.measurements);
+                parse_physical_measurements(filter, parsed.name, fixture, parsed.measurements);
                 fixture.filters.push_back(parsed);
             }
         }
@@ -351,7 +365,10 @@ void parse_wheels(tinyxml2::XMLElement *root, CompiledGdtfFixtureType &fixture) 
                     slot.filter_resource_id = resolve_physical_resource_link(fixture.filters, filter_name);
                     slot.provenance = "filter:" + filter_name;
                     if (slot.filter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-FILTER-LINK-MISSING", "warning", "Wheel Slot references an unknown Filter.", wheel.name + ":" + slot.name});
-                    if (!color_value.empty()) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COLOR-IGNORED", "info", "Wheel Slot has both Filter and Color; Filter takes precedence.", wheel.name + ":" + slot.name});
+                    if (!color_value.empty()) {
+                        parse_color_cie_value(color_value, slot.color);
+                        fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COLOR-SECONDARY", "info", "Wheel Slot has both Filter and Color; Filter takes precedence and Slot Color remains fallback consistency metadata.", wheel.name + ":" + slot.name});
+                    }
                 } else if (!color_value.empty()) {
                     if (parse_color_cie_value(color_value, slot.color)) {
                         slot.provenance = "slot_color_cie";

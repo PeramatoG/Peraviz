@@ -22,6 +22,7 @@ public:
     bool valid() const;
 
 private:
+    friend RuntimeDirectoryLease acquire_session_cache_directory(const std::string &prefix);
     struct State;
     std::shared_ptr<State> state_;
 };
@@ -45,6 +46,7 @@ private:
 };
 
 RuntimeDirectoryLease create_session_cache_directory(const std::string &prefix);
+RuntimeDirectoryLease acquire_session_cache_directory(const std::string &prefix);
 void cleanup_current_session();
 
 } // namespace peraviz::runtime_storage

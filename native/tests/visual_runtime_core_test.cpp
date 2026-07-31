@@ -617,7 +617,10 @@ bool test_wheel_filter_transmission_cooking() {
         <Filter Name="Spec035"><Measurement Physical="100" Transmission="0.35"><MeasurementPoint WaveLength="450" Energy="0.1" /><MeasurementPoint WaveLength="620" Energy="1.0" /></Measurement></Filter>
         <Filter Name="Spec035Scaled"><Measurement Physical="100" Transmission="0.35"><MeasurementPoint WaveLength="450" Energy="10" /><MeasurementPoint WaveLength="620" Energy="100" /></Measurement></Filter>
         <Filter Name="CieShapeTransmission" Color="0.1500,0.0600,0.2"><Measurement Physical="100" Transmission="0.35" /></Filter>
-        <Filter Name="Closed" Color="0.3127,0.3290,0" />
+        <Filter Name="Closed" Color="0.3127,0.3290,0"><Measurement Physical="100" Transmission="0" /></Filter>
+        <Filter Name="AxiomBlue" Color="0.1568,0.0508,5.71"><Measurement Physical="100" Transmission="0" /></Filter>
+        <Filter Name="MissingTransmission" Color="0.3127,0.3290,0.25"><Measurement Physical="100" /></Filter>
+        <Filter Name="MalformedTransmission" Color="0.3127,0.3290,0.2"><Measurement Physical="100" Transmission="nan" /></Filter>
       </Filters>
     </PhysicalDescriptions>
     <Wheels>
@@ -630,6 +633,9 @@ bool test_wheel_filter_transmission_cooking() {
         <Slot Name="Spec035Scaled" Filter="Spec035Scaled" />
         <Slot Name="CieShapeTransmission" Filter="CieShapeTransmission" />
         <Slot Name="Closed" Filter="Closed" />
+        <Slot Name="AxiomBlue" Color="0.1568,0.0508,5.71" Filter="AxiomBlue" />
+        <Slot Name="MissingTransmission" Filter="MissingTransmission" />
+        <Slot Name="MalformedTransmission" Filter="MalformedTransmission" />
       </Wheel>
     </Wheels>
     <Geometries><Geometry Name="Root"><Beam Name="Beam" BeamType="Wash" LuminousFlux="10000" BeamAngle="25" FieldAngle="25" /></Geometry></Geometries>
@@ -643,6 +649,7 @@ bool test_wheel_filter_transmission_cooking() {
         <ChannelSet Name="Spec035Scaled" DMXFrom="160/1" WheelSlotIndex="6" />
         <ChannelSet Name="CieShapeTransmission" DMXFrom="192/1" WheelSlotIndex="7" />
         <ChannelSet Name="Closed" DMXFrom="224/1" WheelSlotIndex="8" />
+        <ChannelSet Name="AxiomBlue" DMXFrom="232/1" WheelSlotIndex="9" /><ChannelSet Name="MissingTransmission" DMXFrom="240/1" WheelSlotIndex="10" /><ChannelSet Name="MalformedTransmission" DMXFrom="248/1" WheelSlotIndex="11" />
       </ChannelFunction></LogicalChannel></DMXChannel>
     </DMXChannels></DMXMode></DMXModes>
   </FixtureType>
@@ -665,9 +672,17 @@ bool test_wheel_filter_transmission_cooking() {
     beam.is_beam = true;
     scene_model.nodes.push_back(beam);
     const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(scene_model, 0);
-    if (scene.wheel_palettes.empty() || scene.wheel_palettes[0].slots.size() != 8) return fail("Expected eight cooked wheel palette slots") == 0;
-    const auto &slots = scene.wheel_palettes[0].slots;
     auto nearly = [](float a, float b, float tolerance) { return std::fabs(a - b) <= tolerance; };
+    const auto parsed = peraviz::gdtf_runtime::compile_gdtf_fixture_type(gdtf_path.string(), "Mode 1");
+    if (parsed.filters.size() != 10) return fail("Expected parser-owned filter resources") == 0;
+    const auto &missing_measurement = parsed.filters[8].measurements[0];
+    const auto &malformed_measurement = parsed.filters[9].measurements[0];
+    if (parsed.filters[7].measurements[0].transmission_state != peraviz::gdtf_runtime::ParsedNumericState::Valid || parsed.filters[7].measurements[0].transmission != 0.0) return fail("Expected explicit zero Transmission to remain valid and distinct") == 0;
+    if (missing_measurement.transmission_state != peraviz::gdtf_runtime::ParsedNumericState::Absent) return fail("Expected missing Transmission to remain absent") == 0;
+    if (malformed_measurement.transmission_state != peraviz::gdtf_runtime::ParsedNumericState::Invalid) return fail("Expected malformed Transmission to remain invalid") == 0;
+    if (!nearly(static_cast<float>(parsed.filters[7].color.Y), 0.0571f, 0.0001f)) return fail("Expected percentage-style ColorCIE Y to normalize once") == 0;
+    if (scene.wheel_palettes.empty() || scene.wheel_palettes[0].slots.size() != 11) return fail("Expected eleven cooked wheel palette slots") == 0;
+    const auto &slots = scene.wheel_palettes[0].slots;
     if (!nearly(slots[1].gain, 0.5f, 0.04f)) return fail("Expected Filter ColorCIE Y=0.5 to cook to gain 0.5, not 0.25") == 0;
     if (!nearly(slots[2].gain, 0.1f, 0.02f)) return fail("Expected Filter ColorCIE Y=0.1 to cook to gain 0.1, not 0.01") == 0;
     const float red_shape_max = std::max(slots[3].linear_red, std::max(slots[3].linear_green, slots[3].linear_blue));
@@ -677,7 +692,13 @@ bool test_wheel_filter_transmission_cooking() {
     if (!nearly(slots[4].linear_red, slots[5].linear_red, 0.001f) || !nearly(slots[4].linear_green, slots[5].linear_green, 0.001f) || !nearly(slots[4].linear_blue, slots[5].linear_blue, 0.001f)) return fail("Expected spectrum shape normalization to ignore arbitrary spectral scale") == 0;
     if (!nearly(slots[6].gain, 0.35f, 0.001f)) return fail("Expected measurement without spectrum to use Measurement.Transmission as scalar gain") == 0;
     if (!slots[0].identity || !nearly(slots[0].gain, 1.0f, 0.001f)) return fail("Expected Open slot to preserve identity transmission") == 0;
-    if (!nearly(slots[7].gain, 0.0f, 0.001f)) return fail("Expected zero ColorCIE Y slot to cook as closed with zero gain") == 0;
+    if (!nearly(slots[7].gain, 0.0f, 0.001f)) return fail("Expected coherent explicit zero measurement to remain closed") == 0;
+    if (!nearly(slots[8].gain, 0.0571f, 0.001f) || slots[8].linear_blue <= slots[8].linear_red) return fail("Expected contradictory Axiom-style zero to use visible Filter ColorCIE") == 0;
+    if (!nearly(slots[9].gain, 0.25f, 0.01f) || !nearly(slots[10].gain, 0.2f, 0.01f)) return fail("Expected absent and invalid Transmission to use Filter ColorCIE") == 0;
+    bool saw_contradictory = false, saw_invalid = false;
+    for (const auto &diagnostic : scene.diagnostics) saw_contradictory |= diagnostic.code == "PVZ-GDTF-WHEEL-FILTER-CONTRADICTORY-ZERO";
+    for (const auto &diagnostic : parsed.diagnostics) saw_invalid |= diagnostic.code == "PVZ-GDTF-FILTER-TRANSMISSION-INVALID";
+    if (!saw_contradictory || !saw_invalid) return fail("Expected stable contradictory-zero and malformed-transmission diagnostics") == 0;
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> dmx(512, 0);
@@ -692,6 +713,12 @@ bool test_wheel_filter_transmission_cooking() {
     const auto closed_frame = runtime.consume_latest_visual_frame();
     if (!first_wheel_selection_row(closed_frame, int_offset, float_offset)) return fail("Expected Closed filter to emit a WheelSelection row") == 0;
     if (!nearly(closed_frame.floats[float_offset + 6], 0.0f, 0.001f)) return fail("Expected closed filter final gain to be zero") == 0;
+    dmx[0] = 232;
+    runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
+    const auto axiom_blue_frame = runtime.consume_latest_visual_frame();
+    if (!first_wheel_selection_row(axiom_blue_frame, int_offset, float_offset)) return fail("Expected contradictory Axiom-style Blue to traverse native DMX evaluation") == 0;
+    if (!nearly(axiom_blue_frame.floats[float_offset + 6], 0.0571f, 0.001f) || axiom_blue_frame.floats[float_offset + 5] <= axiom_blue_frame.floats[float_offset + 3]) return fail("Expected renderer-ready Blue wheel output to remain blue and positive") == 0;
+    if (axiom_blue_frame.integers[int_offset + 4] != 9 || axiom_blue_frame.integers[int_offset + 5] != 9) return fail("Expected exact one-based Axiom-style Blue WheelSlotIndex") == 0;
     runtime.submit_universe_frame(1, dmx.data(), static_cast<int>(dmx.size()));
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged Filter slot to emit no repeated work") == 0;
     return true;
