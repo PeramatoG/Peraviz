@@ -26,25 +26,32 @@ const GoboPolygonCleanupScript = preload("res://scripts/beam_renderers/gobo_poly
 var _shape_cache: Dictionary = {}
 var _mesh_cache: Dictionary = {}
 var _normalized_polygon_cache: Dictionary = {}
+var _counters: Dictionary = {"normalized_topology_creations": 0, "normalized_topology_cache_hits": 0}
 
 func clear_cache() -> void:
 	_shape_cache.clear()
 	_mesh_cache.clear()
 	_normalized_polygon_cache.clear()
+	_counters = {"normalized_topology_creations": 0, "normalized_topology_cache_hits": 0}
 
-func build_beam_mesh(gobo_texture: Texture2D, near_radius: float, far_radius: float, beam_height: float, gobo_scale: float, apply_edge_mask_correction: bool = true) -> ArrayMesh:
-	var shape_key: String = _shape_cache_key(gobo_texture, gobo_scale, apply_edge_mask_correction)
-	var geometry_key: String = "%s_%.4f_%.4f_%.4f" % [shape_key, near_radius, far_radius, beam_height]
-	if _mesh_cache.has(geometry_key):
-		return _mesh_cache[geometry_key] as ArrayMesh
+func get_counters() -> Dictionary:
+	return _counters.duplicate(true)
 
-	var polygons: Array[PackedVector2Array] = _get_or_build_shape_base(gobo_texture, gobo_scale, apply_edge_mask_correction)
+func build_normalized_beam_mesh(gobo_texture: Texture2D, apply_edge_mask_correction: bool = true) -> ArrayMesh:
+	var topology_key: String = _shape_cache_key(gobo_texture, 1.0, apply_edge_mask_correction)
+	if _mesh_cache.has(topology_key):
+		_counters["normalized_topology_cache_hits"] += 1
+		return _mesh_cache[topology_key] as ArrayMesh
+	var polygons: Array[PackedVector2Array] = _get_or_build_shape_base(gobo_texture, 1.0, apply_edge_mask_correction)
 	if polygons.is_empty():
 		polygons = [_build_fallback_circle()]
-
-	var mesh: ArrayMesh = _build_extruded_mesh(polygons, max(near_radius, 0.001), max(far_radius, 0.001), max(beam_height, 0.001))
-	_mesh_cache[geometry_key] = mesh
+	var mesh: ArrayMesh = _build_extruded_mesh(polygons, 1.0, 1.0, 1.0)
+	_mesh_cache[topology_key] = mesh
+	_counters["normalized_topology_creations"] += 1
 	return mesh
+
+func build_beam_mesh(gobo_texture: Texture2D, near_radius: float, far_radius: float, beam_height: float, gobo_scale: float, apply_edge_mask_correction: bool = true) -> ArrayMesh:
+	return build_normalized_beam_mesh(gobo_texture, apply_edge_mask_correction)
 
 func build_aperture_beam_mesh(aperture_profile: Dictionary, beam_height: float) -> ArrayMesh:
 	var shape: String = str(aperture_profile.get("shape", "circle")).to_lower()
@@ -80,7 +87,8 @@ func _get_or_build_shape_base(gobo_texture: Texture2D, gobo_scale: float, apply_
 func _shape_cache_key(gobo_texture: Texture2D, gobo_scale: float, apply_edge_mask_correction: bool) -> String:
 	if gobo_texture == null:
 		return "__fallback_shape_%s" % [str(apply_edge_mask_correction)]
-	return "__shape_%d_%.3f_%s" % [gobo_texture.get_rid().get_id(), gobo_scale, str(apply_edge_mask_correction)]
+	var content_id: int = int(gobo_texture.get_meta("peraviz_gobo_asset_id", gobo_texture.get_rid().get_id()))
+	return "__shape_v1_%d_%s" % [content_id, str(apply_edge_mask_correction)]
 
 func _vectorize_gobo(gobo_texture: Texture2D, gobo_scale: float, apply_edge_mask_correction: bool = true) -> Array[PackedVector2Array]:
 	if gobo_texture == null:

@@ -30,11 +30,19 @@ parent `ChannelFunction` DMX window.
 - Non-selector channels are ignored for selection (`Spin`, `Shake`, `Time`, `Speed`, `Rotate`, etc.).
 - Per-fixture bindings include all discovered gobo selector wheels (`gobo_wheels`) and keep wheel `1` mirrored as compatibility keys (`gobo1_*` / `gobo_*`).
 
-## Runtime loading behavior
+## Transitional compatibility behavior
 
-- Runtime still resolves the active gobo slot from DMX values.
+- Legacy inspection/projector code can still resolve an active gobo slot from cached DMX metadata, but it is not authoritative for the native seated live path.
 - Slot textures are loaded and cached for each fixture.
 - When media is missing or invalid, a temporary fallback gobo texture can be generated for DMX/debug validation.
-- When multiple gobo wheels are active, Peraviz composes them into one cached texture by multiplying masks.
+- Legacy experiments may compose multiple cached wheel textures; the controlled native static baseline described below owns new seated composition behavior.
 
 > Note: projection/emission logic was intentionally removed from Peraviz runtime. The loaded textures remain available in fixture metadata for upcoming refactors.
+
+## Native static seated slice
+
+- Native selected-mode programs resolve exact indexed wheel and one-based slot identity and emit dirty-only `GoboSelection` rows with stable numeric asset and Beam target IDs.
+- Godot installs original PNGs and normalized vector topology once per scene generation. Missing media publishes no stale path and open slots clear the prism with asset ID zero.
+- One seated binary asset uses reusable normalized topology whose cache identity excludes zoom, beam length, dimmer, color, and fixture UUID.
+- Two or more static seated binary assets use one deterministic cached mask multiplication, one bounded vectorization under the 280-point limit, and one normalized composed topology per unique combination.
+- Original and composed masks remain available for future projection. Surface projectors and independently rotating, indexing, or shaking multi-wheel composition are not implemented.

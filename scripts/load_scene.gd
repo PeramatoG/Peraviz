@@ -1690,6 +1690,19 @@ func _configure_native_target_registry() -> void:
 func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 	_native_target_registry.install_manifest(renderer_manifest)
 
+func _install_native_gobo_assets(asset_rows: Array) -> void:
+	_native_target_registry.install_gobo_assets(asset_rows)
+
+func _apply_native_gobo_selection(beam_target_id: int, wheel_id: int, wheel_instance_index: int, slot_index: int, asset_id: int, selection_mode: int) -> Dictionary:
+	var result: Dictionary = _native_target_registry.apply_gobo_selection(beam_target_id, wheel_id, wheel_instance_index, slot_index, asset_id, selection_mode)
+	if int(result.get("topology_updates", 0)) > 0:
+		var target_record: Dictionary = _native_target_registry.get_beam_output_record(beam_target_id)
+		for light_item in target_record.get("emitter_anchors", []):
+			var light: SpotLight3D = light_item as SpotLight3D
+			if light != null:
+				_apply_beam_optics_for_light(light, light.get_meta("peraviz_beam_last_params", {}))
+	return result
+
 func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	return _native_target_registry.apply_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
 

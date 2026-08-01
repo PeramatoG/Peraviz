@@ -270,6 +270,7 @@ if(BUILD_TESTING)
     add_test(NAME peraviz_native_dmx_e2e_tests COMMAND peraviz_native_dmx_e2e_tests)
     add_executable(peraviz_native_visual_runtime_tests
         tests/visual_runtime_core_test.cpp
+        tests/gobo_selection_runtime_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -306,6 +307,8 @@ if(BUILD_TESTING)
         src/runtime_storage.cpp
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_xml_reader.cpp
+        src/dmx/gdtf_gobo_catalog.cpp
+        src/dmx/gdtf_physical_ranges.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
     )

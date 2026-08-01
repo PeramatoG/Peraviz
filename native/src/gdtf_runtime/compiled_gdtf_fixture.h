@@ -83,6 +83,7 @@ struct ParsedWheelSlot {
     PhysicalColorCIE color;
     int32_t filter_resource_id = 0;
     std::string media_file_name;
+    std::string extracted_media_path;
     std::string provenance;
 };
 

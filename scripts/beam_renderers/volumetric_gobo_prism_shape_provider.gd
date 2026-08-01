@@ -38,7 +38,13 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	var lens_shift_x: float = float(params.get("lens_shift_x", 0.0))
 	var lens_shift_y: float = float(params.get("lens_shift_y", 0.0))
 	beam.position = Vector3(lens_shift_x, lens_shift_y, -(beam_range * 0.5 + lens_offset_m))
-	beam.scale = Vector3(-1.0 if mirror_x else 1.0, 1.0, -1.0 if mirror_z else 1.0)
+	var scaled_near: float = max(lens_radius * gobo_scale, 0.001)
+	var scaled_far: float = max(bottom_radius * gobo_scale, 0.001)
+	beam.scale = Vector3(-1.0 if mirror_x else 1.0, beam_range, -1.0 if mirror_z else 1.0)
+	beam.set_instance_shader_parameter("use_normalized_gobo_topology", true)
+	beam.set_instance_shader_parameter("topology_near_radius", scaled_near)
+	beam.set_instance_shader_parameter("topology_far_radius", scaled_far)
+	beam.set_meta("peraviz_gobo_normalized_near_ratio", scaled_near / scaled_far)
 	_apply_beam_axis_rotation(beam, beam_rotation_deg)
 	return {
 		"gobo_projection_radius": max(bottom_radius, 0.001),

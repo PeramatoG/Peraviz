@@ -8,6 +8,8 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Reconnected static seated GDTF gobos through native slot selection and reusable normalized vector-prism resources. Repeated fixtures now share topology, open slots clear deterministically, and static multi-wheel binary masks use a cached composed-mask baseline while original masks remain available for future projection work.
+
 - Consolidated the native GDTF color MVP for Beam targets: supported additive and CMY color ChannelFunctions now preserve target-local chromaticity and scalar color gain, support CMY transmission below 1.0 and RGBW gain above 1.0, and emit one renderer-ready `EmitterColor` row only when the cooked output changes.
 - Added a 1 m reference cube toggle in the viewer toolbar so MVR scene scale can be checked directly in Godot.
 - Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.
@@ -21,6 +23,8 @@ Changes since the previous Peraviz release.
 - Updated release notes to present user-visible changes first and keep internal architecture notes brief.
 
 ## Internal changes
+
+- Added the versioned numeric `GoboSelection` section, stable native wheel/slot/asset setup records, bounded diagnostics, and measured cache counters. Independently moving multi-wheel composition, gobo motion, and surface projectors remain deliberately deferred.
 
 - Aligned the native extension toolchain with the Godot 4.7 API through an immutable official godot-cpp revision, a validated repository-wide compatibility contract, and binding-aware compiler-cache isolation.
 

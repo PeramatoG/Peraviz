@@ -269,6 +269,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     integers.push_back(static_cast<int32_t>(scene.color_targets.size()));
     integers.push_back(static_cast<int32_t>(scene.wheel_palettes.size()));
     integers.push_back(static_cast<int32_t>(scene.wheel_bindings.size()));
+    integers.push_back(static_cast<int32_t>(scene.gobo_assets.size()));
+    integers.push_back(static_cast<int32_t>(scene.gobo_bindings.size()));
     integers.push_back(static_cast<int32_t>(scene.diagnostics.size()));
     auto push_float = [&floats](double value) -> int32_t {
         const int32_t index = static_cast<int32_t>(floats.size());
@@ -360,6 +362,43 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             integers.push_back(static_cast<int32_t>(set.dmx_to));
             integers.push_back(set.wheel_slot_index);
         }
+    }
+    for (const peraviz::runtime::CompiledGoboAsset &asset : scene.gobo_assets) {
+        integers.push_back(asset.gobo_asset_id);
+        integers.push_back(asset.wheel_id);
+        integers.push_back(asset.slot_index);
+        integers.push_back(asset.open_slot ? 1 : 0);
+        integers.push_back(asset.media_valid ? 1 : 0);
+    }
+    for (const peraviz::runtime::CompiledGoboSelectionBinding &binding : scene.gobo_bindings) {
+        integers.push_back(binding.binding_id);
+        integers.push_back(binding.fixture_id);
+        integers.push_back(binding.beam_render_target_id);
+        integers.push_back(binding.wheel_id);
+        integers.push_back(binding.wheel_instance_index);
+        integers.push_back(binding.source_program_id);
+        integers.push_back(static_cast<int32_t>(binding.mode));
+        integers.push_back(static_cast<int32_t>(binding.channel_sets.size()));
+        for (const peraviz::runtime::CompiledWheelChannelSet &set : binding.channel_sets) {
+            integers.push_back(static_cast<int32_t>(set.dmx_from));
+            integers.push_back(static_cast<int32_t>(set.dmx_to));
+            integers.push_back(set.wheel_slot_index);
+        }
+    }
+    Array gobo_assets;
+    for (const peraviz::runtime::CompiledGoboAsset &asset : scene.gobo_assets) {
+        Dictionary item;
+        item["gobo_asset_id"] = asset.gobo_asset_id;
+        item["wheel_id"] = asset.wheel_id;
+        item["slot_index"] = asset.slot_index;
+        item["source_media_reference"] = String(asset.source_media_reference.c_str());
+        item["extracted_media_path"] = String(asset.extracted_media_path.c_str());
+        item["extraction_provenance"] = String(asset.extraction_provenance.c_str());
+        item["source_width"] = asset.source_width;
+        item["source_height"] = asset.source_height;
+        item["open_slot"] = asset.open_slot;
+        item["media_valid"] = asset.media_valid;
+        gobo_assets.push_back(item);
     }
     Array diagnostics;
     diagnostics.resize(static_cast<int64_t>(scene.diagnostics.size()));
@@ -493,6 +532,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     out["diagnostics"] = diagnostics;
     out["renderer_manifest"] = manifest;
     out["renderer_targets"] = renderer_targets;
+    out["gobo_assets"] = gobo_assets;
     Dictionary relevant_offsets_by_universe;
     Dictionary used_universes;
     int32_t dimmer_property_count = 0;

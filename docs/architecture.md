@@ -67,7 +67,7 @@ Godot registers the native renderer manifest once during structural setup, resol
 
 ## Known unsupported GDTF semantics
 
-ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement interpolation, continuous color-wheel motion, split slots, gobos, prisms, strobe curves, and repeated wheel families are not claimed as production-supported by this slice unless a later test connects them through the compiled runtime path end to end. The corrected initial color slice supports native ColorAdd_R/G/B/W/RY/GY and ColorSub_C/M/Y fallback composition with target-oriented EmitterColor rows; CTO/CTB/CTC, Tint, Color wheels/macros, physical emitter/filter measurements, and complete wheel resources remain unsupported until their parser payloads are complete. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
+ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement interpolation, continuous color-wheel motion, split slots, moving gobos, prisms, strobe curves, and unsupported repeated wheel families are not claimed as production-supported. Static seated binary `Gobo(n)` selection and cached static mask composition are the bounded gobo exception documented below. The corrected initial color slice supports native ColorAdd_R/G/B/W/RY/GY and ColorSub_C/M/Y fallback composition with target-oriented EmitterColor rows; CTO/CTB/CTC, Tint, Color wheels/macros, physical emitter/filter measurements, and complete wheel resources remain unsupported until their parser payloads are complete. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
 
 ## Runtime invariants
 
@@ -83,6 +83,12 @@ ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement int
 The next recommended vertical slice is richer physical color resources and reusable wheel-slot resolution for gobos/prisms, building on the parser-owned color programs and renderer-facing color section without restoring Godot-built semantic dictionaries.
 
 ## Supporting documents
+
+## Native static gobo contract
+
+The controlled static seated `Gobo(n)` slice compiles indexed wheel identity, exact `WheelSlotIndex`, ChannelSet DMX windows, stable asset IDs, and exact Beam render-target IDs in native C++. Its dedicated `GoboSelection` section carries nine integers per dirty row: fixture, Beam target, wheel, wheel instance, slot, asset, selection mode, changed mask, and revision. A reserved float keeps the current positive-stride section validator contract; it has no semantic meaning.
+
+Godot installs original PNG/mask resources at setup and owns normalized vector-prism topology. Topology keys exclude fixture UUID and all live presentation values. A newly encountered ordered static multi-wheel combination multiplies canonical binary masks, retains the composed mask, vectorizes once under the existing 280-point limit, and creates one normalized topology for cross-fixture reuse. Legacy gobo dictionaries remain transitional and are not consulted by this live selection section. Gobo position, continuous rotation, shake, independently moving multi-wheel masking, and surface projectors remain unsupported.
 
 - `docs/adr-gdtf-parser-ownership.md` records the parser ownership decision shared with Perastage.
 - `docs/gdtf-support-matrix.md` summarizes currently verified GDTF semantic coverage.
@@ -109,7 +115,7 @@ The renderer keeps official optical radius separate from measured model aperture
 
 Lightweight Prism now exposes a real BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
 
-Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, active gobo selection/rotation, and high-quality volumetric rectangular rendering remain unsupported.
+Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, gobo motion/projectors, independently moving gobo composition, and high-quality volumetric rectangular rendering remain unsupported.
 
 
 See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.

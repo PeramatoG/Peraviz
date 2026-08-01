@@ -579,6 +579,8 @@ func _register_native_visual_runtime_bindings() -> void:
 	if not _install_renderer_manifest(compiled_scene.get("renderer_manifest", [])):
 		_native_bindings_count = 0
 		return
+	if _renderer_target_registry.has_method("_install_native_gobo_assets"):
+		_renderer_target_registry._install_native_gobo_assets(compiled_scene.get("gobo_assets", []))
 	_native_bindings_count = int(compiled_scene.get("property_count", 0))
 	if _native_visual_runtime.has_method("install_compiled_scene"):
 		_native_visual_runtime.install_compiled_scene(compiled_scene)
