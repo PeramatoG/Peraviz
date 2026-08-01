@@ -770,6 +770,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
     ZipAssetCache mvr_cache(path);
     model.cache_path = mvr_cache.cache_dir().u8string();
     model.cache_lease = mvr_cache.cache_lease();
+    model.asset_leases.retain(model.cache_lease);
 
     const std::string xml_content = read_xml_from_mvr(path);
     if (xml_content.empty()) {
@@ -837,9 +838,10 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
 
                 if (!gdtf_path.empty()) {
                     const GdtfBuildRequest request{gdtf_path, gdtf_mode, id, node.name};
-                    auto fixture_nodes = build_fixture_geometry_nodes(request, id, node_world,
-                                                                      model.extracted_asset_count);
-                    model.nodes.insert(model.nodes.end(), fixture_nodes.begin(), fixture_nodes.end());
+                    GdtfGeometryBuildResult fixture_geometry = build_fixture_geometry_nodes(
+                        request, id, node_world, model.extracted_asset_count);
+                    model.asset_leases.retain(fixture_geometry.cache_lease);
+                    model.nodes.insert(model.nodes.end(), fixture_geometry.nodes.begin(), fixture_geometry.nodes.end());
                 }
             } else if (node_name_lower == "truss") {
                 node.type = "truss";

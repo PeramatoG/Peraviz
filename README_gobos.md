@@ -46,3 +46,5 @@ parent `ChannelFunction` DMX window.
 - One seated binary asset uses reusable normalized topology whose cache identity excludes zoom, beam length, dimmer, color, and fixture UUID.
 - Two or more static seated binary assets use one deterministic cached mask multiplication, one bounded vectorization under the 280-point limit, and one normalized composed topology per unique combination.
 - Original and composed masks remain available for future projection. Surface projectors and independently rotating, indexing, or shaking multi-wheel composition are not implemented.
+
+The production MVR/GDTF lifetime smoke test requires a built GDExtension. Generate its sanitized archive with `python3 tests/integration/generate_mvr_gdtf_lifetime_fixture.py /tmp/peraviz-lifetime.mvr`, then run `godot --headless --path . --script res://tests/integration/test_mvr_gdtf_asset_lifetime_smoke.gd -- --mvr /tmp/peraviz-lifetime.mvr`.

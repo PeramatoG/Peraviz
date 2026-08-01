@@ -29,7 +29,7 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	var beam_rotation_deg: float = wrapf(alignment_rotation_deg + 180.0, 0.0, 360.0)
 	var mirror_x: bool = bool(params.get("beam_gobo_mirror_x", DEFAULT_MIRROR_BEAM_SHAPE_X))
 	var mirror_z: bool = bool(params.get("beam_gobo_mirror_z", DEFAULT_MIRROR_BEAM_SHAPE_Z))
-	var prism_mesh: ArrayMesh = _mesh_builder.build_beam_mesh(gobo_texture, lens_radius, bottom_radius, beam_range, gobo_scale)
+	var prism_mesh: ArrayMesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
 	light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
 	light.set_meta("peraviz_last_beam_renderer_mode", shape_mode())
 	if prism_mesh != null:

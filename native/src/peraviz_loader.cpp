@@ -141,7 +141,6 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
 #ifdef PERAVIZ_ENABLE_DMX
     peraviz::dmx::clear_fixture_control_offsets_cache();
 #endif
-    gobo_asset_cache_leases_.clear();
     last_scene_model_ = peraviz::load_mvr(std::string(path.utf8().get_data()),
                                           peraviz_debug_baseline,
                                           peraviz_debug_coords);
@@ -703,7 +702,6 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
     std::unordered_map<std::string, peraviz::dmx::FixtureControlBinding> lookup;
     const peraviz::dmx::FixtureBindingBuildResult result =
         peraviz::dmx::build_fixture_control_bindings(patches, universe_offset, lookup);
-    gobo_asset_cache_leases_ = result.asset_cache_leases;
 
     Array bindings;
     bindings.resize(static_cast<int64_t>(result.bindings.size()));

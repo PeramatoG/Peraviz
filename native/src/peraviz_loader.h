@@ -33,7 +33,6 @@ public:
 
 private:
     peraviz::SceneModel last_scene_model_;
-    std::vector<peraviz::runtime_storage::RuntimeDirectoryLease> gobo_asset_cache_leases_;
 };
 
 } // namespace godot

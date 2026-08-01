@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "runtime_storage.h"
 
 namespace peraviz::gdtf_runtime {
 
@@ -152,6 +153,7 @@ struct CompiledGdtfFixtureType {
     std::vector<ComponentBinding> components;
     std::vector<ChannelProgram> channel_programs;
     std::vector<RuntimeDiagnostic> diagnostics;
+    runtime_storage::RuntimeDirectoryLease asset_cache_lease;
 };
 
 AttributeIdentity normalize_attribute_identity(int32_t id, const std::string &attribute_name);

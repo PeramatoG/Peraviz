@@ -80,15 +80,19 @@ ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement int
 
 ## Next architectural step
 
-The next recommended vertical slice is richer physical color resources and reusable wheel-slot resolution for gobos/prisms, building on the parser-owned color programs and renderer-facing color section without restoring Godot-built semantic dictionaries.
-
-## Supporting documents
+The next recommended gobo step is measured comparison of moving multi-wheel masking strategies without weakening the static seated native contract or restoring Godot-built semantic dictionaries.
 
 ## Native static gobo contract
 
 The controlled static seated `Gobo(n)` slice compiles indexed wheel identity, exact `WheelSlotIndex`, ChannelSet DMX windows, stable asset IDs, and exact Beam render-target IDs in native C++. Its dedicated `GoboSelection` section carries nine integers per dirty row: fixture, Beam target, wheel, wheel instance, slot, asset, selection mode, changed mask, and revision. A reserved float keeps the current positive-stride section validator contract; it has no semantic meaning.
 
 Godot installs original PNG/mask resources at setup and owns normalized vector-prism topology. Topology keys exclude fixture UUID and all live presentation values. A newly encountered ordered static multi-wheel combination multiplies canonical binary masks, retains the composed mask, vectorizes once under the existing 280-point limit, and creates one normalized topology for cross-fixture reuse. Legacy gobo dictionaries remain transitional and are not consulted by this live selection section. Gobo position, continuous rotation, shake, independently moving multi-wheel masking, and surface projectors remain unsupported.
+
+## Active-scene extraction ownership
+
+`SceneModel` owns a deduplicated set of strong runtime-directory leases for every content-keyed GDTF cache used by the active scene. Geometry building returns its cache lease together with model paths, and repeated fixture instances retain one lease record for the shared directory. Native gobo parsing may acquire the same content cache temporarily, but its extracted PNG paths remain backed by the active scene owner rather than by the legacy DMX binding route. Replacing `SceneModel` acquires the new generation first and then releases the old generation; releasing the final scene lease removes the old cache deterministically.
+
+## Supporting documents
 
 - `docs/adr-gdtf-parser-ownership.md` records the parser ownership decision shared with Perastage.
 - `docs/gdtf-support-matrix.md` summarizes currently verified GDTF semantic coverage.
@@ -105,7 +109,7 @@ Dimmer is target-oriented rather than fixture-oriented. Each compiled Dimmer pro
 
 Godot resolves renderer targets during structural setup only through the focused `NativeRendererTargetRegistry` service. `load_scene.gd` remains the scene lifecycle coordinator, but the registry owns canonical geometry-key indexing, Pan/Tilt component targets, Dimmer render-target records, duplicate/overlap diagnostics, and cached renderer resource summaries. Dimmer target records cache exact owner geometry, emitter anchors, Lightweight Prism beam instances, lens material targets, optional spotlight anchors, and photometric data. Live Dimmer rows update those cached resources directly; they do not parse GDTF, search by fixture UUID, traverse descendants, rebuild prism topology for intensity-only updates, or use legacy fixture bindings. Realtime spotlights may remain disabled because the Lightweight Prism backend provides the acceptance beam output independently.
 
-This checkpoint has been visually verified in the Windows/Godot application for native Pan, Tilt, and Dimmer response through native target IDs. Lightweight Prism now has a native BeamOptics profile and parametric near/far deformation path for Beam geometry and Zoom; footprint alignment, gobo-shaped prism geometry, and advanced volumetric quality remain future work.
+This checkpoint has been visually verified in the Windows/Godot application for native Pan, Tilt, and Dimmer response through native target IDs. Lightweight Prism now has a native BeamOptics profile, parametric near/far deformation, and normalized static seated gobo topology; footprint alignment, gobo motion, and advanced volumetric quality remain future work.
 
 ## Native BeamOptics foundation
 
@@ -113,7 +117,7 @@ Peraviz now installs a setup-time native Beam optical profile for each resolved 
 
 The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is preserved as official data; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so oversized-start issues are diagnosable instead of silently hidden.
 
-Lightweight Prism now exposes a real BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
+Lightweight Prism exposes a BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters without replacing normalized gobo topology. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Static seated gobo vectorization remains a separate bounded topology input.
 
 Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, gobo motion/projectors, independently moving gobo composition, and high-quality volumetric rectangular rendering remain unsupported.
 

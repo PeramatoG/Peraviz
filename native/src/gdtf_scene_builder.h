@@ -15,9 +15,15 @@ struct GdtfBuildRequest {
     std::string fixture_name;
 };
 
-std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &request,
-                                                    const std::string &parent_id,
-                                                    const Matrix &parent_world,
-                                                    int &extracted_asset_count);
+struct GdtfGeometryBuildResult {
+    std::vector<SceneNode> nodes;
+    runtime_storage::RuntimeDirectoryLease cache_lease;
+    std::string cache_path;
+};
+
+GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &request,
+                                                     const std::string &parent_id,
+                                                     const Matrix &parent_world,
+                                                     int &extracted_asset_count);
 
 } // namespace peraviz

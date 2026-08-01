@@ -47,6 +47,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Fixed fixture models disappearing after MVR import by retaining every extracted GDTF model and gobo resource for the active scene generation. Repeated fixtures share one content cache, and replacing the scene still cleans the previous generation deterministically.
+
 - Fixed repeated gobo image-loading errors by retaining extracted GDTF wheel media for the active scene, reusing media across repeated fixture instances, and reporting genuinely missing references once without publishing stale paths.
 
 - Fixed real-world GDTF color filters with contradictory zero-transmission measurements so visible wheel colors retain their authored hue and normalized physical gain, while coherent black filters remain black and malformed or missing measurements stay diagnosable.
