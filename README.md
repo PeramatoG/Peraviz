@@ -158,8 +158,8 @@ For Windows exports, build with vcpkg manifest mode and the static triplet so `p
 
 ```bash
 cd native
-cmake --preset windows-release-static
-cmake --build --preset windows-release-static
+cmake --preset win-x64-release-ninja
+cmake --build --preset win-x64-release-ninja
 ```
 
 The resulting native library is copied into `bin/` so the Godot editor can load it.

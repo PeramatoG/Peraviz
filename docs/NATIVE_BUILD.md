@@ -49,17 +49,30 @@ ctest --test-dir native/build-tests --output-on-failure --verbose --timeout 120
 
 The default also builds the GDExtension for Godot tests. For focused pure-native development, `-DPERAVIZ_BUILD_GDEXTENSION=OFF` avoids resolving `godot-cpp` and mdns; tinyxml2 and libzip remain required. This does not change default builds or output paths.
 
-### Windows static vcpkg build for exports
+### Windows x64 presets
 
-For Windows exports, build from a Visual Studio Developer Command Prompt with vcpkg manifest mode and the static triplet:
+`native/` is the CMake project root. The checked-in presets use the vcpkg toolchain at `C:/vcpkg/scripts/buildsystems/vcpkg.cmake`; they do not read `VCPKG_ROOT`. They enforce `x64-windows-static-md`, `BUILD_SHARED_LIBS=OFF`, and the dynamic MSVC runtime (`/MD` or `/MDd`). Thus, `peraviz_native` remains a GDExtension DLL while libzip, zlib, tinyxml2, and other vcpkg dependencies are linked statically.
+
+The recommended local Ninja workflows are:
 
 ```powershell
 cd <repo>/native
-cmake --preset windows-release-static
-cmake --build --preset windows-release-static
+cmake --preset win-x64-debug-ninja
+cmake --build --preset win-x64-debug-ninja
+ctest --preset win-x64-debug-ninja --output-on-failure
+
+cmake --preset win-x64-release-ninja
+cmake --build --preset win-x64-release-ninja
+ctest --preset win-x64-release-ninja --output-on-failure
 ```
 
-The Windows static presets use `x64-windows-static`, `BUILD_SHARED_LIBS=OFF`, and `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`. They keep `peraviz_native` as a GDExtension DLL while linking third-party dependencies such as libzip, zlib, and tinyxml2 statically.
+Ninja uses one configuration per build tree, and each preset writes to `native/build/<preset-name>`. The existing Visual Studio generator workflows remain available as `windows-debug-static` and `windows-release-static`.
+
+#### Visual Studio CMake workflow
+
+In Visual Studio, open or activate `<repo>/native` as the CMake source directory, select **Local Machine**, then select `win-x64-debug-ninja` or `win-x64-release-ninja` and its matching build preset. The presets declare x64 with the `external` architecture strategy so Visual Studio initializes an x64 MSVC environment without asking Ninja to process an unsupported `-A` option.
+
+Opening only the repository root can trigger Visual Studio's default or partial CMake configuration because the repository root has no `CMakeLists.txt`. Always activate `native/` to expose the project and its checked-in presets reliably.
 
 If you switch between vcpkg triplets, delete the affected build directory before reconfiguring. Reusing a CMake cache created with `x64-windows` can keep dynamic dependency choices even after changing the command line.
 
@@ -67,7 +80,7 @@ After building, verify the runtime dependencies:
 
 ```powershell
 dumpbin /DEPENDENTS bin\peraviz_native.dll
-cmake --build --preset windows-release-static --target peraviz_native_check_dependencies
+cmake --build --preset win-x64-release-ninja --target peraviz_native_check_dependencies
 ```
 
 The dependency list must not include `zip.dll`, `zlib1.dll`, `tinyxml2.dll`, wxWidgets DLLs, pcre2 DLLs, or `jvm.dll`.

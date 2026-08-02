@@ -36,7 +36,7 @@ set(_peraviz_forbidden_dependencies
 
 foreach(_peraviz_dependency IN LISTS _peraviz_forbidden_dependencies)
     if(_peraviz_dumpbin_output_lower MATCHES "(^|[\r\n ]+)${_peraviz_dependency}([\r\n ]+|$)")
-        message(FATAL_ERROR "${PERAVIZ_TARGET_FILE} depends on forbidden runtime DLL ${_peraviz_dependency}. Rebuild with the x64-windows-static vcpkg triplet.")
+        message(FATAL_ERROR "${PERAVIZ_TARGET_FILE} depends on forbidden runtime DLL ${_peraviz_dependency}. Rebuild with the x64-windows-static-md vcpkg triplet.")
     endif()
 endforeach()
 
