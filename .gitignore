@@ -3,6 +3,7 @@
 
 # Native build output
 /native/out/
+/native/CMakeUserPresets.json
 
 # Godot generated cache
 .godot/

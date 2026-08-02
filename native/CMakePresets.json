@@ -11,8 +11,6 @@
       "hidden": true,
       "displayName": "Windows static vcpkg base",
       "description": "Build peraviz_native as a GDExtension DLL while statically linking third-party vcpkg dependencies and using the dynamic MSVC runtime.",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
@@ -30,6 +28,8 @@
       "name": "windows-debug-static",
       "inherits": "windows-static-base",
       "displayName": "Windows Debug static vcpkg",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -38,8 +38,38 @@
       "name": "windows-release-static",
       "inherits": "windows-static-base",
       "displayName": "Windows Release static vcpkg",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "win-x64-debug-ninja",
+      "inherits": "windows-static-base",
+      "displayName": "Windows x64 Debug (Ninja, static dependencies)",
+      "generator": "Ninja",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "win-x64-release-ninja",
+      "inherits": "windows-static-base",
+      "displayName": "Windows x64 Release (Ninja, static dependencies)",
+      "generator": "Ninja",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     }
   ],
@@ -55,6 +85,16 @@
       "configurePreset": "windows-release-static",
       "configuration": "Release",
       "jobs": 1
+    },
+    {
+      "name": "win-x64-debug-ninja",
+      "configurePreset": "win-x64-debug-ninja",
+      "jobs": 8
+    },
+    {
+      "name": "win-x64-release-ninja",
+      "configurePreset": "win-x64-release-ninja",
+      "jobs": 8
     }
   ],
   "testPresets": [
@@ -67,6 +107,14 @@
       "name": "windows-release-static",
       "configurePreset": "windows-release-static",
       "configuration": "Release"
+    },
+    {
+      "name": "win-x64-debug-ninja",
+      "configurePreset": "win-x64-debug-ninja"
+    },
+    {
+      "name": "win-x64-release-ninja",
+      "configurePreset": "win-x64-release-ninja"
     }
   ]
 }

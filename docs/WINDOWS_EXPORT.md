@@ -25,27 +25,28 @@ Do not duplicate `peraviz_native.dll` in the export root. If Godot places the DL
 
 ## Build the native extension for Windows export
 
-Use vcpkg manifest mode with the static Windows triplet from a Visual Studio Developer Command Prompt or a shell where `VCPKG_ROOT` points to the vcpkg checkout:
+Use vcpkg manifest mode with the static-dependency Ninja preset from an x64 Visual Studio Developer Command Prompt:
 
 ```powershell
 cd <repo>\native
-cmake --preset windows-release-static
-cmake --build --preset windows-release-static
+cmake --preset win-x64-release-ninja
+cmake --build --preset win-x64-release-ninja
 ```
 
 For Debug editor validation, use the matching Debug preset:
 
 ```powershell
 cd <repo>\native
-cmake --preset windows-debug-static
-cmake --build --preset windows-debug-static
+cmake --preset win-x64-debug-ninja
+cmake --build --preset win-x64-debug-ninja
 ```
 
 The presets configure:
 
-- `CMAKE_TOOLCHAIN_FILE=$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`
-- `VCPKG_TARGET_TRIPLET=x64-windows-static`
+- `CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake`
+- `VCPKG_TARGET_TRIPLET=x64-windows-static-md`
 - `BUILD_SHARED_LIBS=OFF`
+- dynamic MSVC CRT linkage (`/MD` for Release and `/MDd` for Debug)
 - separate build directories for Debug and Release static builds
 
 The `peraviz_native` target remains a DLL because Godot loads it as a GDExtension, but libzip, zlib, tinyxml2, and related third-party dependencies are linked statically.
@@ -75,7 +76,7 @@ The output must not list:
 You can also run the CMake helper target from the static build tree:
 
 ```powershell
-cmake --build --preset windows-release-static --target peraviz_native_check_dependencies
+cmake --build --preset win-x64-release-ninja --target peraviz_native_check_dependencies
 ```
 
 The helper uses `dumpbin` and fails if it sees the forbidden third-party DLLs above. Run it from a Visual Studio Developer Command Prompt so `dumpbin` is available.

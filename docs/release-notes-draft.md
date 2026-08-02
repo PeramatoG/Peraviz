@@ -24,6 +24,8 @@ Changes since the previous Peraviz release.
 
 ## Internal changes
 
+- Added reliable Windows x64 Ninja workflows for native Debug and Release development while preserving static vcpkg dependencies, the dynamic MSVC runtime, and the existing Visual Studio generator presets.
+
 - Added the versioned numeric `GoboSelection` section, stable native wheel/slot/asset setup records, bounded diagnostics, and measured cache counters. Independently moving multi-wheel composition, gobo motion, and surface projectors remain deliberately deferred.
 
 - Aligned the native extension toolchain with the Godot 4.7 API through an immutable official godot-cpp revision, a validated repository-wide compatibility contract, and binding-aware compiler-cache isolation.
