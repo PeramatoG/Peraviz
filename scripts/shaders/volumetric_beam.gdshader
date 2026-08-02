@@ -25,6 +25,9 @@ uniform float gobo_min_transmission : hint_range(0.0, 1.0) = 0.12;
 uniform float gobo_contribution : hint_range(0.0, 1.0) = 0.85;
 instance uniform float cone_height = 15.0;
 instance uniform float gobo_projection_radius = 1.0;
+instance uniform float topology_near_radius = 1.0;
+instance uniform float topology_far_radius = 1.0;
+instance uniform bool use_normalized_gobo_topology = false;
 instance uniform float radial_falloff = 1.1;
 instance uniform float longitudinal_falloff = 1.0;
 instance uniform float beam_softness = 0.35;
@@ -99,6 +102,11 @@ float sample_gobo_mask(vec2 uv) {
 }
 
 void vertex() {
+	if (use_normalized_gobo_topology) {
+		float axial = clamp(0.5 - VERTEX.y, 0.0, 1.0);
+		float radius = mix(topology_near_radius, topology_far_radius, axial);
+		VERTEX.xz *= radius;
+	}
 	v_local = VERTEX;
 	v_view = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }

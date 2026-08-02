@@ -38,6 +38,7 @@ VisualFrameSchema make_visual_frame_schema(int32_t schema_generation, const Visu
     if (capabilities.has_wheel_selection) add_section(schema.sections, VisualSectionType::WheelSelection, 8, 8);
     if (capabilities.has_wheel_motion) add_section(schema.sections, VisualSectionType::WheelMotion, 6, 4);
     if (capabilities.has_temporal) add_section(schema.sections, VisualSectionType::TemporalOutput, 4, 2);
+    if (capabilities.has_gobo_selection) add_section(schema.sections, VisualSectionType::GoboSelection, 9, 1);
     return schema;
 }
 
@@ -51,6 +52,7 @@ VisualFrameSchema make_default_visual_frame_schema(int32_t schema_generation) {
     capabilities.has_wheel_selection = true;
     capabilities.has_wheel_motion = true;
     capabilities.has_temporal = true;
+    capabilities.has_gobo_selection = true;
     return make_visual_frame_schema(schema_generation, capabilities);
 }
 

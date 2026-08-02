@@ -515,6 +515,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
     for (const AttributeIdentity &attribute : fixture_type.attributes) attributes_by_id[attribute.id] = &attribute;
     for (const GeometryInstance &geometry : fixture_type.geometries) geometries_by_id[geometry.id] = &geometry;
     std::unordered_map<int32_t, int32_t> renderer_id_by_wheel;
+    std::unordered_map<int32_t, int32_t> gobo_id_by_wheel;
     for (const ParsedWheel &wheel : fixture_type.wheels) {
         if (wheel.slots.empty()) continue;
         runtime::CompiledWheelPalette palette;
@@ -531,6 +532,20 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             ++expected_slot_index;
         }
         renderer_id_by_wheel[wheel.id] = palette.wheel_renderer_id;
+        const int32_t gobo_wheel_id = stable_id(fixture_type.fixture_type_name, "gobo:wheel:" + wheel.name);
+        gobo_id_by_wheel[wheel.id] = gobo_wheel_id;
+        for (const ParsedWheelSlot &slot : wheel.slots) {
+            runtime::CompiledGoboAsset asset;
+            asset.wheel_id = gobo_wheel_id;
+            asset.slot_index = slot.slot_index;
+            asset.source_media_reference = slot.media_file_name;
+            asset.extracted_media_path = slot.extracted_media_path;
+            asset.extraction_provenance = slot.provenance;
+            asset.open_slot = slot.media_file_name.empty();
+            asset.media_valid = !asset.open_slot && !asset.extracted_media_path.empty();
+            asset.gobo_asset_id = asset.media_valid ? stable_id(fixture_type.fixture_type_name, "gobo:asset:" + slot.media_file_name) : 0;
+            scene.gobo_assets.push_back(asset);
+        }
         scene.wheel_palettes.push_back(palette);
     }
     for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
@@ -541,6 +556,33 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
         auto geometry_it = geometries_by_id.find(parser_program.geometry_instance_id);
         if (attribute_it == attributes_by_id.end() || geometry_it == geometries_by_id.end()) continue;
+        const bool is_gobo_select = attribute_it->second->canonical_family == "Gobo" && attribute_it->second->name.find("SelectShake") == std::string::npos && wheel_mode == runtime::CompiledWheelMode::Select;
+        if (is_gobo_select) {
+            runtime::CompiledDmxSourceProgram runtime_program;
+            runtime_program.program_id = next_program_id++;
+            runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+            if (runtime_program.sources.empty()) continue;
+            runtime_program.dmx_from = parser_program.dmx_from;
+            runtime_program.dmx_to = parser_program.dmx_to;
+            runtime_program.attribute_name = parser_program.attribute_name;
+            runtime_program.function_name = parser_program.function_name.empty() ? parser_program.attribute_name : parser_program.function_name;
+            runtime_program.geometry_id = parser_program.geometry_instance_id;
+            runtime_program.geometry_name = geometry_it->second->path;
+            scene.source_programs.push_back(runtime_program);
+            for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
+                if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
+                runtime::CompiledGoboSelectionBinding binding;
+                binding.binding_id = stable_id(patch.fixture_uuid, "gobo:binding:" + std::to_string(parser_program.id) + ":" + beam.geometry_path);
+                binding.fixture_id = fixture_id;
+                binding.beam_render_target_id = beam.render_target_id;
+                binding.wheel_id = gobo_id_by_wheel[parser_program.wheel_id];
+                binding.wheel_instance_index = std::max(attribute_it->second->primary_index, 1);
+                binding.source_program_id = runtime_program.program_id;
+                for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name});
+                if (binding.wheel_id > 0) scene.gobo_bindings.push_back(binding);
+            }
+            continue;
+        }
         if (attribute_it->second->canonical_family != "Color" && dmx::lower_ascii(parser_program.attribute_name).find("color") == std::string::npos) continue;
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;

@@ -25,6 +25,7 @@ enum class VisualSectionType : int32_t {
     EnvironmentOutput = 11,
     GenericVisualParameter = 12,
     DiagnosticNonVisual = 13,
+    GoboSelection = 14,
 };
 
 enum VisualSectionFlags : int32_t {
@@ -45,6 +46,7 @@ enum WheelMotionIntField : int32_t { WheelMotionFixtureId = 0, WheelMotionTarget
 enum WheelMotionFloatField : int32_t { WheelMotionAuthoritativePhase = 0, WheelMotionAngularVelocityDegreesPerSecond = 1, WheelMotionReferenceSeconds = 2, WheelMotionRandomFrequencyHz = 3 };
 enum TemporalOutputIntField : int32_t { TemporalOutputFixtureId = 0, TemporalOutputTargetId = 1, TemporalOutputMode = 2, TemporalOutputChangedMask = 3 };
 enum TemporalOutputFloatField : int32_t { TemporalOutputStrobeNorm = 0, TemporalOutputOutputNorm = 1 };
+enum GoboSelectionIntField : int32_t { GoboSelectionFixtureId = 0, GoboSelectionBeamTargetId = 1, GoboSelectionWheelId = 2, GoboSelectionWheelInstanceIndex = 3, GoboSelectionSlotIndex = 4, GoboSelectionAssetId = 5, GoboSelectionMode = 6, GoboSelectionChangedMask = 7, GoboSelectionRevision = 8 };
 
 struct VisualSectionSchema {
     int32_t section_type = 0;
@@ -68,6 +70,7 @@ struct VisualFrameSchemaCapabilities {
     bool has_wheel_selection = false;
     bool has_wheel_motion = false;
     bool has_temporal = false;
+    bool has_gobo_selection = false;
 };
 
 struct SectionedVisualFrame {

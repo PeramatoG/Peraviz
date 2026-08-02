@@ -104,7 +104,7 @@ being applied.
 
 The active live path uses the native sectioned visual frame described in `docs/architecture.md`. Gobo-related updates are transported as domain-specific section data instead of a universal fixed row. The Godot apply layer treats gobo slot or texture changes as topology-affecting updates and gobo rotation or shake changes as parametric updates. Slot or texture changes are applied before a beam topology rebuild so `peraviz_gobo_texture` is available when fog-beam materials are rebuilt. Rotation and shake updates are applied without forcing texture recomposition unless the active slot or composed texture changes.
 
-This remains a transitional bridge: static wheel slot data, primary gobo slot data, wheel-only selector channels, and cached GDTF texture metadata are still cached per fixture by the DMX runtime. The live numeric state comes from native cooked runtime sections, while some slot/range metadata remains in Godot compatibility data. The intended next step is to move the remaining slot/range and motion-mode resolution, including independent multi-wheel gobo state, into native compiled runtime data so Godot receives render-ready gobo state instead of consulting cached capability dictionaries.
+Legacy slot/range dictionaries and motion/projector helpers remain transitional compatibility code. They are not consulted by the authoritative static seated `GoboSelection` path. Motion-mode resolution, including independently moving multi-wheel state, remains deferred.
 
 Diagnostics now distinguish gobo masks, cached controls, resolved slots, texture application, beam consumption, topology updates, parametric updates, texture compositions, and rotation/shake render-state updates. Continuous rotation or shake should update render state from persistent motion parameters and must not require full fixture capability re-application every frame. The current transitional projector still advances some motion only when called; this is documented as a remaining risk until render-state animation is moved into shader/material or compact renderer state.
 
@@ -120,12 +120,20 @@ Peraviz now installs a setup-time native Beam optical profile for each resolved 
 
 The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is preserved as official data; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so oversized-start issues are diagnosable instead of silently hidden.
 
-Lightweight Prism now exposes a real BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
+Lightweight Prism exposes a BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far parameters without replacing normalized gobo topology. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses rectangular topology with RectangleRatio; None and Glow hide projected custom beams. Static seated binary gobo vectorization is a separate bounded topology input.
 
-Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, active gobo selection/rotation, and high-quality volumetric rectangular rendering remain unsupported.
+Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, gobo position/rotation/shake, independently moving composition, surface projection, and high-quality volumetric rectangular rendering remain unsupported.
 
 ## Extracted media lifetime
 
 Native gobo catalog cooking owns extracted wheel media through scene-generation `RuntimeDirectoryLease` values. Fixture bindings may publish paths only while the loader and active control-offset generation retain those leases. Duplicate fixture instances reuse the archive filename-plus-content-hash cache generation, and scene replacement releases the previous generation deterministically. Slots with absent `MediaFileName` remain media-free; genuinely missing references preserve wheel/range metadata but publish no image path and produce the structured `PVZ-GDTF-GOBO-MEDIA-MISSING` warning.
 
 The stale-path debugger flood predated the native color-wheel change: the binding catalog previously returned paths owned only by a function-local `ZipAssetCache`. The color-wheel work exposed the existing rebuild path but did not create the ownership defect, and gobo media remains separate from ColorCIE/filter-only wheel slots.
+
+## Static seated native slice
+
+Static seated `Gobo(n)` selection now has a dedicated native path. Setup publishes stable wheel, exact one-based slot, asset, media provenance, and Beam target records. Live `GoboSelection` rows contain only numeric IDs, selection mode, change mask, and revision; Godot resolves cached target and asset records and does not inspect legacy ChannelSet dictionaries. Open slots keep their exact slot number and carry asset ID zero.
+
+One binary layer uses normalized vector-prism topology keyed by stable content plus vectorizer and quality configuration. Zoom, beam length, color, dimmer, and fixture identity are presentation inputs rather than topology keys. The original extracted PNG remains scene-owned beside the vector resource for future surface projection, but no projector is active in this slice.
+
+For two or more static seated binary wheels, the measured baseline uses an ordered asset/slot/fixed-transform key to cache binary mask multiplication, one bounded vectorization, and one normalized composed prism. Equivalent fixture instances share the composed mask and topology. Independently moving wheel states remain separate, receive a bounded unsupported diagnostic, and are not flattened or recomposed each frame. Rotation, shake, indexed position, and surface projection remain unsupported.

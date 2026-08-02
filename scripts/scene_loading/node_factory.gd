@@ -1,8 +1,11 @@
 extends RefCounted
 class_name NodeFactory
 
+var _missing_cache_roots_reported: Dictionary = {}
+
 func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache) -> void:
 	node_index.clear()
+	_missing_cache_roots_reported.clear()
 	for item in nodes:
 		if item is Dictionary:
 			var node_id: String = str(item.get("node_id", ""))
@@ -344,6 +347,13 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		var cached_scene_instance: Node3D = asset_cache.instantiate_scene(asset_path)
 		if cached_scene_instance != null:
 			return cached_scene_instance
+		if not FileAccess.file_exists(asset_path):
+			var cache_root: String = _runtime_cache_workspace_for_path(asset_path)
+			if not _missing_cache_roots_reported.has(cache_root):
+				_missing_cache_roots_reported[cache_root] = true
+				push_error("path_missing_before_godot_load: fixture asset cache is missing: %s" % cache_root)
+			asset_cache.mark_failed(asset_path)
+			return null
 		var gltf := GLTFDocument.new()
 		var state := GLTFState.new()
 		var err: int = gltf.append_from_file(asset_path, state)
@@ -370,6 +380,18 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		return asset_cache.instantiate_scene(asset_path)
 	asset_cache.mark_failed(asset_path)
 	return null
+
+func _runtime_cache_workspace_for_path(asset_path: String) -> String:
+	var normalized: String = asset_path.replace("\\", "/")
+	var marker: String = "/cache/v1/"
+	var marker_index: int = normalized.find(marker)
+	if marker_index < 0:
+		return asset_path.get_base_dir()
+	var workspace_start: int = marker_index + marker.length()
+	var workspace_end: int = normalized.find("/", workspace_start)
+	if workspace_end < 0:
+		return normalized
+	return normalized.substr(0, workspace_end)
 
 func _extract_node_class(data: Dictionary, item_type: String) -> String:
 	var node_class: String = str(data.get("class", ""))

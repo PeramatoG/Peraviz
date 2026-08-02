@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <filesystem>
 #include <string>
 #include "runtime_storage.h"
 #include <vector>
@@ -8,6 +9,18 @@
 #include "table_model/runtime_table.h"
 
 namespace peraviz {
+
+class SceneAssetLeaseSet {
+public:
+    void retain(const runtime_storage::RuntimeDirectoryLease &lease);
+    void clear();
+    std::size_t size() const;
+    bool owns(const std::filesystem::path &path) const;
+    std::vector<std::filesystem::path> paths() const;
+
+private:
+    std::map<std::filesystem::path, runtime_storage::RuntimeDirectoryLease> leases_by_path_;
+};
 
 struct Vec3 {
     float x = 0.0F;
@@ -91,6 +104,7 @@ struct SceneModel {
     int extracted_asset_count = 0;
     std::string cache_path;
     runtime_storage::RuntimeDirectoryLease cache_lease;
+    SceneAssetLeaseSet asset_leases;
     std::vector<FixturePatch> fixture_patches;
     std::map<std::string, table_model::RuntimeTable> runtime_tables;
 };

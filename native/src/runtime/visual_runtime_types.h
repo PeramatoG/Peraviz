@@ -149,6 +149,35 @@ struct CompiledWheelTargetBinding {
     std::vector<CompiledWheelChannelSet> channel_sets;
 };
 
+enum class CompiledGoboSelectionMode : int32_t {
+    SeatedStatic = 0,
+    MovingCompositionUnsupported = 1,
+};
+
+struct CompiledGoboAsset {
+    int32_t gobo_asset_id = 0;
+    int32_t wheel_id = 0;
+    int32_t slot_index = 0;
+    std::string source_media_reference;
+    std::string extracted_media_path;
+    std::string extraction_provenance;
+    int32_t source_width = 0;
+    int32_t source_height = 0;
+    bool open_slot = true;
+    bool media_valid = false;
+};
+
+struct CompiledGoboSelectionBinding {
+    int32_t binding_id = 0;
+    int32_t fixture_id = 0;
+    int32_t beam_render_target_id = 0;
+    int32_t wheel_id = 0;
+    int32_t wheel_instance_index = 0;
+    int32_t source_program_id = 0;
+    CompiledGoboSelectionMode mode = CompiledGoboSelectionMode::SeatedStatic;
+    std::vector<CompiledWheelChannelSet> channel_sets;
+};
+
 struct CompiledDmxSourceProgram {
     int32_t program_id = 0;
     CompiledSemantic semantic = CompiledSemantic::Unknown;
@@ -257,7 +286,7 @@ struct CompiledRuntimeDiagnostic {
 };
 
 struct CompiledRuntimeScene {
-    int32_t contract_version = 3;
+    int32_t contract_version = 4;
     int32_t mvr_fixture_patches = 0;
     int32_t gdtf_files_opened = 0;
     int32_t selected_modes_found = 0;
@@ -280,6 +309,8 @@ struct CompiledRuntimeScene {
     std::vector<CompiledColorTargetProgram> color_targets;
     std::vector<CompiledWheelPalette> wheel_palettes;
     std::vector<CompiledWheelTargetBinding> wheel_bindings;
+    std::vector<CompiledGoboAsset> gobo_assets;
+    std::vector<CompiledGoboSelectionBinding> gobo_bindings;
     std::vector<CompiledBeamOpticalProfile> beam_profiles;
     std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };
@@ -321,6 +352,9 @@ struct VisualFrameStats {
     uint64_t wheel_targets_dirty = 0;
     uint64_t wheel_selection_rows = 0;
     uint64_t wheel_states_skipped = 0;
+    uint64_t gobo_selection_rows = 0;
+    uint64_t missing_media_warnings = 0;
+    uint64_t deferred_multi_wheel_warnings = 0;
 };
 
 } // namespace peraviz::runtime

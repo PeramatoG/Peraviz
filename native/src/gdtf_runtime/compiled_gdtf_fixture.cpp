@@ -2,6 +2,7 @@
 
 #include "dmx/gdtf_attribute_classifier.h"
 #include "dmx/gdtf_xml_reader.h"
+#include "dmx/gdtf_gobo_catalog.h"
 #include "gdtf_runtime/gdtf_geometry_identity.h"
 
 #include <algorithm>
@@ -510,6 +511,19 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
     fixture.selected_modes_found = 1;
     parse_physical_color_resources(doc.RootElement(), fixture);
     parse_wheels(doc.RootElement(), fixture);
+    const dmx::GoboWheelCatalog gobo_catalog = dmx::build_gobo_wheel_catalog(gdtf_path, doc.RootElement());
+    fixture.asset_cache_lease = gobo_catalog.cache_lease;
+    for (ParsedWheel &wheel : fixture.wheels) {
+        auto wheel_it = gobo_catalog.wheels.find(dmx::lower_ascii(wheel.name));
+        if (wheel_it == gobo_catalog.wheels.end()) continue;
+        for (ParsedWheelSlot &slot : wheel.slots) {
+            auto image_it = wheel_it->second.slot_images.find(slot.slot_index);
+            slot.extracted_media_path = image_it != wheel_it->second.slot_images.end() ? image_it->second : std::string();
+        }
+    }
+    for (const dmx::GoboMediaDiagnostic &diagnostic : gobo_catalog.missing_media) {
+        fixture.diagnostics.push_back({"PVZ-GDTF-GOBO-MEDIA-MISSING", "warning", "Gobo media reference could not be extracted; no stale path is published.", diagnostic.wheel_name + ":" + std::to_string(diagnostic.slot_index) + ":" + diagnostic.media_reference});
+    }
     fixture.dmxchannels_containers_found = count_mode_dmxchannels_containers(selected_mode);
     const std::unordered_map<std::string, std::string> geometry_paths =
         build_geometry_paths(doc.RootElement(), dmx::trim_ascii(read_attr(selected_mode, "Geometry", "geometry")));

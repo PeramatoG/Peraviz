@@ -22,7 +22,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     peraviz::runtime::CompiledRuntimeScene scene;
     PackedInt32Array integers = packed_scene.get("integers", PackedInt32Array());
     PackedFloat32Array floats = packed_scene.get("floats", PackedFloat32Array());
-    if (integers.size() < 6 || integers[0] < 1 || integers[0] > 3) {
+    if (integers.size() < 6 || integers[0] < 1 || integers[0] > 4) {
         core_.install_compiled_scene(scene);
         return;
     }
@@ -33,9 +33,15 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     const int color_target_count = integers[cursor++];
     int wheel_palette_count = 0;
     int wheel_binding_count = 0;
+    int gobo_asset_count = 0;
+    int gobo_binding_count = 0;
     if (integers[0] >= 2 && integers.size() >= 8) {
         wheel_palette_count = integers[cursor++];
         wheel_binding_count = integers[cursor++];
+    }
+    if (integers[0] >= 4 && integers.size() >= 10) {
+        gobo_asset_count = integers[cursor++];
+        gobo_binding_count = integers[cursor++];
     }
     cursor++;
     for (int index = 0; index < fixture_count && cursor + 6 <= integers.size(); ++index) {
@@ -163,6 +169,31 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         }
         scene.wheel_bindings.push_back(binding);
     }
+    for (int index = 0; index < gobo_asset_count && cursor + 5 <= integers.size(); ++index) {
+        peraviz::runtime::CompiledGoboAsset asset;
+        asset.gobo_asset_id = integers[cursor++];
+        asset.wheel_id = integers[cursor++];
+        asset.slot_index = integers[cursor++];
+        asset.open_slot = integers[cursor++] != 0;
+        asset.media_valid = integers[cursor++] != 0;
+        scene.gobo_assets.push_back(asset);
+    }
+    for (int index = 0; index < gobo_binding_count && cursor + 8 <= integers.size(); ++index) {
+        peraviz::runtime::CompiledGoboSelectionBinding binding;
+        binding.binding_id = integers[cursor++];
+        binding.fixture_id = integers[cursor++];
+        binding.beam_render_target_id = integers[cursor++];
+        binding.wheel_id = integers[cursor++];
+        binding.wheel_instance_index = integers[cursor++];
+        binding.source_program_id = integers[cursor++];
+        binding.mode = static_cast<peraviz::runtime::CompiledGoboSelectionMode>(integers[cursor++]);
+        const int set_count = integers[cursor++];
+        for (int set_index = 0; set_index < set_count && cursor + 3 <= integers.size(); ++set_index) {
+            binding.channel_sets.push_back({static_cast<uint32_t>(integers[cursor]), static_cast<uint32_t>(integers[cursor + 1]), integers[cursor + 2], {}});
+            cursor += 3;
+        }
+        scene.gobo_bindings.push_back(binding);
+    }
     core_.install_compiled_scene(scene);
 }
 
@@ -248,6 +279,9 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["wheel_inputs_evaluated"] = static_cast<int64_t>(stats.wheel_inputs_evaluated);
     out["wheel_targets_dirty"] = static_cast<int64_t>(stats.wheel_targets_dirty);
     out["wheel_selection_rows"] = static_cast<int64_t>(stats.wheel_selection_rows);
+    out["gobo_selection_rows"] = static_cast<int64_t>(stats.gobo_selection_rows);
+    out["missing_media_warnings"] = static_cast<int64_t>(stats.missing_media_warnings);
+    out["deferred_multi_wheel_warnings"] = static_cast<int64_t>(stats.deferred_multi_wheel_warnings);
     return out;
 }
 

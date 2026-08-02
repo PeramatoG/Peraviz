@@ -106,6 +106,7 @@ add_library(peraviz_native SHARED
     src/mesh_3ds_loader.cpp
     src/peraviz_debug_runtime.cpp
     src/runtime_storage.cpp
+    src/scene_model.cpp
     src/gdtf_scene_builder.cpp
     src/gdtf_runtime/gdtf_geometry_identity.cpp
     src/mvr_scene_loader.cpp
@@ -200,6 +201,39 @@ if(BUILD_TESTING)
     )
     add_test(NAME peraviz_native_runtime_storage_tests COMMAND peraviz_native_runtime_storage_tests)
 
+    add_executable(peraviz_native_scene_asset_lifetime_tests
+        tests/scene_asset_lifetime_test.cpp
+        src/archive/zip_archive.cpp
+        src/asset_cache.cpp
+        src/coordinate_mapper.cpp
+        src/gdtf_scene_builder.cpp
+        src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gdtf_geometry_identity.cpp
+        src/gdtf_runtime/runtime_scene_compiler.cpp
+        src/mvr_scene_loader.cpp
+        tests/peraviz_debug_runtime_stub.cpp
+        src/runtime/color_science.cpp
+        src/runtime_storage.cpp
+        src/scene_model.cpp
+        src/table_model/runtime_table.cpp
+        src/table_model/runtime_table_schema.cpp
+        src/table_model/perastage_table_schemas.cpp
+        src/dmx/fixture_dmx_binding.cpp
+        src/dmx/gdtf_attribute_classifier.cpp
+        src/dmx/gdtf_control_offsets_resolver.cpp
+        src/dmx/gdtf_gobo_catalog.cpp
+        src/dmx/gdtf_physical_ranges.cpp
+        src/dmx/gdtf_xml_reader.cpp
+    )
+    target_include_directories(peraviz_native_scene_asset_lifetime_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(peraviz_native_scene_asset_lifetime_tests PRIVATE
+        tinyxml2::tinyxml2
+        libzip::zip
+    )
+    add_test(NAME peraviz_native_scene_asset_lifetime_tests COMMAND peraviz_native_scene_asset_lifetime_tests)
+
     add_executable(peraviz_native_mvr_xchange_tests
         tests/mvr_xchange_service_name_test.cpp
         src/mvrxchange/mvr_xchange_service_name.cpp
@@ -270,6 +304,7 @@ if(BUILD_TESTING)
     add_test(NAME peraviz_native_dmx_e2e_tests COMMAND peraviz_native_dmx_e2e_tests)
     add_executable(peraviz_native_visual_runtime_tests
         tests/visual_runtime_core_test.cpp
+        tests/gobo_selection_runtime_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -306,6 +341,8 @@ if(BUILD_TESTING)
         src/runtime_storage.cpp
         src/dmx/gdtf_attribute_classifier.cpp
         src/dmx/gdtf_xml_reader.cpp
+        src/dmx/gdtf_gobo_catalog.cpp
+        src/dmx/gdtf_physical_ranges.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
     )

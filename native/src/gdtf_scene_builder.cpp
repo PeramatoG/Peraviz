@@ -174,21 +174,25 @@ bool parse_float_attr(tinyxml2::XMLElement *node, const char *name,
 
 namespace peraviz {
 
-std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &request,
-                                                    const std::string &parent_id,
-                                                    const Matrix &parent_world,
-                                                    int &extracted_asset_count) {
-    std::vector<SceneNode> nodes;
+// Builds fixture geometry while returning the strong lease backing every extracted path.
+GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &request,
+                                                     const std::string &parent_id,
+                                                     const Matrix &parent_world,
+                                                     int &extracted_asset_count) {
+    GdtfGeometryBuildResult result;
+    std::vector<SceneNode> &nodes = result.nodes;
 
     ZipAssetCache gdtf_cache(request.gdtf_archive_path);
+    result.cache_lease = gdtf_cache.cache_lease();
+    result.cache_path = gdtf_cache.cache_dir().u8string();
     const std::string description_path = gdtf_cache.ensure_archive_file_extracted("description.xml");
     if (description_path.empty()) {
-        return nodes;
+        return result;
     }
 
     tinyxml2::XMLDocument doc;
     if (doc.LoadFile(description_path.c_str()) != tinyxml2::XML_SUCCESS) {
-        return nodes;
+        return result;
     }
 
     tinyxml2::XMLElement *fixture_type = doc.FirstChildElement("GDTF");
@@ -199,7 +203,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
         fixture_type = doc.FirstChildElement("FixtureType");
     }
     if (!fixture_type) {
-        return nodes;
+        return result;
     }
 
     struct GdtfModelVisual {
@@ -292,7 +296,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
 
     tinyxml2::XMLElement *geometries = fixture_type->FirstChildElement("Geometries");
     if (!geometries) {
-        return nodes;
+        return result;
     }
 
     std::unordered_map<std::string, tinyxml2::XMLElement *> geometry_by_name;
@@ -319,7 +323,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
     }
 
     if (!root_geometry) {
-        return nodes;
+        return result;
     }
 
     int local_counter = 0;
@@ -462,7 +466,7 @@ std::vector<SceneNode> build_fixture_geometry_nodes(const GdtfBuildRequest &requ
 
     append_geometry(root_geometry, parent_id, parent_world, nullptr, nullptr, false, "");
     extracted_asset_count += gdtf_cache.extracted_assets();
-    return nodes;
+    return result;
 }
 
 } // namespace peraviz

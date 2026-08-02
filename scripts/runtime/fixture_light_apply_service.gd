@@ -304,6 +304,11 @@ func apply_wheel_motion_state(_loader: Node, fixture_uuid: String, beam_target_i
 	_diagnostic_info_keys[key] = {"motion_mode": motion_mode, "changed_mask": changed_mask, "revision": revision, "authoritative_phase": authoritative_phase, "angular_velocity_degrees_per_second": angular_velocity_degrees_per_second, "reference_seconds": reference_seconds, "random_frequency_hz": random_frequency_hz}
 	return {"applied": true, "wheel_motion_applied": true, "topology_rebuilds": 0}
 
+func apply_gobo_selection(loader: Node, _fixture_uuid: String, beam_target_id: int, wheel_id: int, wheel_instance_index: int, slot_index: int, asset_id: int, selection_mode: int, _changed_mask: int, _revision: int) -> Dictionary:
+	if not loader.has_method("_apply_native_gobo_selection"):
+		return {"applied": false, "failure_reason": "native gobo registry unavailable"}
+	return loader._apply_native_gobo_selection(beam_target_id, wheel_id, wheel_instance_index, slot_index, asset_id, selection_mode)
+
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_gobo_selection(fixture_uuid, gobo_norm)

@@ -1172,6 +1172,8 @@ bool test_one_physical_wheel_select_index_exclusive() {
     return true;
 }
 
+bool test_native_seated_gobo_selection_section();
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -1195,5 +1197,6 @@ int main() {
     if (!test_select_wheel_inactive_function_range()) return 1;
     if (!test_one_physical_wheel_select_index_exclusive()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
+    if (!test_native_seated_gobo_selection_section()) return 1;
     return 0;
 }

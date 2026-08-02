@@ -2,6 +2,8 @@ extends RefCounted
 
 class_name NativeRendererTargetRegistry
 
+const NativeGoboResourceRegistryScript = preload("res://scripts/runtime/native_gobo_resource_registry.gd")
+
 var _node_index: Dictionary = {}
 var _scene_registry: Object = null
 var _callbacks: Dictionary = {}
@@ -18,6 +20,7 @@ var _beam_output_records_by_geometry_key: Dictionary = {}
 var _beam_output_records_by_id: Dictionary = {}
 var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
+var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
 
 func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
@@ -39,6 +42,19 @@ func clear() -> void:
 	_beam_output_records_by_id.clear()
 	_lens_material_cache.clear()
 	_summary = _new_summary()
+	_gobo_resources.reset()
+
+func install_gobo_assets(asset_rows: Array) -> void:
+	_gobo_resources.install_assets(asset_rows)
+
+func apply_gobo_selection(beam_target_id: int, wheel_id: int, wheel_instance_index: int, slot_index: int, asset_id: int, selection_mode: int) -> Dictionary:
+	var target_record: Dictionary = get_beam_output_record(beam_target_id)
+	if target_record.is_empty():
+		return {"applied": false, "failure_reason": "beam target not registered"}
+	return _gobo_resources.apply_selection(beam_target_id, wheel_id, wheel_instance_index, slot_index, asset_id, selection_mode, target_record)
+
+func get_gobo_counters() -> Dictionary:
+	return _gobo_resources.counters()
 
 func install_manifest(renderer_manifest: Array) -> void:
 	clear()

@@ -45,6 +45,8 @@ void PeravizVisualRuntimeCore::clear() {
     wheel_palettes_by_id_.clear();
     base_color_state_by_target_.clear();
     wheel_state_by_physical_key_.clear();
+    gobo_state_by_binding_.clear();
+    gobo_asset_by_wheel_slot_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
 }
@@ -60,6 +62,11 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     for (const CompiledEmitterResource &resource : scene.emitter_resources) emitter_resources_by_id_[resource.resource_id] = resource;
     for (const CompiledFilterResource &resource : scene.filter_resources) filter_resources_by_id_[resource.resource_id] = resource;
     for (const CompiledWheelPalette &palette : scene.wheel_palettes) wheel_palettes_by_id_[palette.wheel_renderer_id] = palette;
+    for (const CompiledGoboAsset &asset : scene.gobo_assets) {
+        const int64_t key = (static_cast<int64_t>(asset.wheel_id) << 32) | static_cast<uint32_t>(asset.slot_index);
+        gobo_asset_by_wheel_slot_[key] = asset.media_valid && !asset.open_slot ? asset.gobo_asset_id : 0;
+        if (!asset.open_slot && !asset.media_valid) ++stats_.missing_media_warnings;
+    }
     for (const CompiledDmxSourceProgram &program : scene.source_programs) {
         if (program.program_id <= 0 || source_programs_by_id_.find(program.program_id) != source_programs_by_id_.end()) {
             diagnostics_.push_back({"PVZ-RUNTIME-DUPLICATE-PROGRAM", "error", "Compiled source program ID is invalid or duplicated.", std::to_string(program.program_id)});
@@ -197,7 +204,23 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeColor;
         ++installed_wheel_bindings;
     }
-    if (installed_properties == 0 && scene.color_targets.empty() && installed_wheel_bindings == 0) {
+    for (const CompiledGoboSelectionBinding &binding : scene.gobo_bindings) {
+        auto program_it = source_programs_by_id_.find(binding.source_program_id);
+        if (binding.binding_id <= 0 || binding.fixture_id <= 0 || binding.beam_render_target_id <= 0 || binding.wheel_id <= 0 || binding.wheel_instance_index <= 0 || program_it == source_programs_by_id_.end() || binding.channel_sets.empty() || program_it->second.program.sources.empty()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-GOBO-BINDING", "warning", "Compiled seated gobo binding is incomplete.", std::to_string(binding.binding_id)});
+            continue;
+        }
+        UniverseState &universe = universes_[program_it->second.program.sources.front().universe_id];
+        const int binding_index = static_cast<int>(universe.gobo_bindings.size());
+        universe.gobo_bindings.push_back({binding});
+        for (const CompiledDmxByteSource &source : program_it->second.program.sources) {
+            universe.interest_offsets.push_back(source.address);
+            universe.gobo_binding_indices_by_offset[source.address].push_back(binding_index);
+        }
+        capabilities.has_gobo_selection = true;
+        installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGobo;
+    }
+    if (installed_properties == 0 && scene.color_targets.empty() && installed_wheel_bindings == 0 && scene.gobo_bindings.empty()) {
         diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
@@ -256,6 +279,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
     frame.schema_generation = schema_.schema_generation;
     struct PendingRow { int fixture_id = 0; int32_t render_target_id = 0; uint32_t changed_visual_mask = 0; ComponentState state; CookedEmitterColor color; int32_t wheel_id = 0; int32_t slot_a = 0; int32_t slot_b = 0; float normalized_phase = 0.0f; float split_fraction = 0.0f; float boundary_angle_degrees = 0.0f; CompiledWheelMode wheel_mode = CompiledWheelMode::Select; int32_t revision = 0; bool wheel_row = false; };
     std::vector<PendingRow> rows;
+    struct GoboRow { int32_t fixture_id; int32_t beam_target_id; int32_t wheel_id; int32_t wheel_instance_index; int32_t slot_index; int32_t asset_id; CompiledGoboSelectionMode mode; int32_t revision; };
+    std::vector<GoboRow> gobo_rows;
 
     for (auto &[_, universe] : universes_) {
         if (!universe.has_pending_frame) continue;
@@ -275,6 +300,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         std::set<int> property_indices;
         std::set<int> color_target_indices;
         std::set<int> wheel_binding_indices;
+        std::set<int> gobo_binding_indices;
         for (int offset : changed_offsets) {
             auto property_it = universe.property_indices_by_offset.find(offset);
             if (property_it != universe.property_indices_by_offset.end()) property_indices.insert(property_it->second.begin(), property_it->second.end());
@@ -282,6 +308,31 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             if (color_it != universe.color_target_indices_by_offset.end()) color_target_indices.insert(color_it->second.begin(), color_it->second.end());
             auto wheel_it = universe.wheel_binding_indices_by_offset.find(offset);
             if (wheel_it != universe.wheel_binding_indices_by_offset.end()) wheel_binding_indices.insert(wheel_it->second.begin(), wheel_it->second.end());
+            auto gobo_it = universe.gobo_binding_indices_by_offset.find(offset);
+            if (gobo_it != universe.gobo_binding_indices_by_offset.end()) gobo_binding_indices.insert(gobo_it->second.begin(), gobo_it->second.end());
+        }
+
+        for (int binding_index : gobo_binding_indices) {
+            if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_bindings.size())) continue;
+            const CompiledGoboSelectionBinding &binding = universe.gobo_bindings[static_cast<size_t>(binding_index)].binding;
+            const EvaluationResult evaluated = evaluate_source_program_by_id(universe.latest_frame, binding.source_program_id);
+            if (!evaluated.valid) continue;
+            const CompiledWheelChannelSet *active_set = nullptr;
+            for (const CompiledWheelChannelSet &set : binding.channel_sets) {
+                if (evaluated.raw_value >= set.dmx_from && evaluated.raw_value <= set.dmx_to) { active_set = &set; break; }
+            }
+            if (active_set == nullptr) continue;
+            const int64_t asset_key = (static_cast<int64_t>(binding.wheel_id) << 32) | static_cast<uint32_t>(active_set->wheel_slot_index);
+            const int32_t asset_id = gobo_asset_by_wheel_slot_.count(asset_key) != 0 ? gobo_asset_by_wheel_slot_[asset_key] : 0;
+            GoboSelectionState &state = gobo_state_by_binding_[binding.binding_id];
+            if (state.initialized && state.slot_index == active_set->wheel_slot_index && state.asset_id == asset_id) continue;
+            state.slot_index = active_set->wheel_slot_index;
+            state.asset_id = asset_id;
+            state.initialized = true;
+            ++state.revision;
+            gobo_rows.push_back({binding.fixture_id, binding.beam_render_target_id, binding.wheel_id, binding.wheel_instance_index, state.slot_index, state.asset_id, binding.mode, state.revision});
+            ++stats_.gobo_selection_rows;
+            ++stats_.gobo_topology_updates;
         }
 
         std::unordered_map<int, ComponentState> pending_transform_by_fixture;
@@ -548,6 +599,15 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             frame.floats.insert(frame.floats.end(), {row.state.beam_half_angle, row.state.beam_angle, row.state.zoom_normalized});
         }
         append_descriptor(frame, VisualSectionType::BeamOptics, optics_count, int_offset, float_offset);
+    }
+    if (!gobo_rows.empty()) {
+        const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
+        const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
+        for (const GoboRow &row : gobo_rows) {
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.beam_target_id, row.wheel_id, row.wheel_instance_index, row.slot_index, row.asset_id, static_cast<int32_t>(row.mode), static_cast<int32_t>(VisualChangeGobo), row.revision});
+            frame.floats.push_back(0.0f);
+        }
+        append_descriptor(frame, VisualSectionType::GoboSelection, static_cast<int32_t>(gobo_rows.size()), int_offset, float_offset);
     }
     frame.stats = stats_;
     return frame;
