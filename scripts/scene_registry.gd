@@ -1,8 +1,11 @@
 extends RefCounted
 class_name SceneRegistry
 
+signal visual_content_changed(revision: int, reason: String)
+
 var _owner_root: Node
 var _fixture_entries: Dictionary = {}
+var _visual_content_revision: int = 0
 
 func configure(owner_root: Node) -> void:
 	_owner_root = owner_root
@@ -76,6 +79,13 @@ func list_fixture_uuids() -> PackedStringArray:
 		uuids.append(fixture_uuid)
 	uuids.sort()
 	return uuids
+
+func notify_visual_content_changed(reason: String) -> void:
+	_visual_content_revision += 1
+	visual_content_changed.emit(_visual_content_revision, reason)
+
+func get_visual_content_revision() -> int:
+	return _visual_content_revision
 
 func get_anchor(uuid: String, anchor_name_or_id: Variant) -> Variant:
 	var entry: Dictionary = _fixture_entries.get(uuid, {})

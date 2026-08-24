@@ -49,6 +49,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Fixed stale 2D layout views after importing an MVR by publishing a new visual-content revision once the replacement scene is fully prepared, allowing dependent views to refresh without requiring a manual edit.
+
 - Fixed fixture models disappearing after MVR import by retaining every extracted GDTF model and gobo resource for the active scene generation. Repeated fixtures share one content cache, and replacing the scene still cleans the previous generation deterministically.
 
 - Fixed repeated gobo image-loading errors by retaining extracted GDTF wheel media for the active scene, reusing media across repeated fixture instances, and reporting genuinely missing references once without publishing stale paths.
