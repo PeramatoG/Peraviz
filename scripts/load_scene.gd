@@ -1,6 +1,8 @@
 @tool
 extends Node3D
 
+signal visual_content_changed(revision: int, reason: String)
+
 @onready var proxies_root: Node3D = $Proxies
 @onready var status_label: Label = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow/StatusLabel
 @onready var picker: FileDialog = $UIRoot/FileDialog
@@ -275,6 +277,7 @@ func _ready() -> void:
 	_beam_params_template_cache.clear()
 	_apply_imported_content_scale()
 	_scene_registry.configure(proxies_root)
+	_scene_registry.visual_content_changed.connect(_on_visual_content_changed)
 	_fixture_row_provider.configure(_loader, _scene_registry)
 	_configure_native_target_registry()
 	_scale_reference_controller = ScaleReferenceToggleScript.new()
@@ -613,6 +616,9 @@ func _open_visual_settings_window() -> void:
 
 func _on_visual_settings_changed(settings: Dictionary) -> void:
 	_apply_visual_settings(settings)
+
+func _on_visual_content_changed(revision: int, reason: String) -> void:
+	visual_content_changed.emit(revision, reason)
 
 func _on_file_selected(path: String) -> void:
 	var extension: String = path.get_extension().to_lower()
