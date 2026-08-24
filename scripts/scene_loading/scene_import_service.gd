@@ -84,7 +84,6 @@ func import_scene(path: String,
 		_print_asset_cache_summary(asset_cache)
 	update_debug_legend.call()
 	refresh_emitter_light_scalars.call()
-	scene_registry.notify_visual_content_changed("mvr_import")
 	return {
 		"ok": true,
 		"error": "",
