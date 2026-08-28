@@ -16,6 +16,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Restored live native Dimmer, Pan, Tilt, and Zoom updates after the compiled runtime setup contract was extended for future gobo motion.
 - Retained extracted GDTF models and gobo media for the active scene so imported fixture assets remain available and repeated fixtures reuse cached content.
 - Corrected contradictory zero-transmission color-filter handling while preserving coherent black filters and diagnostics for malformed data.
 - Fixed Art-Net startup on Windows when another compatible lighting application already uses UDP port 6454.

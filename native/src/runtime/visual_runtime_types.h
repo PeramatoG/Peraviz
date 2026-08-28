@@ -8,6 +8,8 @@
 
 namespace peraviz::runtime {
 
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 6;
+
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
     VisualChangeTransform = 1U << 0,
@@ -320,7 +322,7 @@ struct CompiledRuntimeDiagnostic {
 };
 
 struct CompiledRuntimeScene {
-    int32_t contract_version = 6;
+    int32_t contract_version = kCompiledRuntimeSceneContractVersion;
     int32_t mvr_fixture_patches = 0;
     int32_t gdtf_files_opened = 0;
     int32_t selected_modes_found = 0;

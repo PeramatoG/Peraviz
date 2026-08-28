@@ -22,7 +22,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     peraviz::runtime::CompiledRuntimeScene scene;
     PackedInt32Array integers = packed_scene.get("integers", PackedInt32Array());
     PackedFloat32Array floats = packed_scene.get("floats", PackedFloat32Array());
-    if (integers.size() < 6 || integers[0] < 1 || integers[0] > 4) {
+    if (integers.size() < 6 || integers[0] < 1 || integers[0] > peraviz::runtime::kCompiledRuntimeSceneContractVersion) {
         core_.install_compiled_scene(scene);
         return;
     }
