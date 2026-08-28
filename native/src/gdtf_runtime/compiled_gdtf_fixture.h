@@ -3,9 +3,18 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "gdtf_runtime/gobo_motion_contract.h"
+#include "gdtf_runtime/mode_master.h"
 #include "runtime_storage.h"
 
 namespace peraviz::gdtf_runtime {
+
+struct SubPhysicalUnitRecord {
+    std::string type;
+    std::string physical_unit;
+    double physical_from = 0.0;
+    double physical_to = 0.0;
+};
 
 struct AttributeIdentity {
     int32_t id = 0;
@@ -16,6 +25,12 @@ struct AttributeIdentity {
     int32_t secondary_index = 0;
     bool known_official = false;
     bool custom = false;
+    GoboSemanticKind gobo_kind = GoboSemanticKind::None;
+    GoboControlledScope gobo_scope = GoboControlledScope::None;
+    std::string normalized_name;
+    std::string main_attribute;
+    std::string physical_unit;
+    std::vector<SubPhysicalUnitRecord> subphysical_units;
 };
 
 struct GeometryInstance {
@@ -99,6 +114,8 @@ struct ParsedWheelChannelSet {
     uint32_t effective_dmx_to = 255;
     int32_t wheel_slot_index = 0;
     std::string name;
+    double physical_from = 0.0;
+    double physical_to = 1.0;
 };
 
 struct ChannelProgram {
@@ -120,7 +137,22 @@ struct ChannelProgram {
     int32_t wheel_id = 0;
     int32_t wheel_family_number = 0;
     bool snap = false;
+    std::string dmx_channel_name;
+    int32_t dmx_channel_id = 0;
+    std::string logical_channel_name;
+    std::string node_path;
+    ModeMasterCondition mode_master;
+    std::string mode_from_source;
+    std::string mode_to_source;
     std::vector<ParsedWheelChannelSet> wheel_channel_sets;
+};
+
+struct ParsedDmxChannel {
+    int32_t id = 0;
+    std::string node_name;
+    std::vector<int32_t> dmx_offsets_1_based;
+    int32_t bit_depth = 8;
+    int32_t source_program_id = 0;
 };
 
 struct RuntimeDiagnostic {
@@ -133,7 +165,7 @@ struct RuntimeDiagnostic {
 struct CompiledGdtfFixtureType {
     std::string fixture_type_name;
     std::string dmx_mode_name;
-    int32_t semantic_contract_version = 1;
+    int32_t semantic_contract_version = 2;
     int32_t gdtf_files_opened = 0;
     int32_t selected_modes_found = 0;
     int32_t dmxchannels_containers_found = 0;
@@ -152,6 +184,7 @@ struct CompiledGdtfFixtureType {
     std::vector<GeometryInstance> geometries;
     std::vector<ComponentBinding> components;
     std::vector<ChannelProgram> channel_programs;
+    std::vector<ParsedDmxChannel> dmx_channels;
     std::vector<RuntimeDiagnostic> diagnostics;
     runtime_storage::RuntimeDirectoryLease asset_cache_lease;
 };

@@ -2,6 +2,7 @@
 #include "runtime/color_science.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
+#include "runtime/gobo_motion_evaluator.h"
 #include "archive/zip_archive.h"
 
 #include <cmath>
@@ -10,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <set>
 #include <vector>
 
 namespace {
@@ -213,6 +215,7 @@ int test_parser_owned_runtime_scene() {
         if (program.semantic == peraviz::runtime::CompiledSemantic::Pan) {
             saw_pan = true;
             if (program.sources.size() < 2 || ((program.sources[0].address != 3 || program.sources[1].address != 4) && (program.sources[0].address != 103 || program.sources[1].address != 104))) return fail("Unexpected Pan coarse/fine source addresses");
+            if (program.sources[0].byte_order != 0 || program.sources[1].byte_order != 1) return fail("Unexpected Pan coarse/fine byte order");
             if (program.dmx_from != 0 || program.dmx_to != 65535) return fail("Unexpected Pan full-resolution DMX range");
             if (std::fabs(program.physical_from + 270.0) > 0.001 || std::fabs(program.physical_to - 270.0) > 0.001) return fail("Unexpected Pan physical range");
         }
@@ -224,31 +227,67 @@ int test_parser_owned_runtime_scene() {
         if (program.semantic == peraviz::runtime::CompiledSemantic::Tilt) {
             saw_tilt = true;
             if (program.sources.size() < 2 || ((program.sources[0].address != 5 || program.sources[1].address != 6) && (program.sources[0].address != 105 || program.sources[1].address != 106))) return fail("Unexpected Tilt coarse/fine source addresses");
+            if (program.sources[0].byte_order != 0 || program.sources[1].byte_order != 1) return fail("Unexpected Tilt coarse/fine byte order");
             if (program.dmx_from != 0 || program.dmx_to != 65535) return fail("Unexpected Tilt full-resolution DMX range");
             if (std::fabs(program.physical_from + 135.0) > 0.001 || std::fabs(program.physical_to - 135.0) > 0.001) return fail("Unexpected Tilt physical range");
         }
     }
     if (!saw_dimmer || !saw_pan || !saw_tilt || !saw_zoom) return fail("Expected real Dimmer/Pan/Tilt/Zoom ChannelFunction programs");
+    for (const auto &program : scene.source_programs) {
+        if (program.semantic != peraviz::runtime::CompiledSemantic::Dimmer && program.semantic != peraviz::runtime::CompiledSemantic::Pan && program.semantic != peraviz::runtime::CompiledSemantic::Tilt) continue;
+        if (program.activation.target_kind != peraviz::gdtf_runtime::ModeMasterTargetKind::None || !program.activation.valid) return fail("Expected ordinary DPT programs to retain valid unconditional activation");
+    }
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
     std::vector<uint8_t> dmx(160, 0);
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    if (runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected initial parsed DPT state to emit rows");
     dmx[0] = 255;
+    dmx[1] = 255;
+    dmx[2] = 255;
     dmx[3] = 0xff;
     dmx[4] = 0xff;
     dmx[5] = 0x80;
     dmx[6] = 0x00;
+    dmx[7] = 255;
+    dmx[100] = 128;
+    dmx[103] = 0x40;
+    dmx[104] = 0x00;
+    dmx[105] = 0xff;
+    dmx[106] = 0xff;
+    dmx[107] = 64;
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     const auto visual = runtime.consume_latest_visual_frame();
     if (visual.descriptors.size() < peraviz::runtime::kVisualSectionDescriptorStride * 3) return fail("Expected Transform, Intensity, and BeamOptics sections");
     bool has_transform = false;
     bool has_intensity = false;
     bool has_optics = false;
+    int transform_rows = 0;
+    int intensity_rows = 0;
+    std::set<int32_t> transform_fixtures;
+    std::vector<float> dimmer_values;
     for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= visual.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
         has_transform = has_transform || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GeometryTransform);
         has_intensity = has_intensity || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity);
         has_optics = has_optics || visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::BeamOptics);
+        const int row_count = visual.descriptors[index + 1];
+        const int int_offset = visual.descriptors[index + 2];
+        const int float_offset = visual.descriptors[index + 3];
+        if (visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GeometryTransform)) {
+            transform_rows = row_count;
+            for (int row = 0; row < row_count; ++row) transform_fixtures.insert(visual.integers[static_cast<size_t>(int_offset + row * 4)]);
+        }
+        if (visual.descriptors[index] == static_cast<int32_t>(peraviz::runtime::VisualSectionType::EmitterIntensity)) {
+            intensity_rows = row_count;
+            for (int row = 0; row < row_count; ++row) dimmer_values.push_back(visual.floats[static_cast<size_t>(float_offset + row * 5)]);
+        }
     }
     if (!has_transform || !has_intensity || !has_optics) return fail("Expected transform, intensity, and optics output sections");
+    if (transform_rows != 2 || intensity_rows != 2 || transform_fixtures.size() != 2) return fail("Expected independent DPT rows for two fixture patches");
+    std::sort(dimmer_values.begin(), dimmer_values.end());
+    if (dimmer_values.size() != 2 || std::fabs(dimmer_values[0] - 0.5f) > 0.001f || std::fabs(dimmer_values[1] - 1.0f) > 0.001f) return fail("Expected independent normalized dimmer values for both fixture patches");
+    const auto stats = runtime.stats();
+    if (stats.packets_submitted < 2 || stats.universes_considered < 2 || stats.changed_transform < 2 || stats.changed_dimmer < 2) return fail("Expected live DPT submission, dirty evaluation, and emitted-row counters");
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) return fail("Expected unchanged relevant DMX to produce no dirty rows");
     return 0;
@@ -1174,6 +1213,8 @@ bool test_one_physical_wheel_select_index_exclusive() {
 
 bool test_native_seated_gobo_selection_section();
 
+bool test_gobo_motion_setup_contract();
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -1198,5 +1239,6 @@ int main() {
     if (!test_one_physical_wheel_select_index_exclusive()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     if (!test_native_seated_gobo_selection_section()) return 1;
+    if (!test_gobo_motion_setup_contract()) return 1;
     return 0;
 }

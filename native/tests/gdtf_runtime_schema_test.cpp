@@ -1,9 +1,12 @@
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
+#include "gdtf_runtime/gobo_motion_contract.h"
+#include "gdtf_runtime/mode_master.h"
 #include "runtime/visual_frame_schema.h"
 #include "runtime/wheel_runtime_core.h"
 
 #include <cmath>
 #include <iostream>
+#include <set>
 
 namespace {
 
@@ -25,6 +28,92 @@ int test_two_gobo_wheels_remain_independent() {
     if (fixture.attributes[2].canonical_family != "Gobo" || fixture.attributes[2].primary_index != 2) {
         return fail("Gobo2 was not normalized as wildcard family Gobo index 2.");
     }
+    return 0;
+}
+
+// Verifies every official gobo motion identity remains exact and wheel-indexed.
+int test_exact_gobo_motion_identities() {
+    using namespace peraviz::gdtf_runtime;
+    const char *names[] = {"Gobo1", "Gobo1SelectSpin", "Gobo1SelectShake", "Gobo1SelectEffects", "Gobo1WheelIndex", "Gobo1WheelSpin", "Gobo1WheelShake", "Gobo1WheelRandom", "Gobo1WheelAudio", "Gobo1Pos", "Gobo1PosRotate", "Gobo1PosShake"};
+    std::set<GoboSemanticKind> kinds;
+    for (const char *name : names) {
+        const auto parsed = parse_gobo_semantic(name);
+        if (!parsed.recognized || parsed.wheel_number != 1 || !kinds.insert(parsed.kind).second) return fail("Expected a distinct exact Gobo1 semantic identity.");
+    }
+    const auto second = parse_gobo_semantic("gObO2pOsRoTaTe");
+    if (!second.recognized || second.wheel_number != 2 || second.normalized_name != "Gobo2PosRotate") return fail("Expected case-insensitive normalized Gobo2 identity.");
+    if (parse_gobo_semantic("GoboPosRotate").recognized || parse_gobo_semantic("Gobo1Rotate").recognized) return fail("Expected shorthand and legacy aliases to remain outside the exact contract.");
+    const auto rotate_alias = normalize_attribute_identity(100, "Gobo1Rotate");
+    const auto index_alias = normalize_attribute_identity(101, "Gobo1Index");
+    if (rotate_alias.known_official || index_alias.known_official || rotate_alias.gobo_kind != GoboSemanticKind::None || index_alias.gobo_kind != GoboSemanticKind::None) return fail("Expected legacy gobo aliases to remain non-official and non-authoritative.");
+    return 0;
+}
+
+// Verifies normative GDTF DMXValue mirroring, shifting, and validation.
+int test_dmx_value_conversion() {
+    using namespace peraviz::gdtf_runtime;
+    ParsedDmxValue value;
+    uint32_t converted = 0;
+    if (!parse_gdtf_dmx_value("255/1", value) || !convert_gdtf_dmx_value(value, 2, converted) || converted != 65535) return fail("Expected byte-mirrored 8-to-16-bit conversion.");
+    if (!parse_gdtf_dmx_value("255/1s", value) || !convert_gdtf_dmx_value(value, 2, converted) || converted != 65280) return fail("Expected byte-shifted 8-to-16-bit conversion.");
+    if (!parse_gdtf_dmx_value("128/1", value) || !convert_gdtf_dmx_value(value, 1, converted) || converted != 128) return fail("Expected native 8-bit conversion.");
+    if (parse_gdtf_dmx_value("256/1", value) || parse_gdtf_dmx_value("12/0", value) || parse_gdtf_dmx_value("broken", value)) return fail("Expected malformed DMXValue forms to be rejected.");
+    return 0;
+}
+
+// Verifies structured ModeMaster paths, defaults, malformed values, and reversed ranges.
+int test_mode_master_node_resolution() {
+    using namespace peraviz::gdtf_runtime;
+    const std::vector<ModeMasterNodeRecord> nodes = {
+        {ModeMasterTargetKind::DmxChannel, 7, 7, 11, 2, "Beam_Gobo1"},
+        {ModeMasterTargetKind::ChannelFunction, 9, 8, 12, 1, "Beam_Gobo1Pos.Gobo1Pos.IndexFn"},
+    };
+    ModeMasterCondition condition;
+    std::string diagnostic;
+    if (!resolve_mode_master_condition("Beam_Gobo1", "", "", nodes, condition, diagnostic) || condition.from != 0 || condition.to != 0 || condition.master_channel_id != 7) return fail("Expected exact DMXChannel Node resolution with official defaults.");
+    if (!resolve_mode_master_condition("Beam_Gobo1", "", "255/1s", nodes, condition, diagnostic) || condition.to != 65280) return fail("Expected omitted ModeFrom and shifted ModeTo conversion.");
+    if (!resolve_mode_master_condition("Beam_Gobo1", "255/1", "", nodes, condition, diagnostic) || condition.from != 65535 || condition.to != 0) {
+        if (diagnostic != "PVZ-GDTF-MODEMASTER-RANGE-INVALID") return fail("Expected omitted ModeTo to apply before reversed-range validation.");
+    }
+    if (resolve_mode_master_condition("IndexFn", "0/1", "1/1", nodes, condition, diagnostic) || diagnostic != "PVZ-GDTF-MODEMASTER-UNRESOLVED") return fail("Expected suffix-only Node links to remain unresolved.");
+    if (resolve_mode_master_condition("Beam_Gobo1..IndexFn", "0/1", "1/1", nodes, condition, diagnostic) || diagnostic != "PVZ-GDTF-MODEMASTER-NODE-MALFORMED") return fail("Expected malformed Node paths to be diagnosed.");
+    if (resolve_mode_master_condition("Beam_Gobo1", "bad", "1/1", nodes, condition, diagnostic) || diagnostic != "PVZ-GDTF-MODEMASTER-RANGE-INVALID") return fail("Expected explicit malformed ModeFrom to be diagnosed.");
+    return 0;
+}
+
+// Verifies overlapping functions are gated inclusively by a DMXChannel ModeMaster.
+int test_mode_master_channel_gating() {
+    using namespace peraviz::gdtf_runtime;
+    std::vector<ChannelFunctionActivation> functions = {
+        {1, 0, 0, 255, {}},
+        {2, 1, 0, 255, {ModeMasterTargetKind::DmxChannel, 0, 1, 0, 79, 1, "Master", true}},
+        {3, 1, 0, 255, {ModeMasterTargetKind::DmxChannel, 0, 1, 80, 159, 1, "Master", true}},
+        {4, 1, 0, 255, {ModeMasterTargetKind::DmxChannel, 0, 1, 160, 255, 1, "Master", true}},
+    };
+    std::vector<uint32_t> values = {79, 127};
+    if (!is_channel_function_active(2, functions, values) || is_channel_function_active(3, functions, values)) return fail("Expected inclusive index ModeMaster range.");
+    values[0] = 80;
+    if (is_channel_function_active(2, functions, values) || !is_channel_function_active(3, functions, values)) return fail("Expected changing only the master to select rotation.");
+    values[0] = 255;
+    if (!is_channel_function_active(4, functions, values)) return fail("Expected inclusive shake upper boundary.");
+    return 0;
+}
+
+// Verifies ChannelFunction cascades activate safely and cycles are diagnosed.
+int test_mode_master_cascade_and_invalid_graphs() {
+    using namespace peraviz::gdtf_runtime;
+    std::vector<ChannelFunctionActivation> cascade = {
+        {1, 0, 0, 255, {}},
+        {2, 1, 0, 255, {ModeMasterTargetKind::DmxChannel, 0, 1, 10, 20, 1, "Master", true}},
+        {3, 2, 0, 255, {ModeMasterTargetKind::ChannelFunction, 2, 2, 100, 200, 1, "Function2", true}},
+    };
+    std::string diagnostic;
+    if (!validate_mode_master_graph(cascade, diagnostic) || !is_channel_function_active(3, cascade, {15, 150, 120})) return fail("Expected a valid ChannelFunction dependency cascade.");
+    if (is_channel_function_active(3, cascade, {21, 150, 120})) return fail("Expected cascade to require the referenced function to be active.");
+    cascade[1].mode_master = {ModeMasterTargetKind::ChannelFunction, 3, 3, 0, 255, 1, "Function3", true};
+    if (validate_mode_master_graph(cascade, diagnostic) || diagnostic.find("PVZ-GDTF-MODEMASTER-CYCLE") == std::string::npos) return fail("Expected deterministic cycle diagnosis.");
+    cascade[1].mode_master = {ModeMasterTargetKind::Invalid, 0, 0, 0, 0, 1, "Missing", false};
+    if (validate_mode_master_graph(cascade, diagnostic) || diagnostic.find("PVZ-GDTF-MODEMASTER-UNRESOLVED") == std::string::npos) return fail("Expected deterministic unresolved dependency diagnosis.");
     return 0;
 }
 
@@ -126,6 +215,11 @@ int test_deterministic_wheel_random() {
 // Runs the native GDTF runtime schema foundation tests.
 int main() {
     if (int result = test_two_gobo_wheels_remain_independent()) return result;
+    if (int result = test_exact_gobo_motion_identities()) return result;
+    if (int result = test_dmx_value_conversion()) return result;
+    if (int result = test_mode_master_node_resolution()) return result;
+    if (int result = test_mode_master_channel_gating()) return result;
+    if (int result = test_mode_master_cascade_and_invalid_graphs()) return result;
     if (int result = test_stale_schema_generation_is_rejected()) return result;
     if (int result = test_section_bounds_are_validated()) return result;
     if (int result = test_wheel_protocol_schema_is_versioned()) return result;

@@ -16,6 +16,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Restored live native Dimmer, Pan, Tilt, and Zoom updates after the compiled runtime setup contract was extended for future gobo motion.
 - Retained extracted GDTF models and gobo media for the active scene so imported fixture assets remain available and repeated fixtures reuse cached content.
 - Corrected contradictory zero-transmission color-filter handling while preserving coherent black filters and diagnostics for malformed data.
 - Fixed Art-Net startup on Windows when another compatible lighting application already uses UDP port 6454.
@@ -31,3 +32,4 @@ Changes since the previous Peraviz release.
 
 - Aligned the native extension with the pinned Godot 4.7 compatibility contract and strengthened test inventory, native-class registration, and headless test validation.
 - Added session-owned RAII storage for extracted runtime assets and removed generated Godot editor metadata from version control.
+- Added a production-integrated native GDTF gobo scalar contract with exact semantic identities, generic structured mode dependencies, ChannelSet physical ranges, and standards-based node defaults as groundwork for later visible gobo motion.

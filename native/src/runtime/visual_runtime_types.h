@@ -3,8 +3,12 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "gdtf_runtime/gobo_motion_contract.h"
+#include "gdtf_runtime/mode_master.h"
 
 namespace peraviz::runtime {
+
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 6;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
@@ -135,6 +139,8 @@ struct CompiledWheelChannelSet {
     uint32_t dmx_to = 255;
     int32_t wheel_slot_index = 0;
     std::string name;
+    double physical_from = 0.0;
+    double physical_to = 1.0;
 };
 
 struct CompiledWheelTargetBinding {
@@ -178,6 +184,33 @@ struct CompiledGoboSelectionBinding {
     std::vector<CompiledWheelChannelSet> channel_sets;
 };
 
+struct CompiledSubPhysicalUnit {
+    double physical_from = 0.0;
+    double physical_to = 1.0;
+    std::string physical_unit = "None";
+    bool present = false;
+};
+
+struct CompiledGoboMotionBinding {
+    int32_t binding_id = 0;
+    int32_t fixture_id = 0;
+    int32_t beam_render_target_id = 0;
+    int32_t wheel_id = 0;
+    int32_t wheel_instance_index = 0;
+    int32_t source_program_id = 0;
+    gdtf_runtime::GoboSemanticKind semantic_kind = gdtf_runtime::GoboSemanticKind::None;
+    gdtf_runtime::GoboControlledScope controlled_scope = gdtf_runtime::GoboControlledScope::None;
+    double physical_from = 0.0;
+    double physical_to = 1.0;
+    std::string physical_unit;
+    CompiledSubPhysicalUnit placement_offset;
+    CompiledSubPhysicalUnit amplitude;
+    std::vector<CompiledWheelChannelSet> channel_sets;
+    gdtf_runtime::ModeMasterCondition mode_master;
+    bool scalar_evaluable = false;
+    bool rendered = false;
+};
+
 struct CompiledDmxSourceProgram {
     int32_t program_id = 0;
     CompiledSemantic semantic = CompiledSemantic::Unknown;
@@ -193,6 +226,9 @@ struct CompiledDmxSourceProgram {
     int32_t emitter_resource_id = 0;
     int32_t filter_resource_id = 0;
     std::string color_space_name;
+    int32_t parser_program_id = 0;
+    int32_t dmx_channel_id = 0;
+    gdtf_runtime::ModeMasterCondition activation;
 };
 
 enum class CompiledContributorOperation : int32_t {
@@ -286,7 +322,7 @@ struct CompiledRuntimeDiagnostic {
 };
 
 struct CompiledRuntimeScene {
-    int32_t contract_version = 4;
+    int32_t contract_version = kCompiledRuntimeSceneContractVersion;
     int32_t mvr_fixture_patches = 0;
     int32_t gdtf_files_opened = 0;
     int32_t selected_modes_found = 0;
@@ -311,6 +347,7 @@ struct CompiledRuntimeScene {
     std::vector<CompiledWheelTargetBinding> wheel_bindings;
     std::vector<CompiledGoboAsset> gobo_assets;
     std::vector<CompiledGoboSelectionBinding> gobo_bindings;
+    std::vector<CompiledGoboMotionBinding> gobo_motion_bindings;
     std::vector<CompiledBeamOpticalProfile> beam_profiles;
     std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };
