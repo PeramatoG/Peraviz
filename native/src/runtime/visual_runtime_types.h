@@ -137,6 +137,8 @@ struct CompiledWheelChannelSet {
     uint32_t dmx_to = 255;
     int32_t wheel_slot_index = 0;
     std::string name;
+    double physical_from = 0.0;
+    double physical_to = 1.0;
 };
 
 struct CompiledWheelTargetBinding {
@@ -318,7 +320,7 @@ struct CompiledRuntimeDiagnostic {
 };
 
 struct CompiledRuntimeScene {
-    int32_t contract_version = 5;
+    int32_t contract_version = 6;
     int32_t mvr_fixture_patches = 0;
     int32_t gdtf_files_opened = 0;
     int32_t selected_modes_found = 0;

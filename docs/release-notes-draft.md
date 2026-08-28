@@ -31,4 +31,4 @@ Changes since the previous Peraviz release.
 
 - Aligned the native extension with the pinned Godot 4.7 compatibility contract and strengthened test inventory, native-class registration, and headless test validation.
 - Added session-owned RAII storage for extracted runtime assets and removed generated Godot editor metadata from version control.
-- Added a production-integrated native GDTF gobo scalar contract with exact semantic identities, structured mode dependencies, and physical metadata as groundwork for later visible gobo motion.
+- Added a production-integrated native GDTF gobo scalar contract with exact semantic identities, generic structured mode dependencies, ChannelSet physical ranges, and standards-based node defaults as groundwork for later visible gobo motion.

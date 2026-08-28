@@ -13,6 +13,7 @@
 #include <cmath>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace peraviz::gdtf_runtime {
 namespace {
@@ -402,6 +403,8 @@ std::vector<ParsedWheelChannelSet> parse_wheel_channel_sets(tinyxml2::XMLElement
                                                             size_t source_count,
                                                             uint32_t function_dmx_from,
                                                             uint32_t function_dmx_to,
+                                                            double function_physical_from,
+                                                            double function_physical_to,
                                                             CompiledGdtfFixtureType &fixture,
                                                             const ParsedWheel *wheel) {
     struct CandidateSet {
@@ -409,6 +412,8 @@ std::vector<ParsedWheelChannelSet> parse_wheel_channel_sets(tinyxml2::XMLElement
         int32_t wheel_slot_index = 0;
         int declared_order = 0;
         std::string name;
+        double physical_from = 0.0;
+        double physical_to = 1.0;
     };
     std::vector<CandidateSet> candidates;
     int declared_order = 0;
@@ -416,6 +421,10 @@ std::vector<ParsedWheelChannelSet> parse_wheel_channel_sets(tinyxml2::XMLElement
         CandidateSet candidate;
         candidate.declared_order = declared_order++;
         candidate.name = dmx::trim_ascii(read_attr(set_node, "Name", "name"));
+        candidate.physical_from = function_physical_from;
+        candidate.physical_to = function_physical_to;
+        read_float_attr(set_node, "PhysicalFrom", "physicalfrom", candidate.physical_from);
+        read_float_attr(set_node, "PhysicalTo", "physicalto", candidate.physical_to);
         if (!parse_dmx_value(read_attr(set_node, "DMXFrom", "dmxfrom"), source_count, candidate.dmx_from)) {
             fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-CHANNELSET-DMXFROM-MISSING", "warning", "ChannelSet is missing standard DMXFrom and cannot be compiled.", candidate.name});
             continue;
@@ -453,6 +462,8 @@ std::vector<ParsedWheelChannelSet> parse_wheel_channel_sets(tinyxml2::XMLElement
         set.effective_dmx_to = static_cast<uint32_t>(std::min<uint64_t>(next_from - 1ULL, function_dmx_to));
         set.wheel_slot_index = candidate.wheel_slot_index;
         set.name = candidate.name;
+        set.physical_from = candidate.physical_from;
+        set.physical_to = candidate.physical_to;
         if (set.effective_dmx_to < set.declared_dmx_from) {
             fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-CHANNELSET-RANGE-INVALID", "warning", "ChannelSet effective range is outside the parent ChannelFunction after clamping.", candidate.name});
             continue;
@@ -574,6 +585,8 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
             ++fixture.logical_channels_found;
             const std::string logical_attribute = dmx::trim_ascii(read_attr(logical, "Attribute", "attribute"));
             std::vector<tinyxml2::XMLElement *> functions = collect_logical_channel_functions(logical);
+            std::unordered_map<tinyxml2::XMLElement *, size_t> declared_function_numbers;
+            for (size_t index = 0; index < functions.size(); ++index) declared_function_numbers[functions[index]] = index + 1;
             std::sort(functions.begin(), functions.end(), [&](tinyxml2::XMLElement *lhs, tinyxml2::XMLElement *rhs) {
                 uint32_t lhs_from = 0;
                 uint32_t rhs_from = 0;
@@ -583,6 +596,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
             });
             uint32_t previous_to = 0;
             bool has_previous = false;
+            std::unordered_set<std::string> function_node_names;
             for (size_t function_index = 0; function_index < functions.size(); ++function_index) {
                 tinyxml2::XMLElement *fn = functions[function_index];
                 ++fixture.channel_functions_found;
@@ -624,7 +638,11 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 const bool has_physical = read_float_attr(fn, "PhysicalFrom", "physicalfrom", physical_from) && read_float_attr(fn, "PhysicalTo", "physicalto", physical_to);
                 if (!has_physical) fixture.diagnostics.push_back({"PVZ-GDTF-PHYSICAL-MISSING", "warning", "ChannelFunction is missing PhysicalFrom/PhysicalTo.", attribute_name});
                 const std::string read_function_name = dmx::trim_ascii(read_attr(fn, "Name", "name"));
-                const std::string function_name = read_function_name.empty() ? attribute_name : read_function_name;
+                const std::string function_name = read_function_name.empty() ? attribute_name + " " + std::to_string(declared_function_numbers[fn]) : read_function_name;
+                if (!function_node_names.insert(function_name).second) {
+                    fixture.diagnostics.push_back({"PVZ-GDTF-CHANNELFUNCTION-NODE-DUPLICATE", "error", "ChannelFunction node name is not unique inside its LogicalChannel.", dmx_channel_node_name + "." + logical_attribute + "." + function_name});
+                    continue;
+                }
                 const std::string wheel_link = dmx::trim_ascii(read_attr(fn, "Wheel", "wheel"));
                 const int32_t resolved_wheel_id = resolve_wheel_link(fixture, wheel_link);
                 const ParsedWheel *resolved_wheel = nullptr;
@@ -663,7 +681,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                     program.mode_from_source = read_attr(fn, "ModeFrom", "modefrom");
                     program.mode_to_source = read_attr(fn, "ModeTo", "modeto");
                 }
-                if (program.wheel_id > 0) program.wheel_channel_sets = parse_wheel_channel_sets(fn, offsets.size(), dmx_from, dmx_to, fixture, resolved_wheel);
+                if (program.wheel_id > 0) program.wheel_channel_sets = parse_wheel_channel_sets(fn, offsets.size(), dmx_from, dmx_to, physical_from, physical_to, fixture, resolved_wheel);
                 if (program.emitter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-EMITTER-LINK-MISSING", "warning", "ChannelFunction references an unknown Emitter.", attribute_name});
                 if (program.filter_resource_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-FILTER-LINK-MISSING", "warning", "ChannelFunction references an unknown Filter.", attribute_name});
                 fixture.channel_programs.push_back(program);

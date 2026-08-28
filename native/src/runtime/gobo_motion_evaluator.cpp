@@ -48,10 +48,28 @@ EvaluatedGoboScalar evaluate_gobo_motion_scalar(const CompiledGoboMotionBinding 
     const GoboSourceValue *value = program ? find_value(values, program->program_id) : nullptr;
     if (!program || !value || !binding.scalar_evaluable || !activation_is_active(*program, programs, values, 0)) return result;
     result.raw_value = value->raw_value;
-    const uint32_t span = program->dmx_to - program->dmx_from;
-    result.normalized_value = span == 0 ? 0.0 : static_cast<double>(value->raw_value - program->dmx_from) / static_cast<double>(span);
+    uint32_t scalar_from = program->dmx_from;
+    uint32_t scalar_to = program->dmx_to;
+    double physical_from = binding.physical_from;
+    double physical_to = binding.physical_to;
+    if (binding.semantic_kind == gdtf_runtime::GoboSemanticKind::SelectSpin || binding.semantic_kind == gdtf_runtime::GoboSemanticKind::SelectShake) {
+        bool found_channel_set = binding.channel_sets.empty();
+        for (const CompiledWheelChannelSet &set : binding.channel_sets) {
+            if (value->raw_value < set.dmx_from || value->raw_value > set.dmx_to) continue;
+            scalar_from = set.dmx_from;
+            scalar_to = set.dmx_to;
+            physical_from = set.physical_from;
+            physical_to = set.physical_to;
+            result.wheel_slot_index = set.wheel_slot_index;
+            found_channel_set = true;
+            break;
+        }
+        if (!found_channel_set) return result;
+    }
+    const uint32_t span = scalar_to - scalar_from;
+    result.normalized_value = span == 0 ? 0.0 : static_cast<double>(value->raw_value - scalar_from) / static_cast<double>(span);
     result.normalized_value = std::clamp(result.normalized_value, 0.0, 1.0);
-    result.physical_value = binding.physical_from + (binding.physical_to - binding.physical_from) * result.normalized_value;
+    result.physical_value = physical_from + (physical_to - physical_from) * result.normalized_value;
     result.active = true;
     return result;
 }

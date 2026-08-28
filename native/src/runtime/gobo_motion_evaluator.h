@@ -17,6 +17,7 @@ struct EvaluatedGoboScalar {
     uint32_t raw_value = 0;
     double normalized_value = 0.0;
     double physical_value = 0.0;
+    int32_t wheel_slot_index = 0;
     std::string physical_unit;
     bool active = false;
 };

@@ -114,6 +114,8 @@ struct ParsedWheelChannelSet {
     uint32_t effective_dmx_to = 255;
     int32_t wheel_slot_index = 0;
     std::string name;
+    double physical_from = 0.0;
+    double physical_to = 1.0;
 };
 
 struct ChannelProgram {
