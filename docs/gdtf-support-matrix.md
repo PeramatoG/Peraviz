@@ -22,12 +22,13 @@ This is the single capability source of truth for GDTF semantics in the active p
 | CIE / CCT / Tint | Partial | Native CIE xyY, CTO/CTB/CTC, and Tint paths for supported physical records and documented approximations; calibrated spectral/CRI rendering and complete gamut handling remain deferred. |
 | Color wheel selection/index | Partial | Seated selection and indexed adjacent-slot metadata, native target-local color composition, and `WheelSelection` rows. Indexed spatial split rendering, spin/random/audio motion, and animation wheels are unsupported. |
 | Static seated `Gobo(n)` | Partial | Exact `WheelSlotIndex`, seated ChannelSet windows, native `GoboSelection`, open-slot clearing, cached masks, and bounded static multi-wheel binary composition. See [Gobo control](GDTF_GOBO_CONTROL.md). |
-| Gobo motion | Unsupported/deferred | `Gobo(n)SelectSpin`, `Gobo(n)SelectShake`, `Gobo(n)SelectEffects`, `Gobo(n)WheelIndex`, `Gobo(n)WheelSpin`, `Gobo(n)WheelShake`, `Gobo(n)WheelRandom`, `Gobo(n)WheelAudio`, `Gobo(n)Pos`, `Gobo(n)PosRotate`, and `Gobo(n)PosShake` are not active. Independently moving multi-wheel composition is also unsupported. |
+| Gobo motion | Native semantic contract only; rendering deferred | Exact official identities, wheel numbers, scopes, physical ranges, wheel/ChannelSet links, and relevant Attribute metadata are preserved for native evaluation. No indexed, spin, shake, random, or audio motion is rendered. |
 | Beam geometry profile | Partial | Setup-time BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, and ColorTemperature are retained for current renderer use. Advanced photometry is not complete. |
 | Focus / Iris / Frost | Unsupported/deferred | No authoritative live renderer contract. |
 | Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
 | Shutter / strobe | Parsed only | Names may be classified or represented in generic structures; no verified production shutter/strobe rendering contract is claimed. |
-| ModeMaster / Relations | Unsupported/deferred | Not evaluated by the compiled production runtime. |
+| ModeMaster | Partial/native | Selected-mode ChannelFunction dependencies resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, and evaluate cycle-safely. Malformed or unresolved graphs are diagnosed during compilation. |
+| Relations | Unsupported/deferred | GDTF Relations are not parsed or evaluated by the compiled production runtime. |
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
 | Unsupported attributes | Parsed only or unsupported | Preserve/report data when possible; never infer support from legacy Godot helpers or generic enum values. |
 

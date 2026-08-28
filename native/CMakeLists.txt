@@ -139,6 +139,8 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gobo_motion_contract.cpp
+        src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
     )
@@ -208,6 +210,8 @@ if(BUILD_TESTING)
         src/coordinate_mapper.cpp
         src/gdtf_scene_builder.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gobo_motion_contract.cpp
+        src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/mvr_scene_loader.cpp
@@ -310,6 +314,8 @@ if(BUILD_TESTING)
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gobo_motion_contract.cpp
+        src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/dmx/fixture_dmx_binding.cpp
@@ -335,6 +341,8 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_gdtf_runtime_schema_tests
         tests/gdtf_runtime_schema_test.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
+        src/gdtf_runtime/gobo_motion_contract.cpp
+        src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
