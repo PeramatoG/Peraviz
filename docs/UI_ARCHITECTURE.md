@@ -120,3 +120,5 @@ Every new UI surface must be assigned to one of these tiers.
 - A new user can load and inspect an MVR scene without dismissing intrusive overlays.
 - Debug instrumentation is not shown unless explicitly enabled.
 - Enabling advanced/debug views does not permanently pollute default startup state.
+- Every new surface has an explicit User, Advanced, or Debug tier and a clear owning panel, window, controller, or policy.
+- Persistent controls are justified by the core workflow; optional and diagnostic controls remain opt-in.

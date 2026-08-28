@@ -29,9 +29,9 @@ When contributing code, preserve these boundaries:
 - Godot owns UI, scene presentation, renderer resources, interaction, and applying prepared render data.
 - Do not add new live GDTF or DMX semantic parsing to Godot.
 - Do not reintroduce the removed fixed visual-frame row.
-- Do not remove transitional setup APIs unless the task explicitly targets that runtime migration.
+- Do not make transitional compatibility APIs authoritative for native-supported live domains.
 
-The current production setup still uses Godot-built fixture binding data and native setup calls. Do not write documentation or tests that claim parser-owned compiled GDTF programs already drive the visual runtime.
+For supported live domains, parser-owned selected-mode GDTF data is compiled into `CompiledRuntimeScene` and evaluated in native C++. Godot consumes `SectionedVisualFrame` output and applies prepared state to registered renderer targets. Transitional compatibility paths may remain for unsupported or inspection workflows, but they are not production semantic authority.
 
 ## GDTF, MVR, and `.pvz` data
 
@@ -46,7 +46,6 @@ The current production setup still uses Godot-built fixture binding data and nat
 - Prefer small focused helpers with clear ownership.
 - Keep generated/build/cache files out of Git.
 - For C++ changes, add a concise English comment above each new or substantially changed function definition.
-- Add comments in other languages only when they clarify non-obvious behavior.
 - Keep comments and developer-facing text in English.
 - Do not wrap imports in try/catch blocks.
 
@@ -87,7 +86,7 @@ python3 .github/scripts/run_gdscript_tests.py --godot "$GODOT_BIN" --project . -
 git diff --check
 ```
 
-`project.godot` currently declares Godot 4.7 compatibility, so use the current 4.7 stable executable. See `docs/developer/ci_test_audit.md` for prerequisites and evidence.
+`project.godot` currently declares Godot 4.7 compatibility, so use the pinned runtime documented in `README.md` and `.github/workflows/ci-tests.yml`.
 
 Maintainers can manually run **CI Debug Tests** with the `cache_warm` input enabled to prepare vcpkg download/binary, sccache, and immutable Godot distribution caches. Cache warming always resolves and verifies the repository's current default-branch commit; it cannot publish shared caches from a requested pull-request ref. Normal pull-request runs never use this shortcut and always execute the complete test suite.
 

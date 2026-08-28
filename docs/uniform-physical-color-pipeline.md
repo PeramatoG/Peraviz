@@ -57,7 +57,7 @@ Godot does not receive CIE data, spectra, emitter/filter IDs, Kelvin values, Tin
 
 ## Deferred features
 
-Spatial split rendering on beam/lens/footprint, WheelSpin, WheelRandom, WheelAudio, gobos, animation wheels, prisms, HSB controls, full gamut clipping, calibrated spectral rendering, and CRI simulation remain unsupported or deferred for runtime rendering in this stage.
+Spatial color-wheel split rendering on beam/lens/footprint, color-wheel motion/audio, animation wheels, prisms, HSB controls, full gamut clipping, calibrated spectral rendering, and CRI simulation remain unsupported or deferred. Bounded static seated gobo support is documented in [GDTF gobo control](GDTF_GOBO_CONTROL.md); gobo motion, moving multi-wheel composition, and surface projection remain deferred.
 
 ### Color-wheel transmission compatibility
 

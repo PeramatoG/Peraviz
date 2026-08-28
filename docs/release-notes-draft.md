@@ -4,60 +4,30 @@ Changes since the previous Peraviz release.
 
 ## Highlights
 
-- Improved documentation reliability by consolidating the runtime architecture guidance into one concise source of truth.
+- Added a native, target-oriented GDTF runtime for Dimmer, Pan, Tilt, Zoom, physical color, seated color-wheel selection, and bounded static seated gobos.
+- Added a reproducible Linux Debug CI workflow covering native, architecture, and headless Godot tests.
 
 ## Improvements
 
-- Reconnected static seated GDTF gobos through native slot selection and reusable normalized vector-prism resources. Repeated fixtures now share topology, open slots clear deterministically, and static multi-wheel binary masks use a cached composed-mask baseline while original masks remain available for future projection work.
-
-- Consolidated the native GDTF color MVP for Beam targets: supported additive and CMY color ChannelFunctions now preserve target-local chromaticity and scalar color gain, support CMY transmission below 1.0 and RGBW gain above 1.0, and emit one renderer-ready `EmitterColor` row only when the cooked output changes.
-- Added a 1 m reference cube toggle in the viewer toolbar so MVR scene scale can be checked directly in Godot.
-- Clarified the current native sectioned visual-frame runtime and the remaining transitional setup bridge.
-- Simplified contributor and agent guidance so maintainers can focus on enforceable rules and current workflows.
-
-## Documentation
-
-- Documented the corrected native color MVP contract, target-local renderer state ownership, Peraviz fallback color approximations, and deferred physical color features.
-
-- Removed overlapping architecture documents and stale migration history.
-- Updated release notes to present user-visible changes first and keep internal architecture notes brief.
-
-## Internal changes
-
-- Added reliable Windows x64 Ninja workflows for native Debug and Release development while preserving static vcpkg dependencies, the dynamic MSVC runtime, and the existing Visual Studio generator presets.
-
-- Added the versioned numeric `GoboSelection` section, stable native wheel/slot/asset setup records, bounded diagnostics, and measured cache counters. Independently moving multi-wheel composition, gobo motion, and surface projectors remain deliberately deferred.
-
-- Aligned the native extension toolchain with the Godot 4.7 API through an immutable official godot-cpp revision, a validated repository-wide compatibility contract, and binding-aware compiler-cache isolation.
-
-- Strengthened headless scene-test lifecycle, renderer resource cleanup, strict Godot diagnostic reporting, and native test-inventory validation.
-
-- Added a reproducible Linux Debug continuous-integration harness covering all native CTest, architecture, and strict headless Godot regressions, with verified tool prerequisites, tracked-file policy scope, trusted cache warming, persistent dependency caches, and measurable compiler-cache diagnostics.
-
-- Added session-owned runtime storage for native archive extraction caches so MVR/GDTF assets stay available while a loaded scene owns them and are removed automatically when the final owner is released.
-- Native GDTF color-wheel support now includes a verified seated discrete selection slice: standard DMXFrom-only ChannelSet range inference, parsed wheel slots, exact WheelSlotIndex bindings, compiled palettes, native linear wheel composition with separated filter transmission shape/gain, preserved physical resource IDs across packed-scene transfer, WheelSelection rows, and target-local renderer mutation for SpotLight, beam and lens resources. WheelIndex now keeps adjacent-slot/split metadata and uses a temporary aggregate fallback; final spatial split, spin, random and Audio remain deferred.
-
-- Expanded the native uniform color pipeline with parser-owned physical GDTF color resources, linked emitter/filter ColorCIE and spectral preparation, native direct CIE/CCT/Tint evaluation, and documentation for standard physical paths versus Peraviz fallbacks while preserving the compact renderer color payload.
-
-- Added the first native BeamOptics foundation: setup-time Beam profiles, native Zoom ChannelFunction compilation, target-oriented BeamOptics rows, cached optics targets, official/model/render aperture-radius diagnostics, and parametric Lightweight Prism near/far spread updates, corrected lens-side/far-end axial radius mapping, and packed shader instance parameters to stay within Godot renderer limits, while using explicit GDTF BeamRadius as the preferred beam-only near-aperture source when available.
-- Kept BeamOptics scale corrections limited to beam geometry and preserved imported 3D model sizes unchanged.
-- Kept renderer color state target-local so Dimmer, Color and BeamOptics updates reuse cached per-Beam color/gain/intensity without fixture-wide color bleed.
-- Consolidated Dimmer, Pan, and Tilt runtime around parser-owned selected-mode ChannelFunction records, stable native component/render-target IDs, target-ID section application, capability-derived dirty masks, and diagnostics for unsupported domains. Restored robust selected-mode `DMXChannel` traversal, explicit/inferred full-resolution ChannelFunction ranges, compiled-scene-owned universe submission, truthful target-application counts, setup/live skip diagnostics, explicit native-loader versus renderer-target-registry wiring, mandatory manifest installation, full-node-index canonical target registration through a focused `NativeRendererTargetRegistry`, detailed target-registry/unlinked-fixture diagnostics, property-oriented native Dimmer state, per-target intensity rows, normalized-versus-physical evaluation, Lightweight Prism renderer target resources, native Dimmer target resource prewarming/mutation reporting, safe cached lens-material application, and removal of the native DPT bound-fixture gate in the compiled path. BeamOptics now corrects the Lightweight Prism lens-side/far-end radius mapping while preserving native Dimmer, Pan, and Tilt behavior.
-- Consolidated overlapping static runtime guardrails into one current architecture check.
-- Removed shell checks that preserved transitional helper names instead of validating behavior.
-- Fixed the native renderer target registry regression test so it parses cleanly under current Godot GDScript scope rules.
+- Static seated gobos now use reusable normalized vector-prism resources, deterministic open-slot clearing, and cached static multi-wheel mask composition.
+- Physical GDTF color evaluation now supports linked emitter/filter resources, CIE, CCT, Tint, additive color, CMY color, and seated color-wheel composition within the documented support scope.
+- Beam presentation now uses target-local luminous flux, aperture, angle, Zoom, color, and intensity state without changing imported model scale.
+- Added a one-metre reference cube for direct scene-scale checks and reliable Windows x64 Ninja build workflows.
 
 ## Fixes
 
-- Fixed fixture models disappearing after MVR import by retaining every extracted GDTF model and gobo resource for the active scene generation. Repeated fixtures share one content cache, and replacing the scene still cleans the previous generation deterministically.
+- Retained extracted GDTF models and gobo media for the active scene so imported fixture assets remain available and repeated fixtures reuse cached content.
+- Corrected contradictory zero-transmission color-filter handling while preserving coherent black filters and diagnostics for malformed data.
+- Fixed Art-Net startup on Windows when another compatible lighting application already uses UDP port 6454.
+- Corrected seated color-wheel selection boundaries, diagnostics, and renderer updates.
+- Reduced noisy DMX diagnostics and prevented monitor text from stretching viewer panels.
+- Corrected beam aperture, visual length, and multi-emitter brightness behavior.
 
-- Fixed repeated gobo image-loading errors by retaining extracted GDTF wheel media for the active scene, reusing media across repeated fixture instances, and reporting genuinely missing references once without publishing stale paths.
+## Documentation
 
-- Fixed real-world GDTF color filters with contradictory zero-transmission measurements so visible wheel colors retain their authored hue and normalized physical gain, while coherent black filters remain black and malformed or missing measurements stay diagnosable.
+- Consolidated runtime architecture, GDTF capability, static gobo, build, environment, and coordinate guidance into focused current sources of truth, including unambiguous source, mapped-scene, and renderer-child optical axes.
 
-- Corrected seated GDTF color-wheel slot diagnostics and runtime selection guardrails so discrete wheel rows only resolve while their ChannelFunction is active, preserve exact one-based slot identity, and report WheelSelection change masks from the correct payload field.
-- Fixed Art-Net startup on Windows when another compatible lighting application is already bound to UDP port 6454, allowing Peraviz DMX reception to start without requiring users to restart the other application.
-- Preserved multi-emitter photometric brightness when applying native Color rows so color gain now scales each Beam output’s existing luminous-flux distribution instead of overwriting every emitter with target-level energy.
-- Beam intensity now respects each exact GDTF Beam geometry LuminousFlux value, including the official 10000 lm default, so multi-lens fixtures sum their declared projected output instead of repeating one full fixture-wide beam per lens. None and Glow beams remain emission-only and no longer add projected cone output.
-- Reduced overly verbose DMX diagnostics in normal logs and compacted inline monitor summaries so diagnostic text no longer stretches panels across the viewer.
-- Corrected visible beam geometry so the near aperture uses GDTF BeamRadius or exact Beam-owned lens measurement, long beams use an explicit 75 m visual length by default, and Lightweight/Volumetric renderers share the same full-angle far-spread contract without changing fixture or scene scale.
+## Internal changes
+
+- Aligned the native extension with the pinned Godot 4.7 compatibility contract and strengthened test inventory, native-class registration, and headless test validation.
+- Added session-owned RAII storage for extracted runtime assets and removed generated Godot editor metadata from version control.

@@ -1,49 +1,36 @@
 # GDTF support matrix
 
-Status values:
+This is the single capability source of truth for GDTF semantics in the active production runtime. A parser recognizing a name does not imply a rendered feature.
 
-- `full`: parsed, compiled, resolved natively, rendered, and covered by end-to-end tests.
-- `partial`: parsed and resolved for the documented subset, with known limits.
-- `parsed-only`: preserved in semantic data or diagnostics, not resolved live.
-- `non-visual`: meaningful to fixture control or diagnostics but not rendered.
-- `unsupported`: known official behavior cannot yet be reproduced.
-- `planned`: schema/component slot exists but implementation is future work.
+## Status definitions
 
-| Official family / examples | Section | Status | Notes |
-| --- | --- | --- | --- |
-| Dimmer | EmitterIntensity | native-complete for verified DPT slice | Selected-mode ChannelFunctions preserve raw/full-resolution DMX and physical ranges; native evaluation emits normalized 0–1 Dimmer rows per changed render target, and Godot applies them to cached Lightweight Prism/lens resources. Multi-emitter ownership is deterministic with overlap diagnostics for ambiguous targets. |
-| Pan, Tilt | GeometryTransform | partial | Native runtime-scene compiler installs eligible selected-mode ChannelFunction records with preserved DMX/physical ranges and component IDs, then emits physical degrees in the transform section. |
-| XYZ, Rotation, Scale | GeometryTransform | planned | Not part of the verified production slice. |
-| ColorAdd_R/G/B/W/RY/GY, ColorSub_C/M/Y, ColorRGB_Red/Green/Blue, CIE_X/Y/Brightness, CTO/CTB/CTC, and Tint | EmitterColor | partial | Selected-mode ChannelFunctions compile into native target-level color programs and emit one renderer-ready color row per changed Beam target. Valid linked GDTF Emitters and Filters now use native ColorCIE/spectral resource data where uniformly resolvable; direct CIE channels and resulting-Kelvin CCT controls are cooked natively. Missing physical data falls back to documented Peraviz approximations. Split spatial rendering, gobos, ColorMacro, HSB, full gamut clipping, and CRI simulation remain unsupported; supported Color(n) wheel rows are documented separately below. |
-| Zoom, Focus, Iris, Frost | BeamOptics | planned | Must be reconnected through native compiled runtime programs before production support is claimed. |
-| Color(n) seated color wheel | WheelSelection | partial | Parser/compiler/runtime now support a verified seated discrete color-wheel slice: ordered wheel slots, exact ChannelFunction.Wheel links, exact ChannelSet.WheelSlotIndex, standard DMXFrom-only effective ranges, cooked ColorCIE/filter slot optics with bounded transmission shape, scalar gain applied once, tolerant contradictory-zero Filter handling with compile-time provenance diagnostics, and linear composition, exact Beam target bindings, native DMX evaluation, sparse WheelSelection rows, and target-local Godot application to SpotLight, beam and lens resources. WheelIndex currently uses a documented non-spatial aggregate fallback. Multiple wheel layers on the same Beam compose natively into one final EmitterColor row while WheelSelection remains metadata; final spatial split, spin, random and Audio remain unsupported/deferred. |
-| Gobo(n) seated static binary slots | GoboSelection | partial | Selected-mode ChannelFunctions resolve exact indexed wheel and one-based slot identity natively. Dirty-only rows carry stable asset and Beam target IDs. Godot reuses normalized bounded vector topology; unique static multi-wheel combinations multiply cached binary masks and vectorize once. Original masks remain retained. Moving composition, position, rotation, shake, and projectors are unsupported. |
-| AnimationWheel(n), ColorMacro(n), Prism(n) | WheelSelection / WheelMotion | planned | Renderer appliers remain for future native wheel-family work, but runtime compiler support is not claimed for these domains. |
-| Shaper/blade families | Shaper | planned | Parsed/diagnosed before renderer support. |
-| Shutter, Strobe, Pulse, Ramp | TemporalOutput | planned | Must be reconnected through native compiled runtime programs before production support is claimed. |
-| MediaServer*, VideoEffect(n)Parameter(m), Display | MediaDisplay | parsed-only | Proprietary visual output must not be invented. |
-| Laser families | Laser | parsed-only | Requires explicit renderer support. |
-| Fog, Haze, Fan, Blower | EnvironmentOutput | parsed-only | Environment-affecting output is future work. |
-| Control, Reset, Lamp, Mode, Macro | DiagnosticNonVisual | non-visual | Exposed to diagnostics, not rendered live. |
-| Manufacturer-specific or unknown attributes | GenericVisualParameter / diagnostics | parsed-only | Preserved and reported; no substring guessing. |
+- **Supported (verified scope):** compiled, evaluated, applied by the active native-to-Godot path, and covered by focused tests.
+- **Partial:** a bounded production subset is implemented; the stated exclusions remain unsupported.
+- **Parsed only:** data can be retained or classified, but no production renderer behavior is claimed.
+- **Unsupported/deferred:** no production semantic/rendering contract exists.
 
-## Runtime architecture status
+## Runtime semantics
 
-- Active native compiled runtime slice: Dimmer, Pan, Tilt, Zoom, and initial color attributes from parser-owned fixture patches, selected GDTF DMXModes, scoped DMXChannel traversal, and real ChannelFunction records into `CompiledRuntimeScene` and sectioned visual output.
-- Supported source widths for the slice: 8-bit, 16-bit, 24-bit, and 32-bit ordered source bytes, including non-adjacent byte addresses.
-- Transform-section unit: physical degrees prepared by native C++; Godot applies the values directly without a second semantic range conversion. Transform rows carry separate Pan and Tilt component IDs, Intensity rows carry a Dimmer render-target ID, and setup resolves those IDs through `NativeRendererTargetRegistry` by full imported-node canonical GDTF geometry-instance keys; missing targets are categorized diagnostics, not successful fallback application.
-- Lightweight Prism BeamOptics now applies setup-time Beam profiles and corrects the lens-side/far-end radius mapping so normal Spot beams use a small near aperture and expand toward the far end. Active gobo-shaped prism masking, footprint alignment, and advanced volumetric quality remain deferred.
-- Unsupported or diagnostic-only: full non-wheel ChannelSet selection, ModeMaster evaluation, Relations, DMXProfiles, complete ColorSpace/Gamut enforcement, split colors, moving/projected gobos, HSB controls, full gamut clipping, and CRI simulation. Static seated binary gobos are the bounded exception documented above. Multiple ChannelFunctions on one Dimmer/Pan/Tilt logical property are selected by raw DMX range.
+| Domain | Status | Current verified scope and limits |
+| --- | --- | --- |
+| Selected DMX mode and patch | Supported (verified scope) | Native selected-mode `DMXChannel`/`LogicalChannel`/`ChannelFunction` compilation, ordered 1–4 byte sources, explicit or inferred ranges, and target IDs. |
+| Dimmer | Supported (verified scope) | Physical/normalized native evaluation and dirty target-oriented Intensity rows, including repeated targets. |
+| Pan / Tilt | Supported (verified scope) | Physical-degree evaluation and component-oriented Transform rows. |
+| Zoom | Supported (verified scope) | Native selected-mode physical full-angle evaluation, target-oriented BeamOptics rows, and cached Lightweight Prism aperture/spread mutation. |
+| Additive color | Partial | Native target-local ColorAdd_R/G/B/W/RY/GY composition. Physical emitter resources are used where valid; documented renderer fallbacks cover incomplete data. Other additive families are not claimed. |
+| Subtractive color | Partial | Native ColorSub_C/M/Y and linked filter evaluation for the documented physical/fallback scope. |
+| CIE / CCT / Tint | Partial | Native CIE xyY, CTO/CTB/CTC, and Tint paths for supported physical records and documented approximations; calibrated spectral/CRI rendering and complete gamut handling remain deferred. |
+| Color wheel selection/index | Partial | Seated selection and indexed adjacent-slot metadata, native target-local color composition, and `WheelSelection` rows. Indexed spatial split rendering, spin/random/audio motion, and animation wheels are unsupported. |
+| Static seated `Gobo(n)` | Partial | Exact `WheelSlotIndex`, seated ChannelSet windows, native `GoboSelection`, open-slot clearing, cached masks, and bounded static multi-wheel binary composition. See [Gobo control](GDTF_GOBO_CONTROL.md). |
+| Gobo motion | Unsupported/deferred | `Gobo(n)SelectSpin`, `Gobo(n)SelectShake`, `Gobo(n)SelectEffects`, `Gobo(n)WheelIndex`, `Gobo(n)WheelSpin`, `Gobo(n)WheelShake`, `Gobo(n)WheelRandom`, `Gobo(n)WheelAudio`, `Gobo(n)Pos`, `Gobo(n)PosRotate`, and `Gobo(n)PosShake` are not active. Independently moving multi-wheel composition is also unsupported. |
+| Beam geometry profile | Partial | Setup-time BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, and ColorTemperature are retained for current renderer use. Advanced photometry is not complete. |
+| Focus / Iris / Frost | Unsupported/deferred | No authoritative live renderer contract. |
+| Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
+| Shutter / strobe | Parsed only | Names may be classified or represented in generic structures; no verified production shutter/strobe rendering contract is claimed. |
+| ModeMaster / Relations | Unsupported/deferred | Not evaluated by the compiled production runtime. |
+| Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
+| Unsupported attributes | Parsed only or unsupported | Preserve/report data when possible; never infer support from legacy Godot helpers or generic enum values. |
 
-## Native BeamOptics foundation
+## Interpretation boundary
 
-Peraviz now installs a setup-time native Beam optical profile for each resolved Beam geometry/render target. The profile preserves official Beam geometry fields used by the renderer: BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, ColorTemperature, and provenance for angle/radius fallbacks. Zoom remains a native selected-mode ChannelFunction property and emits target-oriented BeamOptics rows with the physical full angle and normalized range position.
-
-The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is the preferred GDTF source for the render near radius; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so unit/scale mismatches are diagnosable without changing imported 3D model sizes.
-
-Lightweight Prism now exposes a real BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters on the existing custom prism resource. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses a rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Gobo vectorization remains separate from physical aperture topology and is not activated by this work.
-
-Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, gobo motion/projectors, independently moving gobo composition, and high-quality volumetric rectangular rendering remain unsupported.
-
-
-See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.
+Native C++ owns the supported semantic paths and prepares renderer-ready values. Godot applies those values to registered targets and owns visual approximations. Peraviz-specific fallbacks—such as incomplete color-resource fallbacks, visual beam length, and indexed color-wheel aggregate display—are renderer compatibility behavior, not official GDTF semantics. Their focused documents label them explicitly.

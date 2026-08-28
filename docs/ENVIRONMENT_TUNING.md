@@ -1,31 +1,22 @@
-# Viewer environment baseline (`test.tscn`)
+# Viewer environment baseline
 
-This document records the conservative default values configured in `Viewer/WorldEnvironment` for artistic iteration and scene-to-scene comparisons.
+`test.tscn` provides the source visual baseline. `DayNightEnvironmentController` owns runtime sky, ambient, and directional-light state, while Visual Settings exposes renderer and environment controls.
 
-## Scene rendering policy
+## Default state
 
-- Use a **single default tonemapper**: **ACES** (`tonemap_mode = 3`).
-- Keep a **fixed baseline exposure** (`tonemap_exposure = 1.0`) so visual comparisons stay stable.
-- Keep **auto exposure disabled by default** (`auto_exposure_enabled = false`) to avoid dynamic re-scaling between takes.
-- Use a **highlight-preserving response curve** by setting `tonemap_white = 8.0`, which delays hard clipping and retains more structure in bright beams/lenses.
+The checked-in scene uses the Day preset with continuous cycling and automatic advancement disabled. Its durable comparison baseline is:
 
-## Current baseline
+- ACES tonemapping with white point `8.0`;
+- neutral background `Color(0.129412, 0.137255, 0.156863)`;
+- neutral ambient color with energy `0.08` and no sky contribution;
+- SSAO enabled at intensity `0.5`;
+- glow and volumetric fog contribution disabled;
+- image adjustment enabled with contrast and saturation `1.05`.
 
-- **Background**: neutral solid color (`background_mode = Color`), slightly cool dark gray.
-- **Ambient light**: low fill (`ambient_light_energy = 0.2`) with a neutral cool tint to soften hard shadows without flattening depth.
-- **Tonemapper**: **ACES** with a fixed baseline (`tonemap_exposure = 1.0`), white point at `8.0`, and auto exposure disabled.
-- **Image adjustment**: enabled with moderate values to avoid a washed-out look:
-  - `adjustment_contrast = 1.05`
-  - `adjustment_saturation = 1.05`
+These values are renderer presentation settings, not GDTF photometric semantics. Apparent brightness also depends on fixture output, beam angle, distance, surface response, haze, and camera composition.
 
-## Suggested iteration ranges
+## Environment controls
 
-Use these ranges for look-dev passes while preserving a neutral baseline:
+Visual Settings can enable the controller, select Dawn, Day, Dusk, Night, or BlackoutNight, or use the normalized continuous cycle. Automatic cycle advancement is opt-in. It also exposes directional-light strengths, day/night ambient energy, horizon controls, and blackout permission.
 
-- `ambient_light_energy`: `0.15` - `0.35`
-- `tonemap_exposure`: `0.9` - `1.2`
-- `tonemap_white`: `6.0` - `10.0` (higher values preserve more highlight detail before compression)
-- `adjustment_contrast`: `1.0` - `1.15`
-- `adjustment_saturation`: `1.0` - `1.15`
-
-Keep adjustments subtle at first and validate against representative MVR scenes before widening ranges.
+For technical comparisons, keep the same preset, tonemapper, framing, fog, and visual multipliers. Record any deviations with the comparison. Use artistic presets only after validating fixture behavior against a fixed environment.
