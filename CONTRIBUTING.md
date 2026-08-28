@@ -31,7 +31,7 @@ When contributing code, preserve these boundaries:
 - Do not reintroduce the removed fixed visual-frame row.
 - Do not make transitional compatibility APIs authoritative for native-supported live domains.
 
-The current production setup still uses Godot-built fixture binding data and native setup calls. Do not write documentation or tests that claim parser-owned compiled GDTF programs already drive the visual runtime.
+For supported live domains, parser-owned selected-mode GDTF data is compiled into `CompiledRuntimeScene` and evaluated in native C++. Godot consumes `SectionedVisualFrame` output and applies prepared state to registered renderer targets. Transitional compatibility paths may remain for unsupported or inspection workflows, but they are not production semantic authority.
 
 ## GDTF, MVR, and `.pvz` data
 
@@ -46,7 +46,6 @@ The current production setup still uses Godot-built fixture binding data and nat
 - Prefer small focused helpers with clear ownership.
 - Keep generated/build/cache files out of Git.
 - For C++ changes, add a concise English comment above each new or substantially changed function definition.
-- Add comments in other languages only when they clarify non-obvious behavior.
 - Keep comments and developer-facing text in English.
 - Do not wrap imports in try/catch blocks.
 

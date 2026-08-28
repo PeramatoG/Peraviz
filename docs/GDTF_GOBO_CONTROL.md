@@ -27,7 +27,7 @@ The production path does **not** support:
 
 Legacy GDScript resolvers, metadata, projector logic, and attribute grouping may remain for compatibility, inspection, debugging, or transition. They are not the authoritative live GDTF semantic path and their presence does not make a feature supported.
 
-Future motion work must extend the parser-owned compiled native runtime and preserve the official GDTF distinctions among `Gobo(n)Pos`, `Gobo(n)PosRotate`, `WheelIndex`, `WheelSpin`, and their applicable shake variants. It must not restore heuristic Dictionary-driven grouping as production authority.
+Future motion work must extend the parser-owned compiled native runtime and preserve the official distinctions among `Gobo(n)`, `Gobo(n)SelectSpin`, `Gobo(n)SelectShake`, `Gobo(n)SelectEffects`, `Gobo(n)WheelIndex`, `Gobo(n)WheelSpin`, `Gobo(n)WheelShake`, `Gobo(n)WheelRandom`, `Gobo(n)WheelAudio`, `Gobo(n)Pos`, `Gobo(n)PosRotate`, and `Gobo(n)PosShake`. None of these motion attributes is production-supported. Future work must not restore heuristic Dictionary-driven grouping as production authority.
 
 ## Related contracts
 

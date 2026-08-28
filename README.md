@@ -19,7 +19,7 @@ The repository targets Windows, Linux, and macOS source builds. Continuous integ
 - **Godot runtime/editor:** 4.7.1 stable
 - **GDExtension API:** Godot 4.7, using the pinned `godot-cpp` revision in `native/cmake/GodotCompatibility.cmake`
 - **Build tools:** CMake and a compatible C++ compiler
-- **Native dependencies:** `tinyxml2` and `libzip`
+- **Native dependencies:** managed by the native CMake/vcpkg configuration; see [Native build](docs/NATIVE_BUILD.md)
 
 From the repository root:
 
