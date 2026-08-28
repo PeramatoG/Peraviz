@@ -2,6 +2,7 @@
 #include "runtime/color_science.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
+#include "runtime/gobo_motion_evaluator.h"
 #include "archive/zip_archive.h"
 
 #include <cmath>
@@ -1174,6 +1175,8 @@ bool test_one_physical_wheel_select_index_exclusive() {
 
 bool test_native_seated_gobo_selection_section();
 
+bool test_gobo_motion_setup_contract();
+
 int main() {
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
@@ -1198,5 +1201,6 @@ int main() {
     if (!test_one_physical_wheel_select_index_exclusive()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     if (!test_native_seated_gobo_selection_section()) return 1;
+    if (!test_gobo_motion_setup_contract()) return 1;
     return 0;
 }

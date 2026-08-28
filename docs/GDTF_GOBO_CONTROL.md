@@ -27,9 +27,9 @@ The production path does **not** support:
 
 Legacy GDScript resolvers, metadata, projector logic, and attribute grouping may remain for compatibility, inspection, debugging, or transition. They are not the authoritative live GDTF semantic path and their presence does not make a feature supported.
 
-The parser-owned native contract now preserves the exact, wheel-indexed identities `Gobo(n)`, `Gobo(n)SelectSpin`, `Gobo(n)SelectShake`, `Gobo(n)SelectEffects`, `Gobo(n)WheelIndex`, `Gobo(n)WheelSpin`, `Gobo(n)WheelShake`, `Gobo(n)WheelRandom`, `Gobo(n)WheelAudio`, `Gobo(n)Pos`, `Gobo(n)PosRotate`, and `Gobo(n)PosShake`. It also compiles generic ChannelFunction `ModeMaster`, `ModeFrom`, and `ModeTo` conditions and evaluates resolved DMXChannel or ChannelFunction dependency cascades natively.
+The parser-owned native contract now preserves the exact, wheel-indexed identities `Gobo(n)`, `Gobo(n)SelectSpin`, `Gobo(n)SelectShake`, `Gobo(n)SelectEffects`, `Gobo(n)WheelIndex`, `Gobo(n)WheelSpin`, `Gobo(n)WheelShake`, `Gobo(n)WheelRandom`, `Gobo(n)WheelAudio`, `Gobo(n)Pos`, `Gobo(n)PosRotate`, and `Gobo(n)PosShake`. Setup compilation carries exact motion scope, Beam target, wheel, source, physical metadata, and generic ChannelFunction `ModeMaster`, `ModeFrom`, and `ModeTo` activation into `CompiledRuntimeScene`. Native evaluation can select an instantaneous active semantic and physical scalar without XML or name lookup.
 
-This semantic foundation does not animate or render gobo motion. Static seated `Gobo(n)` selection remains the only rendered gobo behavior; future renderer work must consume the compiled contract rather than restore heuristic Dictionary-driven grouping.
+This semantic/scalar foundation does not animate or render gobo motion. Static seated `Gobo(n)` selection remains the only rendered gobo behavior. Visible indexed rotation, continuous spin, shake, and moving multi-wheel composition remain deferred and must consume the compiled contract rather than restore heuristic Dictionary-driven grouping.
 
 ## Related contracts
 

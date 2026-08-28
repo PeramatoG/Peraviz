@@ -21,7 +21,7 @@ struct ParsedGoboSemantic {
     int32_t wheel_number = 0;
     std::string normalized_name;
     bool recognized = false;
-    bool evaluation_supported = false;
+    bool scalar_evaluable = false;
 };
 
 ParsedGoboSemantic parse_gobo_semantic(const std::string &attribute_name);

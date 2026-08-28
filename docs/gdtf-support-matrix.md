@@ -27,7 +27,7 @@ This is the single capability source of truth for GDTF semantics in the active p
 | Focus / Iris / Frost | Unsupported/deferred | No authoritative live renderer contract. |
 | Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
 | Shutter / strobe | Parsed only | Names may be classified or represented in generic structures; no verified production shutter/strobe rendering contract is claimed. |
-| ModeMaster | Partial/native | Selected-mode ChannelFunction dependencies resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, and evaluate cycle-safely. Malformed or unresolved graphs are diagnosed during compilation. |
+| ModeMaster | Partial/native | Exact selected-mode Node paths resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, reach the production setup contract, and evaluate cycle-safely for instantaneous native scalars. Malformed, ambiguous, unresolved, and cyclic graphs are diagnosed during compilation. |
 | Relations | Unsupported/deferred | GDTF Relations are not parsed or evaluated by the compiled production runtime. |
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
 | Unsupported attributes | Parsed only or unsupported | Preserve/report data when possible; never infer support from legacy Godot helpers or generic enum values. |

@@ -510,6 +510,8 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                           int artnet_universe,
                           int32_t fixture_id,
                           int32_t &next_program_id) {
+    const size_t source_program_start = scene.source_programs.size();
+    const size_t motion_binding_start = scene.gobo_motion_bindings.size();
     std::unordered_map<int32_t, const AttributeIdentity *> attributes_by_id;
     std::unordered_map<int32_t, const GeometryInstance *> geometries_by_id;
     for (const AttributeIdentity &attribute : fixture_type.attributes) attributes_by_id[attribute.id] = &attribute;
@@ -551,13 +553,13 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
     for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
         if (parser_program.wheel_id <= 0) continue;
         const runtime::CompiledWheelMode wheel_mode = classify_wheel_mode(parser_program.attribute_name);
-        if (wheel_mode == runtime::CompiledWheelMode::Select && parser_program.wheel_channel_sets.empty()) continue;
         if (wheel_mode == runtime::CompiledWheelMode::Index) scene.diagnostics.push_back({"PVZ-WHEEL-INDEX-AGGREGATE-FALLBACK", "info", "Color wheel index uses PeravizIndexedWheelAggregateFallback until spatial split rendering is implemented.", patch.fixture_uuid + " attribute=" + parser_program.attribute_name});
         auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
         auto geometry_it = geometries_by_id.find(parser_program.geometry_instance_id);
         if (attribute_it == attributes_by_id.end() || geometry_it == geometries_by_id.end()) continue;
-        const bool is_gobo_select = attribute_it->second->canonical_family == "Gobo" && attribute_it->second->name.find("SelectShake") == std::string::npos && wheel_mode == runtime::CompiledWheelMode::Select;
+        const bool is_gobo_select = attribute_it->second->gobo_kind == GoboSemanticKind::Selection;
         if (is_gobo_select) {
+            if (parser_program.wheel_channel_sets.empty()) continue;
             runtime::CompiledDmxSourceProgram runtime_program;
             runtime_program.program_id = next_program_id++;
             runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
@@ -568,6 +570,9 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             runtime_program.function_name = parser_program.function_name.empty() ? parser_program.attribute_name : parser_program.function_name;
             runtime_program.geometry_id = parser_program.geometry_instance_id;
             runtime_program.geometry_name = geometry_it->second->path;
+            runtime_program.parser_program_id = parser_program.id;
+            runtime_program.dmx_channel_id = parser_program.dmx_channel_id;
+            runtime_program.activation = parser_program.mode_master;
             scene.source_programs.push_back(runtime_program);
             for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
                 if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
@@ -583,6 +588,50 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             }
             continue;
         }
+        if (attribute_it->second->gobo_kind != GoboSemanticKind::None) {
+            runtime::CompiledDmxSourceProgram runtime_program;
+            runtime_program.program_id = next_program_id++;
+            runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+            if (runtime_program.sources.empty()) continue;
+            runtime_program.dmx_from = parser_program.dmx_from;
+            runtime_program.dmx_to = parser_program.dmx_to;
+            runtime_program.physical_from = parser_program.physical_from;
+            runtime_program.physical_to = parser_program.physical_to;
+            runtime_program.attribute_name = parser_program.attribute_name;
+            runtime_program.function_name = parser_program.function_name;
+            runtime_program.geometry_id = parser_program.geometry_instance_id;
+            runtime_program.geometry_name = geometry_it->second->path;
+            runtime_program.parser_program_id = parser_program.id;
+            runtime_program.dmx_channel_id = parser_program.dmx_channel_id;
+            runtime_program.activation = parser_program.mode_master;
+            scene.source_programs.push_back(runtime_program);
+            for (const runtime::CompiledBeamOpticalProfile &beam : scene.beam_profiles) {
+                if (beam.fixture_id != fixture_id || !color_channel_controls_beam(*geometry_it->second, beam)) continue;
+                runtime::CompiledGoboMotionBinding binding;
+                binding.binding_id = stable_id(patch.fixture_uuid, "gobo:motion:" + std::to_string(parser_program.id) + ":" + beam.geometry_path);
+                binding.fixture_id = fixture_id;
+                binding.beam_render_target_id = beam.render_target_id;
+                binding.wheel_id = gobo_id_by_wheel[parser_program.wheel_id];
+                binding.wheel_instance_index = attribute_it->second->primary_index;
+                binding.source_program_id = runtime_program.program_id;
+                binding.semantic_kind = attribute_it->second->gobo_kind;
+                binding.controlled_scope = attribute_it->second->gobo_scope;
+                binding.physical_from = parser_program.physical_from;
+                binding.physical_to = parser_program.physical_to;
+                binding.physical_unit = attribute_it->second->physical_unit;
+                binding.mode_master = parser_program.mode_master;
+                binding.scalar_evaluable = parse_gobo_semantic(parser_program.attribute_name).scalar_evaluable;
+                for (const SubPhysicalUnitRecord &sub : attribute_it->second->subphysical_units) {
+                    runtime::CompiledSubPhysicalUnit compiled{sub.physical_from, sub.physical_to, sub.physical_unit, true};
+                    if (dmx::lower_ascii(sub.type) == "placementoffset") binding.placement_offset = compiled;
+                    if (dmx::lower_ascii(sub.type) == "amplitude") binding.amplitude = compiled;
+                }
+                for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name});
+                if (binding.wheel_id > 0) scene.gobo_motion_bindings.push_back(binding);
+            }
+            continue;
+        }
+        if (wheel_mode == runtime::CompiledWheelMode::Select && parser_program.wheel_channel_sets.empty()) continue;
         if (attribute_it->second->canonical_family != "Color" && dmx::lower_ascii(parser_program.attribute_name).find("color") == std::string::npos) continue;
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;
@@ -610,6 +659,25 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             binding.snap = parser_program.snap;
             for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name});
             if (binding.wheel_renderer_id > 0) scene.wheel_bindings.push_back(binding);
+        }
+    }
+    std::unordered_map<int32_t, int32_t> runtime_program_by_parser_id;
+    for (size_t index = source_program_start; index < scene.source_programs.size(); ++index) {
+        const runtime::CompiledDmxSourceProgram &program = scene.source_programs[index];
+        if (program.parser_program_id > 0) runtime_program_by_parser_id[program.parser_program_id] = program.program_id;
+    }
+    for (size_t index = source_program_start; index < scene.source_programs.size(); ++index) {
+        runtime::CompiledDmxSourceProgram &program = scene.source_programs[index];
+        if (program.activation.target_kind == ModeMasterTargetKind::None || program.activation.target_kind == ModeMasterTargetKind::Invalid) continue;
+        const auto master = runtime_program_by_parser_id.find(program.activation.master_program_id);
+        program.activation.master_program_id = master == runtime_program_by_parser_id.end() ? 0 : master->second;
+        if (program.activation.master_program_id == 0) program.activation.valid = false;
+    }
+    for (size_t binding_index = motion_binding_start; binding_index < scene.gobo_motion_bindings.size(); ++binding_index) {
+        runtime::CompiledGoboMotionBinding &binding = scene.gobo_motion_bindings[binding_index];
+        for (size_t program_index = source_program_start; program_index < scene.source_programs.size(); ++program_index) {
+            const runtime::CompiledDmxSourceProgram &program = scene.source_programs[program_index];
+            if (program.program_id == binding.source_program_id) binding.mode_master = program.activation;
         }
     }
     scene.wheel_palette_count = static_cast<int32_t>(scene.wheel_palettes.size());

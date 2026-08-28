@@ -1,20 +1,13 @@
 #include "gdtf_runtime/mode_master.h"
+#include "gdtf_runtime/string_utils.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <functional>
 #include <unordered_map>
 
 namespace peraviz::gdtf_runtime {
 namespace {
-
-// Trims ASCII whitespace without depending on the XML parser.
-std::string trim_ascii_local(const std::string &value) {
-    const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
-    const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
-    return first < last ? std::string(first, last) : std::string();
-}
 
 // Returns the maximum unsigned value representable by the supported byte width.
 uint32_t byte_max(uint8_t bytes) {
@@ -26,7 +19,7 @@ uint32_t byte_max(uint8_t bytes) {
 
 // Parses the GDTF Uint/n and Uint/ns lexical forms without lossy conversion.
 bool parse_gdtf_dmx_value(const std::string &raw, ParsedDmxValue &out) {
-    const std::string text = trim_ascii_local(raw);
+    const std::string text = trim_ascii_token(raw);
     if (text.empty()) return false;
     const size_t slash = text.find('/');
     const std::string value_text = slash == std::string::npos ? text : text.substr(0, slash);
@@ -68,6 +61,64 @@ bool convert_gdtf_dmx_value(const ParsedDmxValue &value, uint8_t target_bytes, u
         filled += take;
     }
     out = converted;
+    return true;
+}
+
+// Parses and converts one GDTF DMXValue through the shared normative implementation.
+bool parse_and_convert_gdtf_dmx_value(const std::string &raw, uint8_t target_bytes, uint32_t &out) {
+    ParsedDmxValue parsed;
+    return parse_gdtf_dmx_value(raw, parsed) && convert_gdtf_dmx_value(parsed, target_bytes, out);
+}
+
+// Resolves an exact mode-relative Node path and applies official ModeFrom/ModeTo defaults.
+bool resolve_mode_master_condition(const std::string &source_link,
+                                   const std::string &mode_from,
+                                   const std::string &mode_to,
+                                   const std::vector<ModeMasterNodeRecord> &nodes,
+                                   ModeMasterCondition &out,
+                                   std::string &diagnostic) {
+    const std::string preserved_link = trim_ascii_token(source_link);
+    out = {};
+    out.source_link = preserved_link;
+    if (out.source_link.empty() || out.source_link.front() == '.' || out.source_link.back() == '.' || out.source_link.find("..") != std::string::npos) {
+        out.target_kind = ModeMasterTargetKind::Invalid;
+        out.valid = false;
+        diagnostic = "PVZ-GDTF-MODEMASTER-NODE-MALFORMED";
+        return false;
+    }
+    const ModeMasterNodeRecord *match = nullptr;
+    for (const ModeMasterNodeRecord &node : nodes) {
+        if (node.path != out.source_link) continue;
+        if (match) {
+            out.target_kind = ModeMasterTargetKind::Invalid;
+            out.valid = false;
+            diagnostic = "PVZ-GDTF-MODEMASTER-NODE-AMBIGUOUS";
+            return false;
+        }
+        match = &node;
+    }
+    if (!match) {
+        out.target_kind = ModeMasterTargetKind::Invalid;
+        out.valid = false;
+        diagnostic = "PVZ-GDTF-MODEMASTER-UNRESOLVED";
+        return false;
+    }
+    const std::string from_source = trim_ascii_token(mode_from).empty() ? "0/1" : mode_from;
+    const std::string to_source = trim_ascii_token(mode_to).empty() ? "0/1" : mode_to;
+    if (!parse_and_convert_gdtf_dmx_value(from_source, match->byte_count, out.from) ||
+        !parse_and_convert_gdtf_dmx_value(to_source, match->byte_count, out.to) || out.from > out.to) {
+        out.target_kind = ModeMasterTargetKind::Invalid;
+        out.valid = false;
+        diagnostic = "PVZ-GDTF-MODEMASTER-RANGE-INVALID";
+        return false;
+    }
+    out.target_kind = match->kind;
+    out.target_id = match->id;
+    out.master_program_id = match->source_program_id;
+    out.master_channel_id = match->channel_id;
+    out.master_byte_count = match->byte_count;
+    out.valid = true;
+    diagnostic.clear();
     return true;
 }
 

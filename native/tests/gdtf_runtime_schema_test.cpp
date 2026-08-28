@@ -43,6 +43,9 @@ int test_exact_gobo_motion_identities() {
     const auto second = parse_gobo_semantic("gObO2pOsRoTaTe");
     if (!second.recognized || second.wheel_number != 2 || second.normalized_name != "Gobo2PosRotate") return fail("Expected case-insensitive normalized Gobo2 identity.");
     if (parse_gobo_semantic("GoboPosRotate").recognized || parse_gobo_semantic("Gobo1Rotate").recognized) return fail("Expected shorthand and legacy aliases to remain outside the exact contract.");
+    const auto rotate_alias = normalize_attribute_identity(100, "Gobo1Rotate");
+    const auto index_alias = normalize_attribute_identity(101, "Gobo1Index");
+    if (rotate_alias.known_official || index_alias.known_official || rotate_alias.gobo_kind != GoboSemanticKind::None || index_alias.gobo_kind != GoboSemanticKind::None) return fail("Expected legacy gobo aliases to remain non-official and non-authoritative.");
     return 0;
 }
 
@@ -55,6 +58,26 @@ int test_dmx_value_conversion() {
     if (!parse_gdtf_dmx_value("255/1s", value) || !convert_gdtf_dmx_value(value, 2, converted) || converted != 65280) return fail("Expected byte-shifted 8-to-16-bit conversion.");
     if (!parse_gdtf_dmx_value("128/1", value) || !convert_gdtf_dmx_value(value, 1, converted) || converted != 128) return fail("Expected native 8-bit conversion.");
     if (parse_gdtf_dmx_value("256/1", value) || parse_gdtf_dmx_value("12/0", value) || parse_gdtf_dmx_value("broken", value)) return fail("Expected malformed DMXValue forms to be rejected.");
+    return 0;
+}
+
+// Verifies structured ModeMaster paths, defaults, malformed values, and reversed ranges.
+int test_mode_master_node_resolution() {
+    using namespace peraviz::gdtf_runtime;
+    const std::vector<ModeMasterNodeRecord> nodes = {
+        {ModeMasterTargetKind::DmxChannel, 7, 7, 11, 2, "Beam_Gobo1"},
+        {ModeMasterTargetKind::ChannelFunction, 9, 8, 12, 1, "Beam_Gobo1Pos.Gobo1Pos.IndexFn"},
+    };
+    ModeMasterCondition condition;
+    std::string diagnostic;
+    if (!resolve_mode_master_condition("Beam_Gobo1", "", "", nodes, condition, diagnostic) || condition.from != 0 || condition.to != 0 || condition.master_channel_id != 7) return fail("Expected exact DMXChannel Node resolution with official defaults.");
+    if (!resolve_mode_master_condition("Beam_Gobo1", "", "255/1s", nodes, condition, diagnostic) || condition.to != 65280) return fail("Expected omitted ModeFrom and shifted ModeTo conversion.");
+    if (!resolve_mode_master_condition("Beam_Gobo1", "255/1", "", nodes, condition, diagnostic) || condition.from != 65535 || condition.to != 0) {
+        if (diagnostic != "PVZ-GDTF-MODEMASTER-RANGE-INVALID") return fail("Expected omitted ModeTo to apply before reversed-range validation.");
+    }
+    if (resolve_mode_master_condition("IndexFn", "0/1", "1/1", nodes, condition, diagnostic) || diagnostic != "PVZ-GDTF-MODEMASTER-UNRESOLVED") return fail("Expected suffix-only Node links to remain unresolved.");
+    if (resolve_mode_master_condition("Beam_Gobo1..IndexFn", "0/1", "1/1", nodes, condition, diagnostic) || diagnostic != "PVZ-GDTF-MODEMASTER-NODE-MALFORMED") return fail("Expected malformed Node paths to be diagnosed.");
+    if (resolve_mode_master_condition("Beam_Gobo1", "bad", "1/1", nodes, condition, diagnostic) || diagnostic != "PVZ-GDTF-MODEMASTER-RANGE-INVALID") return fail("Expected explicit malformed ModeFrom to be diagnosed.");
     return 0;
 }
 
@@ -194,6 +217,7 @@ int main() {
     if (int result = test_two_gobo_wheels_remain_independent()) return result;
     if (int result = test_exact_gobo_motion_identities()) return result;
     if (int result = test_dmx_value_conversion()) return result;
+    if (int result = test_mode_master_node_resolution()) return result;
     if (int result = test_mode_master_channel_gating()) return result;
     if (int result = test_mode_master_cascade_and_invalid_graphs()) return result;
     if (int result = test_stale_schema_generation_is_rejected()) return result;

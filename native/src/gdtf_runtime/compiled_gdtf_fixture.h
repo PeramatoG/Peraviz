@@ -136,10 +136,21 @@ struct ChannelProgram {
     int32_t wheel_family_number = 0;
     bool snap = false;
     std::string dmx_channel_name;
+    int32_t dmx_channel_id = 0;
+    std::string logical_channel_name;
+    std::string node_path;
     ModeMasterCondition mode_master;
     std::string mode_from_source;
     std::string mode_to_source;
     std::vector<ParsedWheelChannelSet> wheel_channel_sets;
+};
+
+struct ParsedDmxChannel {
+    int32_t id = 0;
+    std::string node_name;
+    std::vector<int32_t> dmx_offsets_1_based;
+    int32_t bit_depth = 8;
+    int32_t source_program_id = 0;
 };
 
 struct RuntimeDiagnostic {
@@ -171,6 +182,7 @@ struct CompiledGdtfFixtureType {
     std::vector<GeometryInstance> geometries;
     std::vector<ComponentBinding> components;
     std::vector<ChannelProgram> channel_programs;
+    std::vector<ParsedDmxChannel> dmx_channels;
     std::vector<RuntimeDiagnostic> diagnostics;
     runtime_storage::RuntimeDirectoryLease asset_cache_lease;
 };

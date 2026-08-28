@@ -138,6 +138,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
+        src/runtime/gobo_motion_evaluator.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
@@ -179,6 +180,7 @@ target_link_libraries(peraviz_native PRIVATE
 
 set_target_properties(peraviz_native PROPERTIES
     OUTPUT_NAME "peraviz_native"
+    UNITY_BUILD OFF
 )
 endif()
 
@@ -309,10 +311,12 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_visual_runtime_tests
         tests/visual_runtime_core_test.cpp
         tests/gobo_selection_runtime_test.cpp
+        tests/gobo_motion_contract_integration_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
+        src/runtime/gobo_motion_evaluator.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
@@ -353,6 +357,7 @@ if(BUILD_TESTING)
         src/dmx/gdtf_physical_ranges.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
+        src/runtime/gobo_motion_evaluator.cpp
     )
     target_include_directories(peraviz_native_gdtf_runtime_schema_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"

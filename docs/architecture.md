@@ -46,7 +46,7 @@ Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboRe
 - The sectioned descriptor/integer/float frame remains the only active visual-frame contract; the removed fixed-row path must not return.
 - Native-supported domains do not fall back to legacy Godot semantic dictionaries.
 - Unsupported or incomplete GDTF semantics produce diagnostics instead of guessed production behavior.
-- ChannelFunction ModeMaster conditions are compiled and evaluated natively for DMXChannel and ChannelFunction targets. Relations, virtual attributes, and DMXProfiles remain unsupported.
+- ChannelFunction ModeMaster Node links are resolved and cycle-validated during setup, then carried as compact DMXChannel or ChannelFunction activation conditions in `CompiledRuntimeScene` for native scalar evaluation. Relations, virtual attributes, and DMXProfiles remain unsupported.
 - Gobo motion, prisms, shutters/strobe rendering, Focus, Iris, Frost, and other entries marked unsupported in the matrix are not production-supported.
 
 ## Related documents

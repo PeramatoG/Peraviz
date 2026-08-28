@@ -1,28 +1,15 @@
 #include "gdtf_runtime/gobo_motion_contract.h"
+#include "gdtf_runtime/string_utils.h"
 
 #include <cctype>
-#include <algorithm>
 #include <unordered_map>
 
 namespace peraviz::gdtf_runtime {
 
-// Trims ASCII whitespace without depending on the XML parser.
-std::string trim_ascii_local(const std::string &value) {
-    const auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
-    const auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
-    return first < last ? std::string(first, last) : std::string();
-}
-
-// Lowercases normalized ASCII GDTF names for case-insensitive matching.
-std::string lower_ascii_local(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-    return value;
-}
-
 // Parses only exact normalized GDTF Gobo(n) identities without substring heuristics.
 ParsedGoboSemantic parse_gobo_semantic(const std::string &attribute_name) {
-    const std::string trimmed = trim_ascii_local(attribute_name);
-    const std::string lower = lower_ascii_local(trimmed);
+    const std::string trimmed = trim_ascii_token(attribute_name);
+    const std::string lower = lower_ascii_token(trimmed);
     ParsedGoboSemantic result;
     if (lower.rfind("gobo", 0) != 0) return result;
     size_t cursor = 4;
@@ -54,7 +41,7 @@ ParsedGoboSemantic parse_gobo_semantic(const std::string &attribute_name) {
     result.scope = found->second.scope;
     result.normalized_name = "Gobo" + std::to_string(result.wheel_number) + found->second.canonical_suffix;
     result.recognized = true;
-    result.evaluation_supported = found->second.supported;
+    result.scalar_evaluable = found->second.supported;
     return result;
 }
 
