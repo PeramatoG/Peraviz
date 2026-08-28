@@ -12,7 +12,13 @@ Source translation is millimetres. Runtime translation is metres:
 
 Source vectors use the corresponding axis remap `(x, y, z) -> (x, z, -y)`. Local basis conversion applies the same change of basis so parent/child composition, scale, and mirroring remain intact. When native data supplies a basis, Godot applies it directly rather than multiplying embedded scale a second time.
 
-Godot runtime space is right-handed, uses `+Y` as up and `-Z` as forward, and uses local `-Z` as the GDTF emitter reference direction. The imported-content presentation multiplier is `1.0`. The optional one-metre reference cube is outside the imported scene root and therefore provides a direct scale check.
+Godot runtime space is right-handed, with `+Y` as world up and `-Z` as the conventional forward axis. Optical-axis descriptions use three distinct local spaces:
+
+1. **GDTF/source-local:** a Beam emits along local `-Z`.
+2. **Mapped scene/runtime:** the vector remap sends source-local `-Z` to mapped emitter-local `-Y`.
+3. **Renderer-child-local:** Peraviz attaches a `SpotLight3D` below the mapped emitter and rotates it by `-90` degrees around X. Godot's light direction and the custom renderer children therefore use light-local `-Z`, which is the same physical direction as mapped emitter-local `-Y`.
+
+Code working on future optical rotation or shake must state which of these spaces owns the value. GDTF semantics are defined around source-local `-Z`; renderer-local presentation is performed around the light child's `-Z` axis after attachment. The imported-content presentation multiplier is `1.0`. The optional one-metre reference cube is outside the imported scene root and therefore provides a direct scale check.
 
 ## Debugging
 

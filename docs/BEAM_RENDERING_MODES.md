@@ -7,7 +7,9 @@ Peraviz exposes two presentation modes in Visual Settings. Renderer choice does 
 - **Volumetric (default):** a full cone with shader-projected shaping for haze shafts, distance attenuation, soft end fade, and selectable Low, Medium, or High quality. Low removes turbulence and reduces raymarch work.
 - **Lightweight:** a lower-cost cone/prism path intended for dense scenes or limited GPUs. The name is a renderer mode, not a legacy semantic authority.
 
-Both modes emit along fixture local `-Z`. Their cone meshes use the `CylinderMesh` local Y axis and are rotated by +90 degrees around X. Mesh placement starts near the lens and extends by the configured visual range.
+Both modes are children of the rotated `SpotLight3D` renderer anchor and extend along that anchor's local `-Z`. This renderer-child direction corresponds to mapped emitter-local `-Y`, which in turn represents official GDTF Beam source-local `-Z`. These axes are related but are not interchangeable local spaces; see [Coordinate system and transform validation](COORDINATE_SYSTEM.md).
+
+The cone/prism mesh is authored on its own local Y axis. A +90-degree X rotation places the mesh's near `+Y` endpoint at the light origin and its length along renderer-child-local `-Z`; mesh translation then extends it from the lens by the configured visual range. Optical rotation and gobo presentation are applied in renderer-child space, without changing the official GDTF source-axis semantics.
 
 ## Shared renderer parameters
 

@@ -6,7 +6,7 @@ Peraviz follows the GDTF optical geometry fields as physical inputs and keeps it
 
 For GDTF 1.2 Beam geometry, `BeamRadius` is the radius at the beam origin in meters. It is not a diameter and is not stored in millimeters. `BeamAngle` and `FieldAngle` are full physical angles in degrees. Peraviz keeps these full angles canonical and converts to a half-angle only for tangent equations or APIs that explicitly require an angular radius.
 
-The GDTF Beam geometry origin is the rendered beam origin, normally the lens/output aperture. GDTF emits along local negative Z. Peraviz maps source coordinates `(x, y, z)` to Godot `(x, z, -y)`, so the canonical mapped beam direction is Godot local negative Y with aperture axes local X and local Z.
+The GDTF Beam geometry origin is the rendered beam origin, normally the lens/output aperture, and its source-local optical direction is `-Z`. The coordinate remap sends that vector to mapped emitter-local `-Y`. Peraviz then attaches a rotated light child whose renderer-local `-Z` follows the same physical direction. Aperture and beam calculations are invariant across those representations; code must not treat mapped emitter-local `-Y` and renderer-child-local `-Z` as the same coordinate space. See [Coordinate system and transform validation](COORDINATE_SYSTEM.md) for the authoritative mapping.
 
 ## Peraviz visual length
 
