@@ -1,125 +1,60 @@
-# Peraviz architecture
+# Peraviz runtime architecture
 
-## Purpose
+This document is the source of truth for the active runtime. The [GDTF support matrix](gdtf-support-matrix.md) defines semantic coverage; focused renderer documents define presentation details.
 
-This is the short technical source of truth for the active Peraviz runtime. Peraviz is a real-time lighting visualizer: native C++ owns DMX/GDTF-derived runtime state resolution, dirty-state generation, and render-ready frame preparation, while Godot owns presentation, renderer resources, interaction, and applying prepared sections to cached scene objects.
+## Ownership
 
-## Current implementation
+Native C++ owns MVR/GDTF parsing, selected-mode semantic compilation, fixture patch and DMX source programs, physical-value evaluation, target-oriented state, dirty detection, and render-ready frame assembly. The compiled setup model is `CompiledRuntimeScene`.
 
-The active live output remains the native sectioned visual frame. `SectionedVisualFrame` carries section descriptors plus separate integer and float payload arrays. The Godot bridge exposes the latest completed frame as a `Dictionary` with `descriptors`, `integers`, `floats`, and schema data for the section applier.
+Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes.
 
-The production setup authority for the visual runtime is now a native compiled scene contract produced by the loader-owned native GDTF/MVR compiler. It installs stable fixture, component, render-target, patch, DMX source-program, property-contributor, and renderer-manifest records before live frames are submitted. The current Dimmer/Pan/Tilt slice is native-first, with application verification still required before broader production claims.
+Legacy fixture bindings and Godot-side semantic helpers remain in limited compatibility, inspection, or transitional areas. They are not authoritative for native-supported live attributes.
 
-Current native runtime responsibilities include:
+## Setup and playback contracts
 
-- Latest-frame coalescing so Godot consumes only the newest visual frame.
-- Universe filtering and relevant-slot hashing before fixture updates are emitted.
-- Native compiled scene generation and installation for fixture instances, stable IDs, DMX byte sources, and property contributors.
-- Multi-byte DMX value assembly from ordered source byte records, including non-adjacent coarse/fine addresses.
-- Dirty-state detection for transform, intensity, optics, and the initial target-oriented color output slice.
-- Render-value cooking for sectioned visual output.
-- Section assembly using descriptors and typed payloads.
-- Visual frame schema validation helpers and behavior tests.
+Structural setup occurs before live playback. The loader and compiler install fixture instances, patch records, ordered DMX byte sources, property contributors, stable component/render-target IDs, renderer manifests, Beam profiles, wheel resources, and gobo resources. Godot builds and caches the corresponding target records and reusable materials, meshes, textures, and nodes.
 
-Current Godot runtime responsibilities include:
+Live playback submits relevant universe snapshots to the native runtime. It does not rebuild setup dictionaries or discover semantic ownership per frame. Native processing coalesces input, filters unchanged relevant slots, evaluates active `ChannelFunction` ranges, updates target-oriented state, and publishes only dirty renderer data.
 
-- Orchestrating runtime setup and renderer registration.
-- Consuming the native sectioned visual frame.
-- Applying domain-specific sections for prepared runtime output.
-- Maintaining renderer-facing nodes, materials, beams, and UI state.
-
-## Current live data flow
+## Active data flow
 
 ```text
-MVR fixture patch
-  -> parser-owned selected GDTF DMX mode model
-  -> scoped DMXChannel records under the selected mode, including standard DMXChannels wrappers and harmless vendor wrappers
-  -> LogicalChannel / ChannelFunction records with inferred or explicit full-resolution DMX ranges and supported color attributes
-  -> CompiledGdtfFixtureType
-  -> native compiled runtime scene
-  -> native fixture instances, patch, source programs, and contributors
-  -> submitted universe snapshots
-  -> relevant-slot filtering and native DMX evaluation
-  -> dirty SectionedVisualFrame descriptors + integer payloads + float payloads
-  -> Godot sectioned frame applier
-  -> exact cached native target IDs resolved from full imported-node canonical GDTF geometry-instance keys
-  -> cached renderer nodes, materials, lights, and beams
+MVR patch + selected GDTF DMX mode
+  -> native parser-owned fixture model
+  -> CompiledRuntimeScene with stable IDs and source programs
+  -> submitted DMX universe snapshots
+  -> native range/physical evaluation and target state
+  -> dirty SectionedVisualFrame
+  -> Godot section applier
+  -> cached renderer targets and resources
 ```
 
-The live frame format is intentionally sectioned rather than one universal fixed row. Integer identifiers, flags, masks, offsets, and raw DMX source metadata stay in integer-oriented structures and payloads. Physical/render scalars such as pan, tilt, and intensity values stay in float payloads after compiled native evaluation.
+`SectionedVisualFrame` contains descriptors plus separate integer and float payloads. IDs, masks, modes, revisions, and indices remain integers; physical and renderer scalars remain floats. Sections are enabled by installed capabilities rather than forced into a universal fixture row. Godot consumes the newest completed frame and dispatches each section to its domain applier.
 
-## Removed visual-runtime setup bridge
+Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, and color, BeamOptics, wheel, and gobo output is associated with exact Beam targets. Repeated targets therefore do not collapse into one fixture-wide value.
 
-The native visual runtime no longer exposes the old `set_fixture_bindings(Array<Dictionary>)` or `set_fixture_render_params(Dictionary)` setup methods. The runtime core no longer uses `FixtureChannelBinding`, magic numeric `channel_type` mappings, or a legacy semantic translation table to install production visual programs.
+## Renderer ownership
 
-Godot registers the native renderer manifest once during structural setup, resolves native component/render-target IDs to cached scene targets by canonical GDTF geometry keys, and applies live Transform and Intensity rows through those IDs. Compiled-scene used universes, not legacy flattened bindings, own Dimmer/Pan/Tilt frame submission to the native runtime. The remaining GDScript inspection and gobo compatibility code is not an authoritative Dimmer/Pan/Tilt runtime path. Domains outside the verified Dimmer/Pan/Tilt slice must be wired through the compiled native contract before being described as production-supported.
+Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.
 
-## Verified GDTF/runtime coverage
+Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Godot may compose and cache a bounded static multi-wheel mask and reusable normalized vector-prism topology. See [Gobo control](GDTF_GOBO_CONTROL.md).
 
-- Dimmer: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and render-target ownership for native evaluation.
-- Pan: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
-- Tilt: real selected-mode ChannelFunction records provide DMX range, physical range, ordered source bytes, fixture patch, and component ownership for native evaluation.
-- The generic source reader accepts one to four ordered bytes, so 8-bit, 16-bit, 24-bit, and 32-bit source layouts are supported by the runtime model.
-- One resolved component property can contain multiple ChannelFunction ranges; native evaluation selects the active range from the assembled raw DMX value.
-- Transform section rows use integer payloads `[fixture_id, pan_component_id, tilt_component_id, changed_mask]` and float payloads `[pan_degrees, tilt_degrees]`.
-- Transform section Pan/Tilt values are physical degrees, not normalized values.
-- The technical DMX monitor is on-demand: hidden windows perform no grid refresh work, and visible windows copy the selected universe only when metadata changes.
+## Invariants and limitations
 
-## Known unsupported GDTF semantics
+- Structural setup and live updates remain separate.
+- Stable IDs identify fixture instances, components, targets, wheels, slots, and resources.
+- The sectioned descriptor/integer/float frame remains the only active visual-frame contract; the removed fixed-row path must not return.
+- Native-supported domains do not fall back to legacy Godot semantic dictionaries.
+- Unsupported or incomplete GDTF semantics produce diagnostics instead of guessed production behavior.
+- ModeMaster, Relations, virtual attributes, and DMXProfiles are not evaluated in the production runtime.
+- Gobo motion, prisms, shutters/strobe rendering, Focus, Iris, Frost, and other entries marked unsupported in the matrix are not production-supported.
 
-ModeMaster, Relations, virtual attributes, DMXProfiles, spectral measurement interpolation, continuous color-wheel motion, split slots, moving gobos, prisms, strobe curves, and unsupported repeated wheel families are not claimed as production-supported. Static seated binary `Gobo(n)` selection and cached static mask composition are the bounded gobo exception documented below. The corrected initial color slice supports native ColorAdd_R/G/B/W/RY/GY and ColorSub_C/M/Y fallback composition with target-oriented EmitterColor rows; CTO/CTB/CTC, Tint, Color wheels/macros, physical emitter/filter measurements, and complete wheel resources remain unsupported until their parser payloads are complete. Unsupported or incomplete compiled inputs should produce diagnostics instead of silent semantic guessing.
+## Related documents
 
-## Runtime invariants
-
-- Structural setup and live DMX submission remain separate contracts.
-- The sectioned frame path remains active.
-- Descriptor, integer payload, and float payload storage remain separate.
-- The obsolete native fixed visual-frame buffer path stays deleted.
-- Section appliers do not reconstruct the removed universal fixed row.
-- Native receiving or processing threads do not mutate Godot scene nodes directly.
-
-## Next architectural step
-
-The next recommended gobo step is measured comparison of moving multi-wheel masking strategies without weakening the static seated native contract or restoring Godot-built semantic dictionaries.
-
-## Native static gobo contract
-
-The controlled static seated `Gobo(n)` slice compiles indexed wheel identity, exact `WheelSlotIndex`, ChannelSet DMX windows, stable asset IDs, and exact Beam render-target IDs in native C++. Its dedicated `GoboSelection` section carries nine integers per dirty row: fixture, Beam target, wheel, wheel instance, slot, asset, selection mode, changed mask, and revision. A reserved float keeps the current positive-stride section validator contract; it has no semantic meaning.
-
-Godot installs original PNG/mask resources at setup and owns normalized vector-prism topology. Topology keys exclude fixture UUID and all live presentation values. A newly encountered ordered static multi-wheel combination multiplies canonical binary masks, retains the composed mask, vectorizes once under the existing 280-point limit, and creates one normalized topology for cross-fixture reuse. Legacy gobo dictionaries remain transitional and are not consulted by this live selection section. Gobo position, continuous rotation, shake, independently moving multi-wheel masking, and surface projectors remain unsupported.
-
-## Active-scene extraction ownership
-
-`SceneModel` owns a deduplicated set of strong runtime-directory leases for every content-keyed GDTF cache used by the active scene. Geometry building returns its cache lease together with model paths, and repeated fixture instances retain one lease record for the shared directory. Native gobo parsing may acquire the same content cache temporarily, but its extracted PNG paths remain backed by the active scene owner rather than by the legacy DMX binding route. Replacing `SceneModel` acquires the new generation first and then releases the old generation; releasing the final scene lease removes the old cache deterministically.
-
-## Supporting documents
-
-- `docs/adr-gdtf-parser-ownership.md` records the parser ownership decision shared with Perastage.
-- `docs/gdtf-support-matrix.md` summarizes currently verified GDTF semantic coverage.
-- `docs/pvz-project-format.md` documents the `.pvz` archive format.
-- `docs/godot_performance_guidelines.md` contains renderer and scene-tree performance guidance.
-- `docs/NATIVE_BUILD.md` documents native build steps.
-- `docs/MVR_XCHANGE.md` documents MVR-xchange behavior.
-
-### Native Dimmer/Pan/Tilt runtime contract
-
-The active Dimmer/Pan/Tilt path is parser-owned: MVR fixture patches select GDTF DMX modes, selected-mode `ChannelFunction` records compile into native source programs and component properties, and live Art-Net frames are evaluated by the native sectioned runtime. The evaluator preserves raw DMX, local normalized range position, and GDTF physical value separately. Pan and Tilt consume physical degrees; Dimmer consumes normalized 0–1 intensity even when the GDTF physical range is 0–100.
-
-Dimmer is target-oriented rather than fixture-oriented. Each compiled Dimmer property keeps its own property ID, component ID, render target ID, geometry key, contributors, cached state, dirty comparison, and emitted `EmitterIntensity` row. Fixtures with repeated emitters can therefore produce multiple changed intensity rows in one frame without last-target-wins overwrite.
-
-Godot resolves renderer targets during structural setup only through the focused `NativeRendererTargetRegistry` service. `load_scene.gd` remains the scene lifecycle coordinator, but the registry owns canonical geometry-key indexing, Pan/Tilt component targets, Dimmer render-target records, duplicate/overlap diagnostics, and cached renderer resource summaries. Dimmer target records cache exact owner geometry, emitter anchors, Lightweight Prism beam instances, lens material targets, optional spotlight anchors, and photometric data. Live Dimmer rows update those cached resources directly; they do not parse GDTF, search by fixture UUID, traverse descendants, rebuild prism topology for intensity-only updates, or use legacy fixture bindings. Realtime spotlights may remain disabled because the Lightweight Prism backend provides the acceptance beam output independently.
-
-This checkpoint has been visually verified in the Windows/Godot application for native Pan, Tilt, and Dimmer response through native target IDs. Lightweight Prism now has a native BeamOptics profile, parametric near/far deformation, and normalized static seated gobo topology; footprint alignment, gobo motion, and advanced volumetric quality remain future work.
-
-## Native BeamOptics foundation
-
-Peraviz now installs a setup-time native Beam optical profile for each resolved Beam geometry/render target. The profile preserves official Beam geometry fields used by the renderer: BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, ColorTemperature, and provenance for angle/radius/luminous-flux fallbacks. LuminousFlux is resolved per exact canonical Beam geometry key in native setup code: explicit finite non-negative values are used as declared, omitted values use the official GDTF 10000 lm default, and invalid explicit values are diagnosed while a safe non-negative renderer value is used. The lightweight beam renderer uses 10000 lm as its visual reference calibration rather than as a fixture-wide replacement value; multi-emitter output is therefore the sum of the represented projected emitter fluxes. None and Glow Beam types keep their luminous-flux data for geometry/lens emission but have zero projected_lumen_scale and do not create projected vector/prism beams or realtime spotlight contribution. Beam intensity, spot energy, and custom beam intensity are scaled by the precomputed projected_lumen_scale during application, and the documented beam-intensity safety ceiling is applied after this lumen scaling. The renderer remains visually calibrated for responsive viewing and is not a certified photometric simulator. Zoom remains a native selected-mode ChannelFunction property and emits target-oriented BeamOptics rows with the physical full angle and normalized range position.
-
-The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is preserved as official data; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so oversized-start issues are diagnosable instead of silently hidden.
-
-Lightweight Prism exposes a BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far beam parameters without replacing normalized gobo topology. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses rectangular topology with RectangleRatio; None and Glow hide the projected custom beam. Static seated gobo vectorization remains a separate bounded topology input.
-
-Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, gobo motion/projectors, independently moving gobo composition, and high-quality volumetric rectangular rendering remain unsupported.
-
-
-See [Beam geometry and visual length](BEAM_GEOMETRY_AND_VISUAL_LENGTH.md) for the renderer aperture, full-angle, and Peraviz-specific visual-length contract.
+- [GDTF support matrix](gdtf-support-matrix.md)
+- [Gobo control](GDTF_GOBO_CONTROL.md)
+- [GDTF parser ownership ADR](adr-gdtf-parser-ownership.md)
+- [Uniform physical color pipeline](uniform-physical-color-pipeline.md)
+- [Beam rendering modes](BEAM_RENDERING_MODES.md)
+- [Runtime storage policy](runtime-storage-policy.md)
+- [Godot performance guidelines](godot_performance_guidelines.md)

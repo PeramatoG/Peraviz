@@ -17,12 +17,12 @@ Changes since the previous Peraviz release.
 
 ## Documentation
 
-- Documented the corrected native color MVP contract, target-local renderer state ownership, Peraviz fallback color approximations, and deferred physical color features.
-
-- Removed overlapping architecture documents and stale migration history.
-- Updated release notes to present user-visible changes first and keep internal architecture notes brief.
+- Consolidated runtime architecture, GDTF capability coverage, and static gobo behavior into focused sources of truth with explicit supported, partial, parsed-only, and unsupported boundaries.
+- Removed obsolete migration checkpoints and duplicate capability documents, and clarified current physical color, Zoom, beam renderer, and transitional gobo ownership wording.
 
 ## Internal changes
+
+- Removed generated Godot editor/cache metadata from version control while retaining the source project configuration.
 
 - Added reliable Windows x64 Ninja workflows for native Debug and Release development while preserving static vcpkg dependencies, the dynamic MSVC runtime, and the existing Visual Studio generator presets.
 

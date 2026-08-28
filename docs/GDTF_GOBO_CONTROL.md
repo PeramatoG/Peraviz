@@ -1,139 +1,37 @@
-# GDTF gobo index, rotation, and shake mapping in Peraviz
+# GDTF gobo control
 
-This note summarizes the GDTF attributes used for gobo wheel control and
-how they are mapped into Peraviz DMX runtime controls.
+This document defines the authoritative production gobo contract. The implementation is intentionally limited to static seated selection; code present elsewhere does not expand this support boundary.
 
-## GDTF reference used
+## Supported static contract
 
-Use the official GDTF specification as the reference for this implementation.
-The relevant attributes are:
+For selected-mode `Gobo(n)` ChannelFunctions, native C++ compiles indexed wheel identity, wheel instance order, exact one-based `WheelSlotIndex`, seated ChannelSet DMX windows, stable asset IDs, and exact Beam render-target IDs. The native runtime evaluates the active window and emits a dirty `GoboSelection` row containing fixture, Beam target, wheel, wheel instance, slot, asset, selection mode, change mask, and revision. The section's reserved float is structural and has no gobo meaning.
 
-- `Gobo(n)` for wheel slot selection.
-- `Gobo(n)Pos` for indexed gobo angle.
-- `Gobo(n)PosRotate` for continuous gobo rotation speed/direction.
-- `Gobo(n)SelectShake` or dedicated shake attributes for gobo shake behavior.
+During structural setup, `NativeGoboResourceRegistry` loads and retains original PNG/mask resources and prepares reusable normalized vector-prism topology. Live rows select these registered resources by stable numeric ID; they do not carry paths, images, or semantic dictionaries. An open or missing-media slot clears deterministically.
 
-## Runtime mapping
+## Static multi-wheel composition
 
-Peraviz exposes gobo controls when present in the fixture mode:
+When more than one seated gobo wheel targets the same Beam and all selected layers are static, Godot forms a canonical ordered key, multiplies the binary masks, caches the composed mask, and vectorizes that combination once. Topology excludes fixture UUID and live presentation values so repeated fixtures can reuse it. Original masks remain independently retained.
 
-- `gobo_*` for slot selection.
-- `gobo_index_*` for indexed angle.
-- `gobo_rotation_*` for continuous rotation.
-- shake metadata (`supports_shake`, `shake_active`, `shake_amplitude_deg`,
-  `shake_frequency_hz`) per wheel when shake-capable functions are detected.
+This is a bounded static compatibility contract. It does not support independently rotating, shaking, spinning, or indexed layers, and it must not be presented as general moving multi-wheel composition.
 
-For multi-wheel fixtures, each wheel in `gobo_wheels` also includes:
+## Unsupported motion
 
-- `index_*` channels.
-- `rotation_*` channels.
-- shake ranges tied to parsed DMX windows.
+The production path does **not** support:
 
-When the GDTF channel functions define `PhysicalFrom`/`PhysicalTo`, those
-limits are propagated for index/rotation and shake interpretation when
-available. Runtime uses these physical ranges to interpret values with
-fixture-accurate behavior instead of a generic normalization.
+- gobo position or index rotation;
+- continuous gobo rotation;
+- wheel spin;
+- selection or position shake variants;
+- independently moving multi-wheel composition;
+- a production surface-projector motion contract.
 
-## Control interpretation in Godot
+Legacy GDScript resolvers, metadata, projector logic, and attribute grouping may remain for compatibility, inspection, debugging, or transition. They are not the authoritative live GDTF semantic path and their presence does not make a feature supported.
 
-Peraviz runtime applies gobo controls with this behavior:
+Future motion work must extend the parser-owned compiled native runtime and preserve the official GDTF distinctions among `Gobo(n)Pos`, `Gobo(n)PosRotate`, `WheelIndex`, `WheelSpin`, and their applicable shake variants. It must not restore heuristic Dictionary-driven grouping as production authority.
 
-1. Base rotation from visual settings.
-2. If `gobo_index`/`index` is present (`Gobo(n)Pos`), map DMX value to a
-   **fixed angular position** relative to initial orientation.
-3. If `gobo_rotation`/`rotation` is present (`Gobo(n)PosRotate`), map DMX value
-   to **angular speed** (including direction) and integrate over time.
-4. If shake is active, apply shake as an **additional tilt modulation layer**
-   on top of the resulting rotation.
+## Related contracts
 
-Shake is therefore **not mutually exclusive** with rotation:
-
-- Rotation defines the wheel spin/index orientation over time.
-- Shake adds oscillation amplitude/frequency on top of that state.
-
-## Shake control priority
-
-Per-wheel shake source priority is:
-
-1. **Dedicated shake channel** (highest priority).
-2. **Same-channel select-shake window** (`Gobo(n)SelectShake`).
-3. **Fallback** from rotation speed (frequency inferred from
-   `abs(rotation_speed_deg_per_sec) / 360.0` if no explicit shake frequency is
-   available).
-
-Debug override behavior:
-
-- Debug override affects shake only when explicitly enabled in debug controls.
-- If debug override is disabled (or running in non-debug builds), runtime uses
-  fixture/runtime shake sources only.
-
-## Real fixture example: `Robin MegaPointe.gdtf`
-
-The fixture file `library/fixtures/Robin MegaPointe.gdtf` provides a concrete
-same-channel select-shake example:
-
-- `Gobo1SelectShake` appears on one DMX channel and defines select-shake windows
-  (for static gobo shake selection).
-- `Gobo2SelectShake` appears on one DMX channel with separate windows for
-  shake-index and shake-rotation behavior.
-
-Observed DMX windows (8-bit values) in the provided fixture modes:
-
-- `Gobo1SelectShake` starts at `88` with slot windows stepping by `8`
-  (`88..95`, `96..103`, ...).
-- `Gobo2SelectShake` shake-index region starts at `60` with slot windows stepping
-  by `8` (`60..67`, `68..75`, ...).
-- `Gobo2SelectShake` shake-rotation region starts at `130` with slot windows
-  stepping by `8` (`130..137`, `138..145`, ...).
-
-In this specific fixture, select-shake windows are the active runtime source;
-if a dedicated shake channel existed for the same wheel, it would take
-precedence by design.
-
-## Approved operational limits
-
-Peraviz enforces the following shake safety limits at runtime:
-
-- `max amplitude = 1.0º`
-- `max frequency = 7.0 Hz`
-
-Any resolved or debug-provided shake values are clamped to these limits before
-being applied.
-
-## Live visual-frame path
-
-The active live path uses the native sectioned visual frame described in `docs/architecture.md`. Gobo-related updates are transported as domain-specific section data instead of a universal fixed row. The Godot apply layer treats gobo slot or texture changes as topology-affecting updates and gobo rotation or shake changes as parametric updates. Slot or texture changes are applied before a beam topology rebuild so `peraviz_gobo_texture` is available when fog-beam materials are rebuilt. Rotation and shake updates are applied without forcing texture recomposition unless the active slot or composed texture changes.
-
-Legacy slot/range dictionaries and motion/projector helpers remain transitional compatibility code. They are not consulted by the authoritative static seated `GoboSelection` path. Motion-mode resolution, including independently moving multi-wheel state, remains deferred.
-
-Diagnostics now distinguish gobo masks, cached controls, resolved slots, texture application, beam consumption, topology updates, parametric updates, texture compositions, and rotation/shake render-state updates. Continuous rotation or shake should update render state from persistent motion parameters and must not require full fixture capability re-application every frame. The current transitional projector still advances some motion only when called; this is documented as a remaining risk until render-state animation is moved into shader/material or compact renderer state.
-
-## Attribute packing protocol direction
-
-GDTF models multi-wheel gobos as indexed attributes such as `Gobo(n)`, `Gobo(n)Pos`, and `Gobo(n)PosRotate`, where `(n)` identifies the controlled wheel. Peraviz therefore treats gobo wheels as independent indexed attribute instances rather than additional bytes inside unrelated attributes such as zoom. The current sectioned visual frame keeps gobo selector, index, and motion data separate from unrelated optics such as zoom. At binding rebuild time, native code reserves all known gobo wheel selector/index/rotation DMX offsets away from zoom packing so these indexed attributes cannot overwrite each other.
-
-The intended native protocol for additional wheels is indexed section data: each entry should carry stable `fixture_id`, `attribute_family`, `instance_index` (for example gobo wheel number), `component` (selector, index, rotation, shake), normalized value, raw value, topology dirty flag, and parametric dirty flag. Godot should consume those records by stable IDs and cached renderer resources, while C++ owns the mapping from GDTF/MVR DMX channels to indexed records. This keeps sender and receiver synchronized as new attributes are added without allowing one attribute's bytes to be interpreted as another attribute.
-
-## Native BeamOptics foundation
-
-Peraviz now installs a setup-time native Beam optical profile for each resolved Beam geometry/render target. The profile preserves official Beam geometry fields used by the renderer: BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, ColorTemperature, and provenance for angle/radius fallbacks. Zoom remains a native selected-mode ChannelFunction property and emits target-oriented BeamOptics rows with the physical full angle and normalized range position.
-
-The renderer keeps official optical radius separate from measured model aperture and selected visual near radius. Explicit BeamRadius is preserved as official data; the Lightweight Prism path also records measured aperture radius, selected render near radius, selection source, and mismatch ratio so oversized-start issues are diagnosable instead of silently hidden.
-
-Lightweight Prism exposes a BeamOptics renderer API. Setup applies static Beam profiles even for fixtures without Zoom, and live Zoom updates mutate per-instance near/far parameters without replacing normalized gobo topology. Spot, Wash, PC, and Fresnel use circular aperture topology; Rectangle uses rectangular topology with RectangleRatio; None and Glow hide projected custom beams. Static seated binary gobo vectorization is a separate bounded topology input.
-
-Remaining limitations: advanced photometry, Focus, Iris, Frost, prisms, shutters, gobo position/rotation/shake, independently moving composition, surface projection, and high-quality volumetric rectangular rendering remain unsupported.
-
-## Extracted media lifetime
-
-Native gobo catalog cooking owns extracted wheel media through scene-generation `RuntimeDirectoryLease` values. Fixture bindings may publish paths only while the loader and active control-offset generation retain those leases. Duplicate fixture instances reuse the archive filename-plus-content-hash cache generation, and scene replacement releases the previous generation deterministically. Slots with absent `MediaFileName` remain media-free; genuinely missing references preserve wheel/range metadata but publish no image path and produce the structured `PVZ-GDTF-GOBO-MEDIA-MISSING` warning.
-
-The stale-path debugger flood predated the native color-wheel change: the binding catalog previously returned paths owned only by a function-local `ZipAssetCache`. The color-wheel work exposed the existing rebuild path but did not create the ownership defect, and gobo media remains separate from ColorCIE/filter-only wheel slots.
-
-## Static seated native slice
-
-Static seated `Gobo(n)` selection now has a dedicated native path. Setup publishes stable wheel, exact one-based slot, asset, media provenance, and Beam target records. Live `GoboSelection` rows contain only numeric IDs, selection mode, change mask, and revision; Godot resolves cached target and asset records and does not inspect legacy ChannelSet dictionaries. Open slots keep their exact slot number and carry asset ID zero.
-
-One binary layer uses normalized vector-prism topology keyed by stable content plus vectorizer and quality configuration. Zoom, beam length, color, dimmer, and fixture identity are presentation inputs rather than topology keys. The original extracted PNG remains scene-owned beside the vector resource for future surface projection, but no projector is active in this slice.
-
-For two or more static seated binary wheels, the measured baseline uses an ordered asset/slot/fixed-transform key to cache binary mask multiplication, one bounded vectorization, and one normalized composed prism. Equivalent fixture instances share the composed mask and topology. Independently moving wheel states remain separate, receive a bounded unsupported diagnostic, and are not flattened or recomposed each frame. Rotation, shake, indexed position, and surface projection remain unsupported.
+- [Runtime architecture](architecture.md)
+- [GDTF support matrix](gdtf-support-matrix.md)
+- [Runtime storage policy](runtime-storage-policy.md)
+- [Beam rendering modes](BEAM_RENDERING_MODES.md)

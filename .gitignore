@@ -24,3 +24,7 @@
 /godot/editor/project_metadata.cfg
 /native/build
 *.uid
+
+# Python caches
+__pycache__/
+*.py[cod]
