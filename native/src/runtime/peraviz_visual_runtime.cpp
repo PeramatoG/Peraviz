@@ -228,6 +228,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         if (binding.binding_id <= 0 || binding.beam_render_target_id <= 0 || !binding.scalar_evaluable || source_it == source_programs_by_id_.end() || source_it->second.program.sources.empty()) continue;
         const int universe_id = source_it->second.program.sources.front().universe_id;
         std::vector<int> dependency_offsets;
+        std::vector<int32_t> dependency_program_ids;
         int32_t program_id = binding.source_program_id;
         std::set<int32_t> visited;
         bool valid_dependencies = true;
@@ -239,13 +240,14 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
                 dependency_offsets.push_back(source.address);
             }
             if (!valid_dependencies) break;
+            dependency_program_ids.push_back(program_id);
             const auto &activation = program_it->second.program.activation;
             program_id = activation.target_kind == gdtf_runtime::ModeMasterTargetKind::None ? 0 : activation.master_program_id;
         }
         if (!valid_dependencies) { diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-GOBO-MOTION", "warning", "Gobo Pos activation dependencies are missing or span universes and cannot be evaluated.", std::to_string(binding.binding_id)}); continue; }
         UniverseState &universe = universes_[universe_id];
         const int index = static_cast<int>(universe.gobo_motion_bindings.size());
-        universe.gobo_motion_bindings.push_back({binding});
+        universe.gobo_motion_bindings.push_back({binding, dependency_program_ids});
         for (int offset : dependency_offsets) {
             universe.interest_offsets.push_back(offset);
             universe.gobo_motion_indices_by_offset[offset].push_back(index);
@@ -375,11 +377,14 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
 
         for (int binding_index : gobo_motion_indices) {
             if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_motion_bindings.size())) continue;
-            const CompiledGoboMotionBinding &binding = universe.gobo_motion_bindings[static_cast<size_t>(binding_index)].binding;
+            const GoboMotionRuntime &motion = universe.gobo_motion_bindings[static_cast<size_t>(binding_index)];
+            const CompiledGoboMotionBinding &binding = motion.binding;
             std::vector<CompiledDmxSourceProgram> programs;
             std::vector<GoboSourceValue> values;
-            for (const auto &[program_id, installed] : source_programs_by_id_) {
-                if (installed.program.sources.empty() || installed.program.sources.front().universe_id != universe_id) continue;
+            for (int32_t program_id : motion.dependency_program_ids) {
+                const auto installed_it = source_programs_by_id_.find(program_id);
+                if (installed_it == source_programs_by_id_.end()) continue;
+                const InstalledSourceProgram &installed = installed_it->second;
                 const EvaluationResult source_value = evaluate_source_program(universe.latest_frame, installed, &diagnostics_);
                 if (!source_value.valid) continue;
                 programs.push_back(installed.program);

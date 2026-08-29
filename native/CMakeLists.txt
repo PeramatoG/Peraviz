@@ -135,6 +135,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
@@ -313,6 +314,7 @@ if(BUILD_TESTING)
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp

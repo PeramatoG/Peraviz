@@ -2,6 +2,7 @@ extends BeamRendererBase
 class_name LegacyConeBeamRenderer
 
 const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
 const EMITTER_CONE_FADE_END_RATIO: float = 0.82
 const EMITTER_CONE_NEAR_ALPHA: float = 0.16
@@ -92,6 +93,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	prism.position = Vector3(lens_shift_x, lens_shift_y, -(beam_range * 0.5 + lens_offset_m))
 	prism.scale = Vector3(-1.0 if mirror_x else 1.0, 1.0, -1.0 if mirror_z else 1.0)
 	_apply_beam_axis_rotation(prism, beam_rotation_deg)
+	GoboRotationPresentationScript.reapply_after_base_alignment(prism)
 
 	var color_alpha := Color(beam_color.r, beam_color.g, beam_color.b, 1.0)
 	var beam_softness: float = clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0)

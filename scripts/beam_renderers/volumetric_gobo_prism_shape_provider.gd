@@ -2,6 +2,7 @@ extends VolumetricBeamShapeProvider
 class_name VolumetricGoboPrismShapeProvider
 
 const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
+const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
 
 const GOBO_TEXTURE_META_KEY: String = "peraviz_gobo_texture"
@@ -46,6 +47,7 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	beam.set_instance_shader_parameter("topology_far_radius", scaled_far)
 	beam.set_meta("peraviz_gobo_normalized_near_ratio", scaled_near / scaled_far)
 	_apply_beam_axis_rotation(beam, beam_rotation_deg)
+	GoboRotationPresentationScript.reapply_after_base_alignment(beam)
 	return {
 		"gobo_projection_radius": max(bottom_radius, 0.001),
 		"beam_rotation_deg": beam_rotation_deg,

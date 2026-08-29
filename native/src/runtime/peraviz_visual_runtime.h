@@ -94,7 +94,7 @@ private:
     };
 
     struct GoboBindingRuntime { CompiledGoboSelectionBinding binding; };
-    struct GoboMotionRuntime { CompiledGoboMotionBinding binding; };
+    struct GoboMotionRuntime { CompiledGoboMotionBinding binding; std::vector<int32_t> dependency_program_ids; };
 
     struct GoboSelectionState {
         int32_t slot_index = 0;

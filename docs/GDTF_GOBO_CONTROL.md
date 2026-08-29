@@ -20,6 +20,8 @@ Exact `Gobo(n)Pos` bindings cross the version 7 packed setup contract with their
 
 The indexed angle is retained per Beam target and one-based wheel instance across open-slot and selection changes. Exactly one visible seated layer can move. When multiple visible layers form a static composition, Peraviz retains each requested angle but leaves the cached composition unrotated and records the deferred moving-composition condition.
 
+Volumetric shader-mask presentation combines the renderer alignment with Pos in its per-instance shader rotation. Reusable vector-prism presentation combines its cached base basis with Pos about renderer-child Beam space. Both paths reapply retained Pos after optics or shape refresh without rotating the `SpotLight3D`, Pan/Tilt geometry, or replacing the mesh resource.
+
 ## Unsupported motion
 
 The production path does **not** support:

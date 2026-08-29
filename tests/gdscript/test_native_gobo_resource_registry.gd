@@ -2,6 +2,7 @@ extends SceneTree
 
 const RegistryScript = preload("res://scripts/runtime/native_gobo_resource_registry.gd")
 const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.gd")
+const RotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
 var test = HeadlessTestCaseScript.new()
 
@@ -19,6 +20,29 @@ func _init() -> void:
 	var first: Dictionary = registry.apply_selection(77, 11, 1, 1, 101, 0, target)
 	var first_mesh: Mesh = beam.mesh
 	_check(bool(first.get("applied", false)) and first_mesh != null, "One native asset should install a normalized prism.", failures)
+	var light_basis: Basis = light.transform.basis
+	var topology_before_pos: int = int(registry.counters().get("topology_resource_updates", 0))
+	registry.apply_indexed_rotation(77, 11, 1, 45.0, target)
+	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam), 45.0), "+45 degrees should remain an unoffset physical Pos value.", failures)
+	_check(beam.mesh == first_mesh and light.transform.basis == light_basis, "Pos must reuse the mesh and leave SpotLight orientation unchanged.", failures)
+	registry.apply_indexed_rotation(77, 11, 1, -45.0, target)
+	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam), -45.0), "Negative Pos should preserve the opposite physical angle.", failures)
+	RotationPresentationScript.reapply_after_base_alignment(beam)
+	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam), -45.0), "Renderer refresh should preserve indexed Pos.", failures)
+	_check(int(registry.counters().get("topology_resource_updates", 0)) == topology_before_pos, "Pos-only changes must not update topology.", failures)
+	var shader_beam := MeshInstance3D.new()
+	var shader_material := ShaderMaterial.new()
+	var shader := Shader.new()
+	shader.code = "shader_type spatial; instance uniform float gobo_rotation_deg = 0.0; void fragment() { ALBEDO = vec3(gobo_rotation_deg / 360.0); }"
+	shader_material.shader = shader
+	shader_beam.material_override = shader_material
+	var shader_light := SpotLight3D.new()
+	shader_light.set_meta("peraviz_last_beam_renderer_mode", "volumetric_cone")
+	var shader_target := {"beam_instances": [shader_beam], "emitter_anchors": [shader_light]}
+	registry.apply_selection(99, 11, 1, 1, 101, 0, shader_target)
+	registry.apply_indexed_rotation(99, 11, 1, 30.0, shader_target)
+	RotationPresentationScript.reapply_after_base_alignment(shader_beam, 180.0)
+	_check(is_equal_approx(float(shader_beam.get_instance_shader_parameter("gobo_rotation_deg")), 150.0), "Volumetric shader path should combine base alignment with physical Pos exactly once.", failures)
 	var unchanged: Dictionary = registry.apply_selection(77, 11, 1, 1, 101, 0, target)
 	_check(bool(unchanged.get("unchanged", false)) and beam.mesh == first_mesh, "Unchanged selection should preserve topology identity.", failures)
 	registry.apply_selection(77, 12, 2, 1, 102, 0, target)
@@ -31,10 +55,15 @@ func _init() -> void:
 	_check(int(counters.get("composed_png_generations", 0)) == 1 and int(counters.get("composed_vectorizations", 0)) == 1 and int(counters.get("composed_mesh_creations", 0)) == 1, "A unique composition should generate, vectorize, and mesh exactly once.", failures)
 	_check(int(counters.get("composition_cache_hits", 0)) == 1 and int(counters.get("composed_topology_reuse", 0)) == 1, "Equivalent composition should hit both resource and topology caches.", failures)
 	registry.apply_selection(77, 11, 1, 2, 0, 0, target)
+	var other_wheel_basis: Basis = beam.transform.basis
+	registry.apply_indexed_rotation(77, 11, 1, 90.0, target)
+	_check(beam.transform.basis == other_wheel_basis, "An open Gobo1 Pos must not rotate the visible Gobo2 layer.", failures)
 	registry.apply_selection(77, 12, 2, 2, 0, 0, target)
 	_check(beam.mesh == null, "Open slots should deterministically clear the prism.", failures)
 	beam.free()
 	light.free()
+	shader_beam.free()
+	shader_light.free()
 	for path in paths:
 		DirAccess.remove_absolute(path)
 	if failures.is_empty():

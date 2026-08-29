@@ -18,6 +18,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Restored live Dimmer, Pan, Tilt, and Zoom installation after the version 7 packed runtime migration, with validated setup decoding and retained version 6 compatibility.
 - Restored live native Dimmer, Pan, Tilt, and Zoom updates after the compiled runtime setup contract was extended for future gobo motion.
 - Retained extracted GDTF models and gobo media for the active scene so imported fixture assets remain available and repeated fixtures reuse cached content.
 - Corrected contradictory zero-transmission color-filter handling while preserving coherent black filters and diagnostics for malformed data.

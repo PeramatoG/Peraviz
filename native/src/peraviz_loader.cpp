@@ -1,4 +1,5 @@
 #include "peraviz_loader.h"
+#include "runtime/compiled_runtime_scene_codec.h"
 
 #include "mvr_scene_loader.h"
 #include "mesh_3ds_loader.h"
@@ -261,151 +262,11 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
 #ifdef PERAVIZ_ENABLE_DMX
 
     const peraviz::runtime::CompiledRuntimeScene scene = peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, universe_offset);
-    integers.push_back(scene.contract_version);
-    integers.push_back(static_cast<int32_t>(scene.fixtures.size()));
-    integers.push_back(static_cast<int32_t>(scene.source_programs.size()));
-    integers.push_back(static_cast<int32_t>(scene.properties.size()));
-    integers.push_back(static_cast<int32_t>(scene.color_targets.size()));
-    integers.push_back(static_cast<int32_t>(scene.wheel_palettes.size()));
-    integers.push_back(static_cast<int32_t>(scene.wheel_bindings.size()));
-    integers.push_back(static_cast<int32_t>(scene.gobo_assets.size()));
-    integers.push_back(static_cast<int32_t>(scene.gobo_bindings.size()));
-    integers.push_back(static_cast<int32_t>(scene.gobo_motion_bindings.size()));
-    integers.push_back(static_cast<int32_t>(scene.diagnostics.size()));
-    auto push_float = [&floats](double value) -> int32_t {
-        const int32_t index = static_cast<int32_t>(floats.size());
-        floats.push_back(static_cast<float>(value));
-        return index;
-    };
-    for (const peraviz::runtime::CompiledFixtureInstance &fixture : scene.fixtures) {
-        integers.push_back(fixture.fixture_id);
-        integers.push_back(fixture.universe_id);
-        integers.push_back(fixture.start_address);
-        integers.push_back(0);
-        integers.push_back(push_float(fixture.luminous_flux));
-        integers.push_back(push_float(fixture.beam_angle_default));
-    }
-    for (const peraviz::runtime::CompiledDmxSourceProgram &program : scene.source_programs) {
-        integers.push_back(program.program_id);
-        integers.push_back(static_cast<int32_t>(program.semantic));
-        integers.push_back(static_cast<int32_t>(program.sources.size()));
-        integers.push_back(static_cast<int32_t>(program.dmx_from));
-        integers.push_back(static_cast<int32_t>(program.dmx_to));
-        integers.push_back(push_float(program.physical_from));
-        integers.push_back(push_float(program.physical_to));
-        integers.push_back(static_cast<int32_t>(program.activation.target_kind));
-        integers.push_back(program.activation.master_program_id);
-        integers.push_back(static_cast<int32_t>(program.activation.from));
-        integers.push_back(static_cast<int32_t>(program.activation.to));
-        integers.push_back(program.activation.valid ? 1 : 0);
-        integers.push_back(program.activation.target_id);
-        integers.push_back(program.activation.master_channel_id);
-        for (const peraviz::runtime::CompiledDmxByteSource &source : program.sources) {
-            integers.push_back(source.universe_id);
-            integers.push_back(source.address);
-            integers.push_back(source.byte_order);
-        }
-    }
-    for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
-        integers.push_back(property.property_id);
-        integers.push_back(property.fixture_id);
-        integers.push_back(property.component_id);
-        integers.push_back(property.render_target_id);
-        integers.push_back(static_cast<int32_t>(property.semantic));
-        integers.push_back(static_cast<int32_t>(property.contributors.size()));
-        for (const peraviz::runtime::CompiledPropertyContributor &contributor : property.contributors) {
-            integers.push_back(contributor.source_program_id);
-            integers.push_back(push_float(contributor.weight));
-            integers.push_back(static_cast<int32_t>(contributor.operation));
-        }
-    }
-    for (const peraviz::runtime::CompiledColorTargetProgram &target : scene.color_targets) {
-        integers.push_back(target.color_target_id);
-        integers.push_back(target.fixture_id);
-        integers.push_back(target.beam_render_target_id);
-        integers.push_back(target.geometry_id);
-        integers.push_back(target.additive_source ? 1 : 0);
-        integers.push_back(static_cast<int32_t>(target.inputs.size()));
-        for (const peraviz::runtime::CompiledColorInputBinding &input : target.inputs) {
-            integers.push_back(input.source_program_id);
-            integers.push_back(static_cast<int32_t>(input.semantic));
-            integers.push_back(push_float(input.default_value));
-            integers.push_back(input.use_normalized_value ? 1 : 0);
-            integers.push_back(input.emitter_resource_id);
-            integers.push_back(input.filter_resource_id);
-        }
-    }
-
-    for (const peraviz::runtime::CompiledWheelPalette &palette : scene.wheel_palettes) {
-        integers.push_back(palette.wheel_renderer_id);
-        integers.push_back(palette.fixture_id);
-        integers.push_back(push_float(palette.placement_offset_degrees));
-        integers.push_back(static_cast<int32_t>(palette.slots.size()));
-        for (const peraviz::runtime::CompiledWheelPaletteSlot &slot : palette.slots) {
-            integers.push_back(slot.slot_index);
-            integers.push_back(push_float(slot.srgb_red));
-            integers.push_back(push_float(slot.srgb_green));
-            integers.push_back(push_float(slot.srgb_blue));
-            integers.push_back(push_float(slot.linear_red));
-            integers.push_back(push_float(slot.linear_green));
-            integers.push_back(push_float(slot.linear_blue));
-            integers.push_back(push_float(slot.gain));
-            integers.push_back(slot.identity ? 1 : 0);
-        }
-    }
-    for (const peraviz::runtime::CompiledWheelTargetBinding &binding : scene.wheel_bindings) {
-        integers.push_back(binding.binding_id);
-        integers.push_back(binding.fixture_id);
-        integers.push_back(binding.beam_render_target_id);
-        integers.push_back(binding.wheel_renderer_id);
-        integers.push_back(binding.source_program_id);
-        integers.push_back(static_cast<int32_t>(binding.mode));
-        integers.push_back(binding.snap ? 1 : 0);
-        integers.push_back(push_float(binding.placement_offset_degrees));
-        integers.push_back(static_cast<int32_t>(binding.channel_sets.size()));
-        for (const peraviz::runtime::CompiledWheelChannelSet &set : binding.channel_sets) {
-            integers.push_back(static_cast<int32_t>(set.dmx_from));
-            integers.push_back(static_cast<int32_t>(set.dmx_to));
-            integers.push_back(set.wheel_slot_index);
-        }
-    }
-    for (const peraviz::runtime::CompiledGoboAsset &asset : scene.gobo_assets) {
-        integers.push_back(asset.gobo_asset_id);
-        integers.push_back(asset.wheel_id);
-        integers.push_back(asset.slot_index);
-        integers.push_back(asset.open_slot ? 1 : 0);
-        integers.push_back(asset.media_valid ? 1 : 0);
-    }
-    for (const peraviz::runtime::CompiledGoboSelectionBinding &binding : scene.gobo_bindings) {
-        integers.push_back(binding.binding_id);
-        integers.push_back(binding.fixture_id);
-        integers.push_back(binding.beam_render_target_id);
-        integers.push_back(binding.wheel_id);
-        integers.push_back(binding.wheel_instance_index);
-        integers.push_back(binding.source_program_id);
-        integers.push_back(static_cast<int32_t>(binding.mode));
-        integers.push_back(static_cast<int32_t>(binding.channel_sets.size()));
-        for (const peraviz::runtime::CompiledWheelChannelSet &set : binding.channel_sets) {
-            integers.push_back(static_cast<int32_t>(set.dmx_from));
-            integers.push_back(static_cast<int32_t>(set.dmx_to));
-            integers.push_back(set.wheel_slot_index);
-        }
-    }
-    for (const peraviz::runtime::CompiledGoboMotionBinding &binding : scene.gobo_motion_bindings) {
-        integers.push_back(binding.binding_id);
-        integers.push_back(binding.fixture_id);
-        integers.push_back(binding.beam_render_target_id);
-        integers.push_back(binding.wheel_id);
-        integers.push_back(binding.wheel_instance_index);
-        integers.push_back(binding.source_program_id);
-        integers.push_back(static_cast<int32_t>(binding.semantic_kind));
-        integers.push_back(static_cast<int32_t>(binding.controlled_scope));
-        integers.push_back(push_float(binding.physical_from));
-        integers.push_back(push_float(binding.physical_to));
-        integers.push_back(binding.scalar_evaluable ? 1 : 0);
-        integers.push_back(binding.rendered ? 1 : 0);
-        integers.push_back(binding.physical_unit == "Angle" ? 1 : 0);
-    }
+    const peraviz::runtime::PackedCompiledRuntimeScene packed = peraviz::runtime::encode_compiled_runtime_scene(scene);
+    integers.resize(static_cast<int64_t>(packed.integers.size()));
+    for (int64_t index = 0; index < integers.size(); ++index) integers.set(index, packed.integers[static_cast<size_t>(index)]);
+    floats.resize(static_cast<int64_t>(packed.floats.size()));
+    for (int64_t index = 0; index < floats.size(); ++index) floats.set(index, packed.floats[static_cast<size_t>(index)]);
     Array gobo_assets;
     for (const peraviz::runtime::CompiledGoboAsset &asset : scene.gobo_assets) {
         Dictionary item;

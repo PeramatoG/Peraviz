@@ -2,6 +2,7 @@ extends RefCounted
 class_name NativeGoboResourceRegistry
 
 const GoboPrismMeshBuilderScript = preload("res://scripts/beam_renderers/gobo_prism_mesh_builder.gd")
+const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
 const VECTOR_POLYGONS_META_KEY := "peraviz_gobo_vector_polygons"
 const VECTOR_WIDTH_META_KEY := "peraviz_gobo_vector_width"
@@ -92,7 +93,7 @@ func apply_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_i
 	for item in target_states.values():
 		if int(item.get("asset_id", 0)) > 0: visible_count += 1
 	_counters["parametric_updates"] += 1
-	if visible_count == 0:
+	if int(state.get("asset_id", 0)) <= 0:
 		return {"applied": true, "open_slot": true, "topology_updates": 0}
 	if visible_count > 1:
 		_counters["deferred_multi_wheel_warnings"] += 1
@@ -184,9 +185,13 @@ func _apply_resource_to_target(target_record: Dictionary, resource: Dictionary) 
 			beam.mesh = mesh
 
 func _apply_rotation_to_target(target_record: Dictionary, physical_angle_degrees: float) -> void:
-	# GDTF Pos remains physical degrees; the sign converts into renderer-child Beam space.
+	var backend: String = _presentation_backend(target_record)
 	for beam_item in target_record.get("beam_instances", []):
-		var beam: MeshInstance3D = beam_item as MeshInstance3D
-		if beam != null:
-			beam.set_meta("peraviz_gobo_indexed_rotation_deg", physical_angle_degrees)
-			beam.rotation_degrees.z = -physical_angle_degrees
+		GoboRotationPresentationScript.apply_physical_angle(beam_item as MeshInstance3D, physical_angle_degrees, backend)
+
+func _presentation_backend(target_record: Dictionary) -> String:
+	for light_item in target_record.get("emitter_anchors", []):
+		var light: SpotLight3D = light_item as SpotLight3D
+		if light != null and str(light.get_meta("peraviz_last_beam_renderer_mode", "")) == "volumetric_cone":
+			return GoboRotationPresentationScript.SHADER_BACKEND
+	return "vector_prism"

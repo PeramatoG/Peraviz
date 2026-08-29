@@ -16,6 +16,7 @@ class FakeLoader:
 	var dimmer_valid: bool = true
 	var dimmer_has_resources: bool = true
 	var last_dimmer_light := SpotLight3D.new()
+	var last_gobo_rotation: Dictionary = {}
 
 	func _ready() -> void:
 		add_child(pan_node)
@@ -36,6 +37,10 @@ class FakeLoader:
 		elif tilt_component_id > 0:
 			result["failed"] = int(result["failed"]) + 1
 		return result
+
+	func _apply_native_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float) -> Dictionary:
+		last_gobo_rotation = {"beam_target_id": beam_target_id, "wheel_id": wheel_id, "wheel_instance_index": wheel_instance_index, "angle_degrees": angle_degrees}
+		return {"applied": true}
 
 	func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
 		return dimmer_valid and dimmer_target_id == 201
@@ -123,6 +128,7 @@ func _run() -> void:
 	applier.install_schema({"sections": [
 		{"section_type": 1, "row_stride_ints": 4, "row_stride_floats": 2},
 		{"section_type": 2, "row_stride_ints": 3, "row_stride_floats": 5},
+		{"section_type": 15, "row_stride_ints": 6, "row_stride_floats": 1},
 	]})
 	var loader := FakeLoader.new()
 	get_root().add_child(loader)
@@ -142,6 +148,9 @@ func _run() -> void:
 	test.check(int(diagnostics.get("dimmer_requested", 0)) == 1, "Dimmer diagnostics should count the request")
 	test.check(int(diagnostics.get("dimmer_mutated", 0)) == 1, "Dimmer diagnostics should count the mutation")
 	test.check(int(diagnostics.get("dimmer_lights_mutated", 0)) >= 1, "Dimmer diagnostics should count mutated lights")
+	var rotation_result: Dictionary = applier.apply_snapshot({"descriptors": PackedInt32Array([15, 1, 0, 0, 0]), "integers": PackedInt32Array([1, 201, 7001, 1, 32, 1]), "floats": PackedFloat32Array([45.0])}, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
+	test.check(int(rotation_result.get("visual_mask_counts", {}).get("changed_gobo_rotation_count", 0)) == 1, "GoboRotation must decode changed mask from integer field 4")
+	test.check(loader.last_gobo_rotation == {"beam_target_id": 201, "wheel_id": 7001, "wheel_instance_index": 1, "angle_degrees": 45.0}, "GoboRotation should reach the exact renderer target and wheel instance")
 	loader.dimmer_has_resources = false
 	var no_resource: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	test.check(int(no_resource.get("skipped", 0)) > 0, "A target without mutable resources should be skipped")
