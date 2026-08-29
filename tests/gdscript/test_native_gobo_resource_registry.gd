@@ -78,7 +78,10 @@ func _write_mask(file_name: String, invert: bool) -> String:
 	var image := Image.create(16, 16, false, Image.FORMAT_RGBA8)
 	for y in range(16):
 		for x in range(16):
-			var inside: bool = Vector2(x - 7.5, y - 7.5).length() < (4.0 if invert else 6.0)
+			# Asymmetric masks make presentation rotation observable instead of hiding axis errors behind circles.
+			var inside: bool = (x >= 3 and x <= 5 and y >= 2 and y <= 13) or (x >= 3 and x <= 12 and y >= 11 and y <= 13)
+			if invert:
+				inside = y >= 3 and y <= 12 and x >= 3 and x <= y - 1
 			var value: float = 1.0 if inside else 0.0
 			image.set_pixel(x, y, Color(value, value, value, 1.0))
 	var path: String = ProjectSettings.globalize_path("user://" + file_name)

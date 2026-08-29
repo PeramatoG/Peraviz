@@ -18,6 +18,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Corrected indexed gobo presentation so asymmetric gobos rotate around the beam axis without tilting, stretching, or changing beam size at intermediate angles.
 - Restored live Dimmer, Pan, Tilt, and Zoom installation after the version 7 packed runtime migration, with validated setup decoding and retained version 6 compatibility.
 - Restored live native Dimmer, Pan, Tilt, and Zoom updates after the compiled runtime setup contract was extended for future gobo motion.
 - Retained extracted GDTF models and gobo media for the active scene so imported fixture assets remain available and repeated fixtures reuse cached content.
