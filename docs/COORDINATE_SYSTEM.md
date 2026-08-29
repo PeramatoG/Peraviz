@@ -20,6 +20,8 @@ Godot runtime space is right-handed, with `+Y` as world up and `-Z` as the conve
 
 Code working on future optical rotation or shake must state which of these spaces owns the value. GDTF semantics are defined around source-local `-Z`; renderer-local presentation is performed around the light child's `-Z` axis after attachment. The imported-content presentation multiplier is `1.0`. The optional one-metre reference cube is outside the imported scene root and therefore provides a direct scale check.
 
+The current custom gobo-prism topology has a separate raw mesh space: its beam length is authored on mesh-local `Y`, with the gobo cross-section in the `XZ` plane. The renderer's `+90` degree X presentation rotation maps that longitudinal mesh-local Y axis onto the physical light-local optical axis. Code rotating the prism `MeshInstance3D` therefore spins around raw mesh-local Y; shader-mask presentation instead rotates transverse XZ coordinates and leaves the node transform unchanged.
+
 ## Debugging
 
 - `peraviz_debug_baseline` enables `[PeravizBaseline]` source-to-runtime transform records.

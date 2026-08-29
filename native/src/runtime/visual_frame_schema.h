@@ -8,7 +8,7 @@
 namespace peraviz::runtime {
 
 constexpr int kVisualProtocolMajor = 2;
-constexpr int kVisualProtocolMinor = 1;
+constexpr int kVisualProtocolMinor = 2;
 constexpr int kVisualSectionDescriptorStride = 5;
 
 enum class VisualSectionType : int32_t {
@@ -26,6 +26,7 @@ enum class VisualSectionType : int32_t {
     GenericVisualParameter = 12,
     DiagnosticNonVisual = 13,
     GoboSelection = 14,
+    GoboRotation = 15,
 };
 
 enum VisualSectionFlags : int32_t {
@@ -47,6 +48,8 @@ enum WheelMotionFloatField : int32_t { WheelMotionAuthoritativePhase = 0, WheelM
 enum TemporalOutputIntField : int32_t { TemporalOutputFixtureId = 0, TemporalOutputTargetId = 1, TemporalOutputMode = 2, TemporalOutputChangedMask = 3 };
 enum TemporalOutputFloatField : int32_t { TemporalOutputStrobeNorm = 0, TemporalOutputOutputNorm = 1 };
 enum GoboSelectionIntField : int32_t { GoboSelectionFixtureId = 0, GoboSelectionBeamTargetId = 1, GoboSelectionWheelId = 2, GoboSelectionWheelInstanceIndex = 3, GoboSelectionSlotIndex = 4, GoboSelectionAssetId = 5, GoboSelectionMode = 6, GoboSelectionChangedMask = 7, GoboSelectionRevision = 8 };
+enum GoboRotationIntField : int32_t { GoboRotationFixtureId = 0, GoboRotationBeamTargetId = 1, GoboRotationWheelId = 2, GoboRotationWheelInstanceIndex = 3, GoboRotationChangedMask = 4, GoboRotationRevision = 5 };
+enum GoboRotationFloatField : int32_t { GoboRotationAngleDegrees = 0 };
 
 struct VisualSectionSchema {
     int32_t section_type = 0;
@@ -71,6 +74,7 @@ struct VisualFrameSchemaCapabilities {
     bool has_wheel_motion = false;
     bool has_temporal = false;
     bool has_gobo_selection = false;
+    bool has_gobo_rotation = false;
 };
 
 struct SectionedVisualFrame {

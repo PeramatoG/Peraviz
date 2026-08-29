@@ -142,14 +142,15 @@ int test_section_bounds_are_validated() {
     return 0;
 }
 
-// Verifies protocol v2.1 carries renderer-ready wheel optical and motion rows.
+// Verifies protocol v2.2 carries renderer-ready wheel and indexed-gobo rows.
 int test_wheel_protocol_schema_is_versioned() {
     const auto schema = peraviz::runtime::make_default_visual_frame_schema(1);
-    if (schema.protocol_major != 2 || schema.protocol_minor != 1) {
-        return fail("Expected color-wheel protocol migration to v2.1.");
+    if (schema.protocol_major != 2 || schema.protocol_minor != 2) {
+        return fail("Expected indexed-gobo protocol migration to v2.2.");
     }
     bool saw_selection = false;
     bool saw_motion = false;
+    bool saw_gobo_rotation = false;
     for (const auto &section : schema.sections) {
         if (section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::WheelSelection)) {
             saw_selection = section.row_stride_ints == 8 && section.row_stride_floats == 8;
@@ -157,10 +158,15 @@ int test_wheel_protocol_schema_is_versioned() {
         if (section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::WheelMotion)) {
             saw_motion = section.row_stride_ints == 6 && section.row_stride_floats == 4;
         }
+        if (section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GoboRotation)) {
+            saw_gobo_rotation = section.row_stride_ints == 6 && section.row_stride_floats == 1;
+        }
     }
-    if (!saw_selection || !saw_motion) {
+    if (!saw_selection || !saw_motion || !saw_gobo_rotation) {
         return fail("Expected migrated wheel row strides in default schema.");
     }
+    const auto empty_schema = peraviz::runtime::make_visual_frame_schema(2, {});
+    for (const auto &section : empty_schema.sections) if (section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GoboRotation)) return fail("Scene without Pos must not advertise GoboRotation.");
     return 0;
 }
 

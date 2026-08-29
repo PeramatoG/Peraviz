@@ -1703,6 +1703,9 @@ func _apply_native_gobo_selection(beam_target_id: int, wheel_id: int, wheel_inst
 				_apply_beam_optics_for_light(light, light.get_meta("peraviz_beam_last_params", {}))
 	return result
 
+func _apply_native_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float) -> Dictionary:
+	return _native_target_registry.apply_gobo_indexed_rotation(beam_target_id, wheel_id, wheel_instance_index, angle_degrees)
+
 func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	return _native_target_registry.apply_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
 

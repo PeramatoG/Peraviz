@@ -14,6 +14,8 @@ Legacy fixture bindings and Godot-side semantic helpers remain in limited compat
 
 Structural setup occurs before live playback. The loader and compiler install fixture instances, patch records, ordered DMX byte sources, property contributors, stable component/render-target IDs, renderer manifests, Beam profiles, wheel resources, and gobo resources. Godot builds and caches the corresponding target records and reusable materials, meshes, textures, and nodes.
 
+The versioned compiled setup payload is encoded and decoded by the shared native `CompiledRuntimeScene` codec. The codec owns field order, version-specific strides, complete cursor validation, and deterministic rejection of truncated or trailing payloads; Godot wrappers only convert packed array containers.
+
 Live playback submits relevant universe snapshots to the native runtime. It does not rebuild setup dictionaries or discover semantic ownership per frame. Native processing coalesces input, filters unchanged relevant slots, evaluates active `ChannelFunction` ranges, updates target-oriented state, and publishes only dirty renderer data.
 
 ## Active data flow
@@ -37,7 +39,7 @@ Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, an
 
 Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.
 
-Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Godot may compose and cache a bounded static multi-wheel mask and reusable normalized vector-prism topology. See [Gobo control](GDTF_GOBO_CONTROL.md).
+Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Indexed selected-gobo angles use protocol 2.2 `GoboRotation` rows transported through compiled setup contract 7 and mutate presentation parameters without topology regeneration. Godot may compose and cache a bounded static multi-wheel mask, but independently moving compositions remain deferred. See [Gobo control](GDTF_GOBO_CONTROL.md).
 
 ## Invariants and limitations
 

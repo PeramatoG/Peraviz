@@ -2,6 +2,7 @@
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 #include "runtime/gobo_motion_evaluator.h"
+#include "runtime/compiled_runtime_scene_codec.h"
 
 #include <filesystem>
 #include <cmath>
@@ -80,8 +81,11 @@ bool test_gobo_motion_setup_contract() {
     beam.is_beam = true;
     model.nodes.push_back(beam);
     const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
+    const auto packed_scene = peraviz::runtime::encode_compiled_runtime_scene(scene);
+    const auto decoded_scene = peraviz::runtime::decode_compiled_runtime_scene(packed_scene.integers, packed_scene.floats);
+    if (!decoded_scene.valid || decoded_scene.consumed_integers != packed_scene.integers.size() || decoded_scene.scene.source_programs.size() != scene.source_programs.size() || decoded_scene.scene.gobo_motion_bindings.size() != scene.gobo_motion_bindings.size()) return fail("Expected parser-owned v7 scene to round-trip through the production codec") == 0;
     const auto fixture = peraviz::gdtf_runtime::compile_gdtf_fixture_type(path.string(), "Mode 1");
-    if (scene.contract_version != 6 || scene.gobo_bindings.size() != 2) return fail("Expected setup contract v6 with only exact Gobo1 and Gobo2 static selections") == 0;
+    if (scene.contract_version != 7 || scene.gobo_bindings.size() != 2) return fail("Expected setup contract v7 with only exact Gobo1 and Gobo2 static selections") == 0;
     if (scene.gobo_motion_bindings.size() != 10) return fail("Expected ten exact non-static gobo motion bindings") == 0;
     const peraviz::runtime::CompiledGoboMotionBinding *rotate = nullptr;
     const peraviz::runtime::CompiledGoboMotionBinding *shake = nullptr;

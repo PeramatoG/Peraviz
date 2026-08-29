@@ -8,7 +8,7 @@
 
 namespace peraviz::runtime {
 
-constexpr int32_t kCompiledRuntimeSceneContractVersion = 6;
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 7;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,

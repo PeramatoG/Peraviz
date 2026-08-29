@@ -9,6 +9,7 @@ const SECTION_WHEEL_SELECTION: int = 5
 const SECTION_WHEEL_MOTION: int = 6
 const SECTION_TEMPORAL_OUTPUT: int = 8
 const SECTION_GOBO_SELECTION: int = 14
+const SECTION_GOBO_ROTATION: int = 15
 const DESCRIPTOR_STRIDE: int = 5
 
 const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
@@ -184,6 +185,9 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 		SECTION_GOBO_SELECTION:
 			if int_base + 8 >= integers.size(): return {"applied": false, "failure": {"reason": "invalid gobo selection payload", "fixture_uuid": fixture_uuid}}
 			return light_apply_service.apply_gobo_selection(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], integers[int_base + 6], integers[int_base + 7], integers[int_base + 8])
+		SECTION_GOBO_ROTATION:
+			if int_base + 5 >= integers.size() or float_base >= floats.size(): return {"applied": false, "failure": {"reason": "invalid gobo rotation payload", "fixture_uuid": fixture_uuid}}
+			return light_apply_service.apply_gobo_indexed_rotation(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], floats[float_base])
 		SECTION_TEMPORAL_OUTPUT:
 			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_temporal_output(loader, fixture_uuid, floats[float_base], floats[float_base + 1] if float_base + 1 < floats.size() else 1.0)
@@ -224,6 +228,8 @@ func _target_failure_for(loader: Node, target_id: int) -> Variant:
 	return loader._get_native_target_failure(target_id)
 
 func _changed_mask_for_row(section_type: int, int_base: int, integers: PackedInt32Array) -> int:
+	if section_type == SECTION_GOBO_ROTATION and int_base + 4 < integers.size():
+		return integers[int_base + 4]
 	if section_type == SECTION_GOBO_SELECTION and int_base + 7 < integers.size():
 		return integers[int_base + 7]
 	if section_type == SECTION_WHEEL_SELECTION and int_base + 6 < integers.size():

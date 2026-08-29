@@ -1212,6 +1212,9 @@ bool test_one_physical_wheel_select_index_exclusive() {
 }
 
 bool test_native_seated_gobo_selection_section();
+bool test_native_indexed_gobo_rotation_section();
+bool test_v7_packed_runtime_scene_round_trip();
+bool test_native_gobo_pos_mode_master_transitions();
 
 bool test_gobo_motion_setup_contract();
 
@@ -1239,6 +1242,9 @@ int main() {
     if (!test_one_physical_wheel_select_index_exclusive()) return 1;
     if (!test_gdtf_color_wheel_vertical_slice()) return 1;
     if (!test_native_seated_gobo_selection_section()) return 1;
+    if (!test_native_indexed_gobo_rotation_section()) return 1;
+    if (!test_v7_packed_runtime_scene_round_trip()) return 1;
+    if (!test_native_gobo_pos_mode_master_transitions()) return 1;
     if (!test_gobo_motion_setup_contract()) return 1;
     return 0;
 }

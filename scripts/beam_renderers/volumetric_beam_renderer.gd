@@ -2,6 +2,7 @@ extends BeamRendererBase
 
 class_name VolumetricBeamRenderer
 
+const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 const BEAM_META_KEY: String = "peraviz_volumetric_beam"
 const VOLUMETRIC_INTENSITY_SCALE: float = 4.0
 const VOLUMETRIC_INTENSITY_RESPONSE_EXPONENT: float = 2.2
@@ -93,6 +94,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	_apply_static_beam_params(beam, params)
 	beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
 	beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
+	GoboRotationPresentationScript.reapply_after_base_alignment(beam, beam_rotation_deg)
 	beam.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
 	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
 	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
