@@ -53,6 +53,12 @@ func apply_gobo_selection(beam_target_id: int, wheel_id: int, wheel_instance_ind
 		return {"applied": false, "failure_reason": "beam target not registered"}
 	return _gobo_resources.apply_selection(beam_target_id, wheel_id, wheel_instance_index, slot_index, asset_id, selection_mode, target_record)
 
+func apply_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float) -> Dictionary:
+	var target_record: Dictionary = get_beam_output_record(beam_target_id)
+	if target_record.is_empty():
+		return {"applied": false, "failure_reason": "beam target not registered"}
+	return _gobo_resources.apply_indexed_rotation(beam_target_id, wheel_id, wheel_instance_index, angle_degrees, target_record)
+
 func get_gobo_counters() -> Dictionary:
 	return _gobo_resources.counters()
 

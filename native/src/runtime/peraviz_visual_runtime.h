@@ -94,6 +94,7 @@ private:
     };
 
     struct GoboBindingRuntime { CompiledGoboSelectionBinding binding; };
+    struct GoboMotionRuntime { CompiledGoboMotionBinding binding; };
 
     struct GoboSelectionState {
         int32_t slot_index = 0;
@@ -101,6 +102,7 @@ private:
         int32_t revision = 0;
         bool initialized = false;
     };
+    struct GoboRotationState { float angle_degrees = 0.0f; int32_t revision = 0; bool active = false; bool initialized = false; };
 
     struct UniverseState {
         std::vector<CompiledPropertyProgram> properties;
@@ -115,6 +117,8 @@ private:
         std::vector<int> interest_offsets;
         std::vector<GoboBindingRuntime> gobo_bindings;
         std::unordered_map<int, std::vector<int>> gobo_binding_indices_by_offset;
+        std::vector<GoboMotionRuntime> gobo_motion_bindings;
+        std::unordered_map<int, std::vector<int>> gobo_motion_indices_by_offset;
         std::array<uint8_t, 512> last_relevant_values{};
         std::vector<uint8_t> latest_frame;
         bool has_pending_frame = false;
@@ -194,6 +198,7 @@ private:
     std::unordered_map<int32_t, CompiledWheelPalette> wheel_palettes_by_id_;
     std::unordered_map<int64_t, WheelTargetState> wheel_state_by_physical_key_;
     std::unordered_map<int64_t, GoboSelectionState> gobo_state_by_binding_;
+    std::unordered_map<int32_t, GoboRotationState> gobo_rotation_state_by_binding_;
     std::unordered_map<int64_t, int32_t> gobo_asset_by_wheel_slot_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;

@@ -57,7 +57,8 @@ func apply_selection(beam_target_id: int, wheel_id: int, wheel_instance_index: i
 	var previous: Dictionary = target_states.get(wheel_instance_index, {})
 	if int(previous.get("slot_index", -1)) == slot_index and int(previous.get("asset_id", -1)) == asset_id and int(previous.get("selection_mode", -1)) == selection_mode:
 		return {"applied": true, "unchanged": true, "topology_updates": 0}
-	target_states[wheel_instance_index] = {"wheel_id": wheel_id, "slot_index": slot_index, "asset_id": asset_id, "selection_mode": selection_mode}
+	var indexed_angle: float = float(previous.get("indexed_angle_degrees", 0.0))
+	target_states[wheel_instance_index] = {"wheel_id": wheel_id, "slot_index": slot_index, "asset_id": asset_id, "selection_mode": selection_mode, "indexed_angle_degrees": indexed_angle}
 	_selections_by_target[beam_target_id] = target_states
 	var active: Array[Dictionary] = []
 	var indexes: Array = target_states.keys()
@@ -76,8 +77,28 @@ func apply_selection(beam_target_id: int, wheel_id: int, wheel_instance_index: i
 				return {"applied": true, "unsupported_moving_composition": true, "topology_updates": 0}
 		resource = _resource_for_composition(active)
 	_apply_resource_to_target(target_record, resource)
+	if active.size() == 1:
+		_apply_rotation_to_target(target_record, float(active[0].get("indexed_angle_degrees", 0.0)))
 	_counters["topology_resource_updates"] += 1
 	return {"applied": true, "unchanged": false, "cleared": resource.is_empty(), "topology_updates": 1, "asset_id": int(resource.get("asset_id", 0))}
+
+func apply_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float, target_record: Dictionary) -> Dictionary:
+	var target_states: Dictionary = _selections_by_target.get(beam_target_id, {})
+	var state: Dictionary = target_states.get(wheel_instance_index, {"wheel_id": wheel_id, "slot_index": 0, "asset_id": 0, "selection_mode": 0})
+	state["indexed_angle_degrees"] = angle_degrees
+	target_states[wheel_instance_index] = state
+	_selections_by_target[beam_target_id] = target_states
+	var visible_count: int = 0
+	for item in target_states.values():
+		if int(item.get("asset_id", 0)) > 0: visible_count += 1
+	_counters["parametric_updates"] += 1
+	if visible_count == 0:
+		return {"applied": true, "open_slot": true, "topology_updates": 0}
+	if visible_count > 1:
+		_counters["deferred_multi_wheel_warnings"] += 1
+		return {"applied": true, "unsupported_moving_composition": true, "topology_updates": 0}
+	_apply_rotation_to_target(target_record, angle_degrees)
+	return {"applied": true, "rotation_applied": true, "topology_updates": 0}
 
 func counters() -> Dictionary:
 	var result: Dictionary = _counters.duplicate(true)
@@ -161,3 +182,11 @@ func _apply_resource_to_target(target_record: Dictionary, resource: Dictionary) 
 		var beam: MeshInstance3D = beam_item as MeshInstance3D
 		if beam != null:
 			beam.mesh = mesh
+
+func _apply_rotation_to_target(target_record: Dictionary, physical_angle_degrees: float) -> void:
+	# GDTF Pos remains physical degrees; the sign converts into renderer-child Beam space.
+	for beam_item in target_record.get("beam_instances", []):
+		var beam: MeshInstance3D = beam_item as MeshInstance3D
+		if beam != null:
+			beam.set_meta("peraviz_gobo_indexed_rotation_deg", physical_angle_degrees)
+			beam.rotation_degrees.z = -physical_angle_degrees

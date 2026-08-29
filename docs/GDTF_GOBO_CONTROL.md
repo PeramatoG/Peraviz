@@ -1,6 +1,6 @@
 # GDTF gobo control
 
-This document defines the authoritative production gobo contract. The implementation is intentionally limited to static seated selection; code present elsewhere does not expand this support boundary.
+This document defines the authoritative production gobo contract: static seated selection and indexed selected-gobo position within the boundary below.
 
 ## Supported static contract
 
@@ -14,11 +14,16 @@ When more than one seated gobo wheel targets the same Beam and all selected laye
 
 This is a bounded static compatibility contract. It does not support independently rotating, shaking, spinning, or indexed layers, and it must not be presented as general moving multi-wheel composition.
 
+## Indexed selected-gobo position
+
+Exact `Gobo(n)Pos` bindings cross the version 7 packed setup contract with their physical Angle range and generic ModeMaster activation chain. Native C++ evaluates changed source or activation-master bytes and emits dirty-only `GoboRotation` rows in physical degrees. Godot applies that renderer-ready angle parametrically to the reusable selected-gobo presentation layer; it does not add wheel `PlacementOffset`, rotate Pan/Tilt geometry, or rebuild gobo topology.
+
+The indexed angle is retained per Beam target and one-based wheel instance across open-slot and selection changes. Exactly one visible seated layer can move. When multiple visible layers form a static composition, Peraviz retains each requested angle but leaves the cached composition unrotated and records the deferred moving-composition condition.
+
 ## Unsupported motion
 
 The production path does **not** support:
 
-- gobo position or index rotation;
 - continuous gobo rotation;
 - wheel spin;
 - selection or position shake variants;
@@ -29,7 +34,7 @@ Legacy GDScript resolvers, metadata, projector logic, and attribute grouping may
 
 The parser-owned native contract now preserves the exact, wheel-indexed identities `Gobo(n)`, `Gobo(n)SelectSpin`, `Gobo(n)SelectShake`, `Gobo(n)SelectEffects`, `Gobo(n)WheelIndex`, `Gobo(n)WheelSpin`, `Gobo(n)WheelShake`, `Gobo(n)WheelRandom`, `Gobo(n)WheelAudio`, `Gobo(n)Pos`, `Gobo(n)PosRotate`, and `Gobo(n)PosShake`. Setup compilation carries exact motion scope, Beam target, wheel, source, ChannelSet physical ranges, and generic ChannelFunction `ModeMaster`, `ModeFrom`, and `ModeTo` activation into `CompiledRuntimeScene`. Activation-only sources preserve dependencies on non-gobo channels, and native evaluation can select an instantaneous active semantic and physical scalar without XML or name lookup.
 
-This semantic/scalar foundation does not animate or render gobo motion. Static seated `Gobo(n)` selection remains the only rendered gobo behavior. Visible indexed rotation, continuous spin, shake, and moving multi-wheel composition remain deferred and must consume the compiled contract rather than restore heuristic Dictionary-driven grouping.
+Static seated `Gobo(n)` selection and dirty parametric `Gobo(n)Pos` are rendered. `Gobo(n)PosRotate`, shake, wheel spin/random/audio, effects, and independently moving multi-wheel composition remain deferred and must consume the compiled contract rather than restore heuristic Dictionary-driven grouping.
 
 ## Related contracts
 

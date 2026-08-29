@@ -81,7 +81,7 @@ bool test_gobo_motion_setup_contract() {
     model.nodes.push_back(beam);
     const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
     const auto fixture = peraviz::gdtf_runtime::compile_gdtf_fixture_type(path.string(), "Mode 1");
-    if (scene.contract_version != 6 || scene.gobo_bindings.size() != 2) return fail("Expected setup contract v6 with only exact Gobo1 and Gobo2 static selections") == 0;
+    if (scene.contract_version != 7 || scene.gobo_bindings.size() != 2) return fail("Expected setup contract v7 with only exact Gobo1 and Gobo2 static selections") == 0;
     if (scene.gobo_motion_bindings.size() != 10) return fail("Expected ten exact non-static gobo motion bindings") == 0;
     const peraviz::runtime::CompiledGoboMotionBinding *rotate = nullptr;
     const peraviz::runtime::CompiledGoboMotionBinding *shake = nullptr;

@@ -6,6 +6,7 @@ Changes since the previous Peraviz release.
 
 - Added a native, target-oriented GDTF runtime for Dimmer, Pan, Tilt, Zoom, physical color, seated color-wheel selection, and bounded static seated gobos.
 - Added a reproducible Linux Debug CI workflow covering native, architecture, and headless Godot tests.
+- Added native GDTF `Gobo(n)Pos` indexed rotation for a selected gobo, including physical Angle ranges and ModeMaster activation.
 
 ## Improvements
 
@@ -13,6 +14,7 @@ Changes since the previous Peraviz release.
 - Physical GDTF color evaluation now supports linked emitter/filter resources, CIE, CCT, Tint, additive color, CMY color, and seated color-wheel composition within the documented support scope.
 - Beam presentation now uses target-local luminous flux, aperture, angle, Zoom, color, and intensity state without changing imported model scale.
 - Added a one-metre reference cube for direct scene-scale checks and reliable Windows x64 Ninja build workflows.
+- Indexed gobo angle changes now update reusable presentation resources parametrically without image composition, vectorization, mesh generation, or topology rebuilds.
 
 ## Fixes
 

@@ -142,11 +142,11 @@ int test_section_bounds_are_validated() {
     return 0;
 }
 
-// Verifies protocol v2.1 carries renderer-ready wheel optical and motion rows.
+// Verifies protocol v2.2 carries renderer-ready wheel and indexed-gobo rows.
 int test_wheel_protocol_schema_is_versioned() {
     const auto schema = peraviz::runtime::make_default_visual_frame_schema(1);
-    if (schema.protocol_major != 2 || schema.protocol_minor != 1) {
-        return fail("Expected color-wheel protocol migration to v2.1.");
+    if (schema.protocol_major != 2 || schema.protocol_minor != 2) {
+        return fail("Expected indexed-gobo protocol migration to v2.2.");
     }
     bool saw_selection = false;
     bool saw_motion = false;

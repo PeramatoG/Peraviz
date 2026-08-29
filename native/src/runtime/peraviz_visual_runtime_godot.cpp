@@ -35,6 +35,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     int wheel_binding_count = 0;
     int gobo_asset_count = 0;
     int gobo_binding_count = 0;
+    int gobo_motion_count = 0;
     if (integers[0] >= 2 && integers.size() >= 8) {
         wheel_palette_count = integers[cursor++];
         wheel_binding_count = integers[cursor++];
@@ -43,6 +44,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         gobo_asset_count = integers[cursor++];
         gobo_binding_count = integers[cursor++];
     }
+    if (integers[0] >= 7 && integers.size() >= 11) gobo_motion_count = integers[cursor++];
     cursor++;
     for (int index = 0; index < fixture_count && cursor + 6 <= integers.size(); ++index) {
         peraviz::runtime::CompiledFixtureInstance fixture;
@@ -56,7 +58,7 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         fixture.beam_angle_default = beam_index >= 0 && beam_index < floats.size() ? floats[beam_index] : fixture.beam_angle_default;
         scene.fixtures.push_back(fixture);
     }
-    for (int index = 0; index < program_count && cursor + 8 <= integers.size(); ++index) {
+    for (int index = 0; index < program_count && cursor + (integers[0] >= 7 ? 14 : 8) <= integers.size(); ++index) {
         peraviz::runtime::CompiledDmxSourceProgram program;
         program.program_id = integers[cursor++];
         program.semantic = static_cast<peraviz::runtime::CompiledSemantic>(integers[cursor++]);
@@ -65,7 +67,17 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         program.dmx_to = static_cast<uint32_t>(integers[cursor++]);
         const int physical_from_index = integers[cursor++];
         const int physical_to_index = integers[cursor++];
-        cursor++;
+        if (integers[0] >= 7) {
+            program.activation.target_kind = static_cast<peraviz::gdtf_runtime::ModeMasterTargetKind>(integers[cursor++]);
+            program.activation.master_program_id = integers[cursor++];
+            program.activation.from = static_cast<uint32_t>(integers[cursor++]);
+            program.activation.to = static_cast<uint32_t>(integers[cursor++]);
+            program.activation.valid = integers[cursor++] != 0;
+            program.activation.target_id = integers[cursor++];
+            program.activation.master_channel_id = integers[cursor++];
+        } else {
+            cursor++;
+        }
         program.physical_from = physical_from_index >= 0 && physical_from_index < floats.size() ? floats[physical_from_index] : 0.0;
         program.physical_to = physical_to_index >= 0 && physical_to_index < floats.size() ? floats[physical_to_index] : 1.0;
         for (int source_index = 0; source_index < source_count && cursor + 3 <= integers.size(); ++source_index) {
@@ -193,6 +205,20 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
             cursor += 3;
         }
         scene.gobo_bindings.push_back(binding);
+    }
+    for (int index = 0; index < gobo_motion_count && cursor + 13 <= integers.size(); ++index) {
+        peraviz::runtime::CompiledGoboMotionBinding binding;
+        binding.binding_id = integers[cursor++]; binding.fixture_id = integers[cursor++];
+        binding.beam_render_target_id = integers[cursor++]; binding.wheel_id = integers[cursor++];
+        binding.wheel_instance_index = integers[cursor++]; binding.source_program_id = integers[cursor++];
+        binding.semantic_kind = static_cast<peraviz::gdtf_runtime::GoboSemanticKind>(integers[cursor++]);
+        binding.controlled_scope = static_cast<peraviz::gdtf_runtime::GoboControlledScope>(integers[cursor++]);
+        const int from_index = integers[cursor++]; const int to_index = integers[cursor++];
+        binding.physical_from = from_index >= 0 && from_index < floats.size() ? floats[from_index] : 0.0;
+        binding.physical_to = to_index >= 0 && to_index < floats.size() ? floats[to_index] : 1.0;
+        binding.scalar_evaluable = integers[cursor++] != 0; binding.rendered = integers[cursor++] != 0;
+        binding.physical_unit = integers[cursor++] == 1 ? "Angle" : "None";
+        scene.gobo_motion_bindings.push_back(binding);
     }
     core_.install_compiled_scene(scene);
 }

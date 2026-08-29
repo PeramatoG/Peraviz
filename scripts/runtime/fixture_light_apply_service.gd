@@ -309,6 +309,11 @@ func apply_gobo_selection(loader: Node, _fixture_uuid: String, beam_target_id: i
 		return {"applied": false, "failure_reason": "native gobo registry unavailable"}
 	return loader._apply_native_gobo_selection(beam_target_id, wheel_id, wheel_instance_index, slot_index, asset_id, selection_mode)
 
+func apply_gobo_indexed_rotation(loader: Node, _fixture_uuid: String, beam_target_id: int, wheel_id: int, wheel_instance_index: int, _changed_mask: int, _revision: int, angle_degrees: float) -> Dictionary:
+	if not loader.has_method("_apply_native_gobo_indexed_rotation"):
+		return {"applied": false, "failure_reason": "native gobo registry unavailable"}
+	return loader._apply_native_gobo_indexed_rotation(beam_target_id, wheel_id, wheel_instance_index, angle_degrees)
+
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1
 	_set_fixture_gobo_selection(fixture_uuid, gobo_norm)
