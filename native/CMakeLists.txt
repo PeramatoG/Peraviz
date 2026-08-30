@@ -124,6 +124,9 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/dmx_platform.cpp
         src/dmx/udp_socket.cpp
         src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_sequence_tracker.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
         src/dmx/dmx_universe_cache.cpp
         src/dmx/dmx_universe_decoder.cpp
         src/dmx/artnet_receiver.cpp
@@ -197,6 +200,15 @@ if(PERAVIZ_BUILD_GDEXTENSION AND WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_realtime_dmx_state_tests
+        tests/realtime_dmx_state_test.cpp
+        src/dmx/artnet_sequence_tracker.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
+    )
+    target_include_directories(peraviz_native_realtime_dmx_state_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME peraviz_native_realtime_dmx_state_tests COMMAND peraviz_native_realtime_dmx_state_tests)
+
     add_executable(peraviz_native_runtime_storage_tests
         tests/runtime_storage_test.cpp
         src/runtime_storage.cpp
@@ -266,6 +278,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_artnet_flow_tests
         tests/dmx_artnet_flow_test.cpp
         src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_sequence_tracker.cpp
         src/dmx/artnet_receiver.cpp
         src/dmx/dmx_platform.cpp
         src/dmx/dmx_universe_cache.cpp

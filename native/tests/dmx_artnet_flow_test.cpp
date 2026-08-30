@@ -342,15 +342,15 @@ int test_receiver_sequence() {
         return fail("Failed to send UDP ArtDmx test packets");
     }
 
-    if (!wait_for_counter(receiver, 3, 4)) {
+    if (!wait_for_counter(receiver, 3, 3)) {
         receiver.stop();
         return fail("Receiver did not accept expected latest-wins packets");
     }
 
     const peraviz::dmx::ArtNetReceiverStats stats = receiver.get_stats(10000000, 10000000);
     receiver.stop();
-    if (stats.packets_received < 4 || stats.packets_parsed < 4 || stats.frames_written != 4 ||
-        stats.packets_dropped_out_of_order != 0) {
+    if (stats.packets_received < 4 || stats.packets_parsed < 4 || stats.frames_written != 3 ||
+        stats.packets_dropped_out_of_order != 1) {
         return fail("Receiver latest-wins sequence or burst counters did not match expectations");
     }
     return 0;

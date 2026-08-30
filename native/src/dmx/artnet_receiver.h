@@ -1,6 +1,7 @@
 #pragma once
 
 #include "artnet_dmx_parser.h"
+#include "artnet_sequence_tracker.h"
 #include "dmx_platform.h"
 #include "dmx_universe_cache.h"
 #include "udp_socket.h"
@@ -76,14 +77,8 @@ private:
     mutable std::mutex error_mutex_;
     std::string last_error_;
 
-    struct UniverseSourceState {
-        std::string endpoint;
-        uint8_t last_sequence = 0;
-        bool has_sequence = false;
-    };
-
     mutable std::mutex source_state_mutex_;
-    std::unordered_map<uint16_t, UniverseSourceState> source_states_;
+    ArtNetSequenceTracker sequence_tracker_;
 };
 
 } // namespace peraviz::dmx

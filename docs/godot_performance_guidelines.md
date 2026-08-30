@@ -105,3 +105,7 @@ Where suitable:
 - RenderingServer: https://docs.godotengine.org/en/stable/classes/class_renderingserver.html
 - Optimization using MultiMeshes: https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html
 - GDExtension system: https://docs.godotengine.org/en/stable/tutorials/scripting/gdextension/index.html
+
+## Realtime mailbox migration
+
+Native immutable scene subscriptions and latest-state mailboxes are available as the foundation for removing the raw universe bridge. They filter on compiled relevant offsets and retain only one pending state per universe. The current Godot playback bridge has not yet migrated to those components, so code must not claim zero raw bridge bytes until the native coordinator is installed.

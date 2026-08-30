@@ -60,3 +60,7 @@ Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboRe
 - [Beam rendering modes](BEAM_RENDERING_MODES.md)
 - [Runtime storage policy](runtime-storage-policy.md)
 - [Godot performance guidelines](godot_performance_guidelines.md)
+
+## Realtime DMX refactor status
+
+The native runtime now contains immutable `RealtimeSubscription` lookup tables and bounded latest-state universe mailboxes. Their exact filtering, initialization, coalescing, and rehydration rules are documented in [Realtime DMX runtime foundations](realtime-dmx-runtime.md). They are currently a tested foundation rather than the active Godot playback coordinator; the compatibility universe bridge described above remains active until the coordinator phase replaces it.

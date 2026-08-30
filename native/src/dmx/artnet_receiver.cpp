@@ -6,8 +6,6 @@
 namespace peraviz::dmx {
 namespace {
 
-constexpr int kMaxDatagramsPerWake = 256;
-
 // Returns a monotonic timestamp in microseconds.
 uint64_t now_microseconds() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -132,8 +130,7 @@ void ArtNetReceiver::run() {
             continue;
         }
 
-        int datagrams_read = 0;
-        while (running_.load(std::memory_order_acquire) && datagrams_read < kMaxDatagramsPerWake) {
+        while (running_.load(std::memory_order_acquire)) {
             std::string sender_ip;
             uint16_t sender_port = 0;
             std::string receive_error;
@@ -147,7 +144,6 @@ void ArtNetReceiver::run() {
                 break;
             }
 
-            ++datagrams_read;
             packets_received_.fetch_add(1, std::memory_order_relaxed);
 
             ArtNetDmxFrameView frame_view;
@@ -168,10 +164,6 @@ void ArtNetReceiver::run() {
             total_packets_.fetch_add(1, std::memory_order_relaxed);
             record_packet_time(packet_time_us);
         }
-
-        if (datagrams_read >= kMaxDatagramsPerWake) {
-            packets_dropped_by_overload_.fetch_add(1, std::memory_order_relaxed);
-        }
     }
 }
 
@@ -179,16 +171,12 @@ void ArtNetReceiver::run() {
 bool ArtNetReceiver::should_accept_frame(const ArtNetDmxFrameView &frame_view, const std::string &sender_ip, uint16_t sender_port) {
     const std::string endpoint = sender_ip + ":" + std::to_string(sender_port);
     std::lock_guard<std::mutex> lock(source_state_mutex_);
-    UniverseSourceState &state = source_states_[frame_view.universe_id];
-    if (!state.endpoint.empty() && state.endpoint != endpoint) {
+    const ArtNetSequenceDecision decision = sequence_tracker_.accept(frame_view.universe_id, frame_view.sequence, endpoint);
+    if (decision.source_changed) {
         // Peraviz intentionally uses latest-valid-source-wins instead of Art-Net merge.
         source_changes_.fetch_add(1, std::memory_order_relaxed);
-        state.has_sequence = false;
     }
-    state.endpoint = endpoint;
-    state.has_sequence = frame_view.sequence != 0;
-    state.last_sequence = frame_view.sequence;
-    return true;
+    return decision.accepted;
 }
 
 // Records packet timing and updates the packets-per-second rolling counter.
