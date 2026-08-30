@@ -586,6 +586,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                 binding.beam_render_target_id = beam.render_target_id;
                 binding.wheel_id = gobo_id_by_wheel[parser_program.wheel_id];
                 binding.wheel_instance_index = std::max(attribute_it->second->primary_index, 1);
+                if (attribute_it->second->primary_index < 1) scene.diagnostics.push_back({"PVZ-GOBO-NONSTANDARD-WHEEL-INSTANCE-REPAIR", "warning", "A recognized gobo attribute had no positive one-based wheel index; compatibility handling maps it to wheel instance 1.", patch.fixture_uuid + " attribute=" + parser_program.attribute_name});
                 binding.source_program_id = runtime_program.program_id;
                 for (const ParsedWheelChannelSet &set : parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from, set.effective_dmx_to, set.wheel_slot_index, set.name, set.physical_from, set.physical_to});
                 if (binding.wheel_id > 0) scene.gobo_bindings.push_back(binding);
@@ -616,7 +617,8 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                 binding.fixture_id = fixture_id;
                 binding.beam_render_target_id = beam.render_target_id;
                 binding.wheel_id = gobo_id_by_wheel[parser_program.wheel_id];
-                binding.wheel_instance_index = attribute_it->second->primary_index;
+                binding.wheel_instance_index = std::max(attribute_it->second->primary_index, 1);
+                if (attribute_it->second->primary_index < 1) scene.diagnostics.push_back({"PVZ-GOBO-NONSTANDARD-WHEEL-INSTANCE-REPAIR", "warning", "A recognized gobo attribute had no positive one-based wheel index; compatibility handling maps it to wheel instance 1.", patch.fixture_uuid + " attribute=" + parser_program.attribute_name});
                 binding.source_program_id = runtime_program.program_id;
                 binding.semantic_kind = attribute_it->second->gobo_kind;
                 binding.controlled_scope = attribute_it->second->gobo_scope;

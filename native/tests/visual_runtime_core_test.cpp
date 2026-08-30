@@ -1216,6 +1216,8 @@ bool test_native_indexed_gobo_rotation_section();
 bool test_v7_packed_runtime_scene_round_trip();
 bool test_native_gobo_pos_mode_master_transitions();
 bool test_native_continuous_gobo_rotation_section();
+bool test_eight_fixture_physical_gobo_rotation_ownership();
+bool test_physical_gobo_selection_clear_reapply_cycles();
 
 bool test_gobo_motion_setup_contract();
 
@@ -1247,6 +1249,8 @@ int main() {
     if (!test_v7_packed_runtime_scene_round_trip()) return 1;
     if (!test_native_gobo_pos_mode_master_transitions()) return 1;
     if (!test_native_continuous_gobo_rotation_section()) return 1;
+    if (!test_eight_fixture_physical_gobo_rotation_ownership()) return 1;
+    if (!test_physical_gobo_selection_clear_reapply_cycles()) return 1;
     if (!test_gobo_motion_setup_contract()) return 1;
     return 0;
 }

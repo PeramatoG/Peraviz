@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace peraviz::runtime {
@@ -96,16 +97,30 @@ private:
         bool initialized = false;
     };
 
-    struct GoboBindingRuntime { CompiledGoboSelectionBinding binding; };
+    struct GoboBindingRuntime { CompiledGoboSelectionBinding binding; std::vector<int32_t> dependency_program_ids; };
     struct GoboMotionRuntime { CompiledGoboMotionBinding binding; std::vector<int32_t> dependency_program_ids; };
 
     struct GoboSelectionState {
         int32_t slot_index = 0;
         int32_t asset_id = 0;
+        int32_t contributing_binding_id = 0;
         int32_t revision = 0;
         bool initialized = false;
     };
-    struct GoboRotationState { double phase_degrees = 0.0; double angular_velocity_dps = 0.0; double reference_seconds = 0.0; GoboRotationMode mode = GoboRotationMode::Hold; int32_t revision = 0; int32_t authoritative_binding_id = 0; bool initialized = false; };
+    struct GoboRotationState {
+        double phase_degrees = 0.0;
+        double angular_velocity_dps = 0.0;
+        double reference_seconds = 0.0;
+        double pos_degrees = 0.0;
+        double pos_rotate_dps = 0.0;
+        GoboRotationMode mode = GoboRotationMode::Hold;
+        int32_t revision = 0;
+        int32_t pos_binding_id = 0;
+        int32_t pos_rotate_binding_id = 0;
+        bool pos_active = false;
+        bool pos_rotate_active = false;
+        bool initialized = false;
+    };
 
     struct UniverseState {
         std::vector<CompiledPropertyProgram> properties;
@@ -119,7 +134,8 @@ private:
         std::unordered_map<int32_t, std::vector<int64_t>> wheel_physical_keys_by_target;
         std::vector<int> interest_offsets;
         std::vector<GoboBindingRuntime> gobo_bindings;
-        std::unordered_map<int, std::vector<int>> gobo_binding_indices_by_offset;
+        std::unordered_map<int64_t, std::vector<int>> gobo_binding_indices_by_layer;
+        std::unordered_map<int, std::vector<int64_t>> gobo_layers_by_offset;
         std::vector<GoboMotionRuntime> gobo_motion_bindings;
         std::unordered_map<int, std::vector<int>> gobo_motion_indices_by_offset;
         std::unordered_map<int64_t, std::vector<int>> gobo_motion_indices_by_layer;
@@ -202,8 +218,12 @@ private:
     std::unordered_map<int32_t, CookedEmitterColor> color_state_by_target_;
     std::unordered_map<int32_t, CompiledWheelPalette> wheel_palettes_by_id_;
     std::unordered_map<int64_t, WheelTargetState> wheel_state_by_physical_key_;
-    std::unordered_map<int64_t, GoboSelectionState> gobo_state_by_binding_;
+    std::unordered_map<int64_t, GoboSelectionState> gobo_selection_state_by_layer_;
     std::unordered_map<int64_t, GoboRotationState> gobo_rotation_state_by_layer_;
+    std::unordered_set<int64_t> diagnosed_ambiguous_gobo_selection_layers_;
+    std::unordered_set<int64_t> diagnosed_ambiguous_gobo_pos_layers_;
+    std::unordered_set<int64_t> diagnosed_ambiguous_gobo_posrotate_layers_;
+    std::unordered_set<int64_t> diagnosed_simultaneous_gobo_posrotate_layers_;
     std::chrono::steady_clock::time_point runtime_epoch_ = std::chrono::steady_clock::now();
     double test_runtime_now_seconds_ = -1.0;
     std::unordered_map<int64_t, int32_t> gobo_asset_by_wheel_slot_;

@@ -390,6 +390,10 @@ struct VisualFrameStats {
     uint64_t wheel_selection_rows = 0;
     uint64_t wheel_states_skipped = 0;
     uint64_t gobo_selection_rows = 0;
+    uint64_t gobo_selection_layers_deduplicated = 0;
+    uint64_t simultaneous_gobo_pos_posrotate_layers = 0;
+    uint64_t ambiguous_gobo_pos_layers = 0;
+    uint64_t ambiguous_gobo_posrotate_layers = 0;
     uint64_t missing_media_warnings = 0;
     uint64_t deferred_multi_wheel_warnings = 0;
 };

@@ -120,6 +120,10 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["wheel_targets_dirty"] = static_cast<int64_t>(stats.wheel_targets_dirty);
     out["wheel_selection_rows"] = static_cast<int64_t>(stats.wheel_selection_rows);
     out["gobo_selection_rows"] = static_cast<int64_t>(stats.gobo_selection_rows);
+    out["gobo_selection_layers_deduplicated"] = static_cast<int64_t>(stats.gobo_selection_layers_deduplicated);
+    out["simultaneous_gobo_pos_posrotate_layers"] = static_cast<int64_t>(stats.simultaneous_gobo_pos_posrotate_layers);
+    out["ambiguous_gobo_pos_layers"] = static_cast<int64_t>(stats.ambiguous_gobo_pos_layers);
+    out["ambiguous_gobo_posrotate_layers"] = static_cast<int64_t>(stats.ambiguous_gobo_posrotate_layers);
     out["missing_media_warnings"] = static_cast<int64_t>(stats.missing_media_warnings);
     out["deferred_multi_wheel_warnings"] = static_cast<int64_t>(stats.deferred_multi_wheel_warnings);
     return out;

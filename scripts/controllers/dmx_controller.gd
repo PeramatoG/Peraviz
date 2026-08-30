@@ -138,7 +138,6 @@ func set_universe_offset(value: int) -> void:
 	if _dmx_universe_offset_input == null:
 		return
 	if int(_dmx_universe_offset_input.value) == value:
-		refresh_fixture_bindings("universe_offset_reasserted")
 		return
 	_dmx_universe_offset_input.value = value
 

@@ -36,6 +36,18 @@ bool activation_is_active(const CompiledDmxSourceProgram &program,
 
 } // namespace
 
+// Evaluates a source program and its generic ModeMaster cascade without interpreting its semantic.
+bool evaluate_gobo_source_activation(int32_t source_program_id,
+                                     const std::vector<CompiledDmxSourceProgram> &programs,
+                                     const std::vector<GoboSourceValue> &values,
+                                     uint32_t *raw_value) {
+    const CompiledDmxSourceProgram *program = find_program(programs, source_program_id);
+    const GoboSourceValue *value = program ? find_value(values, program->program_id) : nullptr;
+    if (!program || !value || !activation_is_active(*program, programs, values, 0)) return false;
+    if (raw_value != nullptr) *raw_value = value->raw_value;
+    return true;
+}
+
 // Evaluates the active exact gobo semantic and its instantaneous physical scalar.
 EvaluatedGoboScalar evaluate_gobo_motion_scalar(const CompiledGoboMotionBinding &binding,
                                                 const std::vector<CompiledDmxSourceProgram> &programs,
