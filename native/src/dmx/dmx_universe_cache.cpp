@@ -32,7 +32,8 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
                                    const uint8_t *data,
                                    uint16_t length,
                                    uint8_t sequence,
-                                   uint64_t now_us) {
+                                   uint64_t now_us,
+                                   uint64_t capture_generation) {
     if (universe_id >= slots_.size() || data == nullptr) {
         return;
     }
@@ -47,10 +48,11 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     const uint8_t current_front = slot->front_index.load(std::memory_order_relaxed);
     const uint8_t next_front = static_cast<uint8_t>(1 - current_front);
 
-    const uint16_t current_length = slot->length.load(std::memory_order_relaxed);
+    const bool same_generation = slot->capture_generation.load(std::memory_order_relaxed) == capture_generation;
+    const uint16_t current_length = same_generation ? slot->length.load(std::memory_order_relaxed) : 0;
     const uint16_t effective_length = std::max(current_length, safe_length);
-    const bool payload_changed = safe_length > 0 &&
-        std::memcmp(slot->buffers[current_front].data(), data, safe_length) != 0;
+    const bool payload_changed = !same_generation || (safe_length > 0 &&
+        std::memcmp(slot->buffers[current_front].data(), data, safe_length) != 0);
 
     if (current_length > 0) {
         std::memcpy(slot->buffers[next_front].data(), slot->buffers[current_front].data(), current_length);
@@ -62,6 +64,7 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
     slot->length.store(effective_length, std::memory_order_relaxed);
     slot->last_rx_us.store(now_us, std::memory_order_relaxed);
     slot->sequence.store(sequence, std::memory_order_relaxed);
+    slot->capture_generation.store(capture_generation, std::memory_order_relaxed);
     slot->content_hash.store(compute_dmx_content_hash(slot->buffers[next_front].data(), effective_length),
                              std::memory_order_relaxed);
     if (payload_changed) {
@@ -69,6 +72,11 @@ void DmxUniverseCache::write_frame(uint16_t universe_id,
         slot->dirty.store(true, std::memory_order_release);
     }
     slot->front_index.store(next_front, std::memory_order_release);
+}
+
+// Starts a fresh monitor capture generation without deleting concurrently readable slots.
+uint64_t DmxUniverseCache::begin_capture_session() {
+    return active_capture_generation_.fetch_add(1, std::memory_order_acq_rel) + 1;
 }
 
 // Tries to fetch the latest DMX frame for a universe.
@@ -80,6 +88,7 @@ bool DmxUniverseCache::try_get_frame(uint16_t universe_id, DmxFrame &out_frame) 
 
     std::shared_lock<std::shared_mutex> frame_lock(slot->frame_mutex);
     const uint8_t front_index = slot->front_index.load(std::memory_order_acquire);
+    if (slot->capture_generation.load(std::memory_order_relaxed) != active_capture_generation_.load(std::memory_order_acquire)) return false;
     const uint16_t length = slot->length.load(std::memory_order_relaxed);
 
     out_frame.universe_id = universe_id;
@@ -123,7 +132,7 @@ std::vector<uint16_t> DmxUniverseCache::get_dirty_universes() const {
     dirty_universes.reserve(known_universes.size());
     for (const uint16_t universe_id : known_universes) {
         const UniverseSlot *slot = get_slot(universe_id);
-        if (slot != nullptr && slot->dirty.load(std::memory_order_acquire)) {
+        if (slot != nullptr && slot->capture_generation.load(std::memory_order_relaxed) == active_capture_generation_.load(std::memory_order_acquire) && slot->dirty.load(std::memory_order_acquire)) {
             dirty_universes.push_back(universe_id);
         }
     }
@@ -141,7 +150,7 @@ bool DmxUniverseCache::consume_frame(uint16_t universe_id, DmxFrame &out_frame) 
         std::shared_lock<std::shared_mutex> slots_lock(slots_mutex_);
         slot = slots_[universe_id].get();
     }
-    if (slot == nullptr || !slot->dirty.exchange(false, std::memory_order_acq_rel)) {
+    if (slot == nullptr || slot->capture_generation.load(std::memory_order_relaxed) != active_capture_generation_.load(std::memory_order_acquire) || !slot->dirty.exchange(false, std::memory_order_acq_rel)) {
         return false;
     }
 

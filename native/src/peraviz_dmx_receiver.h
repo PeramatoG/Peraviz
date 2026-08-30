@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/string.hpp>
 
 #include "dmx/artnet_receiver.h"
+#include "runtime/realtime_dmx_coordinator.h"
 
 #include <memory>
 #include <array>
@@ -36,10 +37,7 @@ public:
     PackedInt32Array get_active_universes(int active_window_ms = 2000) const;
     Dictionary get_stats() const;
     PackedByteArray get_universe_data(int universe_id) const;
-    PackedInt32Array get_dirty_universes() const;
-    PackedByteArray consume_universe(int universe_id);
     Dictionary get_universe_metadata(int universe_id) const;
-    Dictionary get_changed_universe_frames(const Dictionary &last_counters) const;
     bool configure_visual_runtime(Ref<PeravizVisualRuntime> runtime);
     int pump_visual_runtime(Ref<PeravizVisualRuntime> runtime);
     void set_monitor_capture_enabled(bool enabled);
@@ -51,6 +49,7 @@ private:
     std::unique_ptr<peraviz::dmx::ArtNetReceiver> receiver_;
     uint64_t scene_states_consumed_ = 0;
     int rehydrated_states_pending_ = 0;
+    peraviz::runtime::RealtimeDmxCoordinator coordinator_;
     std::array<uint64_t, 32> rx_to_native_buckets_ {};
     std::array<uint64_t, 32> native_to_apply_buckets_ {};
     uint64_t rx_to_native_max_us_ = 0;

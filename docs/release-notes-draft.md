@@ -44,5 +44,5 @@ Changes since the previous Peraviz release.
 - Aligned the native extension with the pinned Godot 4.7 compatibility contract and strengthened test inventory, native-class registration, and headless test validation.
 - Added session-owned RAII storage for extracted runtime assets and removed generated Godot editor metadata from version control.
 - Added a production-integrated native GDTF gobo scalar contract with exact semantic identities, generic structured mode dependencies, ChannelSet physical ranges, and standards-based node defaults as groundwork for later visible gobo motion.
-- Moved live scene playback to constant-time native DMX subscriptions, bounded latest-state coalescing, direct native runtime handoff, and held-state rehydration without routing raw universe payloads through scripts.
-- Corrected ordered ArtDmx sequence validation and receiver-session lifecycle, reduced endpoint work on the receive thread, drained sockets until would-block, and isolated full Technical Monitor payload capture from scene playback.
+- Moved live scene playback to native DMX subscriptions, generation-safe dirty-ID handoff, bounded latest-state coalescing, direct native runtime submission, and held-state rehydration without routing raw universe payloads through scripts.
+- Corrected ordered ArtDmx sequence validation and receiver-session lifecycle, reduced endpoint work on the receive thread, drained sockets until would-block, and made Technical Monitor payload capture fresh-session, budgeted, and subordinate to scene playback.

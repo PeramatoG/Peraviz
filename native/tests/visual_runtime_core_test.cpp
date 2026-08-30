@@ -1220,8 +1220,13 @@ bool test_eight_fixture_physical_gobo_rotation_ownership();
 bool test_physical_gobo_selection_clear_reapply_cycles();
 
 bool test_gobo_motion_setup_contract();
+bool test_realtime_dmx_coordinator_path();
+int run_realtime_dmx_load_harness(int argc, char **argv);
+int run_realtime_dmx_udp_load_harness(int argc, char **argv);
 
-int main() {
+int main(int argc, char **argv) {
+    if (argc > 1 && std::string(argv[1]) == "--benchmark") return run_realtime_dmx_load_harness(argc, argv);
+    if (argc > 1 && std::string(argv[1]) == "--udp-benchmark") return run_realtime_dmx_udp_load_harness(argc, argv);
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
     if (test_more_than_two_source_bytes() != 0) return 1;
@@ -1252,5 +1257,6 @@ int main() {
     if (!test_eight_fixture_physical_gobo_rotation_ownership()) return 1;
     if (!test_physical_gobo_selection_clear_reapply_cycles()) return 1;
     if (!test_gobo_motion_setup_contract()) return 1;
+    if (!test_realtime_dmx_coordinator_path()) return 1;
     return 0;
 }

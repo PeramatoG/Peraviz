@@ -108,4 +108,4 @@ Where suitable:
 
 ## Native realtime pump
 
-Normal playback must configure the receiver from the native compiled visual runtime and call the native pump once per frame. It must not consume raw universe `PackedByteArray` values, hash them, or cache them in GDScript. Raw payload APIs are diagnostic compatibility surfaces for Technical Monitor only.
+Normal playback must configure the receiver from the native compiled visual runtime and call the native coordinator pump once per frame. It must not consume raw universe `PackedByteArray` values, hash them, or cache them in GDScript. Dirty work is handed off through a bounded generation-tagged ID ring rather than a patched-universe scan. Technical Monitor payload capture is a fresh, budgeted diagnostic session; when its four-captures-per-drain and one-per-millisecond allowance is exhausted, payload fidelity is skipped before scene reception is delayed.

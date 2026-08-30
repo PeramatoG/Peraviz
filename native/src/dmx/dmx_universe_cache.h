@@ -41,7 +41,9 @@ public:
                      const uint8_t *data,
                      uint16_t length,
                      uint8_t sequence,
-                     uint64_t now_us);
+                     uint64_t now_us,
+                     uint64_t capture_generation = 0);
+    uint64_t begin_capture_session();
 
     bool try_get_frame(uint16_t universe_id, DmxFrame &out_frame) const;
     bool try_get_metadata(uint16_t universe_id, DmxUniverseMetadata &out_metadata) const;
@@ -61,6 +63,7 @@ private:
         std::atomic<uint8_t> sequence {0};
         std::atomic<uint32_t> content_hash {0};
         std::atomic<bool> dirty {false};
+        std::atomic<uint64_t> capture_generation {0};
         mutable std::shared_mutex frame_mutex;
     };
 
@@ -72,6 +75,7 @@ private:
     mutable std::mutex active_universe_mutex_;
     std::vector<uint16_t> active_universe_ids_;
     std::atomic<size_t> active_slot_count_ {0};
+    std::atomic<uint64_t> active_capture_generation_ {0};
 };
 
 } // namespace peraviz::dmx

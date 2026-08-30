@@ -129,6 +129,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/realtime_universe_mailbox.cpp
         src/dmx/dmx_universe_cache.cpp
         src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/monitor_capture_budget.cpp
         src/dmx/dmx_universe_decoder.cpp
         src/dmx/artnet_receiver.cpp
         src/dmx/gdtf_xml_reader.cpp
@@ -140,6 +141,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/realtime_interest_descriptor.cpp
+        src/runtime/realtime_dmx_coordinator.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -285,6 +287,7 @@ if(BUILD_TESTING)
         src/dmx/dmx_platform.cpp
         src/dmx/dmx_universe_cache.cpp
         src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/monitor_capture_budget.cpp
         src/dmx/realtime_subscription.cpp
         src/dmx/realtime_universe_mailbox.cpp
         src/dmx/udp_socket.cpp
@@ -331,8 +334,11 @@ if(BUILD_TESTING)
         tests/visual_runtime_core_test.cpp
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
+        tests/realtime_dmx_coordinator_test.cpp
+        tests/realtime_dmx_load_harness.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/realtime_interest_descriptor.cpp
+        src/runtime/realtime_dmx_coordinator.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -349,6 +355,16 @@ if(BUILD_TESTING)
         src/dmx/gdtf_xml_reader.cpp
         src/dmx/gdtf_physical_ranges.cpp
         src/dmx/gdtf_gobo_catalog.cpp
+        src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_sequence_tracker.cpp
+        src/dmx/artnet_receiver.cpp
+        src/dmx/dmx_platform.cpp
+        src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/udp_socket.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
+        src/dmx/dmx_universe_cache.cpp
+        src/dmx/monitor_capture_budget.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
         src/runtime_storage.cpp
