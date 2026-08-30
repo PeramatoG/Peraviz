@@ -7,6 +7,12 @@ const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.
 
 var test = HeadlessTestCaseScript.new()
 
+class FakeBootstrapVisualRuntime:
+	extends RefCounted
+	var submissions: Dictionary = {}
+	func submit_universe_frame(universe_id: int, frame: PackedByteArray) -> void:
+		submissions[universe_id] = frame
+
 class FakeLoader:
 	extends Node
 	const DEFAULT_EMITTER_PHOTOMETRICS: Dictionary = {"luminous_flux": 10000.0, "beam_angle": 25.0, "field_angle": 25.0, "beam_radius": 0.05}
@@ -38,8 +44,8 @@ class FakeLoader:
 			result["failed"] = int(result["failed"]) + 1
 		return result
 
-	func _apply_native_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float) -> Dictionary:
-		last_gobo_rotation = {"beam_target_id": beam_target_id, "wheel_id": wheel_id, "wheel_instance_index": wheel_instance_index, "angle_degrees": angle_degrees}
+	func _apply_native_gobo_rotation_state(beam_target_id: int, wheel_id: int, wheel_instance_index: int, rotation_mode: int, revision: int, phase_degrees: float, angular_velocity_dps: float, reference_seconds: float, native_now_seconds: float) -> Dictionary:
+		last_gobo_rotation = {"beam_target_id": beam_target_id, "wheel_id": wheel_id, "wheel_instance_index": wheel_instance_index, "rotation_mode": rotation_mode, "revision": revision, "phase_degrees": phase_degrees, "angular_velocity_dps": angular_velocity_dps, "reference_seconds": reference_seconds, "native_now_seconds": native_now_seconds}
 		return {"applied": true}
 
 	func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
@@ -128,7 +134,7 @@ func _run() -> void:
 	applier.install_schema({"sections": [
 		{"section_type": 1, "row_stride_ints": 4, "row_stride_floats": 2},
 		{"section_type": 2, "row_stride_ints": 3, "row_stride_floats": 5},
-		{"section_type": 15, "row_stride_ints": 6, "row_stride_floats": 1},
+		{"section_type": 15, "row_stride_ints": 7, "row_stride_floats": 3},
 	]})
 	var loader := FakeLoader.new()
 	get_root().add_child(loader)
@@ -148,9 +154,9 @@ func _run() -> void:
 	test.check(int(diagnostics.get("dimmer_requested", 0)) == 1, "Dimmer diagnostics should count the request")
 	test.check(int(diagnostics.get("dimmer_mutated", 0)) == 1, "Dimmer diagnostics should count the mutation")
 	test.check(int(diagnostics.get("dimmer_lights_mutated", 0)) >= 1, "Dimmer diagnostics should count mutated lights")
-	var rotation_result: Dictionary = applier.apply_snapshot({"descriptors": PackedInt32Array([15, 1, 0, 0, 0]), "integers": PackedInt32Array([1, 201, 7001, 1, 32, 1]), "floats": PackedFloat32Array([45.0])}, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
-	test.check(int(rotation_result.get("visual_mask_counts", {}).get("changed_gobo_rotation_count", 0)) == 1, "GoboRotation must decode changed mask from integer field 4")
-	test.check(loader.last_gobo_rotation == {"beam_target_id": 201, "wheel_id": 7001, "wheel_instance_index": 1, "angle_degrees": 45.0}, "GoboRotation should reach the exact renderer target and wheel instance")
+	var rotation_result: Dictionary = applier.apply_snapshot({"runtime_now_seconds": 12.5, "descriptors": PackedInt32Array([15, 1, 0, 0, 0]), "integers": PackedInt32Array([1, 201, 7001, 1, 2, 32, 9]), "floats": PackedFloat32Array([45.0, -30.0, 12.0])}, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
+	test.check(int(rotation_result.get("visual_mask_counts", {}).get("changed_gobo_rotation_count", 0)) == 1, "GoboRotation must decode changed mask from integer field 5")
+	test.check(loader.last_gobo_rotation == {"beam_target_id": 201, "wheel_id": 7001, "wheel_instance_index": 1, "rotation_mode": 2, "revision": 9, "phase_degrees": 45.0, "angular_velocity_dps": -30.0, "reference_seconds": 12.0, "native_now_seconds": 12.5}, "GoboRotation should decode the exact protocol 2.3 renderer state")
 	loader.dimmer_has_resources = false
 	var no_resource: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	test.check(int(no_resource.get("skipped", 0)) > 0, "A target without mutable resources should be skipped")
@@ -160,6 +166,15 @@ func _run() -> void:
 	loader.dimmer_valid = false
 	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	test.check(int(failed.get("skipped", 0)) > 0, "An unresolved dimmer target should be skipped")
+	var bootstrap_runtime = DmxFixtureRuntimeScript.new()
+	var bootstrap_native := FakeBootstrapVisualRuntime.new()
+	bootstrap_runtime._native_visual_runtime = bootstrap_native
+	bootstrap_runtime._compiled_used_universes = {1: true, 3: true}
+	var held_one := PackedByteArray([1, 2, 3])
+	var held_three := PackedByteArray([7, 8, 9])
+	var bootstrap_count: int = bootstrap_runtime._bootstrap_native_runtime_from_held_frames({1: held_one, 2: PackedByteArray([4]), 3: held_three})
+	test.check(bootstrap_count == 2 and bootstrap_native.submissions == {1: held_one, 3: held_three}, "Runtime rebuild must seed latest held snapshots for used universes only")
+	test.check(bootstrap_runtime._bootstrap_visual_frame_pending, "Held-state bootstrap must schedule one renderer-ready reconciliation")
 	var runtime = DmxFixtureRuntimeScript.new()
 	var native_loader := FakeNativeSceneLoader.new()
 	var renderer_registry := FakeRendererTargetRegistry.new()

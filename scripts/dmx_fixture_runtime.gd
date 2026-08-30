@@ -129,6 +129,9 @@ var _gobo_vectorization_cache: GoboVectorizationCache = null
 var _debug_force_full_apply: bool = false
 var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
 var _runtime_universe_offset: int = -1
+var _runtime_generation: int = 0
+var _bootstrap_visual_frame_pending: bool = false
+var _last_rebuild_reason: String = "uninitialized"
 
 func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_target_registry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_native_scene_loader = native_scene_loader
@@ -141,7 +144,10 @@ func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_targ
 	if _native_visual_runtime != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
-func rebuild(universe_offset: int) -> Dictionary:
+func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dictionary:
+	var held_universe_frames: Dictionary = _cached_universe_frames.duplicate(false)
+	_runtime_generation += 1
+	_last_rebuild_reason = rebuild_reason
 	_runtime_universe_offset = universe_offset
 	_bindings.clear()
 	_unbound.clear()
@@ -239,6 +245,7 @@ func rebuild(universe_offset: int) -> Dictionary:
 
 	_register_native_visual_runtime_bindings()
 	_finalize_universe_interest_offsets()
+	_bootstrap_native_runtime_from_held_frames(held_universe_frames)
 
 	for universe_key in _used_universes.keys():
 		var tracked_universe_id: int = int(universe_key)
@@ -253,6 +260,20 @@ func rebuild(universe_offset: int) -> Dictionary:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
 
 	return _build_summary(universe_offset)
+
+func _bootstrap_native_runtime_from_held_frames(held_universe_frames: Dictionary) -> int:
+	_bootstrap_visual_frame_pending = false
+	var submitted: int = 0
+	for universe_key in _compiled_used_universes.keys():
+		var universe_id: int = int(universe_key)
+		var held_frame: PackedByteArray = held_universe_frames.get(universe_id, PackedByteArray())
+		if held_frame.is_empty():
+			continue
+		_cached_universe_frames[universe_id] = held_frame
+		_native_visual_runtime.submit_universe_frame(universe_id, held_frame)
+		_bootstrap_visual_frame_pending = true
+		submitted += 1
+	return submitted
 
 func _initialize_native_visual_runtime() -> void:
 	_native_visual_runtime_available = ClassDB.class_exists("PeravizVisualRuntime")
@@ -356,18 +377,18 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	if not _native_visual_runtime_available or _native_visual_runtime == null:
 		push_error("PeravizVisualRuntime is required for live DMX visualization but is not available.")
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": [], "native_visual_runtime_available": false}
-	if receiver == null or not receiver.is_running():
+	if (receiver == null or not receiver.is_running()) and not _bootstrap_visual_frame_pending:
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var changed_frames: Dictionary = {}
-	if receiver.has_method("get_dirty_universes") and receiver.has_method("consume_universe"):
+	if receiver != null and receiver.has_method("get_dirty_universes") and receiver.has_method("consume_universe"):
 		changed_frames = _consume_dirty_universe_frames(receiver)
-	elif receiver.has_method("get_changed_universe_frames"):
+	elif receiver != null and receiver.has_method("get_changed_universe_frames"):
 		changed_frames = receiver.get_changed_universe_frames(_last_universe_counters)
-	else:
+	elif receiver != null:
 		changed_frames = _collect_changed_universe_frames_compat(receiver)
 
-	if changed_frames.is_empty() and not _debug_force_full_apply:
+	if changed_frames.is_empty() and not _debug_force_full_apply and not _bootstrap_visual_frame_pending:
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var updated: int = 0
@@ -394,6 +415,7 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		submitted_universes += 1
 
 	var visual_frame: Dictionary = _native_visual_runtime.consume_latest_visual_frame()
+	_bootstrap_visual_frame_pending = false
 	var visual_descriptors: PackedInt32Array = visual_frame.get("descriptors", PackedInt32Array())
 	var visual_integers: PackedInt32Array = visual_frame.get("integers", PackedInt32Array())
 	var visual_floats: PackedFloat32Array = visual_frame.get("floats", PackedFloat32Array())
@@ -613,7 +635,9 @@ func _install_renderer_manifest(renderer_manifest: Array) -> bool:
 func _report_native_setup_summary() -> void:
 	var summary: Dictionary = _native_setup_summary.duplicate(true)
 	var dpt_count: int = int(summary.get("dimmer_property_count", 0)) + int(summary.get("pan_property_count", 0)) + int(summary.get("tilt_property_count", 0))
-	print("[native-dpt-setup] mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offset_counts=%s manifest_fixtures=%d installed_native_properties=%d" % [
+	print("[native-dpt-setup] generation=%d reason=%s mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offset_counts=%s manifest_fixtures=%d installed_native_properties=%d" % [
+		_runtime_generation,
+		_last_rebuild_reason,
 		int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))),
 		int(summary.get("gdtf_files_opened", 0)),
 		int(summary.get("selected_modes_found", 0)),

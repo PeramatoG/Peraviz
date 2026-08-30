@@ -1706,6 +1706,9 @@ func _apply_native_gobo_selection(beam_target_id: int, wheel_id: int, wheel_inst
 func _apply_native_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float) -> Dictionary:
 	return _native_target_registry.apply_gobo_indexed_rotation(beam_target_id, wheel_id, wheel_instance_index, angle_degrees)
 
+func _apply_native_gobo_rotation_state(beam_target_id: int, wheel_id: int, wheel_instance_index: int, rotation_mode: int, revision: int, phase_degrees: float, angular_velocity_dps: float, reference_seconds: float, native_now_seconds: float) -> Dictionary:
+	return _native_target_registry.apply_gobo_rotation_state(beam_target_id, wheel_id, wheel_instance_index, rotation_mode, revision, phase_degrees, angular_velocity_dps, reference_seconds, native_now_seconds)
+
 func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	return _native_target_registry.apply_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
 
@@ -2824,13 +2827,15 @@ func _setup_dmx_fixture_runtime() -> void:
 	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, self, _fixture_row_provider)
 
 func _refresh_dmx_fixture_bindings() -> void:
-	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings()
+	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings("scene_refresh")
 	_refresh_fixture_inspection_panel()
 	var unbound_count: int = int(summary.get("unbound", 0))
 	if _status_presenter != null and unbound_count > 0:
 		_status_presenter.set_scene_state_warning_unbound(unbound_count)
 
 func _process(delta: float) -> void:
+	if _native_target_registry != null:
+		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:
 		_dmx_controller.process_dmx(delta)
 

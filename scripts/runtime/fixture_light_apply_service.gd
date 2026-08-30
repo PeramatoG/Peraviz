@@ -309,10 +309,10 @@ func apply_gobo_selection(loader: Node, _fixture_uuid: String, beam_target_id: i
 		return {"applied": false, "failure_reason": "native gobo registry unavailable"}
 	return loader._apply_native_gobo_selection(beam_target_id, wheel_id, wheel_instance_index, slot_index, asset_id, selection_mode)
 
-func apply_gobo_indexed_rotation(loader: Node, _fixture_uuid: String, beam_target_id: int, wheel_id: int, wheel_instance_index: int, _changed_mask: int, _revision: int, angle_degrees: float) -> Dictionary:
-	if not loader.has_method("_apply_native_gobo_indexed_rotation"):
+func apply_gobo_rotation_state(loader: Node, _fixture_uuid: String, beam_target_id: int, wheel_id: int, wheel_instance_index: int, rotation_mode: int, _changed_mask: int, revision: int, phase_degrees: float, angular_velocity_dps: float, reference_seconds: float, native_now_seconds: float) -> Dictionary:
+	if not loader.has_method("_apply_native_gobo_rotation_state"):
 		return {"applied": false, "failure_reason": "native gobo registry unavailable"}
-	return loader._apply_native_gobo_indexed_rotation(beam_target_id, wheel_id, wheel_instance_index, angle_degrees)
+	return loader._apply_native_gobo_rotation_state(beam_target_id, wheel_id, wheel_instance_index, rotation_mode, revision, phase_degrees, angular_velocity_dps, reference_seconds, native_now_seconds)
 
 func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
 	_visual_apply_counters["fixtures_applied"] = int(_visual_apply_counters.get("fixtures_applied", 0)) + 1

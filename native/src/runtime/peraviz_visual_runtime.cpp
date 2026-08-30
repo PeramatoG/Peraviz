@@ -46,8 +46,14 @@ void PeravizVisualRuntimeCore::clear() {
     wheel_palettes_by_id_.clear();
     base_color_state_by_target_.clear();
     wheel_state_by_physical_key_.clear();
-    gobo_state_by_binding_.clear();
-    gobo_rotation_state_by_binding_.clear();
+    gobo_selection_state_by_layer_.clear();
+    gobo_rotation_state_by_layer_.clear();
+    diagnosed_ambiguous_gobo_selection_layers_.clear();
+    diagnosed_ambiguous_gobo_pos_layers_.clear();
+    diagnosed_ambiguous_gobo_posrotate_layers_.clear();
+    diagnosed_simultaneous_gobo_posrotate_layers_.clear();
+    runtime_epoch_ = std::chrono::steady_clock::now();
+    test_runtime_now_seconds_ = -1.0;
     gobo_asset_by_wheel_slot_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
@@ -209,21 +215,45 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     for (const CompiledGoboSelectionBinding &binding : scene.gobo_bindings) {
         auto program_it = source_programs_by_id_.find(binding.source_program_id);
         if (binding.binding_id <= 0 || binding.fixture_id <= 0 || binding.beam_render_target_id <= 0 || binding.wheel_id <= 0 || binding.wheel_instance_index <= 0 || program_it == source_programs_by_id_.end() || binding.channel_sets.empty() || program_it->second.program.sources.empty()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-GOBO-BINDING", "warning", "Compiled seated gobo binding is incomplete.", std::to_string(binding.binding_id)});
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-GOBO-BINDING", "warning", "Compiled seated gobo binding is incomplete or has a non-positive wheel instance.", std::to_string(binding.binding_id)});
             continue;
         }
-        UniverseState &universe = universes_[program_it->second.program.sources.front().universe_id];
+        const int universe_id = program_it->second.program.sources.front().universe_id;
+        std::vector<int> dependency_offsets;
+        std::vector<int32_t> dependency_program_ids;
+        int32_t program_id = binding.source_program_id;
+        std::set<int32_t> visited;
+        bool valid_dependencies = true;
+        while (program_id > 0 && visited.insert(program_id).second) {
+            auto dependency_it = source_programs_by_id_.find(program_id);
+            if (dependency_it == source_programs_by_id_.end()) { valid_dependencies = false; break; }
+            for (const CompiledDmxByteSource &source : dependency_it->second.program.sources) {
+                if (source.universe_id != universe_id) { valid_dependencies = false; break; }
+                dependency_offsets.push_back(source.address);
+            }
+            if (!valid_dependencies) break;
+            dependency_program_ids.push_back(program_id);
+            const auto &activation = dependency_it->second.program.activation;
+            program_id = activation.target_kind == gdtf_runtime::ModeMasterTargetKind::None ? 0 : activation.master_program_id;
+        }
+        if (!valid_dependencies) {
+            diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-GOBO-SELECTION", "warning", "Gobo selection activation dependencies are missing or span universes and cannot be evaluated.", std::to_string(binding.binding_id)});
+            continue;
+        }
+        UniverseState &universe = universes_[universe_id];
         const int binding_index = static_cast<int>(universe.gobo_bindings.size());
-        universe.gobo_bindings.push_back({binding});
-        for (const CompiledDmxByteSource &source : program_it->second.program.sources) {
-            universe.interest_offsets.push_back(source.address);
-            universe.gobo_binding_indices_by_offset[source.address].push_back(binding_index);
+        universe.gobo_bindings.push_back({binding, dependency_program_ids});
+        const int64_t layer_key = (static_cast<int64_t>(binding.beam_render_target_id) << 32) | static_cast<uint32_t>(binding.wheel_instance_index);
+        universe.gobo_binding_indices_by_layer[layer_key].push_back(binding_index);
+        for (int offset : dependency_offsets) {
+            universe.interest_offsets.push_back(offset);
+            universe.gobo_layers_by_offset[offset].push_back(layer_key);
         }
         capabilities.has_gobo_selection = true;
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGobo;
     }
     for (const CompiledGoboMotionBinding &binding : scene.gobo_motion_bindings) {
-        if (binding.semantic_kind != gdtf_runtime::GoboSemanticKind::Pos) continue;
+        if (binding.semantic_kind != gdtf_runtime::GoboSemanticKind::Pos && binding.semantic_kind != gdtf_runtime::GoboSemanticKind::PosRotate) continue;
         auto source_it = source_programs_by_id_.find(binding.source_program_id);
         if (binding.binding_id <= 0 || binding.beam_render_target_id <= 0 || !binding.scalar_evaluable || source_it == source_programs_by_id_.end() || source_it->second.program.sources.empty()) continue;
         const int universe_id = source_it->second.program.sources.front().universe_id;
@@ -248,9 +278,12 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         UniverseState &universe = universes_[universe_id];
         const int index = static_cast<int>(universe.gobo_motion_bindings.size());
         universe.gobo_motion_bindings.push_back({binding, dependency_program_ids});
+        const int64_t layer_key = (static_cast<int64_t>(binding.beam_render_target_id) << 32) | static_cast<uint32_t>(binding.wheel_instance_index);
+        universe.gobo_motion_indices_by_layer[layer_key].push_back(index);
         for (int offset : dependency_offsets) {
             universe.interest_offsets.push_back(offset);
             universe.gobo_motion_indices_by_offset[offset].push_back(index);
+            universe.gobo_motion_layers_by_offset[offset].push_back(layer_key);
         }
         capabilities.has_gobo_rotation = true;
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGoboRotation;
@@ -316,7 +349,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
     std::vector<PendingRow> rows;
     struct GoboRow { int32_t fixture_id; int32_t beam_target_id; int32_t wheel_id; int32_t wheel_instance_index; int32_t slot_index; int32_t asset_id; CompiledGoboSelectionMode mode; int32_t revision; };
     std::vector<GoboRow> gobo_rows;
-    struct GoboRotationRow { int32_t fixture_id; int32_t beam_target_id; int32_t wheel_id; int32_t wheel_instance_index; float angle_degrees; int32_t revision; };
+    struct GoboRotationRow { int32_t fixture_id; int32_t beam_target_id; int32_t wheel_id; int32_t wheel_instance_index; GoboRotationMode mode; float phase_degrees; float angular_velocity_dps; float reference_seconds; int32_t revision; };
     std::vector<GoboRotationRow> gobo_rotation_rows;
 
     for (auto &[universe_id, universe] : universes_) {
@@ -337,8 +370,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         std::set<int> property_indices;
         std::set<int> color_target_indices;
         std::set<int> wheel_binding_indices;
-        std::set<int> gobo_binding_indices;
-        std::set<int> gobo_motion_indices;
+        std::set<int64_t> gobo_selection_layers;
+        std::set<int64_t> gobo_motion_layers;
         for (int offset : changed_offsets) {
             auto property_it = universe.property_indices_by_offset.find(offset);
             if (property_it != universe.property_indices_by_offset.end()) property_indices.insert(property_it->second.begin(), property_it->second.end());
@@ -346,63 +379,144 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             if (color_it != universe.color_target_indices_by_offset.end()) color_target_indices.insert(color_it->second.begin(), color_it->second.end());
             auto wheel_it = universe.wheel_binding_indices_by_offset.find(offset);
             if (wheel_it != universe.wheel_binding_indices_by_offset.end()) wheel_binding_indices.insert(wheel_it->second.begin(), wheel_it->second.end());
-            auto gobo_it = universe.gobo_binding_indices_by_offset.find(offset);
-            if (gobo_it != universe.gobo_binding_indices_by_offset.end()) gobo_binding_indices.insert(gobo_it->second.begin(), gobo_it->second.end());
-            auto motion_it = universe.gobo_motion_indices_by_offset.find(offset);
-            if (motion_it != universe.gobo_motion_indices_by_offset.end()) gobo_motion_indices.insert(motion_it->second.begin(), motion_it->second.end());
+            auto gobo_it = universe.gobo_layers_by_offset.find(offset);
+            if (gobo_it != universe.gobo_layers_by_offset.end()) gobo_selection_layers.insert(gobo_it->second.begin(), gobo_it->second.end());
+            auto motion_it = universe.gobo_motion_layers_by_offset.find(offset);
+            if (motion_it != universe.gobo_motion_layers_by_offset.end()) gobo_motion_layers.insert(motion_it->second.begin(), motion_it->second.end());
         }
 
-        for (int binding_index : gobo_binding_indices) {
-            if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_bindings.size())) continue;
-            const CompiledGoboSelectionBinding &binding = universe.gobo_bindings[static_cast<size_t>(binding_index)].binding;
-            const EvaluationResult evaluated = evaluate_source_program_by_id(universe.latest_frame, binding.source_program_id);
-            if (!evaluated.valid) continue;
-            const CompiledWheelChannelSet *active_set = nullptr;
-            for (const CompiledWheelChannelSet &set : binding.channel_sets) {
-                if (evaluated.raw_value >= set.dmx_from && evaluated.raw_value <= set.dmx_to) { active_set = &set; break; }
+        for (int64_t layer_key : gobo_selection_layers) {
+            const auto layer_it = universe.gobo_binding_indices_by_layer.find(layer_key);
+            if (layer_it == universe.gobo_binding_indices_by_layer.end()) continue;
+            const CompiledGoboSelectionBinding *selected_binding = nullptr;
+            const CompiledWheelChannelSet *selected_set = nullptr;
+            int active_binding_count = 0;
+            for (int binding_index : layer_it->second) {
+                if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_bindings.size())) continue;
+                const GoboBindingRuntime &runtime_binding = universe.gobo_bindings[static_cast<size_t>(binding_index)];
+                std::vector<CompiledDmxSourceProgram> programs;
+                std::vector<GoboSourceValue> values;
+                for (int32_t program_id : runtime_binding.dependency_program_ids) {
+                    const auto installed_it = source_programs_by_id_.find(program_id);
+                    if (installed_it == source_programs_by_id_.end()) continue;
+                    const EvaluationResult source_value = evaluate_source_program(universe.latest_frame, installed_it->second, &diagnostics_);
+                    if (!source_value.valid) continue;
+                    programs.push_back(installed_it->second.program);
+                    values.push_back({program_id, source_value.raw_value});
+                }
+                uint32_t raw_value = 0;
+                if (!evaluate_gobo_source_activation(runtime_binding.binding.source_program_id, programs, values, &raw_value)) continue;
+                const CompiledWheelChannelSet *active_set = nullptr;
+                for (const CompiledWheelChannelSet &set : runtime_binding.binding.channel_sets) {
+                    if (raw_value >= set.dmx_from && raw_value <= set.dmx_to) { active_set = &set; break; }
+                }
+                if (active_set == nullptr) continue;
+                ++active_binding_count;
+                if (selected_binding == nullptr) {
+                    selected_binding = &runtime_binding.binding;
+                    selected_set = active_set;
+                }
             }
-            if (active_set == nullptr) continue;
-            const int64_t asset_key = (static_cast<int64_t>(binding.wheel_id) << 32) | static_cast<uint32_t>(active_set->wheel_slot_index);
+            if (selected_binding == nullptr || selected_set == nullptr) continue;
+            if (active_binding_count > 1 && diagnosed_ambiguous_gobo_selection_layers_.insert(layer_key).second) diagnostics_.push_back({"PVZ-RUNTIME-AMBIGUOUS-GOBO-SELECTION", "warning", "Multiple active gobo selection bindings share one physical layer; parser declaration order is used.", std::to_string(layer_key)});
+            const int64_t asset_key = (static_cast<int64_t>(selected_binding->wheel_id) << 32) | static_cast<uint32_t>(selected_set->wheel_slot_index);
             const int32_t asset_id = gobo_asset_by_wheel_slot_.count(asset_key) != 0 ? gobo_asset_by_wheel_slot_[asset_key] : 0;
-            GoboSelectionState &state = gobo_state_by_binding_[binding.binding_id];
-            if (state.initialized && state.slot_index == active_set->wheel_slot_index && state.asset_id == asset_id) continue;
-            state.slot_index = active_set->wheel_slot_index;
+            GoboSelectionState &state = gobo_selection_state_by_layer_[layer_key];
+            if (state.initialized && state.slot_index == selected_set->wheel_slot_index && state.asset_id == asset_id) {
+                ++stats_.gobo_selection_layers_deduplicated;
+                continue;
+            }
+            state.slot_index = selected_set->wheel_slot_index;
             state.asset_id = asset_id;
+            state.contributing_binding_id = selected_binding->binding_id;
             state.initialized = true;
             ++state.revision;
-            gobo_rows.push_back({binding.fixture_id, binding.beam_render_target_id, binding.wheel_id, binding.wheel_instance_index, state.slot_index, state.asset_id, binding.mode, state.revision});
+            gobo_rows.push_back({selected_binding->fixture_id, selected_binding->beam_render_target_id, selected_binding->wheel_id, selected_binding->wheel_instance_index, state.slot_index, state.asset_id, selected_binding->mode, state.revision});
             ++stats_.gobo_selection_rows;
             ++stats_.gobo_topology_updates;
         }
 
-        for (int binding_index : gobo_motion_indices) {
-            if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_motion_bindings.size())) continue;
-            const GoboMotionRuntime &motion = universe.gobo_motion_bindings[static_cast<size_t>(binding_index)];
-            const CompiledGoboMotionBinding &binding = motion.binding;
-            std::vector<CompiledDmxSourceProgram> programs;
-            std::vector<GoboSourceValue> values;
-            for (int32_t program_id : motion.dependency_program_ids) {
-                const auto installed_it = source_programs_by_id_.find(program_id);
-                if (installed_it == source_programs_by_id_.end()) continue;
-                const InstalledSourceProgram &installed = installed_it->second;
-                const EvaluationResult source_value = evaluate_source_program(universe.latest_frame, installed, &diagnostics_);
-                if (!source_value.valid) continue;
-                programs.push_back(installed.program);
-                values.push_back({program_id, source_value.raw_value});
+        const double motion_now = runtime_now_seconds();
+        for (int64_t layer_key : gobo_motion_layers) {
+            const auto layer_it = universe.gobo_motion_indices_by_layer.find(layer_key);
+            if (layer_it == universe.gobo_motion_indices_by_layer.end()) continue;
+            const CompiledGoboMotionBinding *pos_binding = nullptr;
+            const CompiledGoboMotionBinding *rotate_binding = nullptr;
+            EvaluatedGoboScalar pos_value;
+            EvaluatedGoboScalar rotate_value;
+            int active_pos_count = 0;
+            int active_rotate_count = 0;
+            for (int binding_index : layer_it->second) {
+                if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_motion_bindings.size())) continue;
+                const GoboMotionRuntime &motion = universe.gobo_motion_bindings[static_cast<size_t>(binding_index)];
+                std::vector<CompiledDmxSourceProgram> programs;
+                std::vector<GoboSourceValue> values;
+                for (int32_t program_id : motion.dependency_program_ids) {
+                    const auto installed_it = source_programs_by_id_.find(program_id);
+                    if (installed_it == source_programs_by_id_.end()) continue;
+                    const EvaluationResult source_value = evaluate_source_program(universe.latest_frame, installed_it->second, &diagnostics_);
+                    if (!source_value.valid) continue;
+                    programs.push_back(installed_it->second.program);
+                    values.push_back({program_id, source_value.raw_value});
+                }
+                const EvaluatedGoboScalar evaluated = evaluate_gobo_motion_scalar(motion.binding, programs, values);
+                if (!evaluated.active) continue;
+                if (motion.binding.semantic_kind == gdtf_runtime::GoboSemanticKind::Pos) {
+                    ++active_pos_count;
+                    if (pos_binding == nullptr) { pos_binding = &motion.binding; pos_value = evaluated; }
+                } else if (motion.binding.semantic_kind == gdtf_runtime::GoboSemanticKind::PosRotate) {
+                    ++active_rotate_count;
+                    if (rotate_binding == nullptr) { rotate_binding = &motion.binding; rotate_value = evaluated; }
+                }
             }
-            const EvaluatedGoboScalar evaluated = evaluate_gobo_motion_scalar(binding, programs, values);
-            GoboRotationState &state = gobo_rotation_state_by_binding_[binding.binding_id];
-            if (!evaluated.active) { state.active = false; continue; }
-            const float angle = static_cast<float>(evaluated.physical_value);
-            if (state.initialized && state.active && nearly_equal(state.angle_degrees, angle, kAngleEpsilon)) continue;
-            state.angle_degrees = angle;
-            state.active = true;
+            GoboRotationState &state = gobo_rotation_state_by_layer_[layer_key];
+            const bool pos_active = pos_binding != nullptr;
+            const bool rotate_active = rotate_binding != nullptr;
+            if (!state.initialized && !pos_active && !rotate_active) continue;
+            const double elapsed = state.initialized ? std::max(0.0, motion_now - state.reference_seconds) : 0.0;
+            const double current_phase = state.initialized ? state.phase_degrees + state.angular_velocity_dps * elapsed : 0.0;
+            const bool pos_changed = state.pos_active != pos_active ||
+                (pos_active && (state.pos_binding_id != pos_binding->binding_id || !nearly_equal(static_cast<float>(state.pos_degrees), static_cast<float>(pos_value.physical_value), kAngleEpsilon)));
+            const bool rotate_changed = state.pos_rotate_active != rotate_active ||
+                (rotate_active && (state.pos_rotate_binding_id != rotate_binding->binding_id || !nearly_equal(static_cast<float>(state.pos_rotate_dps), static_cast<float>(rotate_value.physical_value), kAngleEpsilon)));
+            GoboRotationMode next_mode = GoboRotationMode::Hold;
+            double next_phase = current_phase;
+            double next_velocity = 0.0;
+            if (rotate_active) {
+                next_mode = GoboRotationMode::Continuous;
+                next_velocity = rotate_value.physical_value;
+                if (pos_active && pos_changed) next_phase = pos_value.physical_value;
+            } else if (pos_active) {
+                next_mode = GoboRotationMode::Indexed;
+                next_phase = pos_value.physical_value;
+            }
+            const bool changed = !state.initialized || state.mode != next_mode || pos_changed || rotate_changed ||
+                !nearly_equal(static_cast<float>(state.angular_velocity_dps), static_cast<float>(next_velocity), kAngleEpsilon) ||
+                (next_mode == GoboRotationMode::Indexed && !nearly_equal(static_cast<float>(state.phase_degrees), static_cast<float>(next_phase), kAngleEpsilon));
+            state.pos_active = pos_active;
+            state.pos_rotate_active = rotate_active;
+            state.pos_binding_id = pos_active ? pos_binding->binding_id : 0;
+            state.pos_rotate_binding_id = rotate_active ? rotate_binding->binding_id : 0;
+            if (pos_active) state.pos_degrees = pos_value.physical_value;
+            if (rotate_active) state.pos_rotate_dps = rotate_value.physical_value;
+            if (!changed) continue;
+            state.phase_degrees = next_phase;
+            state.angular_velocity_dps = next_velocity;
+            state.reference_seconds = motion_now;
+            state.mode = next_mode;
             state.initialized = true;
             ++state.revision;
+            if (active_pos_count > 1) ++stats_.ambiguous_gobo_pos_layers;
+            if (active_rotate_count > 1) ++stats_.ambiguous_gobo_posrotate_layers;
+            if (pos_active && rotate_active) ++stats_.simultaneous_gobo_pos_posrotate_layers;
+            if (active_pos_count > 1 && diagnosed_ambiguous_gobo_pos_layers_.insert(layer_key).second) diagnostics_.push_back({"PVZ-RUNTIME-AMBIGUOUS-GOBO-POS", "warning", "Multiple active Gobo(n)Pos bindings share one physical layer; parser declaration order is used.", std::to_string(layer_key)});
+            if (active_rotate_count > 1 && diagnosed_ambiguous_gobo_posrotate_layers_.insert(layer_key).second) diagnostics_.push_back({"PVZ-RUNTIME-AMBIGUOUS-GOBO-POSROTATE", "warning", "Multiple active Gobo(n)PosRotate bindings share one physical layer; parser declaration order is used.", std::to_string(layer_key)});
+            if (pos_active && rotate_active && diagnosed_simultaneous_gobo_posrotate_layers_.insert(layer_key).second) diagnostics_.push_back({"PVZ-RUNTIME-SIMULTANEOUS-GOBO-POS-POSROTATE", "info", "Simultaneous Pos and PosRotate contribute indexed phase and signed velocity to one physical layer.", std::to_string(layer_key)});
             ++stats_.changed_gobo_rotation;
             ++stats_.gobo_parametric_updates;
             ++stats_.fixtures_dirty;
-            gobo_rotation_rows.push_back({binding.fixture_id, binding.beam_render_target_id, binding.wheel_id, binding.wheel_instance_index, angle, state.revision});
+            const CompiledGoboMotionBinding &identity = rotate_active ? *rotate_binding : (pos_active ? *pos_binding : universe.gobo_motion_bindings[static_cast<size_t>(layer_it->second.front())].binding);
+            gobo_rotation_rows.push_back({identity.fixture_id, identity.beam_render_target_id, identity.wheel_id, identity.wheel_instance_index, state.mode, static_cast<float>(state.phase_degrees), static_cast<float>(state.angular_velocity_dps), static_cast<float>(state.reference_seconds), state.revision});
         }
 
         std::unordered_map<int, ComponentState> pending_transform_by_fixture;
@@ -683,8 +797,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const GoboRotationRow &row : gobo_rotation_rows) {
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.beam_target_id, row.wheel_id, row.wheel_instance_index, static_cast<int32_t>(VisualChangeGoboRotation), row.revision});
-            frame.floats.push_back(row.angle_degrees);
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.beam_target_id, row.wheel_id, row.wheel_instance_index, static_cast<int32_t>(row.mode), static_cast<int32_t>(VisualChangeGoboRotation), row.revision});
+            frame.floats.insert(frame.floats.end(), {row.phase_degrees, row.angular_velocity_dps, row.reference_seconds});
         }
         append_descriptor(frame, VisualSectionType::GoboRotation, static_cast<int32_t>(gobo_rotation_rows.size()), int_offset, float_offset);
     }
@@ -697,6 +811,15 @@ const VisualFrameSchema &PeravizVisualRuntimeCore::schema() const { return schem
 
 // Returns cumulative runtime counters for debug UI and benchmarks.
 const VisualFrameStats &PeravizVisualRuntimeCore::stats() const { return stats_; }
+
+// Returns the runtime-local monotonic time used by authoritative motion commands.
+double PeravizVisualRuntimeCore::runtime_now_seconds() const {
+    if (test_runtime_now_seconds_ >= 0.0) return test_runtime_now_seconds_;
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - runtime_epoch_).count();
+}
+
+// Overrides the monotonic clock for deterministic native tests.
+void PeravizVisualRuntimeCore::set_runtime_now_seconds_for_testing(double seconds) { test_runtime_now_seconds_ = seconds; }
 
 // Maps compiled semantic identifiers into runtime component state parameters.
 SemanticParameter PeravizVisualRuntimeCore::semantic_parameter_for_compiled(CompiledSemantic semantic) {

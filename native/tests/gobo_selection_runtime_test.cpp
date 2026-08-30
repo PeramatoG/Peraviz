@@ -88,7 +88,7 @@ bool test_native_indexed_gobo_rotation_section() {
         }
     }
     if (int_offset < 0 || first.integers[int_offset + GoboRotationWheelInstanceIndex] != 1 ||
-        std::abs(first.floats[float_offset] - 0.705882f) > 0.01f)
+        std::abs(first.floats[float_offset + GoboRotationAuthoritativePhaseDegrees] - 0.705882f) > 0.01f)
         return false;
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     if (!runtime.consume_latest_visual_frame().descriptors.empty())
@@ -232,9 +232,122 @@ bool test_native_gobo_pos_mode_master_transitions() {
         return false;
     dmx[0] = 0;
     runtime.submit_universe_frame(0, dmx.data(), 512);
-    if (!runtime.consume_latest_visual_frame().descriptors.empty())
+    const SectionedVisualFrame held = runtime.consume_latest_visual_frame();
+    if (held.descriptors.empty() || held.integers[GoboRotationModeField] != static_cast<int32_t>(GoboRotationMode::Hold))
         return false;
     dmx[0] = 200;
     runtime.submit_universe_frame(0, dmx.data(), 512);
-    return !runtime.consume_latest_visual_frame().descriptors.empty() && runtime.stats().gobo_parametric_updates == 2;
+    return !runtime.consume_latest_visual_frame().descriptors.empty() && runtime.stats().gobo_parametric_updates == 3;
+}
+// Verifies signed continuous speed changes preserve the authoritative phase and emit dirty-only commands.
+bool test_native_continuous_gobo_rotation_section() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture", "type", "mode", 10, 1});
+    scene.source_programs.push_back({92, CompiledSemantic::Unknown, {{10, 11, 0}}, 0, 255, -90.0, 90.0, "Gobo1PosRotate", "Rotate"});
+    CompiledGoboMotionBinding binding;
+    binding.binding_id = 9201; binding.fixture_id = 1; binding.beam_render_target_id = 77; binding.wheel_id = 7001;
+    binding.wheel_instance_index = 1; binding.source_program_id = 92; binding.semantic_kind = peraviz::gdtf_runtime::GoboSemanticKind::PosRotate;
+    binding.controlled_scope = peraviz::gdtf_runtime::GoboControlledScope::SelectedGobo; binding.physical_from = -90.0; binding.physical_to = 90.0;
+    binding.physical_unit = "AngularSpeed"; binding.scalar_evaluable = true; scene.gobo_motion_bindings.push_back(binding);
+    PeravizVisualRuntimeCore runtime; runtime.install_compiled_scene(scene); runtime.set_runtime_now_seconds_for_testing(10.0);
+    std::vector<uint8_t> dmx(512, 0); dmx[11] = 255; runtime.submit_universe_frame(10, dmx.data(), 512);
+    SectionedVisualFrame first = runtime.consume_latest_visual_frame();
+    if (first.descriptors.empty() || first.integers[GoboRotationModeField] != static_cast<int32_t>(GoboRotationMode::Continuous) ||
+        std::abs(first.floats[GoboRotationAngularVelocityDegreesPerSecond] - 90.0f) > 0.01f) return false;
+    runtime.set_runtime_now_seconds_for_testing(12.0); dmx[11] = 0; runtime.submit_universe_frame(10, dmx.data(), 512);
+    SectionedVisualFrame reversed = runtime.consume_latest_visual_frame();
+    if (reversed.descriptors.empty() || std::abs(reversed.floats[GoboRotationAuthoritativePhaseDegrees] - 180.0f) > 0.01f ||
+        std::abs(reversed.floats[GoboRotationAngularVelocityDegreesPerSecond] + 90.0f) > 0.01f) return false;
+    runtime.submit_universe_frame(10, dmx.data(), 512);
+    return runtime.consume_latest_visual_frame().descriptors.empty();
+}
+
+// Verifies simultaneous Pos and PosRotate contributions are independent of hashed binding-ID ordering.
+bool test_eight_fixture_physical_gobo_rotation_ownership() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    std::vector<uint8_t> dmx(512, 0);
+    for (int fixture = 0; fixture < 8; ++fixture) {
+        const int32_t fixture_id = fixture + 1;
+        const int32_t target_id = 1000 + fixture;
+        const int32_t pos_program_id = 2000 + fixture * 2;
+        const int32_t rotate_program_id = pos_program_id + 1;
+        const int pos_offset = fixture * 2;
+        const int rotate_offset = pos_offset + 1;
+        scene.fixtures.push_back({fixture_id, "fixture-" + std::to_string(fixture), "type", "mode", 0, fixture * 10 + 1});
+        scene.source_programs.push_back({pos_program_id, CompiledSemantic::Unknown, {{0, pos_offset, 0}}, 0, 255, 30.0, 30.0, "Gobo1Pos", "Position"});
+        scene.source_programs.push_back({rotate_program_id, CompiledSemantic::Unknown, {{0, rotate_offset, 0}}, 0, 255, 45.0, 90.0, "Gobo1PosRotate", "Rotate"});
+        CompiledGoboMotionBinding pos;
+        pos.binding_id = fixture % 2 == 0 ? 9000 + fixture : 1000 + fixture;
+        pos.fixture_id = fixture_id; pos.beam_render_target_id = target_id; pos.wheel_id = 71; pos.wheel_instance_index = 1;
+        pos.source_program_id = pos_program_id; pos.semantic_kind = peraviz::gdtf_runtime::GoboSemanticKind::Pos;
+        pos.controlled_scope = peraviz::gdtf_runtime::GoboControlledScope::SelectedGobo; pos.physical_from = 30.0; pos.physical_to = 30.0; pos.physical_unit = "Angle"; pos.scalar_evaluable = true;
+        CompiledGoboMotionBinding rotate = pos;
+        rotate.binding_id = fixture % 2 == 0 ? 1000 + fixture : 9000 + fixture;
+        rotate.source_program_id = rotate_program_id; rotate.semantic_kind = peraviz::gdtf_runtime::GoboSemanticKind::PosRotate;
+        rotate.physical_from = 45.0; rotate.physical_to = 90.0; rotate.physical_unit = "AngularSpeed";
+        scene.gobo_motion_bindings.push_back(pos);
+        scene.gobo_motion_bindings.push_back(rotate);
+    }
+    scene.source_programs.push_back({9999, CompiledSemantic::Unknown, {{0, 0, 0}}, 0, 255, 150.0, 150.0, "Gobo1Pos", "AmbiguousPosition"});
+    CompiledGoboMotionBinding ambiguous_pos = scene.gobo_motion_bindings.front();
+    ambiguous_pos.binding_id = 1;
+    ambiguous_pos.source_program_id = 9999;
+    ambiguous_pos.physical_from = 150.0;
+    ambiguous_pos.physical_to = 150.0;
+    scene.gobo_motion_bindings.push_back(ambiguous_pos);
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    runtime.set_runtime_now_seconds_for_testing(1.0);
+    runtime.submit_universe_frame(0, dmx.data(), 512);
+    SectionedVisualFrame first = runtime.consume_latest_visual_frame();
+    int32_t row_count = 0, int_offset = 0, float_offset = 0;
+    for (size_t index = 0; index < first.descriptors.size(); index += kVisualSectionDescriptorStride) {
+        if (first.descriptors[index] != static_cast<int32_t>(VisualSectionType::GoboRotation)) continue;
+        row_count = first.descriptors[index + 1]; int_offset = first.descriptors[index + 2]; float_offset = first.descriptors[index + 3];
+    }
+    if (row_count != 8) return false;
+    for (int row = 0; row < row_count; ++row) {
+        if (first.integers[int_offset + row * 7 + GoboRotationModeField] != static_cast<int32_t>(GoboRotationMode::Continuous)) return false;
+        if (std::abs(first.floats[float_offset + row * 3 + GoboRotationAngularVelocityDegreesPerSecond] - 45.0f) > 0.01f) return false;
+    }
+    runtime.set_runtime_now_seconds_for_testing(3.0);
+    for (int fixture = 0; fixture < 8; ++fixture) dmx[fixture * 2 + 1] = 255;
+    runtime.submit_universe_frame(0, dmx.data(), 512);
+    SectionedVisualFrame changed = runtime.consume_latest_visual_frame();
+    row_count = 0;
+    for (size_t index = 0; index < changed.descriptors.size(); index += kVisualSectionDescriptorStride) {
+        if (changed.descriptors[index] == static_cast<int32_t>(VisualSectionType::GoboRotation)) row_count = changed.descriptors[index + 1];
+    }
+    return row_count == 8 && runtime.stats().simultaneous_gobo_pos_posrotate_layers == 16 && runtime.stats().ambiguous_gobo_pos_layers == 2;
+}
+
+// Verifies selection deduplication follows the physical layer across alternating ChannelFunctions.
+bool test_physical_gobo_selection_clear_reapply_cycles() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene;
+    scene.fixtures.push_back({1, "fixture", "type", "mode", 0, 1});
+    scene.source_programs.push_back({3001, CompiledSemantic::Unknown, {{0, 20, 0}}, 128, 255, 0, 1, "Gobo1", "Visible"});
+    scene.source_programs.push_back({3002, CompiledSemantic::Unknown, {{0, 20, 0}}, 0, 127, 0, 1, "Gobo1", "Open"});
+    scene.gobo_assets.push_back({501, 71, 1, "gobo.png", "gobo.png", "test", 8, 8, false, true});
+    scene.gobo_assets.push_back({0, 71, 2, "", "", "test", 0, 0, true, false});
+    scene.gobo_bindings.push_back({4001, 1, 100, 71, 1, 3001, CompiledGoboSelectionMode::SeatedStatic, {{128, 255, 1, "Visible"}}});
+    scene.gobo_bindings.push_back({4002, 1, 100, 71, 1, 3002, CompiledGoboSelectionMode::SeatedStatic, {{0, 127, 2, "Open"}}});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(512, 0);
+    const int values[] = {200, 0, 200, 0, 200};
+    int emitted = 0;
+    for (int value : values) {
+        dmx[20] = static_cast<uint8_t>(value);
+        runtime.submit_universe_frame(0, dmx.data(), 512);
+        const SectionedVisualFrame frame = runtime.consume_latest_visual_frame();
+        for (size_t index = 0; index < frame.descriptors.size(); index += kVisualSectionDescriptorStride) {
+            if (frame.descriptors[index] == static_cast<int32_t>(VisualSectionType::GoboSelection)) emitted += frame.descriptors[index + 1];
+        }
+    }
+    runtime.submit_universe_frame(0, dmx.data(), 512);
+    const bool unchanged_dirty_free = runtime.consume_latest_visual_frame().descriptors.empty();
+    return emitted == 5 && runtime.stats().gobo_selection_rows == 5 && unchanged_dirty_free;
 }
