@@ -605,6 +605,9 @@ func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: flo
 		return true
 	return false
 
+func _get_last_beam_parameter_write_count() -> int:
+	return _active_beam_renderer.get_last_parameter_write_count() if _active_beam_renderer != null else 0
+
 func _open_visual_settings_window() -> void:
 	if visual_settings_window != null and visual_settings_window.has_method("popup_settings"):
 		visual_settings_window.call("popup_settings")

@@ -11,6 +11,7 @@ const SECTION_TEMPORAL_OUTPUT: int = 8
 const SECTION_GOBO_SELECTION: int = 14
 const SECTION_GOBO_ROTATION: int = 15
 const DESCRIPTOR_STRIDE: int = 5
+const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
 const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
 const VISUAL_CHANGE_DIMMER: int = 1 << 1
@@ -22,6 +23,14 @@ const VISUAL_CHANGE_GOBO_ROTATION: int = 1 << 5
 var _schema: Dictionary = {}
 var _section_strides: Dictionary = {}
 var _native_now_seconds: float = 0.0
+var _render_diagnostic_mode: String = RenderDiagnosticPolicyScript.FULL
+var _performance_trace_enabled: bool = false
+
+func set_render_diagnostic_mode(mode: String) -> void:
+	_render_diagnostic_mode = mode
+
+func set_performance_trace_enabled(enabled: bool) -> void:
+	_performance_trace_enabled = enabled
 
 func install_schema(schema: Dictionary) -> void:
 	_schema = schema.duplicate(true)
@@ -34,6 +43,7 @@ func install_schema(schema: Dictionary) -> void:
 			}
 
 func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, scene_fixture_uuids: Dictionary = {}) -> Dictionary:
+	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
 	var descriptors: PackedInt32Array = snapshot.get("descriptors", PackedInt32Array())
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
@@ -61,6 +71,11 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 			continue
 		for row_index in range(row_count):
 			skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1
+			if _performance_trace_enabled:
+				_record_section_row(section_type, skip_diagnostics)
+			if not RenderDiagnosticPolicyScript.applies_section(_render_diagnostic_mode, section_type):
+				skip_diagnostics["rows_diagnostic_suppressed"] = int(skip_diagnostics.get("rows_diagnostic_suppressed", 0)) + 1
+				continue
 			var row_int_base: int = int_offset + (row_index * int_stride)
 			var row_float_base: int = float_offset + (row_index * float_stride)
 			var fixture_id: int = _fixture_id_for_row(row_int_base, integers)
@@ -101,6 +116,7 @@ func _new_counts() -> Dictionary:
 func _new_skip_diagnostics() -> Dictionary:
 	return {
 		"rows_generated": 0,
+		"rows_diagnostic_suppressed": 0,
 		"unknown_fixture_id": 0,
 		"missing_scene_fixture": 0,
 		"legacy_bound_map_rejections": 0,
@@ -128,6 +144,11 @@ func _new_skip_diagnostics() -> Dictionary:
 		"first_failures": [],
 	}
 
+func _record_section_row(section_type: int, diagnostics: Dictionary) -> void:
+	var rows: Dictionary = diagnostics.get("section_rows", {})
+	rows[section_type] = int(rows.get(section_type, 0)) + 1
+	diagnostics["section_rows"] = rows
+
 func _record_failure(skip_diagnostics: Dictionary, failure: Dictionary) -> void:
 	var failures: Array = skip_diagnostics.get("first_failures", [])
 	if failures.size() < 5:
@@ -139,6 +160,11 @@ func _merge_application_result(skip_diagnostics: Dictionary, row_result: Diction
 		skip_diagnostics[key] = int(skip_diagnostics.get(key, 0)) + int(row_result.get(key, 0))
 	if row_result.has("failure"):
 		_record_failure(skip_diagnostics, row_result.get("failure", {}))
+	var section_type: int = int(row_result.get("section_type", 0))
+	if section_type > 0:
+		var timings: Dictionary = skip_diagnostics.get("section_apply_usec", {})
+		timings[section_type] = int(timings.get(section_type, 0)) + int(row_result.get("apply_usec", 0))
+		skip_diagnostics["section_apply_usec"] = timings
 
 func _fixture_id_for_row(int_base: int, integers: PackedInt32Array) -> int:
 	if int_base < 0 or int_base >= integers.size():
@@ -150,6 +176,15 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 		return {"applied": false}
 	var changed_mask: int = _changed_mask_for_row(section_type, int_base, integers)
 	_record_changed_mask(changed_mask, counts)
+	if not _performance_trace_enabled:
+		return _apply_section_row_timed(section_type, int_base, float_base, integers, floats, loader, light_apply_service, fixture_uuid, changed_mask, counts)
+	var apply_start_usec: int = Time.get_ticks_usec()
+	var result: Dictionary = _apply_section_row_timed(section_type, int_base, float_base, integers, floats, loader, light_apply_service, fixture_uuid, changed_mask, counts)
+	result["section_type"] = section_type
+	result["apply_usec"] = max(Time.get_ticks_usec() - apply_start_usec, 0)
+	return result
+
+func _apply_section_row_timed(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, changed_mask: int, counts: Dictionary) -> Dictionary:
 	match section_type:
 		SECTION_GEOMETRY_TRANSFORM:
 			counts["transform_rows_generated"] += 1

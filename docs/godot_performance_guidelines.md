@@ -115,3 +115,5 @@ Normal playback must configure the receiver from the native compiled visual runt
 Start Peraviz with `--peraviz-perf-trace` after Godot's `--` application-argument separator. The compact once-per-second line reports transport and CPU RX-to-apply histograms beside FPS, process time, objects, primitives, draw calls, node/resource counts, production pump cadence, row outcomes, and renderer mutation counters. The trace is disabled by default and its histogram values are bounded approximations, not GPU-presentation measurements.
 
 On a Windows GPU, compare the normal run with Godot's `--disable-vsync`, a controlled `--max-fps`, `--print-fps`, and `--gpu-profile` options. Do not infer a GPU bottleneck from fan speed alone; compare CPU RX-to-apply age, FPS, draw calls, and the GPU profile.
+
+Diagnostic render modes are runtime-only A/B controls. `transforms-only` isolates target motion from lighting apply cost, while `no-beams` preserves held lighting state and emissive geometry but suppresses projected-beam work. Neither mode changes saved visual preferences. Use the interval mutation counters rather than outputs-considered counts when evaluating CPU renderer cost.

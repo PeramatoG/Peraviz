@@ -24,6 +24,7 @@ const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = true
 
 var _material_template: ShaderMaterial
 var _mesh_builder: GoboPrismMeshBuilder
+var _last_parameter_write_count: int = 0
 
 func _init() -> void:
 	_material_template = ShaderMaterial.new()
@@ -112,6 +113,7 @@ func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
 	node.rotate_object_local(Vector3.UP, deg_to_rad(-beam_rotation_deg))
 
 func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
+	_last_parameter_write_count = 0
 	if not light.has_meta(MAIN_KEY):
 		return false
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
@@ -122,6 +124,10 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
 	var beam_visible: bool = scaled_intensity > threshold
+	var signature: Array = [beam_visible, scaled_intensity, intensity_max, params.get("beam_color", Color.WHITE)]
+	if prism.get_meta("peraviz_intensity_signature", []) == signature:
+		return false
+	prism.set_meta("peraviz_intensity_signature", signature)
 	prism.visible = beam_visible
 	if not beam_visible:
 		return true
@@ -134,7 +140,11 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
+	_last_parameter_write_count = 15
 	return true
+
+func get_last_parameter_write_count() -> int:
+	return _last_parameter_write_count
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	ensure_beam(light)

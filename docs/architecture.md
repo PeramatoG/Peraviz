@@ -68,3 +68,5 @@ Art-Net reception records cheap metadata for all valid traffic, but only univers
 ## Live latency measurement boundary
 
 Production playback is scheduled by `load_scene.gd::_process`, which calls `DmxController.process_dmx`, the native receiver/coordinator pump, `PeravizVisualRuntime.consume_latest_visual_frame`, and `SectionedVisualFrameApplier.apply_snapshot` in the same render-process opportunity. The 125 ms status refresh only updates monitor UI and does not gate playback. Apply completion is recorded after cached Godot renderer targets have been mutated. This is a CPU-side boundary; render submission, GPU execution, display queueing, and presentation are intentionally not represented as CPU RX-to-apply latency.
+
+Renderer diagnostic modes are presentation-only policy over the section applier. They do not change native semantic evaluation, the sectioned protocol, saved visual settings, or renderer resource ownership. Emission-only GDTF Beam outputs remain physical geometry but are excluded from projected beam allocation and work.

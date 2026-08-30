@@ -182,19 +182,22 @@ func _run() -> void:
 	keyed_harness.add_geometry("fixture-b/Base/BeamA", true, true)
 	keyed_harness.add_geometry("fixture-b/Base/BeamB", true, true)
 	keyed_harness.add_geometry("fixture-b/Base/Aura", true, true)
+	keyed_harness.add_geometry("fixture-b/Base/Glow", true, true)
 	var keyed_registry: NativeRendererTargetRegistry = _make_registry(keyed_harness)
 	var profile_a: Dictionary = {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 2500.0, "projected_lumen_scale": 0.25, "emission_lumen_scale": 0.25, "luminous_flux_source": "explicit"}
 	var profile_b: Dictionary = {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 7500.0, "projected_lumen_scale": 0.75, "emission_lumen_scale": 0.75, "luminous_flux_source": "explicit"}
 	var profile_aura: Dictionary = {"beam_type": "None", "has_projected_beam": false, "effective_luminous_flux_lm": 900.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.09, "luminous_flux_source": "explicit"}
+	var profile_glow: Dictionary = {"beam_type": "Glow", "has_projected_beam": false, "effective_luminous_flux_lm": 500.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.05, "luminous_flux_source": "explicit"}
 	keyed_registry.install_manifest([{"fixture_uuid": "fixture-b", "targets": [
 		_target("fixture-b", "beam_profile", 302, "fixture-b/Base/BeamB", profile_b),
 		_target("fixture-b", "beam_profile", 303, "fixture-b/Base/Aura", profile_aura),
+		_target("fixture-b", "beam_profile", 304, "fixture-b/Base/Glow", profile_glow),
 		_target("fixture-b", "beam_profile", 301, "fixture-b/Base/BeamA", profile_a),
 		_target("fixture-b", "dimmer", 401, "fixture-b/Base"),
 	]}])
 	var keyed_record: Dictionary = keyed_registry.get_dimmer_target_record(401)
 	var records: Array = keyed_record.get("emitter_records", [])
-	test.check(records.size() == 3, "Registry contract check failed near source line 179")
+	test.check(records.size() == 4, "Dimmer inheritance must retain projected, None, and Glow physical outputs")
 	var projected_sum: float = 0.0
 	var aura_scale: float = -1.0
 	for keyed_record_item in records:
@@ -205,6 +208,7 @@ func _run() -> void:
 	test.check(is_equal_approx(projected_sum, 1.0), "Registry contract check failed near source line 187")
 	test.check(is_equal_approx(aura_scale, 0.09), "Registry contract check failed near source line 188")
 	test.check(keyed_record.get("beam_instances", []).size() == 2, "Registry contract check failed near source line 189")
+	test.check(int(keyed_registry.get_summary().get("registry_summary", {}).get("emission_only_beam_profiles", 0)) == 2, "BeamType None and Glow must remain emission-only without volumetric instances")
 
 	var quantum_harness := RegistryHarness.new()
 	get_root().add_child(quantum_harness)

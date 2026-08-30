@@ -14,6 +14,9 @@ func update_beam(_light: SpotLight3D, _params: Dictionary) -> void:
 func update_beam_intensity(_light: SpotLight3D, _params: Dictionary) -> bool:
 	return false
 
+func get_last_parameter_write_count() -> int:
+	return 0
+
 func apply_beam_optics(_light: SpotLight3D, _params: Dictionary) -> Dictionary:
 	return {"applied": false, "failure_reason": "renderer does not implement BeamOptics"}
 
