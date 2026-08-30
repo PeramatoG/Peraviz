@@ -170,7 +170,7 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	if mutable_resources <= 0:
 		return {"dimmer_requested": true, "target_resolved": true, "lights_considered": 0, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "visible_output_after_apply": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target has no mutable Dimmer resources"}
 	var emitter_lights_count: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size())
-	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": resolved_lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": mutations > 0, "failed": 0 if mutations > 0 else 1, "failure_reason": "" if mutations > 0 else "no cached Dimmer resource changed"}
+	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": resolved_lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": true, "unchanged": mutations == 0, "failed": 0, "failure_reason": ""}
 
 func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: int, changed_mask: int, beam_color: Color, color_gain: float) -> Dictionary:
 	if color_target_id <= 0 or (loader.has_method("_has_native_color_target") and not loader._has_native_color_target(color_target_id)):
@@ -389,23 +389,31 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
 	var previous_energy: float = light.light_energy
 	var previous_visible: bool = light.visible
+	var previous_beam_updates: int = int(_visual_apply_counters.get("beam_intensity_updates", 0))
 	_apply_canonical_light_visibility(loader, light, visible, _should_enable_realtime_spotlight(loader, visible))
-	light.light_energy = light_energy
-	light.spot_angle = beam_half_angle
-	light.light_color = beam_color
-	light.set_meta("peraviz_base_light_energy", scaled_beam_energy)
-	light.set_meta("peraviz_beam_base_intensity", dimmer_norm)
-	_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
+	var realtime_light_changed: bool = false
+	if _should_enable_realtime_spotlight(loader, visible):
+		if not is_equal_approx(light.light_energy, light_energy):
+			light.light_energy = light_energy
+			realtime_light_changed = true
+		if not is_equal_approx(light.spot_angle, beam_half_angle):
+			light.spot_angle = beam_half_angle
+			realtime_light_changed = true
+		if light.light_color != beam_color:
+			light.light_color = beam_color
+			realtime_light_changed = true
+	if realtime_light_changed:
+		_visual_apply_counters["light_rids_updated"] = int(_visual_apply_counters.get("light_rids_updated", 0)) + 1
 	var previous_beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 	var previous_beam_visible: bool = previous_beam != null and is_instance_valid(previous_beam) and previous_beam.visible
 	if not light.has_meta("peraviz_beam_last_params"):
 		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, scaled_beam_energy, scaled_spot_energy, beam_half_angle, beam_angle, scaled_beam_intensity, material_energy)
 	else:
 		_apply_visual_frame_beam(loader, light, changed_mask, visible, dimmer_norm, beam_angle, beam_color, scaled_beam_intensity)
-	var lights_mutated: int = 1 if not is_equal_approx(previous_energy, light.light_energy) or previous_visible != light.visible else 0
+	var lights_mutated: int = 1 if realtime_light_changed or not is_equal_approx(previous_energy, light.light_energy) or previous_visible != light.visible else 0
 	var beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 	var beam_visible: bool = beam != null and is_instance_valid(beam) and beam.visible
-	var beams_mutated: int = 1 if beam != null and is_instance_valid(beam) and (beam_visible != previous_beam_visible or (beam_visible and scaled_beam_intensity > 0.0001)) else 0
+	var beams_mutated: int = 1 if beam != null and is_instance_valid(beam) and (beam_visible != previous_beam_visible or int(_visual_apply_counters.get("beam_intensity_updates", 0)) > previous_beam_updates) else 0
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "beam_visible": beam_visible, "visibility_diagnostics": {"base_beam_intensity": beam_intensity, "projected_lumen_scale": projected_scale, "scaled_beam_intensity": scaled_beam_intensity, "visibility_threshold": threshold, "final_visible": beam_visible}}
@@ -727,12 +735,14 @@ func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible
 func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> void:
 	if light == null or not is_instance_valid(light):
 		return
-	light.visible = visible
+	if light.visible != visible:
+		light.visible = visible
 	var last_state: Dictionary = loader._get_or_create_emitter_last_state(light) if loader.has_method("_get_or_create_emitter_last_state") else {}
+	var previous_realtime_visible: bool = bool(last_state.get("prop:realtime_spot_visible", not real_spot_visible))
 	last_state["prop:visible"] = visible
 	last_state["prop:realtime_spot_visible"] = real_spot_visible
 	var instance_rid: RID = light.get_instance()
-	if instance_rid.is_valid():
+	if instance_rid.is_valid() and previous_realtime_visible != real_spot_visible:
 		RenderingServer.instance_set_visible(instance_rid, real_spot_visible)
 		_visual_apply_counters["rendering_server_calls"] = int(_visual_apply_counters.get("rendering_server_calls", 0)) + 1
 

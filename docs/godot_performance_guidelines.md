@@ -109,3 +109,9 @@ Where suitable:
 ## Native realtime pump
 
 Normal playback must configure the receiver from the native compiled visual runtime and call the native coordinator pump once per frame. It must not consume raw universe `PackedByteArray` values, hash them, or cache them in GDScript. Dirty work is handed off through a bounded generation-tagged ID ring rather than a patched-universe scan. Technical Monitor payload capture is a fresh, budgeted diagnostic session; when its four-captures-per-drain and one-per-millisecond allowance is exhausted, payload fidelity is skipped before scene reception is delayed.
+
+## Live DMX latency tracing
+
+Start Peraviz with `--peraviz-perf-trace` after Godot's `--` application-argument separator. The compact once-per-second line reports transport and CPU RX-to-apply histograms beside FPS, process time, objects, primitives, draw calls, node/resource counts, production pump cadence, row outcomes, and renderer mutation counters. The trace is disabled by default and its histogram values are bounded approximations, not GPU-presentation measurements.
+
+On a Windows GPU, compare the normal run with Godot's `--disable-vsync`, a controlled `--max-fps`, `--print-fps`, and `--gpu-profile` options. Do not infer a GPU bottleneck from fan speed alone; compare CPU RX-to-apply age, FPS, draw calls, and the GPU profile.

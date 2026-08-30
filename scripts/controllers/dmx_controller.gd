@@ -14,7 +14,6 @@ var _dmx_toggle_button: Button
 var _dmx_monitor_button: Button
 var _dmx_monitor_window: Window
 var _dmx_quick_panel: DmxQuickPanel
-var _dmx_timer: Timer
 var _dmx_universe_offset_input: SpinBox
 var _dmx_unbound_details_toggle: CheckButton
 var _dmx_unbound_preview_label: Label
@@ -34,11 +33,17 @@ var _last_receiving_signal: bool = false
 var _last_active_universes := PackedInt32Array()
 var _last_packet_ms: int = -1
 var _debug_force_full_apply: bool = false
+var _perf_trace_enabled: bool = false
+var _perf_trace_last_msec: int = 0
+var _production_pump_calls: int = 0
+var _perf_previous_stats: Dictionary = {}
+var _perf_last_apply_stats: Dictionary = {}
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
 	_get_controls_host_callback = get_controls_host_callback
 	_apply_dmx_controls_callback = apply_dmx_controls_callback
+	_perf_trace_enabled = OS.get_cmdline_args().has("--peraviz-perf-trace")
 
 func set_status_callbacks(dmx_status_changed_callback: Callable, dmx_start_failed_callback: Callable) -> void:
 	_dmx_status_changed_callback = dmx_status_changed_callback
@@ -104,12 +109,6 @@ func setup_controls() -> void:
 	_dmx_unbound_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_dmx_unbound_preview_label.visible = false
 	controls_vbox.add_child(_dmx_unbound_preview_label)
-
-	_dmx_timer = Timer.new()
-	_dmx_timer.wait_time = 0.125
-	_dmx_timer.autostart = false
-	_owner.add_child(_dmx_timer)
-	_dmx_timer.timeout.connect(_on_dmx_timer_timeout)
 
 	if ClassDB.class_exists("PeravizDmxReceiver"):
 		_dmx_receiver = ClassDB.instantiate("PeravizDmxReceiver")
@@ -276,14 +275,30 @@ func process_dmx(_delta: float) -> void:
 	if not _dmx_receiver.is_running():
 		_reset_stopped_dmx_state()
 		return
+	_production_pump_calls += 1
 
 	var delta_sec: float = _consume_dmx_delta_sec()
 	_poll_and_apply_latest_dmx_controls(delta_sec)
 	_refresh_dmx_status_if_needed(_last_dmx_tick_msec)
 	_emit_dmx_status(true, _last_receiving_signal)
+	_report_performance_trace_if_needed()
 
-func _on_dmx_timer_timeout() -> void:
-	process_dmx(0.0)
+func _report_performance_trace_if_needed() -> void:
+	if not _perf_trace_enabled:
+		return
+	var now_msec: int = Time.get_ticks_msec()
+	if now_msec - _perf_trace_last_msec < 1000:
+		return
+	var stats: Dictionary = _dmx_receiver.get_stats()
+	var counters: Dictionary = _perf_last_apply_stats.get("visual_apply_counters", {})
+	var diagnostics: Dictionary = _perf_last_apply_stats.get("native_live_diagnostics", {}).get("skip_diagnostics", {})
+	var accepted_delta: int = int(stats.get("valid_artdmx_accepted", 0)) - int(_perf_previous_stats.get("valid_artdmx_accepted", stats.get("valid_artdmx_accepted", 0)))
+	var relevant_delta: int = int(stats.get("relevant_packets", 0)) - int(_perf_previous_stats.get("relevant_packets", stats.get("relevant_packets", 0)))
+	print("[peraviz-perf] mode=full fps=%.1f process_ms=%.2f objects=%d primitives=%d draws=%d nodes=%d resources=%d packets=%d relevant=%d irrelevant=%d rejects=%d overwrites=%d pump_hz=%d states=%d rx_native_us=%d/%d/%d native_apply_us=%d/%d/%d rx_apply_us=%d/%d/%d rows=%d applied=%d noop=%d failed=%d lights=%d beams=%d topology=%d rs_calls=%d apply_us=%d" % [Performance.get_monitor(Performance.TIME_FPS), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), accepted_delta, relevant_delta, int(stats.get("irrelevant_packets", 0)) - int(_perf_previous_stats.get("irrelevant_packets", stats.get("irrelevant_packets", 0))), int(stats.get("out_of_order_dropped", 0)) - int(_perf_previous_stats.get("out_of_order_dropped", stats.get("out_of_order_dropped", 0))), int(stats.get("mailbox_overwrites", 0)) - int(_perf_previous_stats.get("mailbox_overwrites", stats.get("mailbox_overwrites", 0))), _production_pump_calls, int(_perf_last_apply_stats.get("universes_changed", 0)), int(stats.get("rx_to_native_p50_us", 0)), int(stats.get("rx_to_native_p95_us", 0)), int(stats.get("rx_to_native_max_us", 0)), int(stats.get("native_to_apply_p50_us", 0)), int(stats.get("native_to_apply_p95_us", 0)), int(stats.get("native_to_apply_max_us", 0)), int(stats.get("rx_to_apply_p50_us", 0)), int(stats.get("rx_to_apply_p95_us", 0)), int(stats.get("rx_to_apply_max_us", 0)), int(diagnostics.get("rows_generated", 0)), int(_perf_last_apply_stats.get("native_live_diagnostics", {}).get("targets_applied", 0)), int(diagnostics.get("dimmer_unchanged", 0)), int(_perf_last_apply_stats.get("native_live_diagnostics", {}).get("targets_failed", 0)), int(counters.get("light_rids_updated", 0)), int(counters.get("beam_intensity_updates", 0)), int(counters.get("beam_topology_rebuilds", 0)), int(counters.get("rendering_server_calls", 0)), _worst_dmx_tick_usec])
+	_perf_previous_stats = stats
+	_perf_trace_last_msec = now_msec
+	_production_pump_calls = 0
+	_worst_dmx_tick_usec = 0
 
 func _consume_dmx_delta_sec() -> float:
 	var now_msec: int = Time.get_ticks_msec()
@@ -311,6 +326,7 @@ func _apply_collected_dmx_controls(apply_stats: Dictionary, tick_usec: int, delt
 	if apply_stats.is_empty():
 		_apply_fixture_time_tick(delta_sec)
 		return
+	_perf_last_apply_stats = apply_stats
 	var controls_batch: Array = apply_stats.get("controls", [])
 	if not controls_batch.is_empty() and not _apply_dmx_controls_callback.is_valid():
 		return

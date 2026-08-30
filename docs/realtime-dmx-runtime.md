@@ -28,7 +28,7 @@ Scene sequence, metadata, and mailbox work always happens before diagnostics. `M
 
 Receiver statistics distinguish received datagrams, valid parsed ArtDmx, accepted ArtDmx, malformed packets, sequence rejection, relevant/irrelevant packets, unchanged relevant packets, mailbox updates/coalescing, dirty states consumed, monitor captures and budget skips, drain wake count, and maximum datagrams drained in one wake. `overload_dropped` remains a deprecated zero-valued UI alias and does not claim packet loss. `frames_written` is a deprecated alias of `valid_artdmx_accepted`.
 
-Two fixed 32-bucket power-of-two histograms report approximate p50/p95/max RX-to-native-submit and native-submit-to-Godot-apply ages. The production raw-universe bridge byte counter is zero by the direct native coordinator contract; diagnostic payload APIs are outside that scene-path counter. Visual-runtime statistics continue to report generated section rows by domain.
+Three fixed 32-bucket power-of-two histograms report approximate p50/p95/max RX-to-native-submit, native-submit-to-Godot-apply, and direct relevant RX-to-Godot-apply ages. Histograms reset when a receiver session starts; RX-to-apply uses the oldest relevant receive timestamp represented by a consumed update and completes only after renderer mutation. The production raw-universe bridge byte counter is zero by the direct native coordinator contract; diagnostic payload APIs are outside that scene-path counter. Visual-runtime statistics continue to report generated section rows by domain.
 
 ## Advisory load harness
 

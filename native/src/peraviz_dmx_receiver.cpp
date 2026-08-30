@@ -39,6 +39,14 @@ PeravizDmxReceiver::~PeravizDmxReceiver() {
 // Starts the receiver thread and begins listening for Art-Net packets.
 bool PeravizDmxReceiver::start(const String &bind_ip, int port) {
     const int safe_port = std::max(1, std::min(port, 65535));
+    rx_to_native_buckets_.fill(0);
+    native_to_apply_buckets_.fill(0);
+    rx_to_apply_buckets_.fill(0);
+    rx_to_native_max_us_ = 0;
+    native_to_apply_max_us_ = 0;
+    rx_to_apply_max_us_ = 0;
+    last_native_pump_us_ = 0;
+    oldest_pending_receive_us_ = 0;
     return receiver_->start(std::string(bind_ip.utf8().get_data()), static_cast<uint16_t>(safe_port));
 }
 
@@ -107,6 +115,9 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     out["native_to_apply_p50_us"] = static_cast<int64_t>(latency_percentile(native_to_apply_buckets_, 0.50));
     out["native_to_apply_p95_us"] = static_cast<int64_t>(latency_percentile(native_to_apply_buckets_, 0.95));
     out["native_to_apply_max_us"] = static_cast<int64_t>(native_to_apply_max_us_);
+    out["rx_to_apply_p50_us"] = static_cast<int64_t>(latency_percentile(rx_to_apply_buckets_, 0.50));
+    out["rx_to_apply_p95_us"] = static_cast<int64_t>(latency_percentile(rx_to_apply_buckets_, 0.95));
+    out["rx_to_apply_max_us"] = static_cast<int64_t>(rx_to_apply_max_us_);
     out["active_slot_count"] = static_cast<int64_t>(stats.active_slot_count);
     out["approx_cache_bytes"] = static_cast<int64_t>(stats.approximate_cache_bytes);
     PackedInt32Array active_universes;
@@ -130,7 +141,10 @@ bool PeravizDmxReceiver::configure_visual_runtime(Ref<PeravizVisualRuntime> runt
     const peraviz::runtime::RealtimePumpResult result = coordinator_.install_subscription(runtime->native_core(), receiver_->realtime_mailbox());
     rehydrated_states_pending_ = result.states_submitted;
     const uint64_t now_us = now_microseconds();
-    if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) observe_latency(rx_to_native_buckets_, now_us - result.oldest_receive_us, rx_to_native_max_us_);
+    if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) {
+        observe_latency(rx_to_native_buckets_, now_us - result.oldest_receive_us, rx_to_native_max_us_);
+        oldest_pending_receive_us_ = result.oldest_receive_us;
+    }
     return true;
 }
 
@@ -144,7 +158,12 @@ int PeravizDmxReceiver::pump_visual_runtime(Ref<PeravizVisualRuntime> runtime) {
     const uint64_t now_us = now_microseconds();
     if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) observe_latency(rx_to_native_buckets_, now_us - result.oldest_receive_us, rx_to_native_max_us_);
     scene_states_consumed_ += static_cast<uint64_t>(consumed);
-    if (consumed > 0) last_native_pump_us_ = now_microseconds();
+    if (consumed > 0) {
+        last_native_pump_us_ = now_us;
+        if (result.oldest_receive_us > 0 && (oldest_pending_receive_us_ == 0 || result.oldest_receive_us < oldest_pending_receive_us_)) {
+            oldest_pending_receive_us_ = result.oldest_receive_us;
+        }
+    }
     return consumed;
 }
 
@@ -159,6 +178,10 @@ void PeravizDmxReceiver::record_godot_apply_completion() {
     if (last_native_pump_us_ > 0 && now_us >= last_native_pump_us_) {
         observe_latency(native_to_apply_buckets_, now_us - last_native_pump_us_, native_to_apply_max_us_);
         last_native_pump_us_ = 0;
+    }
+    if (oldest_pending_receive_us_ > 0 && now_us >= oldest_pending_receive_us_) {
+        observe_latency(rx_to_apply_buckets_, now_us - oldest_pending_receive_us_, rx_to_apply_max_us_);
+        oldest_pending_receive_us_ = 0;
     }
 }
 

@@ -117,6 +117,7 @@ func _new_skip_diagnostics() -> Dictionary:
 		"dimmer_resolved": 0,
 		"dimmer_failed": 0,
 		"dimmer_mutated": 0,
+		"dimmer_unchanged": 0,
 		"dimmer_lights_mutated": 0,
 		"dimmer_beams_mutated": 0,
 		"dimmer_materials_mutated": 0,
@@ -134,7 +135,7 @@ func _record_failure(skip_diagnostics: Dictionary, failure: Dictionary) -> void:
 	skip_diagnostics["first_failures"] = failures
 
 func _merge_application_result(skip_diagnostics: Dictionary, row_result: Dictionary) -> void:
-	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated", "optics_requested", "optics_resolved", "optics_failed", "optics_mutated"]:
+	for key in ["pan_requested", "pan_resolved", "pan_failed", "pan_mutated", "tilt_requested", "tilt_resolved", "tilt_failed", "tilt_mutated", "dimmer_requested", "dimmer_resolved", "dimmer_failed", "dimmer_mutated", "dimmer_unchanged", "dimmer_lights_mutated", "dimmer_beams_mutated", "dimmer_materials_mutated", "optics_requested", "optics_resolved", "optics_failed", "optics_mutated"]:
 		skip_diagnostics[key] = int(skip_diagnostics.get(key, 0)) + int(row_result.get(key, 0))
 	if row_result.has("failure"):
 		_record_failure(skip_diagnostics, row_result.get("failure", {}))
@@ -215,7 +216,8 @@ func _categorized_dimmer_result(loader: Node, fixture_uuid: String, dimmer_targe
 	var dimmer_applied: bool = bool(result.get("dimmer_applied", false))
 	result["dimmer_requested"] = 1 if dimmer_target_id > 0 else 0
 	result["dimmer_resolved"] = 1 if target_resolved else 0
-	result["dimmer_mutated"] = 1 if dimmer_applied else 0
+	result["dimmer_mutated"] = 1 if int(result.get("lights_mutated", 0)) + int(result.get("beams_mutated", 0)) + int(result.get("materials_mutated", 0)) > 0 else 0
+	result["dimmer_unchanged"] = 1 if bool(result.get("unchanged", false)) else 0
 	result["dimmer_lights_mutated"] = int(result.get("lights_mutated", 0))
 	result["dimmer_beams_mutated"] = int(result.get("beams_mutated", 0))
 	result["dimmer_materials_mutated"] = int(result.get("materials_mutated", 0))

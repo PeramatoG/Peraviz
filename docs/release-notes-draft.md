@@ -14,6 +14,9 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Added opt-in live DMX performance tracing with direct CPU receive-to-renderer-apply latency, frame/load monitors, and production pump cadence for diagnosing fixed visual offsets without noisy default logging.
+- Correctly classifies resolved Dimmer updates that already match cached renderer state as unchanged instead of failed.
+
 - Static seated gobos now use reusable normalized vector-prism resources, deterministic open-slot clearing, and cached static multi-wheel mask composition.
 - Physical GDTF color evaluation now supports linked emitter/filter resources, CIE, CCT, Tint, additive color, CMY color, and seated color-wheel composition within the documented support scope.
 - Beam presentation now uses target-local luminous flux, aperture, angle, Zoom, color, and intensity state without changing imported model scale.
