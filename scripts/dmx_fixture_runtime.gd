@@ -94,8 +94,6 @@ var _unbound: Array = []
 var _fixture_patch_lookup: Dictionary = {}
 var _fixture_nodes: Dictionary = {}
 var _bound_fixture_ids: Dictionary = {}
-var _fixture_channel_offsets: Dictionary = {}
-var _fixture_snapshot_cache: Dictionary = {}
 var _fixture_capability_state_cache: Dictionary = {}
 var _native_visual_runtime = null
 var _native_visual_runtime_available: bool = false
@@ -111,14 +109,6 @@ var _live_visual_gobo_controls_by_fixture: Dictionary = {}
 var _live_gobo_diagnostics_by_fixture: Dictionary = {}
 var _fixture_apply_plans: Dictionary = {}
 var _fixture_output_buffers: Dictionary = {}
-var _used_universes: Dictionary = {}
-var _bindings_by_universe: Dictionary = {}
-var _last_universe_counters: Dictionary = {}
-var _cached_universe_frames: Dictionary = {}
-var _universe_interest_offsets: Dictionary = {}
-var _last_universe_interest_hashes: Dictionary = {}
-var _compiled_used_universes: Dictionary = {}
-var _compiled_relevant_offsets_by_universe: Dictionary = {}
 var _native_setup_summary: Dictionary = {}
 var _native_live_diagnostics: Dictionary = {}
 var _native_live_diagnostics_logged: bool = false
@@ -130,8 +120,8 @@ var _debug_force_full_apply: bool = false
 var _sectioned_visual_frame_applier: SectionedVisualFrameApplier = null
 var _runtime_universe_offset: int = -1
 var _runtime_generation: int = 0
-var _bootstrap_visual_frame_pending: bool = false
 var _last_rebuild_reason: String = "uninitialized"
+var _receiver_subscription_generation: int = -1
 
 func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_target_registry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_native_scene_loader = native_scene_loader
@@ -145,8 +135,8 @@ func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_targ
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
 func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dictionary:
-	var held_universe_frames: Dictionary = _cached_universe_frames.duplicate(false)
 	_runtime_generation += 1
+	_receiver_subscription_generation = -1
 	_last_rebuild_reason = rebuild_reason
 	_runtime_universe_offset = universe_offset
 	_bindings.clear()
@@ -154,8 +144,6 @@ func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dicti
 	_fixture_patch_lookup.clear()
 	_fixture_nodes.clear()
 	_bound_fixture_ids.clear()
-	_fixture_channel_offsets.clear()
-	_fixture_snapshot_cache.clear()
 	_fixture_capability_state_cache.clear()
 	_last_visual_frame_size = 0
 	_last_visual_mask_counts.clear()
@@ -170,14 +158,6 @@ func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dicti
 	_live_gobo_diagnostics_by_fixture.clear()
 	_fixture_apply_plans.clear()
 	_fixture_output_buffers.clear()
-	_used_universes.clear()
-	_bindings_by_universe.clear()
-	_last_universe_counters.clear()
-	_cached_universe_frames.clear()
-	_universe_interest_offsets.clear()
-	_last_universe_interest_hashes.clear()
-	_compiled_used_universes.clear()
-	_compiled_relevant_offsets_by_universe.clear()
 	_native_setup_summary.clear()
 	_native_live_diagnostics.clear()
 	_native_live_diagnostics_logged = false
@@ -230,50 +210,17 @@ func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dicti
 		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
 		_static_gobo_controls_by_fixture[fixture_uuid] = _build_static_gobo_controls(binding)
 		_live_visual_gobo_controls_by_fixture[fixture_uuid] = _build_cached_live_gobo_controls(_static_gobo_controls_by_fixture[fixture_uuid])
-		_fixture_channel_offsets[fixture_uuid] = _collect_used_channel_offsets(binding)
 		var requires_time_tick: bool = _binding_requires_time_tick(binding)
 		_fixture_time_tick_flags[fixture_uuid] = requires_time_tick
 		if requires_time_tick:
 			_time_tick_fixture_ids.append(fixture_uuid)
-		var universe_id: int = int(binding.get("artnet_universe_id", -1))
-		if universe_id >= 0:
-			_used_universes[universe_id] = true
-			if not _bindings_by_universe.has(universe_id):
-				_bindings_by_universe[universe_id] = []
-			_bindings_by_universe[universe_id].append(binding)
-			_add_universe_interest_offsets(universe_id, _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array()))
 
 	_register_native_visual_runtime_bindings()
-	_finalize_universe_interest_offsets()
-	_bootstrap_native_runtime_from_held_frames(held_universe_frames)
-
-	for universe_key in _used_universes.keys():
-		var tracked_universe_id: int = int(universe_key)
-		_last_universe_counters[tracked_universe_id] = {
-			"counter": -1,
-			"content_hash": -1,
-			"interest_hash": -1,
-			"interest_offsets": _get_universe_interest_offsets_array(tracked_universe_id),
-		}
 
 	if _fixture_row_provider != null:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
 
 	return _build_summary(universe_offset)
-
-func _bootstrap_native_runtime_from_held_frames(held_universe_frames: Dictionary) -> int:
-	_bootstrap_visual_frame_pending = false
-	var submitted: int = 0
-	for universe_key in _compiled_used_universes.keys():
-		var universe_id: int = int(universe_key)
-		var held_frame: PackedByteArray = held_universe_frames.get(universe_id, PackedByteArray())
-		if held_frame.is_empty():
-			continue
-		_cached_universe_frames[universe_id] = held_frame
-		_native_visual_runtime.submit_universe_frame(universe_id, held_frame)
-		_bootstrap_visual_frame_pending = true
-		submitted += 1
-	return submitted
 
 func _initialize_native_visual_runtime() -> void:
 	_native_visual_runtime_available = ClassDB.class_exists("PeravizVisualRuntime")
@@ -377,45 +324,27 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	if not _native_visual_runtime_available or _native_visual_runtime == null:
 		push_error("PeravizVisualRuntime is required for live DMX visualization but is not available.")
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": [], "native_visual_runtime_available": false}
-	if (receiver == null or not receiver.is_running()) and not _bootstrap_visual_frame_pending:
+	if receiver == null or not receiver.is_running():
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
-	var changed_frames: Dictionary = {}
-	if receiver != null and receiver.has_method("get_dirty_universes") and receiver.has_method("consume_universe"):
-		changed_frames = _consume_dirty_universe_frames(receiver)
-	elif receiver != null and receiver.has_method("get_changed_universe_frames"):
-		changed_frames = receiver.get_changed_universe_frames(_last_universe_counters)
-	elif receiver != null:
-		changed_frames = _collect_changed_universe_frames_compat(receiver)
+	if receiver != null and receiver.has_method("configure_visual_runtime") and _receiver_subscription_generation != _runtime_generation:
+		if receiver.configure_visual_runtime(_native_visual_runtime):
+			_receiver_subscription_generation = _runtime_generation
+	var submitted_universes: int = 0
+	if receiver != null and receiver.has_method("pump_visual_runtime"):
+		submitted_universes = int(receiver.pump_visual_runtime(_native_visual_runtime))
+	else:
+		push_error("PeravizDmxReceiver native realtime pump is required for production playback.")
+		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
-	if changed_frames.is_empty() and not _debug_force_full_apply and not _bootstrap_visual_frame_pending:
+	if submitted_universes == 0 and not _debug_force_full_apply:
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var updated: int = 0
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var pending_controls: Array = []
-	var submitted_universes: int = 0
-	for universe_key in changed_frames.keys():
-		var universe_id: int = int(universe_key)
-		if not _compiled_used_universes.has(universe_id):
-			continue
-		var frame_entry: Dictionary = changed_frames.get(universe_key, {})
-		var frame: PackedByteArray = frame_entry.get("data", PackedByteArray())
-		if frame.is_empty():
-			continue
-		_cached_universe_frames[universe_id] = frame
-		_last_universe_counters[universe_id] = {
-			"counter": int(frame_entry.get("counter", -1)),
-			"content_hash": int(frame_entry.get("content_hash", -1)),
-			"interest_hash": -1,
-			"interest_offsets": _compiled_relevant_offsets_by_universe.get(universe_id, PackedInt32Array()),
-		}
-		_native_visual_runtime.submit_universe_frame(universe_id, frame)
-		submitted_universes += 1
-
 	var visual_frame: Dictionary = _native_visual_runtime.consume_latest_visual_frame()
-	_bootstrap_visual_frame_pending = false
 	var visual_descriptors: PackedInt32Array = visual_frame.get("descriptors", PackedInt32Array())
 	var visual_integers: PackedInt32Array = visual_frame.get("integers", PackedInt32Array())
 	var visual_floats: PackedFloat32Array = visual_frame.get("floats", PackedFloat32Array())
@@ -424,7 +353,7 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		var compact_result: Dictionary = {}
 		if loader == null or light_apply_service == null:
 			push_error("PeravizVisualRuntime requires the visual-frame light applier for live DMX playback.")
-			return {"updated": updated, "skipped": skipped, "universes_changed": changed_frames.size(), "fixtures_considered": fixtures_considered, "controls": pending_controls}
+			return {"updated": updated, "skipped": skipped, "universes_changed": submitted_universes, "fixtures_considered": fixtures_considered, "controls": pending_controls}
 		compact_result = _sectioned_visual_frame_applier.apply_snapshot(visual_frame, loader, light_apply_service, frame_delta_sec, self, _native_fixture_uuids_by_id, _fixture_nodes)
 		_last_visual_mask_counts = compact_result.get("visual_mask_counts", {})
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
@@ -432,11 +361,13 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		skipped += int(compact_result.get("skipped", 0))
 		_native_live_diagnostics = compact_result.duplicate(true)
 		_log_native_live_diagnostics_once()
+		if receiver != null and receiver.has_method("record_godot_apply_completion"):
+			receiver.record_godot_apply_completion()
 
 	return {
 		"updated": updated,
 		"skipped": skipped,
-		"universes_changed": changed_frames.size(),
+		"universes_changed": submitted_universes,
 		"fixtures_considered": fixtures_considered,
 		"controls": pending_controls,
 		"native_visual_runtime_available": _native_visual_runtime_available,
@@ -502,86 +433,6 @@ func _log_native_live_diagnostics_once() -> void:
 	])
 
 
-func _consume_dirty_universe_frames(receiver) -> Dictionary:
-	var changed_frames: Dictionary = {}
-	var dirty_universes: PackedInt32Array = receiver.get_dirty_universes()
-	for universe_id in dirty_universes:
-		if not _compiled_used_universes.has(int(universe_id)):
-			continue
-		var frame: PackedByteArray = receiver.consume_universe(int(universe_id))
-		if frame.is_empty():
-			continue
-		var previous_state: Variant = _last_universe_counters.get(int(universe_id), {})
-		var previous_counter: int = -1
-		if previous_state is Dictionary:
-			previous_counter = int((previous_state as Dictionary).get("counter", -1))
-		changed_frames[int(universe_id)] = {
-			"data": frame,
-			"counter": previous_counter + 1,
-			"content_hash": _compute_snapshot_hash(frame),
-			"interest_hash": -1,
-		}
-	return changed_frames
-
-func _collect_changed_universe_frames_compat(receiver) -> Dictionary:
-	var changed_frames: Dictionary = {}
-	for universe_key in _compiled_used_universes.keys():
-		var universe_id: int = int(universe_key)
-		var metadata: Dictionary = receiver.get_universe_metadata(universe_id) if receiver.has_method("get_universe_metadata") else {}
-		var counter: int = int(metadata.get("counter", -2))
-		var content_hash: int = int(metadata.get("content_hash", -1))
-		var previous_state: Variant = _last_universe_counters.get(universe_id, {"counter": -1, "content_hash": -1})
-		var previous_hash: int = -1
-		var previous_counter: int = -1
-		if previous_state is Dictionary:
-			var previous_state_dict: Dictionary = previous_state
-			previous_hash = int(previous_state_dict.get("content_hash", -1))
-			previous_counter = int(previous_state_dict.get("counter", -1))
-		else:
-			previous_counter = int(previous_state)
-		if not _debug_force_full_apply and ((content_hash >= 0 and content_hash == previous_hash) or (content_hash < 0 and counter >= 0 and counter == previous_counter)):
-			continue
-		var frame: PackedByteArray = receiver.get_universe_data(universe_id)
-		if frame.is_empty():
-			continue
-		changed_frames[universe_id] = {
-			"data": frame,
-			"counter": counter,
-			"content_hash": content_hash,
-		}
-	return changed_frames
-
-func _add_universe_interest_offsets(universe_id: int, offsets: PackedInt32Array) -> void:
-	if not _universe_interest_offsets.has(universe_id):
-		_universe_interest_offsets[universe_id] = {}
-	var offset_map: Dictionary = _universe_interest_offsets.get(universe_id, {})
-	for offset in offsets:
-		if offset >= 0:
-			offset_map[int(offset)] = true
-	_universe_interest_offsets[universe_id] = offset_map
-
-func _finalize_universe_interest_offsets() -> void:
-	for universe_key in _universe_interest_offsets.keys():
-		var offset_map: Dictionary = _universe_interest_offsets.get(universe_key, {})
-		var offsets: Array = offset_map.keys()
-		offsets.sort()
-		var packed_offsets := PackedInt32Array()
-		for offset in offsets:
-			packed_offsets.append(int(offset))
-		_universe_interest_offsets[int(universe_key)] = packed_offsets
-
-func _get_universe_interest_offsets_array(universe_id: int) -> PackedInt32Array:
-	return _universe_interest_offsets.get(universe_id, PackedInt32Array())
-
-func _compute_universe_interest_hash(universe_id: int, frame: PackedByteArray) -> int:
-	var offsets: PackedInt32Array = _get_universe_interest_offsets_array(universe_id)
-	var hash_value: int = 2166136261
-	for offset in offsets:
-		var value: int = int(frame[offset]) if offset >= 0 and offset < frame.size() else 0
-		hash_value = int((hash_value ^ value) * 16777619)
-		hash_value = int((hash_value ^ offset) * 16777619)
-	return hash_value
-
 
 func _register_native_fixture_id(fixture_uuid: String) -> void:
 	if _native_fixture_ids_by_uuid.has(fixture_uuid):
@@ -596,7 +447,7 @@ func _register_native_visual_runtime_bindings() -> void:
 		_native_bindings_count = 0
 		return
 	var compiled_scene: Dictionary = _native_scene_loader.compile_visual_runtime_scene(_runtime_universe_offset)
-	_register_compiled_runtime_submission_metadata(compiled_scene)
+	_register_compiled_runtime_setup_metadata(compiled_scene)
 	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
 	if not _install_renderer_manifest(compiled_scene.get("renderer_manifest", [])):
 		_native_bindings_count = 0
@@ -657,18 +508,7 @@ func _report_native_setup_summary() -> void:
 	if int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))) > 0 and dpt_count == 0:
 		push_error("Native Dimmer/Pan/Tilt runtime installed zero properties for patched fixtures; live DMX visualization will not produce DPT rows.")
 
-func _register_compiled_runtime_submission_metadata(compiled_scene: Dictionary) -> void:
-	_compiled_used_universes.clear()
-	_compiled_relevant_offsets_by_universe.clear()
-	var used_universes: Dictionary = compiled_scene.get("used_universes", {})
-	for universe_key in used_universes.keys():
-		_compiled_used_universes[int(str(universe_key))] = true
-	var relevant_offsets: Dictionary = compiled_scene.get("relevant_offsets_by_universe", {})
-	for universe_key in relevant_offsets.keys():
-		var packed := PackedInt32Array()
-		for offset in relevant_offsets.get(universe_key, []):
-			packed.append(int(offset))
-		_compiled_relevant_offsets_by_universe[int(str(universe_key))] = packed
+func _register_compiled_runtime_setup_metadata(compiled_scene: Dictionary) -> void:
 	_native_setup_summary = compiled_scene.get("setup_summary", {}).duplicate(true)
 
 func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
@@ -1026,37 +866,6 @@ func _reset_compact_controls(compact_values: PackedFloat32Array) -> void:
 	compact_values[COMPACT_ZOOM_MIN_DEG] = -1.0
 	compact_values[COMPACT_ZOOM_MAX_DEG] = -1.0
 
-func _apply_binding_frame(binding: Dictionary, frame: PackedByteArray, apply_fixture_callback: Callable, pending_controls: Array = []) -> Dictionary:
-	var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
-	if fixture_uuid.is_empty() or not _bound_fixture_ids.has(fixture_uuid):
-		return {}
-	var fixture_plan: Dictionary = _fixture_apply_plans.get(fixture_uuid, {})
-	if fixture_plan.is_empty():
-		fixture_plan = _build_fixture_apply_plan(binding)
-		_fixture_apply_plans[fixture_uuid] = fixture_plan
-	if not _fixture_output_buffers.has(fixture_uuid):
-		_fixture_output_buffers[fixture_uuid] = _build_fixture_output_buffer(binding)
-	var snapshot: PackedByteArray = _extract_snapshot_for_fixture(fixture_uuid, frame)
-	if snapshot.is_empty():
-		var controls_without_cache: Dictionary = _build_controls_for_plan(fixture_plan, frame, fixture_uuid)
-		if not _has_any_capability(controls_without_cache):
-			return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
-		_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls_without_cache, pending_controls)
-		return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
-	var snapshot_hash: int = _compute_snapshot_hash(snapshot)
-	var previous_state: Dictionary = _fixture_snapshot_cache.get(fixture_uuid, {})
-	if not _debug_force_full_apply and _snapshot_is_unchanged(previous_state, snapshot_hash, snapshot):
-		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 1}
-
-	var controls: Dictionary = _build_controls_for_plan(fixture_plan, frame, fixture_uuid)
-	if not _has_any_capability(controls):
-		return {"fixture_uuid": fixture_uuid, "updated": 0, "skipped": 0}
-	_fixture_snapshot_cache[fixture_uuid] = {
-		"hash": snapshot_hash,
-		"snapshot": snapshot,
-	}
-	_apply_fixture_with_compatibility_adapter(apply_fixture_callback, fixture_uuid, controls, pending_controls)
-	return {"fixture_uuid": fixture_uuid, "updated": 1, "skipped": 0}
 
 func _build_fixture_apply_plan(binding: Dictionary) -> Dictionary:
 	return {
@@ -1233,70 +1042,6 @@ func _apply_fixture_with_compatibility_adapter(apply_fixture_callback: Callable,
 		return
 	apply_fixture_callback.call(fixture_uuid, controls)
 
-func _snapshot_is_unchanged(previous_state: Dictionary, snapshot_hash: int, snapshot: PackedByteArray) -> bool:
-	if previous_state.is_empty():
-		return false
-	if int(previous_state.get("hash", -1)) != snapshot_hash:
-		return false
-	var previous_snapshot: PackedByteArray = previous_state.get("snapshot", PackedByteArray())
-	return previous_snapshot == snapshot
-
-func _extract_snapshot_for_fixture(fixture_uuid: String, frame: PackedByteArray) -> PackedByteArray:
-	var offsets: PackedInt32Array = _fixture_channel_offsets.get(fixture_uuid, PackedInt32Array())
-	var snapshot := PackedByteArray()
-	for offset in offsets:
-		if offset < 0 or offset >= frame.size():
-			snapshot.append(0)
-		else:
-			snapshot.append(frame[offset])
-	return snapshot
-
-func _compute_snapshot_hash(snapshot: PackedByteArray) -> int:
-	var hash_value: int = 2166136261
-	for value in snapshot:
-		hash_value = int((hash_value ^ int(value)) * 16777619)
-	return hash_value
-
-func _collect_used_channel_offsets(binding: Dictionary) -> PackedInt32Array:
-	var offsets := PackedInt32Array()
-	var used_offsets := {}
-	for key in _collect_direct_channel_offset_keys():
-		var offset: int = int(binding.get(key, -1))
-		if offset >= 0:
-			used_offsets[offset] = true
-	var channel_bindings: Array = binding.get("channel_bindings", [])
-	for channel_binding in channel_bindings:
-		if channel_binding is not Dictionary:
-			continue
-		var offset: int = int(channel_binding.get("dmx_offset", -1))
-		var fine_offset: int = int(channel_binding.get("dmx_fine_offset", -1))
-		if offset >= 0:
-			used_offsets[offset] = true
-		if fine_offset >= 0:
-			used_offsets[fine_offset] = true
-	var sorted_offsets: Array = used_offsets.keys()
-	sorted_offsets.sort()
-	for offset in sorted_offsets:
-		offsets.append(int(offset))
-	return offsets
-
-func _collect_direct_channel_offset_keys() -> PackedStringArray:
-	return PackedStringArray([
-		"dimmer_channel_index_0", "dimmer_fine_channel_index_0", "dimmer_ultra_fine_channel_index_0",
-		"pan_channel_index_0", "pan_fine_channel_index_0", "pan_ultra_fine_channel_index_0",
-		"tilt_channel_index_0", "tilt_fine_channel_index_0", "tilt_ultra_fine_channel_index_0",
-		"zoom_channel_index_0", "zoom_fine_channel_index_0", "zoom_ultra_fine_channel_index_0",
-		"cyan_channel_index_0", "cyan_fine_channel_index_0", "cyan_ultra_fine_channel_index_0",
-		"magenta_channel_index_0", "magenta_fine_channel_index_0", "magenta_ultra_fine_channel_index_0",
-		"yellow_channel_index_0", "yellow_fine_channel_index_0", "yellow_ultra_fine_channel_index_0",
-		"gobo_channel_index_0", "gobo_fine_channel_index_0", "gobo_ultra_fine_channel_index_0",
-		"gobo_index_channel_index_0", "gobo_index_fine_channel_index_0", "gobo_index_ultra_fine_channel_index_0",
-		"gobo_rotation_channel_index_0", "gobo_rotation_fine_channel_index_0", "gobo_rotation_ultra_fine_channel_index_0",
-		"gobo1_channel_index_0", "gobo1_fine_channel_index_0", "gobo1_ultra_fine_channel_index_0",
-		"prism_channel_index_0", "prism_fine_channel_index_0", "prism_ultra_fine_channel_index_0",
-		"prism_rotation_channel_index_0", "prism_rotation_fine_channel_index_0", "prism_rotation_ultra_fine_channel_index_0",
-		"strobe_channel_index_0", "strobe_fine_channel_index_0", "strobe_ultra_fine_channel_index_0",
-	])
 
 func _filter_unchanged_compact_controls(fixture_uuid: String, compact_values: PackedFloat32Array) -> Dictionary:
 	var changed_capability_types: Dictionary = {}

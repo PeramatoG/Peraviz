@@ -60,3 +60,7 @@ Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboRe
 - [Beam rendering modes](BEAM_RENDERING_MODES.md)
 - [Runtime storage policy](runtime-storage-policy.md)
 - [Godot performance guidelines](godot_performance_guidelines.md)
+
+## Realtime DMX scene path
+
+Art-Net reception records cheap metadata for all valid traffic, but only universes and offsets derived from the installed `CompiledRuntimeScene` enter the native latest-state mailbox. Clean-to-dirty transitions append one generation-tagged ID to a fixed ring; the native coordinator drains only those IDs, so idle cost does not scan patched universes. Godot invokes one native pump per render frame, and only the resulting sectioned renderer frame crosses into GDScript. Technical Monitor sessions use a fresh generation and a strict four-captures-per-drain and one-per-millisecond budget, so diagnostic fidelity degrades before scene processing. See [Realtime DMX runtime](realtime-dmx-runtime.md).

@@ -12,6 +12,11 @@ struct UdpSocketBindOptions {
     bool reuse_address = false;
 };
 
+struct UdpSenderEndpoint {
+    uint32_t ipv4 = 0;
+    uint16_t port = 0;
+};
+
 class UdpSocket {
 public:
     UdpSocket() = default;
@@ -34,6 +39,7 @@ public:
                   std::string &sender_ip,
                   uint16_t &sender_port,
                   std::string &error_message) const;
+    int recv_from(uint8_t *buffer, size_t buffer_size, UdpSenderEndpoint &sender, std::string &error_message) const;
 
 private:
     SocketHandle socket_handle_ =

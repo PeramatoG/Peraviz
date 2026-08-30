@@ -7,11 +7,24 @@ const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.
 
 var test = HeadlessTestCaseScript.new()
 
-class FakeBootstrapVisualRuntime:
+class NativePumpGuardReceiver:
 	extends RefCounted
-	var submissions: Dictionary = {}
-	func submit_universe_frame(universe_id: int, frame: PackedByteArray) -> void:
-		submissions[universe_id] = frame
+	var pump_calls: int = 0
+	var forbidden_calls: int = 0
+	func is_running() -> bool: return true
+	func configure_visual_runtime(_runtime) -> bool: return true
+	func pump_visual_runtime(_runtime) -> int:
+		pump_calls += 1
+		return 0
+	func get_dirty_universes() -> PackedInt32Array:
+		forbidden_calls += 1
+		return PackedInt32Array()
+	func consume_universe(_universe: int) -> PackedByteArray:
+		forbidden_calls += 1
+		return PackedByteArray()
+	func get_universe_data(_universe: int) -> PackedByteArray:
+		forbidden_calls += 1
+		return PackedByteArray()
 
 class FakeLoader:
 	extends Node
@@ -166,19 +179,14 @@ func _run() -> void:
 	loader.dimmer_valid = false
 	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	test.check(int(failed.get("skipped", 0)) > 0, "An unresolved dimmer target should be skipped")
-	var bootstrap_runtime = DmxFixtureRuntimeScript.new()
-	var bootstrap_native := FakeBootstrapVisualRuntime.new()
-	bootstrap_runtime._native_visual_runtime = bootstrap_native
-	bootstrap_runtime._compiled_used_universes = {1: true, 3: true}
-	var held_one := PackedByteArray([1, 2, 3])
-	var held_three := PackedByteArray([7, 8, 9])
-	var bootstrap_count: int = bootstrap_runtime._bootstrap_native_runtime_from_held_frames({1: held_one, 2: PackedByteArray([4]), 3: held_three})
-	test.check(bootstrap_count == 2 and bootstrap_native.submissions == {1: held_one, 3: held_three}, "Runtime rebuild must seed latest held snapshots for used universes only")
-	test.check(bootstrap_runtime._bootstrap_visual_frame_pending, "Held-state bootstrap must schedule one renderer-ready reconciliation")
 	var runtime = DmxFixtureRuntimeScript.new()
 	var native_loader := FakeNativeSceneLoader.new()
 	var renderer_registry := FakeRendererTargetRegistry.new()
 	runtime.configure(native_loader, null, renderer_registry, null)
+	var pump_guard := NativePumpGuardReceiver.new()
+	runtime._native_visual_runtime_available = true
+	runtime._collect_dmx(pump_guard, Callable())
+	test.check(pump_guard.pump_calls == 1 and pump_guard.forbidden_calls == 0, "Production playback must use only the native realtime pump, never raw universe compatibility APIs")
 	var required_registry_methods := ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_has_native_optics_target", "_get_native_optics_target_record", "_get_native_target_failure"]
 	for method_name in required_registry_methods:
 		test.check(renderer_registry.has_method(method_name), "Fake renderer registry is missing current contract method: %s" % method_name)

@@ -102,7 +102,7 @@ std::vector<uint8_t> make_artdmx_packet(uint8_t sequence, uint8_t subuni, uint8_
 
 
 // Sends UDP packets to the local Art-Net receiver test port from one source socket.
-bool send_udp_packets(uint16_t port, const std::vector<std::vector<uint8_t>> &packets) {
+bool send_udp_packets(uint16_t port, const std::vector<std::vector<uint8_t>> &packets, bool paced = true) {
 #ifdef _WIN32
     SOCKET socket_handle = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (socket_handle == INVALID_SOCKET) {
@@ -137,7 +137,7 @@ bool send_udp_packets(uint16_t port, const std::vector<std::vector<uint8_t>> &pa
 #endif
             return false;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        if (paced) std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 #ifdef _WIN32
     closesocket(socket_handle);
@@ -147,9 +147,26 @@ bool send_udp_packets(uint16_t port, const std::vector<std::vector<uint8_t>> &pa
     return true;
 }
 
+// Sends one packet through an already-open socket so endpoint identity survives receiver restart.
+bool send_udp_packet_from_socket(peraviz::dmx::SocketHandle socket_handle, uint16_t port, const std::vector<uint8_t> &packet) {
+    sockaddr_in address {};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(0x7f000001UL);
+    const int sent = sendto(socket_handle,
+#ifdef _WIN32
+                            reinterpret_cast<const char *>(packet.data()),
+#else
+                            packet.data(),
+#endif
+                            static_cast<int>(packet.size()), 0,
+                            reinterpret_cast<sockaddr *>(&address), sizeof(address));
+    return sent == static_cast<int>(packet.size());
+}
+
 // Waits until a receiver universe reaches the requested counter.
 bool wait_for_counter(peraviz::dmx::ArtNetReceiver &receiver, uint16_t universe_id, uint32_t counter) {
-    for (int attempt = 0; attempt < 100; ++attempt) {
+    for (int attempt = 0; attempt < 300; ++attempt) {
         peraviz::dmx::DmxFrame frame;
         if (receiver.try_get_frame(universe_id, frame) && frame.counter >= counter) {
             return true;
@@ -281,6 +298,7 @@ int test_receiver_starts_after_existing_reusable_bind() {
     }
 
     peraviz::dmx::ArtNetReceiver receiver;
+    receiver.set_monitor_capture_enabled(true);
     if (!receiver.start("127.0.0.1", port)) {
         const std::string receiver_error = receiver.get_last_error();
         peraviz::dmx::close_socket(existing_socket);
@@ -326,6 +344,7 @@ int test_receiver_starts_after_existing_reusable_bind() {
 // Verifies receiver burst draining and latest-wins sequence handling through UDP.
 int test_receiver_sequence() {
     peraviz::dmx::ArtNetReceiver receiver;
+    receiver.set_monitor_capture_enabled(true);
     constexpr uint16_t kPort = 46454;
     if (!receiver.start("127.0.0.1", kPort)) {
         return fail("Failed to start Art-Net receiver test socket");
@@ -342,17 +361,90 @@ int test_receiver_sequence() {
         return fail("Failed to send UDP ArtDmx test packets");
     }
 
-    if (!wait_for_counter(receiver, 3, 4)) {
+    if (!wait_for_counter(receiver, 3, 3)) {
         receiver.stop();
         return fail("Receiver did not accept expected latest-wins packets");
     }
 
     const peraviz::dmx::ArtNetReceiverStats stats = receiver.get_stats(10000000, 10000000);
     receiver.stop();
-    if (stats.packets_received < 4 || stats.packets_parsed < 4 || stats.frames_written != 4 ||
-        stats.packets_dropped_out_of_order != 0) {
+    if (stats.packets_received < 4 || stats.valid_artdmx_packets < 4 || stats.valid_artdmx_accepted != 3 ||
+        stats.packets_dropped_out_of_order != 1) {
         return fail("Receiver latest-wins sequence or burst counters did not match expectations");
     }
+    return 0;
+}
+
+// Verifies optional monitor payload capture remains separate from subscribed scene state.
+int test_receiver_monitor_capture() {
+    peraviz::dmx::ArtNetReceiver receiver;
+    receiver.set_realtime_subscription(peraviz::dmx::RealtimeSubscription::build({{1, {0}}}));
+    constexpr uint16_t kPort = 46455;
+    if (!receiver.start("127.0.0.1", kPort)) return fail("Failed to start monitor capture receiver");
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    if (!send_udp_packets(kPort, {make_artdmx_packet(0, 5, 0, 4)})) return fail("Failed to send monitor-off packet");
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    peraviz::dmx::DmxUniverseMetadata metadata;
+    peraviz::dmx::DmxFrame frame;
+    if (!receiver.try_get_metadata(5, metadata) || receiver.try_get_frame(5, frame)) return fail("monitor-off path stored an unrelated payload");
+    receiver.set_monitor_capture_enabled(true);
+    if (!send_udp_packets(kPort, {make_artdmx_packet(0, 5, 0, 6)})) return fail("Failed to send monitor-on packet");
+    if (!wait_for_counter(receiver, 5, 1) || !receiver.try_get_frame(5, frame) || frame.length != 6) return fail("monitor-on path did not capture latest unrelated payload");
+    receiver.set_monitor_capture_enabled(false);
+    if (!send_udp_packets(kPort, {make_artdmx_packet(0, 5, 0, 8)})) return fail("Failed to send monitor-closed packet");
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    if (!receiver.try_get_frame(5, frame) || frame.length != 6) return fail("monitor close did not stop payload capture");
+    receiver.set_monitor_capture_enabled(true);
+    if (receiver.try_get_frame(5, frame)) return fail("reopened monitor exposed a previous capture generation");
+    if (!send_udp_packets(kPort, {make_artdmx_packet(0, 5, 0, 4)}) || !wait_for_counter(receiver, 5, 1) || !receiver.try_get_frame(5, frame) || frame.length != 4)
+        return fail("reopened monitor did not wait for a current-session payload");
+    receiver.stop();
+    return 0;
+}
+
+// Verifies a fresh receiver session accepts a restarted sequence from the same UDP endpoint.
+int test_receiver_session_reseeds_sequence() {
+    peraviz::dmx::SocketHandle sender = static_cast<peraviz::dmx::SocketHandle>(::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
+    if (is_test_socket_invalid(sender)) return fail("Failed to create persistent sequence sender");
+    peraviz::dmx::ArtNetReceiver receiver;
+    receiver.set_monitor_capture_enabled(true);
+    constexpr uint16_t kPort = 46456;
+    if (!receiver.start("127.0.0.1", kPort) || !send_udp_packet_from_socket(sender, kPort, make_artdmx_packet(200, 9, 0, 4)) || !wait_for_counter(receiver, 9, 1)) {
+        peraviz::dmx::close_socket(sender);
+        return fail("Failed to establish pre-restart ordered stream");
+    }
+    receiver.stop();
+    if (!receiver.start("127.0.0.1", kPort) || !send_udp_packet_from_socket(sender, kPort, make_artdmx_packet(1, 9, 0, 4)) || !wait_for_counter(receiver, 9, 2)) {
+        receiver.stop();
+        peraviz::dmx::close_socket(sender);
+        return fail("Receiver restart did not reseed same-endpoint sequence");
+    }
+    receiver.stop();
+    peraviz::dmx::close_socket(sender);
+    return 0;
+}
+
+// Verifies bounded monitor pressure degrades diagnostics while preserving the scene mailbox.
+int test_monitor_capture_budget_preserves_scene() {
+    peraviz::dmx::ArtNetReceiver receiver;
+    receiver.set_realtime_subscription(peraviz::dmx::RealtimeSubscription::build({{1, {0}}}));
+    receiver.set_monitor_capture_enabled(true);
+    constexpr uint16_t kPort = 46457;
+    if (!receiver.start("127.0.0.1", kPort)) return fail("Failed to start monitor pressure receiver");
+    std::vector<std::vector<uint8_t>> packets;
+    for (uint16_t universe = 20; universe < 420; ++universe) packets.push_back(make_artdmx_packet(0, static_cast<uint8_t>(universe & 0xffU), static_cast<uint8_t>((universe >> 8U) & 0x7fU), 512));
+    packets.push_back(make_artdmx_packet(0, 1, 0, 512));
+    if (!send_udp_packets(kPort, packets, false)) return fail("Failed to send monitor pressure burst");
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (receiver.get_stats(10000000, 10000000).packets_received >= packets.size()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    const auto stats = receiver.get_stats(10000000, 10000000);
+    const std::vector<peraviz::dmx::DmxFrame> scene_frames = receiver.consume_realtime_frames();
+    receiver.stop();
+    if (scene_frames.size() != 1 || scene_frames.front().universe_id != 1) return fail("monitor pressure changed scene mailbox correctness");
+    if (stats.monitor_payload_skipped_budget == 0 || stats.monitor_payload_captures >= stats.valid_artdmx_accepted) return fail("monitor pressure did not degrade diagnostic capture");
+    if (stats.drain_wake_count == 0 || stats.max_datagrams_drained_per_wake == 0) return fail("truthful drain counters were not recorded");
     return 0;
 }
 
@@ -370,6 +462,15 @@ int main() {
         return rc;
     }
     if (const int rc = test_receiver_starts_after_existing_reusable_bind(); rc != 0) {
+        return rc;
+    }
+    if (const int rc = test_receiver_monitor_capture(); rc != 0) {
+        return rc;
+    }
+    if (const int rc = test_receiver_session_reseeds_sequence(); rc != 0) {
+        return rc;
+    }
+    if (const int rc = test_monitor_capture_budget_preserves_scene(); rc != 0) {
         return rc;
     }
     return 0;

@@ -66,6 +66,8 @@ require_pattern 'descriptors' 'Visual frame descriptor payload is missing from t
 require_pattern 'integers' 'Visual frame integer payload is missing from the Godot bridge.' native/src/runtime/peraviz_visual_runtime_godot.cpp
 require_pattern 'floats' 'Visual frame float payload is missing from the Godot bridge.' native/src/runtime/peraviz_visual_runtime_godot.cpp
 require_pattern 'SectionedVisualFrameApplier' 'Godot sectioned visual frame applier is missing.' scripts/dmx_fixture_runtime.gd scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd
+require_pattern 'pump_visual_runtime' 'Production DMX playback must use the direct native realtime pump.' scripts/dmx_fixture_runtime.gd native/src/peraviz_dmx_receiver.cpp
+reject_pattern 'get_dirty_universes|consume_universe|get_universe_data' 'Production fixture runtime must not restore raw universe compatibility APIs.' scripts/dmx_fixture_runtime.gd
 
 reject_pattern 'register_class<godot::PeravizDmxUniverseDecoder>|ClassDB::register_class<PeravizDmxUniverseDecoder>' 'Old Godot universe decoder must not be registered as the live path.' native/src/register_types.cpp
 reject_pattern 'decode_universe(_compact|_render_ready|_visual_render_ready)?\(' 'Live Godot scripts must not call old universe decoder APIs.' scripts/controllers scripts/runtime scripts/*.gd

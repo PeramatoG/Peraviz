@@ -124,7 +124,12 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/dmx_platform.cpp
         src/dmx/udp_socket.cpp
         src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_sequence_tracker.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
         src/dmx/dmx_universe_cache.cpp
+        src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/monitor_capture_budget.cpp
         src/dmx/dmx_universe_decoder.cpp
         src/dmx/artnet_receiver.cpp
         src/dmx/gdtf_xml_reader.cpp
@@ -135,6 +140,8 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/realtime_interest_descriptor.cpp
+        src/runtime/realtime_dmx_coordinator.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -197,6 +204,15 @@ if(PERAVIZ_BUILD_GDEXTENSION AND WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_realtime_dmx_state_tests
+        tests/realtime_dmx_state_test.cpp
+        src/dmx/artnet_sequence_tracker.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
+    )
+    target_include_directories(peraviz_native_realtime_dmx_state_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME peraviz_native_realtime_dmx_state_tests COMMAND peraviz_native_realtime_dmx_state_tests)
+
     add_executable(peraviz_native_runtime_storage_tests
         tests/runtime_storage_test.cpp
         src/runtime_storage.cpp
@@ -266,9 +282,14 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_artnet_flow_tests
         tests/dmx_artnet_flow_test.cpp
         src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_sequence_tracker.cpp
         src/dmx/artnet_receiver.cpp
         src/dmx/dmx_platform.cpp
         src/dmx/dmx_universe_cache.cpp
+        src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/monitor_capture_budget.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
         src/dmx/udp_socket.cpp
     )
     target_include_directories(peraviz_native_artnet_flow_tests PRIVATE
@@ -313,7 +334,11 @@ if(BUILD_TESTING)
         tests/visual_runtime_core_test.cpp
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
+        tests/realtime_dmx_coordinator_test.cpp
+        tests/realtime_dmx_load_harness.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/realtime_interest_descriptor.cpp
+        src/runtime/realtime_dmx_coordinator.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -330,6 +355,16 @@ if(BUILD_TESTING)
         src/dmx/gdtf_xml_reader.cpp
         src/dmx/gdtf_physical_ranges.cpp
         src/dmx/gdtf_gobo_catalog.cpp
+        src/dmx/artnet_dmx_parser.cpp
+        src/dmx/artnet_sequence_tracker.cpp
+        src/dmx/artnet_receiver.cpp
+        src/dmx/dmx_platform.cpp
+        src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/udp_socket.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
+        src/dmx/dmx_universe_cache.cpp
+        src/dmx/monitor_capture_budget.cpp
         src/archive/zip_archive.cpp
         src/asset_cache.cpp
         src/runtime_storage.cpp
@@ -341,6 +376,9 @@ if(BUILD_TESTING)
         tinyxml2::tinyxml2
         libzip::zip
     )
+    if(WIN32)
+        target_link_libraries(peraviz_native_visual_runtime_tests PRIVATE ws2_32)
+    endif()
     add_test(NAME peraviz_native_visual_runtime_tests COMMAND peraviz_native_visual_runtime_tests)
 
 

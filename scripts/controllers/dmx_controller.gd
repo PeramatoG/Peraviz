@@ -258,8 +258,17 @@ func _on_dmx_monitor_pressed() -> void:
 		_dmx_monitor_window = DmxMonitorWindowScript.new()
 		_owner.add_child(_dmx_monitor_window)
 		_dmx_monitor_window.configure(_dmx_receiver)
+		_dmx_monitor_window.close_requested.connect(_on_dmx_monitor_closed)
+	if _dmx_receiver.has_method("set_monitor_capture_enabled"):
+		_dmx_receiver.set_monitor_capture_enabled(true)
 	_dmx_monitor_window.popup_centered_ratio(0.75)
 	_refresh_dmx_monitor_window(_dmx_receiver.is_running())
+
+func _on_dmx_monitor_closed() -> void:
+	if _dmx_receiver != null and _dmx_receiver.has_method("set_monitor_capture_enabled"):
+		_dmx_receiver.set_monitor_capture_enabled(false)
+	if _dmx_monitor_window != null and is_instance_valid(_dmx_monitor_window):
+		_dmx_monitor_window.hide()
 
 func process_dmx(_delta: float) -> void:
 	if _dmx_receiver == null:
