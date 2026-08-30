@@ -376,6 +376,9 @@ if(BUILD_TESTING)
         tinyxml2::tinyxml2
         libzip::zip
     )
+    if(WIN32)
+        target_link_libraries(peraviz_native_visual_runtime_tests PRIVATE ws2_32)
+    endif()
     add_test(NAME peraviz_native_visual_runtime_tests COMMAND peraviz_native_visual_runtime_tests)
 
 

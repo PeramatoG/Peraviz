@@ -13,6 +13,12 @@
 #include <vector>
 #ifdef _WIN32
 #include <winsock2.h>
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
 #else
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -40,7 +46,7 @@ peraviz::runtime::CompiledRuntimeScene make_load_scene(int relevant_universes) {
 uint64_t percentile(std::vector<uint64_t> samples, double fraction) {
     if (samples.empty()) return 0;
     std::sort(samples.begin(), samples.end());
-    const size_t index = std::min(samples.size() - 1, static_cast<size_t>(fraction * static_cast<double>(samples.size() - 1)));
+    const size_t index = (std::min)(samples.size() - 1, static_cast<size_t>(fraction * static_cast<double>(samples.size() - 1)));
     return samples[index];
 }
 
