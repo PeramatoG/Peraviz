@@ -122,10 +122,11 @@ func setup_controls() -> void:
 
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 
-func setup_fixture_runtime(native_scene_loader: Variant, scene_registry: SceneRegistry, renderer_target_registry: Variant, fixture_row_provider: FixtureRowProvider) -> void:
+func setup_fixture_runtime(native_scene_loader: Variant, scene_registry: SceneRegistry, renderer_target_registry: Variant, fixture_row_provider: FixtureRowProvider) -> Dictionary:
 	_dmx_fixture_runtime = DmxFixtureRuntimeScript.new()
 	_dmx_fixture_runtime.configure(native_scene_loader, scene_registry, renderer_target_registry, fixture_row_provider)
 	_dmx_fixture_runtime.set_debug_force_full_apply(_debug_force_full_apply)
+	return refresh_fixture_bindings("initial_scene_setup")
 
 func set_debug_force_full_apply(enabled: bool) -> void:
 	_debug_force_full_apply = enabled
@@ -136,8 +137,10 @@ func set_debug_force_full_apply(enabled: bool) -> void:
 func set_universe_offset(value: int) -> void:
 	if _dmx_universe_offset_input == null:
 		return
+	if int(_dmx_universe_offset_input.value) == value:
+		refresh_fixture_bindings("universe_offset_reasserted")
+		return
 	_dmx_universe_offset_input.value = value
-	refresh_fixture_bindings()
 
 func get_universe_offset() -> int:
 	if _dmx_universe_offset_input == null:
@@ -157,10 +160,10 @@ func start_dmx() -> bool:
 func stop_dmx() -> void:
 	_set_dmx_enabled(false)
 
-func refresh_fixture_bindings() -> Dictionary:
+func refresh_fixture_bindings(rebuild_reason: String = "explicit_fixture_binding_refresh") -> Dictionary:
 	if _dmx_fixture_runtime == null or _dmx_universe_offset_input == null:
 		return {}
-	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value))
+	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value), rebuild_reason)
 	_fixture_binding_summary = summary
 	_prewarm_bound_fixture_lighting()
 	_refresh_dmx_unbound_details()
@@ -193,7 +196,7 @@ func exit_tree() -> void:
 		_dmx_receiver.stop()
 
 func _on_dmx_universe_offset_changed(_value: float) -> void:
-	refresh_fixture_bindings()
+	refresh_fixture_bindings("universe_offset_changed")
 
 func _on_dmx_unbound_details_toggled(_button_pressed: bool) -> void:
 	_refresh_dmx_unbound_details()

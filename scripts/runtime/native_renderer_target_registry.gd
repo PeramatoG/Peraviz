@@ -21,14 +21,22 @@ var _beam_output_records_by_id: Dictionary = {}
 var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
+var _renderer_generation: int = 0
 
 func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
 	_scene_registry = dependencies.get("scene_registry", null)
 	_callbacks = dependencies.get("callbacks", {})
-	clear()
+	clear_scene_state()
+
+func clear_scene_state() -> void:
+	clear_renderer_targets()
+	_gobo_resources.reset_scene_state()
 
 func clear() -> void:
+	clear_scene_state()
+
+func clear_renderer_targets() -> void:
 	_pan_targets.clear()
 	_tilt_targets.clear()
 	_dimmer_targets.clear()
@@ -42,10 +50,12 @@ func clear() -> void:
 	_beam_output_records_by_id.clear()
 	_lens_material_cache.clear()
 	_summary = _new_summary()
-	_gobo_resources.reset()
+	_renderer_generation += 1
+	_gobo_resources.clear_renderer_targets()
 
 func install_gobo_assets(asset_rows: Array) -> void:
-	_gobo_resources.install_assets(asset_rows)
+	_gobo_resources.install_or_update_assets(asset_rows)
+	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
 
 func apply_gobo_selection(beam_target_id: int, wheel_id: int, wheel_instance_index: int, slot_index: int, asset_id: int, selection_mode: int) -> Dictionary:
 	var target_record: Dictionary = get_beam_output_record(beam_target_id)
@@ -72,7 +82,7 @@ func get_gobo_counters() -> Dictionary:
 	return _gobo_resources.counters()
 
 func install_manifest(renderer_manifest: Array) -> void:
-	clear()
+	clear_renderer_targets()
 	_build_geometry_target_map(renderer_manifest)
 	_index_beam_profiles(renderer_manifest)
 	for item in renderer_manifest:
@@ -86,6 +96,7 @@ func install_manifest(renderer_manifest: Array) -> void:
 					_register_renderer_target(target_item)
 			continue
 		_register_legacy_manifest_row(row)
+	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
 	_log_summary_once()
 
 func apply_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:

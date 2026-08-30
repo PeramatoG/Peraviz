@@ -129,6 +129,18 @@ func _run() -> void:
 	test.check(initial_record.get("beam_instances", []).size() == 1, "Registry contract check failed near source line 123")
 	test.check(initial_record.get("lens_material_targets", []).size() >= 1, "Registry contract check failed near source line 124")
 	test.check(not (initial_record.get("beam_instances", [])[0] as MeshInstance3D).visible, "Registry contract check failed near source line 125")
+	var gobo_path: String = _write_gobo_mask()
+	registry.install_gobo_assets([{"gobo_asset_id": 901, "wheel_id": 71, "slot_index": 1, "extracted_media_path": gobo_path, "media_valid": true}])
+	registry.apply_gobo_selection(201, 71, 1, 1, 901, 0)
+	registry.apply_gobo_rotation_state(201, 71, 1, 2, 1, 30.0, 60.0, 1.0, 1.0)
+	var selected_beam: MeshInstance3D = initial_record.get("beam_instances", [])[0] as MeshInstance3D
+	var selected_mesh: Mesh = selected_beam.mesh
+	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base")] }])
+	var refreshed_record: Dictionary = registry.get_dimmer_target_record(201)
+	var refreshed_beam: MeshInstance3D = refreshed_record.get("beam_instances", [])[0] as MeshInstance3D
+	test.check(refreshed_beam.mesh == selected_mesh, "Renderer manifest refresh must rehydrate the held selected gobo without new DMX")
+	test.check(int(registry.get_gobo_counters().get("renderer_reassertions", 0)) > 0, "Renderer manifest refresh must record a gobo presentation reassertion")
+	DirAccess.remove_absolute(gobo_path)
 	registry.clear()
 	test.check(not registry.has_dimmer_target(201), "Registry contract check failed near source line 127")
 
@@ -224,6 +236,13 @@ func _run() -> void:
 	keyed_harness.free()
 	quantum_harness.free()
 	call_deferred("_finish")
+
+func _write_gobo_mask() -> String:
+	var image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	image.fill(Color.WHITE)
+	var path: String = ProjectSettings.globalize_path("user://renderer_refresh_gobo.png")
+	image.save_png(path)
+	return path
 
 func _finish() -> void:
 	await process_frame

@@ -22,6 +22,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Preserved selected gobos and continuous rotation across renderer refreshes, asset updates, and DMX runtime binding rebuilds, so held lighting state no longer requires a new Art-Net value change to reappear.
+
 - Corrected indexed gobo presentation so asymmetric gobos rotate around the beam axis without tilting, stretching, or changing beam size at intermediate angles.
 - Restored live Dimmer, Pan, Tilt, and Zoom installation after the version 7 packed runtime migration, with validated setup decoding and retained version 6 compatibility.
 - Restored live native Dimmer, Pan, Tilt, and Zoom updates after the compiled runtime setup contract was extended for future gobo motion.

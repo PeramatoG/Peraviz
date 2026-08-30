@@ -427,8 +427,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 !nearly_equal(static_cast<float>(state.angular_velocity_dps), static_cast<float>(next_velocity), kAngleEpsilon) ||
                 (next_mode == GoboRotationMode::Indexed && !nearly_equal(static_cast<float>(state.phase_degrees), static_cast<float>(next_phase), kAngleEpsilon));
             if (!changed) continue;
-            state.phase_degrees = std::fmod(next_phase, 360.0);
-            if (state.phase_degrees < 0.0) state.phase_degrees += 360.0;
+            state.phase_degrees = next_phase;
             state.angular_velocity_dps = next_velocity;
             state.reference_seconds = motion_now;
             state.mode = next_mode;
