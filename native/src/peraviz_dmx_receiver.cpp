@@ -1,7 +1,10 @@
 #include "peraviz_dmx_receiver.h"
+#include "runtime/peraviz_visual_runtime_godot.h"
+#include "dmx/realtime_subscription.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -37,6 +40,10 @@ void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("consume_universe", "universe_id"), &PeravizDmxReceiver::consume_universe);
     ClassDB::bind_method(D_METHOD("get_universe_metadata", "universe_id"), &PeravizDmxReceiver::get_universe_metadata);
     ClassDB::bind_method(D_METHOD("get_changed_universe_frames", "last_counters"), &PeravizDmxReceiver::get_changed_universe_frames);
+    ClassDB::bind_method(D_METHOD("configure_visual_runtime", "runtime"), &PeravizDmxReceiver::configure_visual_runtime);
+    ClassDB::bind_method(D_METHOD("pump_visual_runtime", "runtime"), &PeravizDmxReceiver::pump_visual_runtime);
+    ClassDB::bind_method(D_METHOD("set_monitor_capture_enabled", "enabled"), &PeravizDmxReceiver::set_monitor_capture_enabled);
+    ClassDB::bind_method(D_METHOD("record_godot_apply_completion"), &PeravizDmxReceiver::record_godot_apply_completion);
 }
 
 // Initializes the wrapper with a dedicated Art-Net receiver instance.
@@ -96,9 +103,24 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     out["packets_parsed"] = static_cast<int64_t>(stats.packets_parsed);
     out["malformed_packets"] = static_cast<int64_t>(stats.packets_ignored_malformed);
     out["out_of_order_dropped"] = static_cast<int64_t>(stats.packets_dropped_out_of_order);
-    out["overload_dropped"] = static_cast<int64_t>(stats.packets_dropped_by_overload);
+    out["rx_drain_saturation_events"] = static_cast<int64_t>(stats.rx_drain_saturation_events);
+    out["overload_dropped"] = static_cast<int64_t>(0); // Deprecated compatibility alias; the drain loop does not infer packet loss.
     out["frames_written"] = static_cast<int64_t>(stats.frames_written);
     out["source_changes"] = static_cast<int64_t>(stats.source_changes);
+    out["relevant_packets"] = static_cast<int64_t>(stats.relevant_packets);
+    out["irrelevant_packets"] = static_cast<int64_t>(stats.irrelevant_packets);
+    out["relevant_unchanged_packets"] = static_cast<int64_t>(stats.relevant_unchanged_packets);
+    out["relevant_state_updates"] = static_cast<int64_t>(stats.relevant_state_updates);
+    out["mailbox_overwrites"] = static_cast<int64_t>(stats.mailbox_overwrites);
+    out["monitor_payload_captures"] = static_cast<int64_t>(stats.monitor_payload_captures);
+    out["scene_states_consumed"] = static_cast<int64_t>(scene_states_consumed_);
+    out["production_raw_bridge_bytes"] = static_cast<int64_t>(0);
+    out["rx_to_native_p50_us"] = static_cast<int64_t>(latency_percentile(rx_to_native_buckets_, 0.50));
+    out["rx_to_native_p95_us"] = static_cast<int64_t>(latency_percentile(rx_to_native_buckets_, 0.95));
+    out["rx_to_native_max_us"] = static_cast<int64_t>(rx_to_native_max_us_);
+    out["native_to_apply_p50_us"] = static_cast<int64_t>(latency_percentile(native_to_apply_buckets_, 0.50));
+    out["native_to_apply_p95_us"] = static_cast<int64_t>(latency_percentile(native_to_apply_buckets_, 0.95));
+    out["native_to_apply_max_us"] = static_cast<int64_t>(native_to_apply_max_us_);
     out["active_slot_count"] = static_cast<int64_t>(stats.active_slot_count);
     out["approx_cache_bytes"] = static_cast<int64_t>(stats.approximate_cache_bytes);
     PackedInt32Array active_universes;
@@ -114,6 +136,75 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     }
     out["last_packet_ms_ago"] = last_packet_ms_ago;
     return out;
+}
+
+// Installs the visual runtime's authoritative compiled source interests in the receiver mailbox.
+bool PeravizDmxReceiver::configure_visual_runtime(Ref<PeravizVisualRuntime> runtime) {
+    if (runtime.is_null()) return false;
+    receiver_->set_realtime_subscription(peraviz::dmx::RealtimeSubscription::build(runtime->native_core().realtime_interest_offsets()));
+    rehydrated_states_pending_ = 0;
+    for (const peraviz::dmx::DmxFrame &frame : receiver_->get_realtime_held_states()) {
+        runtime->native_core().submit_universe_frame(frame.universe_id, frame.data.data(), frame.length);
+        const uint64_t now_us = now_microseconds();
+        if (frame.last_rx_us > 0 && now_us >= frame.last_rx_us) observe_latency(rx_to_native_buckets_, now_us - frame.last_rx_us, rx_to_native_max_us_);
+        ++rehydrated_states_pending_;
+    }
+    return true;
+}
+
+// Pumps deduplicated latest universe states directly between native receiver and visual runtime cores.
+int PeravizDmxReceiver::pump_visual_runtime(Ref<PeravizVisualRuntime> runtime) {
+    if (runtime.is_null()) return 0;
+    int consumed = rehydrated_states_pending_;
+    rehydrated_states_pending_ = 0;
+    for (const uint16_t universe : receiver_->get_realtime_dirty_universes()) {
+        peraviz::dmx::DmxFrame frame;
+        if (!receiver_->consume_realtime_frame(universe, frame)) continue;
+        runtime->native_core().submit_universe_frame(universe, frame.data.data(), frame.length);
+        const uint64_t now_us = now_microseconds();
+        if (frame.last_rx_us > 0 && now_us >= frame.last_rx_us) observe_latency(rx_to_native_buckets_, now_us - frame.last_rx_us, rx_to_native_max_us_);
+        ++consumed;
+    }
+    scene_states_consumed_ += static_cast<uint64_t>(consumed);
+    if (consumed > 0) last_native_pump_us_ = now_microseconds();
+    return consumed;
+}
+
+// Controls optional all-universe full-payload capture for the Technical Monitor.
+void PeravizDmxReceiver::set_monitor_capture_enabled(bool enabled) {
+    receiver_->set_monitor_capture_enabled(enabled);
+}
+
+// Records the bounded native-frame-to-Godot-apply age after renderer mutation completes.
+void PeravizDmxReceiver::record_godot_apply_completion() {
+    const uint64_t now_us = now_microseconds();
+    if (last_native_pump_us_ > 0 && now_us >= last_native_pump_us_) {
+        observe_latency(native_to_apply_buckets_, now_us - last_native_pump_us_, native_to_apply_max_us_);
+        last_native_pump_us_ = 0;
+    }
+}
+
+// Adds a latency sample to a bounded power-of-two microsecond histogram.
+void PeravizDmxReceiver::observe_latency(std::array<uint64_t, 32> &buckets, uint64_t value_us, uint64_t &maximum_us) {
+    size_t bucket = 0;
+    uint64_t upper = 1;
+    while (bucket + 1 < buckets.size() && value_us > upper) { ++bucket; upper <<= 1U; }
+    ++buckets[bucket];
+    maximum_us = std::max(maximum_us, value_us);
+}
+
+// Estimates one percentile from a bounded power-of-two microsecond histogram.
+uint64_t PeravizDmxReceiver::latency_percentile(const std::array<uint64_t, 32> &buckets, double percentile) {
+    uint64_t total = 0;
+    for (const uint64_t count : buckets) total += count;
+    if (total == 0) return 0;
+    const uint64_t target = static_cast<uint64_t>(std::ceil(static_cast<double>(total) * percentile));
+    uint64_t cumulative = 0;
+    for (size_t index = 0; index < buckets.size(); ++index) {
+        cumulative += buckets[index];
+        if (cumulative >= target) return uint64_t {1} << index;
+    }
+    return uint64_t {1} << (buckets.size() - 1);
 }
 
 // Returns the latest DMX channel data for a universe as an array.
@@ -184,6 +275,8 @@ Dictionary PeravizDmxReceiver::get_universe_metadata(int universe_id) const {
     out["last_rx_us"] = static_cast<int64_t>(metadata.last_rx_us);
     out["sequence"] = static_cast<int64_t>(metadata.sequence);
     out["content_hash"] = static_cast<int64_t>(metadata.content_hash);
+    out["source_ipv4"] = static_cast<int64_t>(metadata.source_ipv4);
+    out["source_port"] = static_cast<int64_t>(metadata.source_port);
     return out;
 }
 

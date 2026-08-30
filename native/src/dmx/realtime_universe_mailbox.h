@@ -28,6 +28,7 @@ public:
     std::vector<uint16_t> dirty_universes() const;
     bool consume(uint16_t universe_id, DmxFrame &out_frame);
     bool held(uint16_t universe_id, DmxFrame &out_frame) const;
+    std::vector<DmxFrame> held_states() const;
     RealtimeMailboxStats stats() const;
 
 private:

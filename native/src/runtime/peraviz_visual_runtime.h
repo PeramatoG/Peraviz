@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace peraviz::runtime {
@@ -48,6 +49,7 @@ public:
     const VisualFrameStats &stats() const;
     double runtime_now_seconds() const;
     void set_runtime_now_seconds_for_testing(double seconds);
+    std::vector<std::pair<uint16_t, std::vector<uint16_t>>> realtime_interest_offsets() const;
 
 private:
     struct CompiledPropertyProgram {

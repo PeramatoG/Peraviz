@@ -38,4 +38,4 @@ Native C++ owns the supported semantic paths and prepares renderer-ready values.
 
 ## Realtime transport note
 
-The new native subscription and latest-state mailbox classes are transport foundations and do not expand GDTF attribute support. Pan/Tilt remains immediate physical-degree evaluation in this pass; `RealFade` and `RealAcceleration` physical response is not yet claimed.
+The native subscription, mailbox, and direct pump are the active transport path and do not expand GDTF attribute support. Pan/Tilt remains immediate physical-degree evaluation in this pass; `RealFade` and `RealAcceleration` physical response is not yet claimed.

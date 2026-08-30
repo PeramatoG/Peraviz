@@ -50,6 +50,7 @@ bool ArtNetReceiver::start(const std::string &bind_ip, uint16_t port) {
         last_error_.clear();
     }
 
+    sequence_tracker_.reset();
     running_.store(true, std::memory_order_release);
     worker_ = std::thread(&ArtNetReceiver::run, this);
     return true;
@@ -71,12 +72,12 @@ bool ArtNetReceiver::is_running() const {
 
 // Tries to fetch the latest DMX frame for a universe.
 bool ArtNetReceiver::try_get_frame(uint16_t universe_id, DmxFrame &out_frame) const {
-    return cache_.try_get_frame(universe_id, out_frame);
+    return cache_.try_get_frame(universe_id, out_frame) || realtime_mailbox_.held(universe_id, out_frame);
 }
 
 // Tries to fetch DMX universe metadata without copying channel data.
 bool ArtNetReceiver::try_get_metadata(uint16_t universe_id, DmxUniverseMetadata &out_metadata) const {
-    return cache_.try_get_metadata(universe_id, out_metadata);
+    return metadata_cache_.get(universe_id, out_metadata);
 }
 
 // Returns dirty universes that have received unconsumed frame data.
@@ -89,6 +90,31 @@ bool ArtNetReceiver::consume_frame(uint16_t universe_id, DmxFrame &out_frame) {
     return cache_.consume_frame(universe_id, out_frame);
 }
 
+// Replaces the immutable scene subscription used by the RX latest-state mailbox.
+void ArtNetReceiver::set_realtime_subscription(std::shared_ptr<const RealtimeSubscription> subscription) {
+    realtime_mailbox_.set_subscription(std::move(subscription));
+}
+
+// Consumes one deduplicated latest scene state directly in native code.
+bool ArtNetReceiver::consume_realtime_frame(uint16_t universe_id, DmxFrame &out_frame) {
+    return realtime_mailbox_.consume(universe_id, out_frame);
+}
+
+// Returns only subscribed universes with an unconsumed relevant state change.
+std::vector<uint16_t> ArtNetReceiver::get_realtime_dirty_universes() const {
+    return realtime_mailbox_.dirty_universes();
+}
+
+// Returns fresh held subscribed snapshots for native runtime generation rehydration.
+std::vector<DmxFrame> ArtNetReceiver::get_realtime_held_states() const {
+    return realtime_mailbox_.held_states();
+}
+
+// Enables or disables optional full-payload capture for the Technical Monitor.
+void ArtNetReceiver::set_monitor_capture_enabled(bool enabled) {
+    monitor_capture_enabled_.store(enabled, std::memory_order_release);
+}
+
 // Returns runtime counters collected by the receiver.
 ArtNetReceiverStats ArtNetReceiver::get_stats(uint64_t now_us, uint64_t active_window_us) const {
     ArtNetReceiverStats stats;
@@ -99,13 +125,19 @@ ArtNetReceiverStats ArtNetReceiver::get_stats(uint64_t now_us, uint64_t active_w
     stats.packets_parsed = packets_parsed_.load(std::memory_order_relaxed);
     stats.packets_ignored_malformed = packets_ignored_malformed_.load(std::memory_order_relaxed);
     stats.packets_dropped_out_of_order = packets_dropped_out_of_order_.load(std::memory_order_relaxed);
-    stats.packets_dropped_by_overload = packets_dropped_by_overload_.load(std::memory_order_relaxed);
     stats.frames_written = frames_written_.load(std::memory_order_relaxed);
     stats.source_changes = source_changes_.load(std::memory_order_relaxed);
-    stats.active_slot_count = cache_.get_active_slot_count();
-    stats.approximate_cache_bytes = cache_.get_approximate_cache_bytes();
+    const RealtimeMailboxStats mailbox_stats = realtime_mailbox_.stats();
+    stats.relevant_packets = mailbox_stats.relevant_packets;
+    stats.irrelevant_packets = mailbox_stats.irrelevant_packets;
+    stats.relevant_unchanged_packets = mailbox_stats.unchanged_relevant_packets;
+    stats.relevant_state_updates = mailbox_stats.state_updates;
+    stats.mailbox_overwrites = mailbox_stats.coalesced_states;
+    stats.monitor_payload_captures = monitor_payload_captures_.load(std::memory_order_relaxed);
+    stats.active_slot_count = metadata_cache_.slot_count();
+    stats.approximate_cache_bytes = metadata_cache_.approximate_bytes() + cache_.get_approximate_cache_bytes();
     stats.last_packet_us = last_packet_us_.load(std::memory_order_relaxed);
-    stats.active_universes = cache_.get_active_universes(now_us, active_window_us);
+    stats.active_universes = metadata_cache_.active(now_us, active_window_us);
     return stats;
 }
 
@@ -131,10 +163,9 @@ void ArtNetReceiver::run() {
         }
 
         while (running_.load(std::memory_order_acquire)) {
-            std::string sender_ip;
-            uint16_t sender_port = 0;
+            UdpSenderEndpoint sender;
             std::string receive_error;
-            const int bytes_read = socket_.recv_from(receive_buffer.data(), receive_buffer.size(), sender_ip, sender_port, receive_error);
+            const int bytes_read = socket_.recv_from(receive_buffer.data(), receive_buffer.size(), sender, receive_error);
             if (bytes_read < 0) {
                 std::lock_guard<std::mutex> lock(error_mutex_);
                 last_error_ = receive_error;
@@ -153,13 +184,18 @@ void ArtNetReceiver::run() {
             }
             packets_parsed_.fetch_add(1, std::memory_order_relaxed);
 
-            if (!should_accept_frame(frame_view, sender_ip, sender_port)) {
+            if (!should_accept_frame(frame_view, {sender.ipv4, sender.port})) {
                 packets_dropped_out_of_order_.fetch_add(1, std::memory_order_relaxed);
                 continue;
             }
 
             const uint64_t packet_time_us = now_microseconds();
-            cache_.write_frame(frame_view.universe_id, frame_view.data, frame_view.length, frame_view.sequence, packet_time_us);
+            metadata_cache_.observe(frame_view.universe_id, frame_view.length, frame_view.sequence, packet_time_us, sender.ipv4, sender.port);
+            realtime_mailbox_.publish(frame_view.universe_id, frame_view.data, frame_view.length, frame_view.sequence, packet_time_us);
+            if (monitor_capture_enabled_.load(std::memory_order_acquire)) {
+                cache_.write_frame(frame_view.universe_id, frame_view.data, frame_view.length, frame_view.sequence, packet_time_us);
+                monitor_payload_captures_.fetch_add(1, std::memory_order_relaxed);
+            }
             frames_written_.fetch_add(1, std::memory_order_relaxed);
             total_packets_.fetch_add(1, std::memory_order_relaxed);
             record_packet_time(packet_time_us);
@@ -168,9 +204,7 @@ void ArtNetReceiver::run() {
 }
 
 // Applies latest-wins source tracking for a parsed frame.
-bool ArtNetReceiver::should_accept_frame(const ArtNetDmxFrameView &frame_view, const std::string &sender_ip, uint16_t sender_port) {
-    const std::string endpoint = sender_ip + ":" + std::to_string(sender_port);
-    std::lock_guard<std::mutex> lock(source_state_mutex_);
+bool ArtNetReceiver::should_accept_frame(const ArtNetDmxFrameView &frame_view, ArtNetEndpoint endpoint) {
     const ArtNetSequenceDecision decision = sequence_tracker_.accept(frame_view.universe_id, frame_view.sequence, endpoint);
     if (decision.source_changed) {
         // Peraviz intentionally uses latest-valid-source-wins instead of Art-Net merge.

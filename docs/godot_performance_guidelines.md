@@ -106,6 +106,6 @@ Where suitable:
 - Optimization using MultiMeshes: https://docs.godotengine.org/en/stable/tutorials/performance/using_multimesh.html
 - GDExtension system: https://docs.godotengine.org/en/stable/tutorials/scripting/gdextension/index.html
 
-## Realtime mailbox migration
+## Native realtime pump
 
-Native immutable scene subscriptions and latest-state mailboxes are available as the foundation for removing the raw universe bridge. They filter on compiled relevant offsets and retain only one pending state per universe. The current Godot playback bridge has not yet migrated to those components, so code must not claim zero raw bridge bytes until the native coordinator is installed.
+Normal playback must configure the receiver from the native compiled visual runtime and call the native pump once per frame. It must not consume raw universe `PackedByteArray` values, hash them, or cache them in GDScript. Raw payload APIs are diagnostic compatibility surfaces for Technical Monitor only.

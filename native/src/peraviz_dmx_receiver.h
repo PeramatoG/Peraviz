@@ -1,6 +1,7 @@
 #pragma once
 
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -11,8 +12,11 @@
 #include "dmx/artnet_receiver.h"
 
 #include <memory>
+#include <array>
 
 namespace godot {
+
+class PeravizVisualRuntime;
 
 class PeravizDmxReceiver : public RefCounted {
     GDCLASS(PeravizDmxReceiver, RefCounted)
@@ -36,11 +40,25 @@ public:
     PackedByteArray consume_universe(int universe_id);
     Dictionary get_universe_metadata(int universe_id) const;
     Dictionary get_changed_universe_frames(const Dictionary &last_counters) const;
+    bool configure_visual_runtime(Ref<PeravizVisualRuntime> runtime);
+    int pump_visual_runtime(Ref<PeravizVisualRuntime> runtime);
+    void set_monitor_capture_enabled(bool enabled);
+    void record_godot_apply_completion();
 
 private:
     static uint64_t now_microseconds();
 
     std::unique_ptr<peraviz::dmx::ArtNetReceiver> receiver_;
+    uint64_t scene_states_consumed_ = 0;
+    int rehydrated_states_pending_ = 0;
+    std::array<uint64_t, 32> rx_to_native_buckets_ {};
+    std::array<uint64_t, 32> native_to_apply_buckets_ {};
+    uint64_t rx_to_native_max_us_ = 0;
+    uint64_t native_to_apply_max_us_ = 0;
+    uint64_t last_native_pump_us_ = 0;
+
+    static void observe_latency(std::array<uint64_t, 32> &buckets, uint64_t value_us, uint64_t &maximum_us);
+    static uint64_t latency_percentile(const std::array<uint64_t, 32> &buckets, double percentile);
 };
 
 } // namespace godot

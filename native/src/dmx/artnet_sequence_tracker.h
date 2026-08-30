@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <unordered_map>
 
 namespace peraviz::dmx {
@@ -11,12 +10,22 @@ struct ArtNetSequenceDecision {
     bool source_changed = false;
 };
 
+struct ArtNetEndpoint {
+    uint32_t ipv4 = 0;
+    uint16_t port = 0;
+    // Compares compact endpoint identities without formatting text.
+    bool operator==(const ArtNetEndpoint &other) const { return ipv4 == other.ipv4 && port == other.port; }
+    // Reports whether compact endpoint identities differ.
+    bool operator!=(const ArtNetEndpoint &other) const { return !(*this == other); }
+};
+
 class ArtNetSequenceTracker {
 public:
-    ArtNetSequenceDecision accept(uint16_t universe, uint8_t sequence, const std::string &endpoint);
+    ArtNetSequenceDecision accept(uint16_t universe, uint8_t sequence, ArtNetEndpoint endpoint);
+    void reset();
 
 private:
-    struct State { std::string endpoint; uint8_t sequence = 0; bool ordered = false; };
+    struct State { ArtNetEndpoint endpoint; uint8_t sequence = 0; bool ordered = false; bool initialized = false; };
     std::unordered_map<uint16_t, State> states_;
 };
 

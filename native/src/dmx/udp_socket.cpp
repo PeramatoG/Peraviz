@@ -187,4 +187,35 @@ int UdpSocket::recv_from(uint8_t *buffer,
     return bytes_read;
 }
 
+// Receives one datagram and returns a compact numeric IPv4 endpoint for hot-path callers.
+int UdpSocket::recv_from(uint8_t *buffer, size_t buffer_size, UdpSenderEndpoint &sender, std::string &error_message) const {
+    if (!is_open()) {
+        error_message = "Socket is not open";
+        return -1;
+    }
+    sockaddr_in sender_address {};
+#ifdef _WIN32
+    int sender_address_size = sizeof(sender_address);
+#else
+    socklen_t sender_address_size = sizeof(sender_address);
+#endif
+    const int bytes_read = recvfrom(socket_handle_,
+#ifdef _WIN32
+                                    reinterpret_cast<char *>(buffer),
+#else
+                                    buffer,
+#endif
+                                    static_cast<int>(buffer_size), 0,
+                                    reinterpret_cast<sockaddr *>(&sender_address), &sender_address_size);
+    if (bytes_read < 0) {
+        const int error = get_last_socket_error();
+        if (is_would_block_error(error)) return 0;
+        error_message = "recvfrom() failed. Error=" + std::to_string(error);
+        return -1;
+    }
+    sender.ipv4 = ntohl(sender_address.sin_addr.s_addr);
+    sender.port = ntohs(sender_address.sin_port);
+    return bytes_read;
+}
+
 } // namespace peraviz::dmx

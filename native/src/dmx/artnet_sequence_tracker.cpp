@@ -3,14 +3,16 @@
 namespace peraviz::dmx {
 
 // Applies ArtDmx's disabled-zero and ordered 1-through-255 sequence cycle with bounded restart rejection.
-ArtNetSequenceDecision ArtNetSequenceTracker::accept(uint16_t universe, uint8_t sequence, const std::string &endpoint) {
+ArtNetSequenceDecision ArtNetSequenceTracker::accept(uint16_t universe, uint8_t sequence, ArtNetEndpoint endpoint) {
     State &state = states_[universe];
-    const bool source_changed = !state.endpoint.empty() && state.endpoint != endpoint;
-    if (state.endpoint.empty() || source_changed) {
-        state = {endpoint, sequence, sequence != 0};
+    const bool source_changed = state.initialized && state.endpoint != endpoint;
+    if (!state.initialized || source_changed) {
+        state = {endpoint, sequence, sequence != 0, true};
         return {true, source_changed};
     }
     if (sequence == 0) {
+        state.ordered = false;
+        state.sequence = 0;
         return {true, false};
     }
     if (!state.ordered) {
@@ -26,6 +28,11 @@ ArtNetSequenceDecision ArtNetSequenceTracker::accept(uint16_t universe, uint8_t 
     }
     state.sequence = sequence;
     return {true, false};
+}
+
+// Clears all ordered stream state at the beginning of a receiver session.
+void ArtNetSequenceTracker::reset() {
+    states_.clear();
 }
 
 } // namespace peraviz::dmx

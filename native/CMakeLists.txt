@@ -128,6 +128,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/realtime_subscription.cpp
         src/dmx/realtime_universe_mailbox.cpp
         src/dmx/dmx_universe_cache.cpp
+        src/dmx/dmx_network_metadata_cache.cpp
         src/dmx/dmx_universe_decoder.cpp
         src/dmx/artnet_receiver.cpp
         src/dmx/gdtf_xml_reader.cpp
@@ -138,6 +139,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/realtime_interest_descriptor.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp
@@ -282,6 +284,9 @@ if(BUILD_TESTING)
         src/dmx/artnet_receiver.cpp
         src/dmx/dmx_platform.cpp
         src/dmx/dmx_universe_cache.cpp
+        src/dmx/dmx_network_metadata_cache.cpp
+        src/dmx/realtime_subscription.cpp
+        src/dmx/realtime_universe_mailbox.cpp
         src/dmx/udp_socket.cpp
     )
     target_include_directories(peraviz_native_artnet_flow_tests PRIVATE
@@ -327,6 +332,7 @@ if(BUILD_TESTING)
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/realtime_interest_descriptor.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
         src/runtime/color_science.cpp
         src/runtime/visual_frame_schema.cpp

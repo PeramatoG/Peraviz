@@ -11,12 +11,29 @@ RealtimeUniverseMailbox::RealtimeUniverseMailbox() = default;
 // Atomically replaces the immutable scene subscription and preallocates its bounded universe slots.
 void RealtimeUniverseMailbox::set_subscription(std::shared_ptr<const RealtimeSubscription> subscription) {
     std::lock_guard<std::mutex> lock(setup_mutex_);
+    const auto previous = std::atomic_load_explicit(&subscription_, std::memory_order_acquire);
     for (const uint16_t universe : subscription ? subscription->universes() : std::vector<uint16_t> {}) {
         if (!slots_[universe]) {
             slots_[universe] = std::make_unique<Slot>();
+        } else if (!previous || (subscription->offsets(universe) & ~previous->offsets(universe)).any()) {
+            std::lock_guard<std::mutex> slot_lock(slots_[universe]->mutex);
+            slots_[universe]->initialized = false;
+            slots_[universe]->dirty.store(false, std::memory_order_release);
         }
     }
     std::atomic_store_explicit(&subscription_, std::move(subscription), std::memory_order_release);
+}
+
+// Copies all fresh held snapshots covered by the current immutable subscription.
+std::vector<DmxFrame> RealtimeUniverseMailbox::held_states() const {
+    std::vector<DmxFrame> result;
+    const auto subscription = std::atomic_load_explicit(&subscription_, std::memory_order_acquire);
+    if (!subscription) return result;
+    for (const uint16_t universe : subscription->universes()) {
+        DmxFrame frame;
+        if (held(universe, frame)) result.push_back(frame);
+    }
+    return result;
 }
 
 // Publishes only changed relevant slots while retaining one latest held state per subscribed universe.

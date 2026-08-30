@@ -7,12 +7,6 @@ const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.
 
 var test = HeadlessTestCaseScript.new()
 
-class FakeBootstrapVisualRuntime:
-	extends RefCounted
-	var submissions: Dictionary = {}
-	func submit_universe_frame(universe_id: int, frame: PackedByteArray) -> void:
-		submissions[universe_id] = frame
-
 class FakeLoader:
 	extends Node
 	const DEFAULT_EMITTER_PHOTOMETRICS: Dictionary = {"luminous_flux": 10000.0, "beam_angle": 25.0, "field_angle": 25.0, "beam_radius": 0.05}
@@ -166,15 +160,6 @@ func _run() -> void:
 	loader.dimmer_valid = false
 	var failed: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	test.check(int(failed.get("skipped", 0)) > 0, "An unresolved dimmer target should be skipped")
-	var bootstrap_runtime = DmxFixtureRuntimeScript.new()
-	var bootstrap_native := FakeBootstrapVisualRuntime.new()
-	bootstrap_runtime._native_visual_runtime = bootstrap_native
-	bootstrap_runtime._compiled_used_universes = {1: true, 3: true}
-	var held_one := PackedByteArray([1, 2, 3])
-	var held_three := PackedByteArray([7, 8, 9])
-	var bootstrap_count: int = bootstrap_runtime._bootstrap_native_runtime_from_held_frames({1: held_one, 2: PackedByteArray([4]), 3: held_three})
-	test.check(bootstrap_count == 2 and bootstrap_native.submissions == {1: held_one, 3: held_three}, "Runtime rebuild must seed latest held snapshots for used universes only")
-	test.check(bootstrap_runtime._bootstrap_visual_frame_pending, "Held-state bootstrap must schedule one renderer-ready reconciliation")
 	var runtime = DmxFixtureRuntimeScript.new()
 	var native_loader := FakeNativeSceneLoader.new()
 	var renderer_registry := FakeRendererTargetRegistry.new()

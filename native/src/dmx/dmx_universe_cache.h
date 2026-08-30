@@ -18,6 +18,8 @@ struct DmxFrame {
     uint32_t counter = 0;
     uint8_t sequence = 0;
     uint32_t content_hash = 0;
+    uint32_t source_ipv4 = 0;
+    uint16_t source_port = 0;
 };
 
 struct DmxUniverseMetadata {
@@ -27,6 +29,8 @@ struct DmxUniverseMetadata {
     uint32_t counter = 0;
     uint8_t sequence = 0;
     uint32_t content_hash = 0;
+    uint32_t source_ipv4 = 0;
+    uint16_t source_port = 0;
 };
 
 class DmxUniverseCache {

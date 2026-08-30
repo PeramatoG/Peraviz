@@ -95,6 +95,11 @@ Dictionary PeravizVisualRuntime::get_stats() const {
     return stats_to_dictionary(core_.stats());
 }
 
+// Provides native coordinators direct access without marshaling raw universe payloads through Godot.
+peraviz::runtime::PeravizVisualRuntimeCore &PeravizVisualRuntime::native_core() {
+    return core_;
+}
+
 // Converts native visual frame stats into a Godot dictionary.
 Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::VisualFrameStats &stats) {
     Dictionary out;
