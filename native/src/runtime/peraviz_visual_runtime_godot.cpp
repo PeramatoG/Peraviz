@@ -63,6 +63,7 @@ Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
     out["protocol_major"] = frame.protocol_major;
     out["protocol_minor"] = frame.protocol_minor;
     out["schema_generation"] = frame.schema_generation;
+    out["runtime_now_seconds"] = core_.runtime_now_seconds();
     out["descriptors"] = descriptors;
     out["integers"] = integers;
     out["floats"] = floats;

@@ -12,6 +12,7 @@ const ASSET_ID_META_KEY := "peraviz_gobo_asset_id"
 var _assets: Dictionary = {}
 var _selections_by_target: Dictionary = {}
 var _composition_cache: Dictionary = {}
+var _moving_layers: Dictionary = {}
 var _mesh_builder: RefCounted = GoboPrismMeshBuilderScript.new()
 var _vectorizer: Object = null
 var _counters: Dictionary = {}
@@ -25,6 +26,7 @@ func reset() -> void:
 	_assets.clear()
 	_selections_by_target.clear()
 	_composition_cache.clear()
+	_moving_layers.clear()
 	_mesh_builder.clear_cache()
 	_counters = {"vectorization_requests": 0, "vectorization_cache_hits": 0, "prism_mesh_creations": 0, "prism_cache_hits": 0, "composition_requests": 0, "composition_cache_hits": 0, "composed_png_generations": 0, "composed_vectorizations": 0, "composed_mesh_creations": 0, "composed_topology_reuse": 0, "topology_resource_updates": 0, "parametric_updates": 0, "missing_media_warnings": 0, "deferred_multi_wheel_warnings": 0}
 
@@ -84,21 +86,53 @@ func apply_selection(beam_target_id: int, wheel_id: int, wheel_instance_index: i
 	return {"applied": true, "unchanged": false, "cleared": resource.is_empty(), "topology_updates": 1, "asset_id": int(resource.get("asset_id", 0))}
 
 func apply_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_instance_index: int, angle_degrees: float, target_record: Dictionary) -> Dictionary:
+	return apply_rotation_state(beam_target_id, wheel_id, wheel_instance_index, 1, 0, angle_degrees, 0.0, 0.0, 0.0, target_record)
+
+func apply_rotation_state(beam_target_id: int, wheel_id: int, wheel_instance_index: int, rotation_mode: int, revision: int, phase_degrees: float, angular_velocity_dps: float, reference_seconds: float, native_now_seconds: float, target_record: Dictionary) -> Dictionary:
+	var compensated_phase: float = phase_degrees + angular_velocity_dps * maxf(0.0, native_now_seconds - reference_seconds)
+	var key: String = "%d:%d" % [beam_target_id, wheel_instance_index]
+	var motion := {"beam_target_id": beam_target_id, "wheel_id": wheel_id, "wheel_instance_index": wheel_instance_index, "mode": rotation_mode, "revision": revision, "phase_degrees": compensated_phase, "angular_velocity_dps": angular_velocity_dps}
+	_moving_layers[key] = motion
 	var target_states: Dictionary = _selections_by_target.get(beam_target_id, {})
 	var state: Dictionary = target_states.get(wheel_instance_index, {"wheel_id": wheel_id, "slot_index": 0, "asset_id": 0, "selection_mode": 0})
-	state["indexed_angle_degrees"] = angle_degrees
+	state["indexed_angle_degrees"] = compensated_phase
 	target_states[wheel_instance_index] = state
 	_selections_by_target[beam_target_id] = target_states
+	_counters["parametric_updates"] += 1
+	var result: Dictionary = _present_layer_motion(motion, target_record)
+	if bool(result.get("unsupported_moving_composition", false)):
+		_counters["deferred_multi_wheel_warnings"] += 1
+	return result
+
+func advance_motion(delta_seconds: float, target_records: Dictionary) -> void:
+	for key in _moving_layers:
+		var motion: Dictionary = _moving_layers[key]
+		if int(motion.get("mode", 3)) != 2 or is_zero_approx(float(motion.get("angular_velocity_dps", 0.0))):
+			continue
+		motion["phase_degrees"] = wrapf(float(motion.get("phase_degrees", 0.0)) + float(motion.get("angular_velocity_dps", 0.0)) * delta_seconds, 0.0, 360.0)
+		_moving_layers[key] = motion
+		var target_states: Dictionary = _selections_by_target.get(int(motion.get("beam_target_id", 0)), {})
+		var layer_state: Dictionary = target_states.get(int(motion.get("wheel_instance_index", 0)), {})
+		layer_state["indexed_angle_degrees"] = motion["phase_degrees"]
+		target_states[int(motion.get("wheel_instance_index", 0))] = layer_state
+		_selections_by_target[int(motion.get("beam_target_id", 0))] = target_states
+		var target_record: Dictionary = target_records.get(int(motion.get("beam_target_id", 0)), {})
+		if not target_record.is_empty():
+			_present_layer_motion(motion, target_record)
+
+func _present_layer_motion(motion: Dictionary, target_record: Dictionary) -> Dictionary:
+	var beam_target_id: int = int(motion.get("beam_target_id", 0))
+	var wheel_instance_index: int = int(motion.get("wheel_instance_index", 0))
+	var target_states: Dictionary = _selections_by_target.get(beam_target_id, {})
+	var state: Dictionary = target_states.get(wheel_instance_index, {})
 	var visible_count: int = 0
 	for item in target_states.values():
 		if int(item.get("asset_id", 0)) > 0: visible_count += 1
-	_counters["parametric_updates"] += 1
 	if int(state.get("asset_id", 0)) <= 0:
 		return {"applied": true, "open_slot": true, "topology_updates": 0}
 	if visible_count > 1:
-		_counters["deferred_multi_wheel_warnings"] += 1
 		return {"applied": true, "unsupported_moving_composition": true, "topology_updates": 0}
-	_apply_rotation_to_target(target_record, angle_degrees)
+	_apply_rotation_to_target(target_record, float(motion.get("phase_degrees", 0.0)))
 	return {"applied": true, "rotation_applied": true, "topology_updates": 0}
 
 func counters() -> Dictionary:

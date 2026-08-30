@@ -4,6 +4,7 @@
 #include "runtime/visual_runtime_types.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,8 @@ public:
     SectionedVisualFrame consume_latest_visual_frame();
     const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
+    double runtime_now_seconds() const;
+    void set_runtime_now_seconds_for_testing(double seconds);
 
 private:
     struct CompiledPropertyProgram {
@@ -102,7 +105,7 @@ private:
         int32_t revision = 0;
         bool initialized = false;
     };
-    struct GoboRotationState { float angle_degrees = 0.0f; int32_t revision = 0; bool active = false; bool initialized = false; };
+    struct GoboRotationState { double phase_degrees = 0.0; double angular_velocity_dps = 0.0; double reference_seconds = 0.0; GoboRotationMode mode = GoboRotationMode::Hold; int32_t revision = 0; int32_t authoritative_binding_id = 0; bool initialized = false; };
 
     struct UniverseState {
         std::vector<CompiledPropertyProgram> properties;
@@ -119,6 +122,8 @@ private:
         std::unordered_map<int, std::vector<int>> gobo_binding_indices_by_offset;
         std::vector<GoboMotionRuntime> gobo_motion_bindings;
         std::unordered_map<int, std::vector<int>> gobo_motion_indices_by_offset;
+        std::unordered_map<int64_t, std::vector<int>> gobo_motion_indices_by_layer;
+        std::unordered_map<int, std::vector<int64_t>> gobo_motion_layers_by_offset;
         std::array<uint8_t, 512> last_relevant_values{};
         std::vector<uint8_t> latest_frame;
         bool has_pending_frame = false;
@@ -198,7 +203,9 @@ private:
     std::unordered_map<int32_t, CompiledWheelPalette> wheel_palettes_by_id_;
     std::unordered_map<int64_t, WheelTargetState> wheel_state_by_physical_key_;
     std::unordered_map<int64_t, GoboSelectionState> gobo_state_by_binding_;
-    std::unordered_map<int32_t, GoboRotationState> gobo_rotation_state_by_binding_;
+    std::unordered_map<int64_t, GoboRotationState> gobo_rotation_state_by_layer_;
+    std::chrono::steady_clock::time_point runtime_epoch_ = std::chrono::steady_clock::now();
+    double test_runtime_now_seconds_ = -1.0;
     std::unordered_map<int64_t, int32_t> gobo_asset_by_wheel_slot_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;

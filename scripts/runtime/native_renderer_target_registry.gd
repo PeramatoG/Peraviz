@@ -59,6 +59,15 @@ func apply_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, wheel_insta
 		return {"applied": false, "failure_reason": "beam target not registered"}
 	return _gobo_resources.apply_indexed_rotation(beam_target_id, wheel_id, wheel_instance_index, angle_degrees, target_record)
 
+func apply_gobo_rotation_state(beam_target_id: int, wheel_id: int, wheel_instance_index: int, rotation_mode: int, revision: int, phase_degrees: float, angular_velocity_dps: float, reference_seconds: float, native_now_seconds: float) -> Dictionary:
+	var target_record: Dictionary = get_beam_output_record(beam_target_id)
+	if target_record.is_empty():
+		return {"applied": false, "failure_reason": "beam target not registered"}
+	return _gobo_resources.apply_rotation_state(beam_target_id, wheel_id, wheel_instance_index, rotation_mode, revision, phase_degrees, angular_velocity_dps, reference_seconds, native_now_seconds, target_record)
+
+func advance_gobo_motion(delta_seconds: float) -> void:
+	_gobo_resources.advance_motion(delta_seconds, _beam_output_records_by_id)
+
 func get_gobo_counters() -> Dictionary:
 	return _gobo_resources.counters()
 

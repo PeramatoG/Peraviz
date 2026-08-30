@@ -8,6 +8,10 @@ Changes since the previous Peraviz release.
 - Added a reproducible Linux Debug CI workflow covering native, architecture, and headless Godot tests.
 - Added native GDTF `Gobo(n)Pos` indexed rotation for a selected gobo, including physical Angle ranges and ModeMaster activation.
 
+## New features
+
+- Added continuous selected-gobo rotation for exact GDTF `Gobo(n)PosRotate` controls, preserving signed physical speed, indexed-angle handoff, and smooth renderer-local motion without rebuilding gobo resources.
+
 ## Improvements
 
 - Static seated gobos now use reusable normalized vector-prism resources, deterministic open-slot clearing, and cached static multi-wheel mask composition.

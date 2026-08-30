@@ -142,11 +142,11 @@ int test_section_bounds_are_validated() {
     return 0;
 }
 
-// Verifies protocol v2.2 carries renderer-ready wheel and indexed-gobo rows.
+// Verifies protocol v2.3 carries renderer-ready wheel and indexed-gobo rows.
 int test_wheel_protocol_schema_is_versioned() {
     const auto schema = peraviz::runtime::make_default_visual_frame_schema(1);
-    if (schema.protocol_major != 2 || schema.protocol_minor != 2) {
-        return fail("Expected indexed-gobo protocol migration to v2.2.");
+    if (schema.protocol_major != 2 || schema.protocol_minor != 3) {
+        return fail("Expected indexed-gobo protocol migration to v2.3.");
     }
     bool saw_selection = false;
     bool saw_motion = false;
@@ -159,7 +159,7 @@ int test_wheel_protocol_schema_is_versioned() {
             saw_motion = section.row_stride_ints == 6 && section.row_stride_floats == 4;
         }
         if (section.section_type == static_cast<int32_t>(peraviz::runtime::VisualSectionType::GoboRotation)) {
-            saw_gobo_rotation = section.row_stride_ints == 6 && section.row_stride_floats == 1;
+            saw_gobo_rotation = section.row_stride_ints == 7 && section.row_stride_floats == 3;
         }
     }
     if (!saw_selection || !saw_motion || !saw_gobo_rotation) {

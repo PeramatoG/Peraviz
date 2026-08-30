@@ -21,6 +21,7 @@ const VISUAL_CHANGE_GOBO_ROTATION: int = 1 << 5
 
 var _schema: Dictionary = {}
 var _section_strides: Dictionary = {}
+var _native_now_seconds: float = 0.0
 
 func install_schema(schema: Dictionary) -> void:
 	_schema = schema.duplicate(true)
@@ -36,6 +37,7 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 	var descriptors: PackedInt32Array = snapshot.get("descriptors", PackedInt32Array())
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
+	_native_now_seconds = float(snapshot.get("runtime_now_seconds", 0.0))
 	if descriptors.is_empty() or descriptors.size() % DESCRIPTOR_STRIDE != 0:
 		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}, "skip_diagnostics": _new_skip_diagnostics()}
 	var counts: Dictionary = _new_counts()
@@ -186,8 +188,8 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 			if int_base + 8 >= integers.size(): return {"applied": false, "failure": {"reason": "invalid gobo selection payload", "fixture_uuid": fixture_uuid}}
 			return light_apply_service.apply_gobo_selection(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], integers[int_base + 6], integers[int_base + 7], integers[int_base + 8])
 		SECTION_GOBO_ROTATION:
-			if int_base + 5 >= integers.size() or float_base >= floats.size(): return {"applied": false, "failure": {"reason": "invalid gobo rotation payload", "fixture_uuid": fixture_uuid}}
-			return light_apply_service.apply_gobo_indexed_rotation(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], floats[float_base])
+			if int_base + 6 >= integers.size() or float_base + 2 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid gobo rotation payload", "fixture_uuid": fixture_uuid}}
+			return light_apply_service.apply_gobo_rotation_state(loader, fixture_uuid, integers[int_base + 1], integers[int_base + 2], integers[int_base + 3], integers[int_base + 4], integers[int_base + 5], integers[int_base + 6], floats[float_base], floats[float_base + 1], floats[float_base + 2], _native_now_seconds)
 		SECTION_TEMPORAL_OUTPUT:
 			if float_base >= floats.size(): return {"applied": false}
 			light_apply_service.apply_temporal_output(loader, fixture_uuid, floats[float_base], floats[float_base + 1] if float_base + 1 < floats.size() else 1.0)
