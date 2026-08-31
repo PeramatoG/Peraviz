@@ -59,6 +59,9 @@ var _visual_apply_counters: Dictionary = {
 	"beam_shader_parameters_written": 0,
 	"beam_visibility_transitions": 0,
 	"material_parameters_written": 0,
+	"emitter_output_commit_candidates": 0,
+	"emitter_output_commits": 0,
+	"emitter_output_commits_coalesced": 0,
 }
 var _diagnostic_warning_keys: Dictionary = {}
 var _diagnostic_info_keys: Dictionary = {}
@@ -68,9 +71,50 @@ var _render_diagnostic_mode: String = RenderDiagnosticPolicyScript.FULL
 var _visible_beam_ids: Dictionary = {}
 var _visible_light_ids: Dictionary = {}
 var _beam_optics_signatures: Dictionary = {}
+var _snapshot_output_commits: Dictionary = {}
+var _snapshot_commit_active: bool = false
 
 func set_render_diagnostic_mode(mode: String) -> void:
 	_render_diagnostic_mode = mode
+
+# Starts snapshot-local collection of canonical physical-output renderer commits.
+func begin_visual_snapshot() -> void:
+	_snapshot_output_commits.clear()
+	_snapshot_commit_active = true
+
+# Commits each touched canonical physical output once after all logical state is current.
+func end_visual_snapshot() -> void:
+	if not _snapshot_commit_active:
+		return
+	_snapshot_commit_active = false
+	for pending_item in _snapshot_output_commits.values():
+		var pending: Dictionary = pending_item
+		var output_id: int = int(pending.get("output_id", 0))
+		var fixture_uuid: String = str(pending.get("fixture_uuid", ""))
+		var loader: Node = pending.get("loader") as Node
+		var output_record: Dictionary = pending.get("output_record", {})
+		var state: Dictionary = _target_state(output_id, fixture_uuid)
+		_visual_apply_counters["physical_outputs_considered"] += 1
+		_apply_beam_output_record(loader, fixture_uuid, output_record, int(pending.get("changed_mask", 0)), float(state.get("dimmer", 0.0)), state.get("beam_color", Color.WHITE), max(float(state.get("color_gain", 1.0)), 0.0))
+		_visual_apply_counters["emitter_output_commits"] += 1
+	_snapshot_output_commits.clear()
+	_visual_apply_counters["beam_visible_count"] = _visible_beam_ids.size()
+	_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
+
+# Defers a canonical output commit while preserving one entry per stable output ID.
+func _queue_or_apply_output(loader: Node, fixture_uuid: String, output_id: int, output_record: Dictionary, changed_mask: int) -> Dictionary:
+	if not _snapshot_commit_active:
+		_visual_apply_counters["physical_outputs_considered"] += 1
+		var state: Dictionary = _target_state(output_id, fixture_uuid)
+		return _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, float(state.get("dimmer", 0.0)), state.get("beam_color", Color.WHITE), max(float(state.get("color_gain", 1.0)), 0.0))
+	_visual_apply_counters["emitter_output_commit_candidates"] += 1
+	if _snapshot_output_commits.has(output_id):
+		var pending: Dictionary = _snapshot_output_commits[output_id]
+		pending["changed_mask"] = int(pending.get("changed_mask", 0)) | changed_mask
+		_visual_apply_counters["emitter_output_commits_coalesced"] += 1
+	else:
+		_snapshot_output_commits[output_id] = {"loader": loader, "fixture_uuid": fixture_uuid, "output_id": output_id, "output_record": output_record, "changed_mask": changed_mask}
+	return {"lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "commit_deferred": true}
 
 func _beams_enabled() -> bool:
 	return RenderDiagnosticPolicyScript.renders_beams(_render_diagnostic_mode)
@@ -151,12 +195,9 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	if not output_records.is_empty():
 		for output_item in output_records:
 			var output_record: Dictionary = output_item
-			_visual_apply_counters["physical_outputs_considered"] += 1
 			var output_id: int = _output_id_from_record(output_record, dimmer_target_id)
-			var beam_color: Color = _target_render_color(output_id, fixture_uuid)
-			var color_gain: float = _target_color_gain(output_id, fixture_uuid)
 			_set_target_intensity_state(output_id, fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
-			var result: Dictionary = _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, dimmer_norm, beam_color, color_gain)
+			var result: Dictionary = _queue_or_apply_output(loader, fixture_uuid, output_id, output_record, changed_mask)
 			lights_mutated += int(result.get("lights_mutated", 0))
 			beams_mutated += int(result.get("beams_mutated", 0))
 			materials_mutated += int(result.get("materials_mutated", 0))
@@ -214,8 +255,7 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: in
 			var output_record: Dictionary = output_item
 			var output_id: int = _output_id_from_record(output_record, color_target_id)
 			_set_target_color_state(output_id, fixture_uuid, beam_color, color_gain)
-			var state: Dictionary = _target_state(output_id, fixture_uuid)
-			var result: Dictionary = _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, float(state.get("dimmer", 0.0)), beam_color, max(color_gain, 0.0))
+			var result: Dictionary = _queue_or_apply_output(loader, fixture_uuid, output_id, output_record, changed_mask)
 			lights_mutated += int(result.get("lights_mutated", 0))
 			beams_mutated += int(result.get("beams_mutated", 0))
 			materials_mutated += int(result.get("materials_mutated", 0))

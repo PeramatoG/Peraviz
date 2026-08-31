@@ -16,6 +16,7 @@ Changes since the previous Peraviz release.
 
 - Added opt-in live DMX performance tracing with direct CPU receive-to-renderer-apply latency, truthful interval renderer counters, per-domain timing, and full, transforms-only, and no-beams A/B modes.
 - Reduced redundant light, material, beam parameter, and visibility writes while preserving held state for disabled realtime spotlights and later reactivation.
+- Coalesced simultaneous intensity and color updates into one renderer commit per physical emitter output, reducing live playback CPU work without merging independently controlled lenses.
 - Correctly treats GDTF BeamType None and Glow as emission-only outputs without projected beam instances.
 - Correctly classifies resolved Dimmer updates that already match cached renderer state as unchanged instead of failed.
 
