@@ -1,0 +1,34 @@
+# Live render latency diagnostics
+
+## Measurement boundary
+
+`--peraviz-perf-trace` emits one compact `[peraviz-perf]` line approximately once per second. `rx_apply_us` measures relevant ArtDmx receipt through completion of Godot scene/resource mutation on the CPU. It does not include render submission, GPU execution, frame queueing, or display presentation. `pump_hz` counts production pumps from the render `_process` path; the 125 ms status refresh only updates UI.
+
+With tracing disabled, playback performs no `Performance` monitor reads, trace formatting, interval diagnostic retention, or per-frame deep diagnostic copy. Existing lightweight renderer counters and the one-time bootstrap diagnostic remain. Enabling tracing retains interval row/timing summaries, snapshots cumulative counters once per applied frame, reads Godot monitors, and formats only at the one-second report boundary.
+
+## Trace fields
+
+The line reports mode; FPS/process time/draw calls/rendered objects/primitives/node and resource counts; accepted, relevant, irrelevant, rejected, and coalesced packets; pump calls and submitted native states; RX-to-native, native-to-apply, and RX-to-apply p50/p95/max; visual frames and generated/applied/no-op/failed rows; per-section row and CPU-time maps; physical outputs and beams considered; actual Light3D property writes, light visibility RID calls, beam parameter writes, beam visibility transitions, topology rebuilds, material parameter writes, gobo topology/parametric updates; and current visible beam/realtime-light counts. `beam_topology` remains the compatibility count of calls to the broad topology helper; it does not prove that a mesh was built. `beam_full`, `beam_full_init`, and `beam_full_mask` identify all broad state applications and whether initialization or an explicit topology mask caused them. `beam_dynamic=changed/unchanged/unresolved` classifies fast-path results. Section IDs follow the visual protocol: Transform 1, Intensity 2, Color 3, BeamOptics 4, WheelSelection 5, WheelMotion 6, Temporal 8, GoboSelection 14, and GoboRotation 15.
+
+`rows=2348` in the bootstrap diagnostic is a section-row count, not a fixture count. The canonical project has 71 live renderer fixtures, 95 independent Dimmer control targets, and approximately 1,095 physical Beam geometries. One inherited control can legitimately consider many physical outputs. The trace distinguishes that fan-out from actual renderer writes.
+
+## Diagnostic modes
+
+The modes are command-line-only and never modify saved visual settings:
+
+- `full` applies normal production output.
+- `transforms-only` retains the complete network/native pipeline but applies only Transform rows; lighting sections remain represented and are counted as diagnostically suppressed.
+- `no-beams` applies normal transforms, lighting state, and emissive geometry while hiding existing beam instances and suppressing beam shader/topology work. Returning to `full` reapplies held state without rebuilding the scene.
+
+## Windows reproduction
+
+From the Peraviz project directory with Godot 4.7.1:
+
+```powershell
+godot.exe --path . --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=full
+godot.exe --path . --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=transforms-only
+godot.exe --path . --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=no-beams
+godot.exe --path . --print-fps --gpu-profile -- --peraviz-perf-trace --peraviz-render-diagnostic=full
+```
+
+For each mode, load `testSENTIDOS(2).pvz`, start Art-Net from grandMA3, move Pan/Tilt continuously for about ten seconds, and retain at least ten trace lines. Repeat with a Dimmer chase if useful. Compare RX-to-apply p95, pump rate versus FPS, frame stability, actual writes, and full versus transforms-only/no-beams behavior. A physical GPU trace remains required before attributing the offset to beams, Forward+, V-Sync, or the GPU.

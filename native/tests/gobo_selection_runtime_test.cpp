@@ -33,6 +33,11 @@ bool test_native_seated_gobo_selection_section() {
         std::cerr << "Expected exact seated Gobo2 slot and asset identity" << std::endl;
         return false;
     }
+    const uint32_t selection_mask = static_cast<uint32_t>(selected.integers[offset + GoboSelectionChangedMask]);
+    if ((selection_mask & VisualChangeGobo) == 0U || (selection_mask & VisualChangeBeamTopology) == 0U) {
+        std::cerr << "Expected seated gobo selection to retain topology semantics" << std::endl;
+        return false;
+    }
     runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) {
         std::cerr << "Unchanged seated gobo must not emit another row" << std::endl;

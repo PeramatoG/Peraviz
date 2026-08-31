@@ -68,6 +68,48 @@ float first_intensity_dimmer(const peraviz::runtime::SectionedVisualFrame &frame
     return -1.0f;
 }
 
+// Reads the changed render-domain mask from the first row of a section.
+uint32_t first_section_changed_mask(const peraviz::runtime::SectionedVisualFrame &frame, peraviz::runtime::VisualSectionType section, int32_t mask_field) {
+    for (size_t index = 0; index + peraviz::runtime::kVisualSectionDescriptorStride <= frame.descriptors.size(); index += peraviz::runtime::kVisualSectionDescriptorStride) {
+        if (frame.descriptors[index] != static_cast<int32_t>(section)) continue;
+        const int32_t int_offset = frame.descriptors[index + 2];
+        const int32_t mask_offset = int_offset + mask_field;
+        return mask_offset >= 0 && mask_offset < static_cast<int32_t>(frame.integers.size()) ? static_cast<uint32_t>(frame.integers[static_cast<size_t>(mask_offset)]) : 0U;
+    }
+    return 0U;
+}
+
+// Verifies dynamic Dimmer changes do not advertise beam topology work.
+int test_dynamic_visual_mask_contract() {
+    using namespace peraviz::runtime;
+    CompiledRuntimeScene scene = make_scene();
+    scene.source_programs.push_back({4, CompiledSemantic::Zoom, {{10, 5, 0}}, 0, 255, 8.0, 40.0, "Zoom", "Zoom"});
+    scene.properties.push_back({10004, 1, 101, 1001, CompiledSemantic::Zoom, {{4, 1.0}}});
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    std::vector<uint8_t> dmx(8, 0);
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    runtime.consume_latest_visual_frame();
+
+    dmx[0] = 64;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    const SectionedVisualFrame dimmer = runtime.consume_latest_visual_frame();
+    const uint32_t dimmer_mask = first_section_changed_mask(dimmer, VisualSectionType::EmitterIntensity, EmitterIntensityChangedMask);
+    if ((dimmer_mask & VisualChangeDimmer) == 0U || (dimmer_mask & VisualChangeMaterial) == 0U) return fail("Dimmer must dirty intensity and material domains");
+    if ((dimmer_mask & VisualChangeBeamTopology) != 0U) return fail("Dimmer must not dirty beam topology");
+
+    dmx[1] = 64;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    const uint32_t transform_mask = first_section_changed_mask(runtime.consume_latest_visual_frame(), VisualSectionType::GeometryTransform, GeometryTransformChangedMask);
+    if (transform_mask != VisualChangeTransform) return fail("Pan must retain transform-only render semantics");
+
+    dmx[5] = 64;
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    const uint32_t zoom_mask = first_section_changed_mask(runtime.consume_latest_visual_frame(), VisualSectionType::BeamOptics, BeamOpticsChangedMask);
+    if (zoom_mask != VisualChangeZoom) return fail("Zoom must retain optics-only render semantics");
+    return 0;
+}
+
 // Verifies the production path emits transform and intensity sections from compiled programs.
 int test_compiled_scene_e2e() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
@@ -1228,6 +1270,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && std::string(argv[1]) == "--benchmark") return run_realtime_dmx_load_harness(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--udp-benchmark") return run_realtime_dmx_udp_load_harness(argc, argv);
     if (test_compiled_scene_e2e() != 0) return 1;
+    if (test_dynamic_visual_mask_contract() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;
     if (test_more_than_two_source_bytes() != 0) return 1;
     if (test_multiple_contributors() != 0) return 1;

@@ -122,6 +122,8 @@ var _runtime_universe_offset: int = -1
 var _runtime_generation: int = 0
 var _last_rebuild_reason: String = "uninitialized"
 var _receiver_subscription_generation: int = -1
+var _render_diagnostic_mode: String = "full"
+var _performance_trace_enabled: bool = false
 
 func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_target_registry, fixture_row_provider: FixtureRowProvider = null) -> void:
 	_native_scene_loader = native_scene_loader
@@ -232,6 +234,16 @@ func _initialize_native_visual_runtime() -> void:
 
 func set_debug_force_full_apply(enabled: bool) -> void:
 	_debug_force_full_apply = enabled
+
+func set_render_diagnostic_mode(mode: String) -> void:
+	_render_diagnostic_mode = mode
+	if _sectioned_visual_frame_applier != null:
+		_sectioned_visual_frame_applier.set_render_diagnostic_mode(mode)
+
+func set_performance_trace_enabled(enabled: bool) -> void:
+	_performance_trace_enabled = enabled
+	if _sectioned_visual_frame_applier != null:
+		_sectioned_visual_frame_applier.set_performance_trace_enabled(enabled)
 
 func get_bound_fixture_ids() -> PackedStringArray:
 	var fixture_ids := PackedStringArray()
@@ -359,8 +371,9 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		fixtures_considered += int(compact_result.get("fixtures_considered", 0))
 		updated += int(compact_result.get("updated", 0))
 		skipped += int(compact_result.get("skipped", 0))
-		_native_live_diagnostics = compact_result.duplicate(true)
-		_log_native_live_diagnostics_once()
+		if _performance_trace_enabled or not _native_live_diagnostics_logged:
+			_native_live_diagnostics = compact_result.duplicate(true)
+			_log_native_live_diagnostics_once()
 		if receiver != null and receiver.has_method("record_godot_apply_completion"):
 			receiver.record_godot_apply_completion()
 
@@ -374,10 +387,10 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		"native_bindings_count": _native_bindings_count,
 		"visual_frame_size": _last_visual_frame_size,
 		"visual_mask_counts": _last_visual_mask_counts.duplicate(false),
-		"visual_apply_counters": light_apply_service.get_visual_apply_counters() if light_apply_service != null else {},
+		"visual_apply_counters": light_apply_service.get_visual_apply_counters() if _performance_trace_enabled and light_apply_service != null else {},
 		"native_stats": _native_visual_runtime.get_stats() if _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
 		"native_setup_summary": _native_setup_summary.duplicate(true),
-		"native_live_diagnostics": _native_live_diagnostics.duplicate(true),
+		"native_live_diagnostics": _native_live_diagnostics.duplicate(true) if _performance_trace_enabled else {},
 		"universes_submitted_to_native": submitted_universes,
 	}
 

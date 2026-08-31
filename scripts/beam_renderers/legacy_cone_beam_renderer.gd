@@ -24,6 +24,7 @@ const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = true
 
 var _material_template: ShaderMaterial
 var _mesh_builder: GoboPrismMeshBuilder
+var _last_parameter_write_count: int = 0
 
 func _init() -> void:
 	_material_template = ShaderMaterial.new()
@@ -53,13 +54,9 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 	prism.visible = beam_visible
 	if not beam_visible:
-		var hidden_axis: MeshInstance3D = _ensure_debug_axis(light)
-		if hidden_axis != null:
-			hidden_axis.visible = false
+		_sync_debug_axis(light, false)
 		return
-	var debug_axis: MeshInstance3D = _ensure_debug_axis(light)
-	if debug_axis != null:
-		debug_axis.visible = bool(params.get("beam_debug_optics", false))
+	_sync_debug_axis(light, bool(params.get("beam_debug_optics", false)))
 
 	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
 	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
@@ -111,20 +108,28 @@ func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
 	node.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
 	node.rotate_object_local(Vector3.UP, deg_to_rad(-beam_rotation_deg))
 
-func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
+func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
+	_last_parameter_write_count = 0
 	if not light.has_meta(MAIN_KEY):
-		return false
+		return INTENSITY_UNRESOLVED
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
 	if prism == null or not is_instance_valid(prism):
-		return false
+		return INTENSITY_UNRESOLVED
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
 	var beam_visible: bool = scaled_intensity > threshold
+	if beam_visible and not is_beam_dynamic_ready(light):
+		return INTENSITY_UNRESOLVED
+	var signature: Array = [beam_visible, scaled_intensity, intensity_max, params.get("beam_color", Color.WHITE)]
+	if prism.get_meta("peraviz_intensity_signature", []) == signature:
+		return INTENSITY_UNCHANGED
+	prism.set_meta("peraviz_intensity_signature", signature)
 	prism.visible = beam_visible
 	if not beam_visible:
-		return true
+		_sync_debug_axis(light, false)
+		return INTENSITY_CHANGED
 
 	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
 	var gobo_projection_radius: float = max(float(params.get("gobo_projection_radius", 0.1)), 0.001)
@@ -134,7 +139,15 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> bool:
 	var longitudinal_falloff: float = max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01)
 	_update_prism_material(prism, Color(beam_color.r, beam_color.g, beam_color.b, 1.0), scaled_intensity, intensity_max, beam_range, gobo_projection_radius, beam_softness, radial_falloff, longitudinal_falloff, haze_density)
-	return true
+	_last_parameter_write_count = 15
+	return INTENSITY_CHANGED
+
+func get_last_parameter_write_count() -> int:
+	return _last_parameter_write_count
+
+func is_beam_dynamic_ready(light: SpotLight3D) -> bool:
+	var prism: MeshInstance3D = get_beam_resource(light)
+	return prism != null and prism.mesh != null
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	ensure_beam(light)
@@ -226,6 +239,7 @@ func cleanup_beam(light: SpotLight3D) -> void:
 			prism.queue_free()
 		light.remove_meta(MAIN_KEY)
 	_cleanup_legacy_cones(light)
+	_cleanup_debug_axis(light)
 
 func _cleanup_legacy_cones(light: SpotLight3D) -> void:
 	for meta_key in [LEGACY_MID_KEY, LEGACY_CORE_KEY, "peraviz_beam_cone"]:
@@ -295,6 +309,24 @@ func _ensure_debug_axis(light: SpotLight3D) -> MeshInstance3D:
 	material.emission = Color(1.0, 0.0, 0.0, 1.0)
 	axis.material_override = material
 	axis.position = Vector3(0.0, 0.0, -1.0)
+	axis.visible = false
 	light.add_child(axis)
 	light.set_meta(DEBUG_AXIS_KEY, axis)
 	return axis
+
+func _sync_debug_axis(light: SpotLight3D, enabled: bool) -> void:
+	var axis: MeshInstance3D = null
+	if enabled:
+		axis = _ensure_debug_axis(light)
+	elif light.has_meta(DEBUG_AXIS_KEY):
+		axis = light.get_meta(DEBUG_AXIS_KEY) as MeshInstance3D
+	if axis != null and is_instance_valid(axis):
+		axis.visible = enabled
+
+func _cleanup_debug_axis(light: SpotLight3D) -> void:
+	if not light.has_meta(DEBUG_AXIS_KEY):
+		return
+	var axis: MeshInstance3D = light.get_meta(DEBUG_AXIS_KEY) as MeshInstance3D
+	if axis != null and is_instance_valid(axis):
+		axis.queue_free()
+	light.remove_meta(DEBUG_AXIS_KEY)

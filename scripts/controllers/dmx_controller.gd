@@ -4,6 +4,7 @@ class_name DmxController
 const DmxMonitorWindowScript = preload("res://scripts/dmx_monitor_window.gd")
 const DmxFixtureRuntimeScript = preload("res://scripts/dmx_fixture_runtime.gd")
 const DmxQuickPanelScript = preload("res://scripts/ui/dmx_quick_panel.gd")
+const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
 var _owner: Node
 var _get_controls_host_callback: Callable
@@ -14,7 +15,6 @@ var _dmx_toggle_button: Button
 var _dmx_monitor_button: Button
 var _dmx_monitor_window: Window
 var _dmx_quick_panel: DmxQuickPanel
-var _dmx_timer: Timer
 var _dmx_universe_offset_input: SpinBox
 var _dmx_unbound_details_toggle: CheckButton
 var _dmx_unbound_preview_label: Label
@@ -34,11 +34,21 @@ var _last_receiving_signal: bool = false
 var _last_active_universes := PackedInt32Array()
 var _last_packet_ms: int = -1
 var _debug_force_full_apply: bool = false
+var _perf_trace_enabled: bool = false
+var _perf_trace_last_msec: int = 0
+var _production_pump_calls: int = 0
+var _perf_previous_stats: Dictionary = {}
+var _perf_last_apply_stats: Dictionary = {}
+var _render_diagnostic_mode: String = RenderDiagnosticPolicyScript.FULL
+var _perf_previous_renderer_counters: Dictionary = {}
+var _perf_interval: Dictionary = {}
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
 	_get_controls_host_callback = get_controls_host_callback
 	_apply_dmx_controls_callback = apply_dmx_controls_callback
+	_perf_trace_enabled = OS.get_cmdline_args().has("--peraviz-perf-trace")
+	_render_diagnostic_mode = RenderDiagnosticPolicyScript.from_arguments(OS.get_cmdline_args())
 
 func set_status_callbacks(dmx_status_changed_callback: Callable, dmx_start_failed_callback: Callable) -> void:
 	_dmx_status_changed_callback = dmx_status_changed_callback
@@ -105,12 +115,6 @@ func setup_controls() -> void:
 	_dmx_unbound_preview_label.visible = false
 	controls_vbox.add_child(_dmx_unbound_preview_label)
 
-	_dmx_timer = Timer.new()
-	_dmx_timer.wait_time = 0.125
-	_dmx_timer.autostart = false
-	_owner.add_child(_dmx_timer)
-	_dmx_timer.timeout.connect(_on_dmx_timer_timeout)
-
 	if ClassDB.class_exists("PeravizDmxReceiver"):
 		_dmx_receiver = ClassDB.instantiate("PeravizDmxReceiver")
 		_dmx_monitor_button.disabled = false
@@ -126,6 +130,8 @@ func setup_fixture_runtime(native_scene_loader: Variant, scene_registry: SceneRe
 	_dmx_fixture_runtime = DmxFixtureRuntimeScript.new()
 	_dmx_fixture_runtime.configure(native_scene_loader, scene_registry, renderer_target_registry, fixture_row_provider)
 	_dmx_fixture_runtime.set_debug_force_full_apply(_debug_force_full_apply)
+	_dmx_fixture_runtime.set_render_diagnostic_mode(_render_diagnostic_mode)
+	_dmx_fixture_runtime.set_performance_trace_enabled(_perf_trace_enabled)
 	return refresh_fixture_bindings("initial_scene_setup")
 
 func set_debug_force_full_apply(enabled: bool) -> void:
@@ -276,14 +282,32 @@ func process_dmx(_delta: float) -> void:
 	if not _dmx_receiver.is_running():
 		_reset_stopped_dmx_state()
 		return
+	_production_pump_calls += 1
 
 	var delta_sec: float = _consume_dmx_delta_sec()
 	_poll_and_apply_latest_dmx_controls(delta_sec)
 	_refresh_dmx_status_if_needed(_last_dmx_tick_msec)
 	_emit_dmx_status(true, _last_receiving_signal)
+	_report_performance_trace_if_needed()
 
-func _on_dmx_timer_timeout() -> void:
-	process_dmx(0.0)
+func _report_performance_trace_if_needed() -> void:
+	if not _perf_trace_enabled:
+		return
+	var now_msec: int = Time.get_ticks_msec()
+	if now_msec - _perf_trace_last_msec < 1000:
+		return
+	var stats: Dictionary = _dmx_receiver.get_stats()
+	var counters: Dictionary = _perf_last_apply_stats.get("visual_apply_counters", {})
+	var counter_delta: Dictionary = _counter_delta(counters, _perf_previous_renderer_counters)
+	var accepted_delta: int = int(stats.get("valid_artdmx_accepted", 0)) - int(_perf_previous_stats.get("valid_artdmx_accepted", 0))
+	var relevant_delta: int = int(stats.get("relevant_packets", 0)) - int(_perf_previous_stats.get("relevant_packets", 0))
+	print("[peraviz-perf] mode=%s fps=%.1f process_ms=%.2f draws=%d objects=%d primitives=%d nodes=%d resources=%d packets=%d relevant=%d irrelevant=%d rejects=%d overwrites=%d pump_hz=%d states=%d rx_native_us=%d/%d/%d native_apply_us=%d/%d/%d rx_apply_us=%d/%d/%d frames=%d rows=%d applied=%d noop=%d failed=%d domains=%s domain_us=%s outputs=%d beams_considered=%d light_props=%d light_visibility=%d beam_params=%d beam_visibility=%d beam_topology=%d beam_full=%d beam_full_init=%d beam_full_mask=%d beam_dynamic=%d/%d/%d material_params=%d gobo_topology=%d gobo_params=%d visible_beams=%d visible_lights=%d apply_max_us=%d" % [_render_diagnostic_mode, Performance.get_monitor(Performance.TIME_FPS), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), accepted_delta, relevant_delta, _stat_delta(stats, "irrelevant_packets"), _stat_delta(stats, "out_of_order_dropped"), _stat_delta(stats, "mailbox_overwrites"), _production_pump_calls, int(_perf_interval.get("states", 0)), int(stats.get("rx_to_native_p50_us", 0)), int(stats.get("rx_to_native_p95_us", 0)), int(stats.get("rx_to_native_max_us", 0)), int(stats.get("native_to_apply_p50_us", 0)), int(stats.get("native_to_apply_p95_us", 0)), int(stats.get("native_to_apply_max_us", 0)), int(stats.get("rx_to_apply_p50_us", 0)), int(stats.get("rx_to_apply_p95_us", 0)), int(stats.get("rx_to_apply_max_us", 0)), int(_perf_interval.get("frames", 0)), int(_perf_interval.get("rows", 0)), int(_perf_interval.get("applied", 0)), int(_perf_interval.get("noop", 0)), int(_perf_interval.get("failed", 0)), str(_perf_interval.get("domains", {})), str(_perf_interval.get("domain_us", {})), int(counter_delta.get("physical_outputs_considered", 0)), int(counter_delta.get("beams_considered", 0)), int(counter_delta.get("light_properties_written", 0)), int(counter_delta.get("light_visibility_calls", 0)), int(counter_delta.get("beam_shader_parameters_written", 0)), int(counter_delta.get("beam_visibility_transitions", 0)), int(counter_delta.get("beam_topology_rebuilds", 0)), int(counter_delta.get("beam_full_state_applies", 0)), int(counter_delta.get("beam_full_state_reason_initialization", 0)), int(counter_delta.get("beam_full_state_reason_topology_mask", 0)), int(counter_delta.get("beam_dynamic_changed", 0)), int(counter_delta.get("beam_dynamic_unchanged", 0)), int(counter_delta.get("beam_dynamic_unresolved", 0)), int(counter_delta.get("material_parameters_written", 0)), int(counter_delta.get("gobo_topology_updates", 0)), int(counter_delta.get("gobo_parametric_updates", 0)), int(counters.get("beam_visible_count", 0)), int(counters.get("spotlight_visible_count", 0)), _worst_dmx_tick_usec])
+	_perf_previous_stats = stats
+	_perf_previous_renderer_counters = counters
+	_perf_interval.clear()
+	_perf_trace_last_msec = now_msec
+	_production_pump_calls = 0
+	_worst_dmx_tick_usec = 0
 
 func _consume_dmx_delta_sec() -> float:
 	var now_msec: int = Time.get_ticks_msec()
@@ -311,6 +335,9 @@ func _apply_collected_dmx_controls(apply_stats: Dictionary, tick_usec: int, delt
 	if apply_stats.is_empty():
 		_apply_fixture_time_tick(delta_sec)
 		return
+	if _perf_trace_enabled:
+		_perf_last_apply_stats = apply_stats
+		_accumulate_perf_interval(apply_stats)
 	var controls_batch: Array = apply_stats.get("controls", [])
 	if not controls_batch.is_empty() and not _apply_dmx_controls_callback.is_valid():
 		return
@@ -331,6 +358,34 @@ func _apply_collected_dmx_controls(apply_stats: Dictionary, tick_usec: int, delt
 	if _owner != null and _owner.has_method("bridge_record_dmx_decode_phase"):
 		_owner.bridge_record_dmx_decode_phase(tick_usec)
 	_apply_fixture_time_tick(delta_sec)
+
+func _stat_delta(stats: Dictionary, key: String) -> int:
+	return int(stats.get(key, 0)) - int(_perf_previous_stats.get(key, 0))
+
+func _counter_delta(current: Dictionary, previous: Dictionary) -> Dictionary:
+	var delta: Dictionary = {}
+	for key in current.keys():
+		if current[key] is int or current[key] is float:
+			delta[key] = int(current[key]) - int(previous.get(key, 0))
+	return delta
+
+func _accumulate_perf_interval(apply_stats: Dictionary) -> void:
+	var live: Dictionary = apply_stats.get("native_live_diagnostics", {})
+	var diagnostics: Dictionary = live.get("skip_diagnostics", {})
+	_perf_interval["frames"] = int(_perf_interval.get("frames", 0)) + (1 if int(apply_stats.get("visual_frame_size", 0)) > 0 else 0)
+	_perf_interval["states"] = int(_perf_interval.get("states", 0)) + int(apply_stats.get("universes_changed", 0))
+	_perf_interval["rows"] = int(_perf_interval.get("rows", 0)) + int(diagnostics.get("rows_generated", 0))
+	_perf_interval["applied"] = int(_perf_interval.get("applied", 0)) + int(live.get("targets_applied", 0))
+	_perf_interval["noop"] = int(_perf_interval.get("noop", 0)) + int(diagnostics.get("dimmer_unchanged", 0)) + int(diagnostics.get("rows_diagnostic_suppressed", 0))
+	_perf_interval["failed"] = int(_perf_interval.get("failed", 0)) + int(live.get("targets_failed", 0))
+	_accumulate_numeric_dictionary("domains", diagnostics.get("section_rows", {}))
+	_accumulate_numeric_dictionary("domain_us", diagnostics.get("section_apply_usec", {}))
+
+func _accumulate_numeric_dictionary(bucket_name: String, values: Dictionary) -> void:
+	var bucket: Dictionary = _perf_interval.get(bucket_name, {})
+	for key in values.keys():
+		bucket[key] = int(bucket.get(key, 0)) + int(values[key])
+	_perf_interval[bucket_name] = bucket
 
 func _refresh_dmx_status_if_needed(now_msec: int) -> void:
 	if now_msec - _last_monitor_refresh_msec < 125:

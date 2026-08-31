@@ -14,6 +14,11 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Added opt-in live DMX performance tracing with direct CPU receive-to-renderer-apply latency, truthful interval renderer counters, per-domain timing, and full, transforms-only, and no-beams A/B modes.
+- Reduced redundant light, material, beam parameter, and visibility writes while preserving held state for disabled realtime spotlights and later reactivation.
+- Correctly treats GDTF BeamType None and Glow as emission-only outputs without projected beam instances.
+- Correctly classifies resolved Dimmer updates that already match cached renderer state as unchanged instead of failed.
+
 - Static seated gobos now use reusable normalized vector-prism resources, deterministic open-slot clearing, and cached static multi-wheel mask composition.
 - Physical GDTF color evaluation now supports linked emitter/filter resources, CIE, CCT, Tint, additive color, CMY color, and seated color-wheel composition within the documented support scope.
 - Beam presentation now uses target-local luminous flux, aperture, angle, Zoom, color, and intensity state without changing imported model scale.
@@ -21,6 +26,8 @@ Changes since the previous Peraviz release.
 - Indexed gobo angle changes now update reusable presentation resources parametrically without image composition, vectorization, mesh generation, or topology rebuilds.
 
 ## Fixes
+
+- Prevented beam-optics debug axes from appearing as red shafts during normal playback, stopped Dimmer changes from requesting expensive beam-topology work, and restored beams that first receive a zero Dimmer value before becoming visible.
 
 - Preserved selected gobos and continuous rotation across renderer refreshes, asset updates, and DMX runtime binding rebuilds, so held lighting state no longer requires a new Art-Net value change to reappear.
 - Fixed inconsistent continuous gobo rotation and clear/reselect recovery across repeated fixtures by making selection and motion state belong to the physical Beam/wheel layer instead of fixture-derived binding IDs.

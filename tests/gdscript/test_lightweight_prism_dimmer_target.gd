@@ -17,7 +17,7 @@ class PrismLoader:
 	var target_record: Dictionary = {}
 	var ready_calls: int = 0
 	var _cached_beam_defaults: Dictionary = {}
-	var _visual_settings: Dictionary = {"beam_multiplier": 20.0, "spot_multiplier": 0.0}
+	var _visual_settings: Dictionary = {"beam_multiplier": 20.0, "spot_multiplier": 0.0, "enable_realtime_spotlights": true}
 
 	func _ready() -> void:
 		ready_calls += 1
@@ -54,6 +54,12 @@ class PrismLoader:
 	func _get_native_dimmer_target_record(target_id: int) -> Dictionary:
 		return target_record if target_id == 201 else {}
 
+	func _has_native_color_target(target_id: int) -> bool:
+		return target_id == 301
+
+	func _get_native_color_target_record(target_id: int) -> Dictionary:
+		return target_record if target_id == 301 else {}
+
 	func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
 		return renderer.get_beam_resource(light)
 
@@ -65,15 +71,15 @@ class PrismLoader:
 		renderer.ensure_beam(light)
 		renderer.update_beam(light, params)
 
-	func _update_beam_intensity_for_light(light: SpotLight3D, dimmer_norm: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> bool:
+	func _update_beam_intensity_for_light(light: SpotLight3D, dimmer_norm: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> int:
 		var params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else _build_cached_beam_params(light, 25.0, beam_color, dimmer_norm, scaled_intensity_override, 0.03, {})
 		params["normalized_dimmer"] = dimmer_norm
 		params["scaled_intensity"] = scaled_intensity_override if scaled_intensity_override >= 0.0 else dimmer_norm * 20.0
 		params["beam_intensity"] = params["scaled_intensity"]
 		params["intensity_max"] = BEAM_INTENSITY_MAX
-		var changed: bool = renderer.update_beam_intensity(light, params)
+		var result: int = renderer.update_beam_intensity(light, params)
 		light.set_meta("peraviz_beam_last_params", params)
-		return changed
+		return result
 
 	func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
 		var values: PackedFloat32Array = controls.get("render_ready_values", PackedFloat32Array())
@@ -109,23 +115,72 @@ func _run() -> void:
 	test.check(root.ready_calls == 1, "PrismLoader setup should run exactly once through SceneTree readiness")
 	test.check(prism != null, "Prism beam resource should be created during setup")
 	test.check(not prism.visible, "Zero-initialized prism should remain hidden")
+	root.anchor.remove_meta("peraviz_beam_last_params")
+	var full_before_initialization: int = int(service.get_visual_apply_counters().get("beam_full_state_applies", 0))
 	var zero: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)
 	test.check(bool(zero.get("dimmer_applied", false)), "Zero dimmer should apply to the registered target")
 	test.check(not prism.visible, "Zero dimmer should keep the prism hidden")
+	test.check(int(service.get_visual_apply_counters().get("beam_full_state_applies", 0)) == full_before_initialization + 1, "First zero Dimmer must initialize held projected-beam state once")
 	var mid: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.5, 10.0, 0.0, 10.0, 2.0)
 	test.check(bool(mid.get("dimmer_applied", false)), "Mid dimmer should apply to the registered target")
 	test.check(prism.visible, "Mid dimmer should make the prism visible")
+	test.check(root.renderer.is_beam_dynamic_ready(root.anchor) and prism.mesh != null, "First visible Legacy Dimmer must initialize its projected shape")
+	test.check(int(service.get_visual_apply_counters().get("beam_full_state_applies", 0)) == full_before_initialization + 2, "First visible Legacy Dimmer may lazily initialize exactly once")
 	test.check(int(mid.get("materials_mutated", 0)) > 0, "Mid dimmer should update lens emission")
 	var maxed: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 0.0, 20.0, 4.0)
 	test.check(bool(maxed.get("dimmer_applied", false)), "Full dimmer should apply to the registered target")
 	test.check(prism.visible, "Full dimmer should keep the prism visible")
 	test.check(int(maxed.get("materials_mutated", 0)) > 0, "Increasing dimmer should update the higher lens emission value")
+	var dynamic_before: Dictionary = service.get_visual_apply_counters()
+	for step in [0.1, 0.2, 0.3, 0.4]:
+		service.apply_emitter_intensity(root, "fixture-a", 201, 2, step, step * 20.0, 0.0, step * 20.0, step * 4.0)
+	var dynamic_after: Dictionary = service.get_visual_apply_counters()
+	test.check(int(dynamic_after.get("beam_dynamic_changed", 0)) > int(dynamic_before.get("beam_dynamic_changed", 0)), "Continuously changing Dimmer must use dynamic beam updates")
+	test.check(int(dynamic_after.get("beam_full_state_applies", 0)) == int(dynamic_before.get("beam_full_state_applies", 0)), "Continuously changing Dimmer must not run full beam state")
+	test.check(int(dynamic_after.get("beam_topology_rebuilds", 0)) == int(dynamic_before.get("beam_topology_rebuilds", 0)), "Continuously changing Dimmer must not rebuild topology")
+	var color_before: Dictionary = service.get_visual_apply_counters()
+	service.apply_emitter_color(root, "fixture-a", 301, 1 << 2, Color(0.2, 0.4, 0.8), 1.0)
+	var color_after: Dictionary = service.get_visual_apply_counters()
+	test.check(int(color_after.get("beam_full_state_applies", 0)) == int(color_before.get("beam_full_state_applies", 0)), "Color-only changes must not run full beam state")
+	test.check(int(color_after.get("beam_topology_rebuilds", 0)) == int(color_before.get("beam_topology_rebuilds", 0)), "Color-only changes must not rebuild topology")
+	service.set_render_diagnostic_mode("no-beams")
+	var beam_updates_before_no_beams: int = int(service.get_visual_apply_counters().get("beam_intensity_updates", 0))
+	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 0.0, 20.0, 4.0)
+	test.check(not prism.visible, "No-beams diagnostic mode must hide the existing beam without destroying it")
+	test.check(int(service.get_visual_apply_counters().get("beam_intensity_updates", 0)) == beam_updates_before_no_beams, "No-beams mode must suppress beam renderer updates")
+	service.set_render_diagnostic_mode("full")
+	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 0.0, 20.0, 4.0)
+	test.check(prism.visible, "Returning to full mode must rehydrate held beam state")
 	root.target_record["emitter_records"] = [{"projected_lumen_scale": 0.5, "emission_lumen_scale": 0.5, "has_projected_beam": true}]
 	var scaled: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 10.0, 20.0, 4.0)
 	test.check(bool(scaled.get("dimmer_applied", false)), "Scaled emitter dimmer should apply")
 	test.check(is_equal_approx(root.anchor.light_energy, 5.0), "Emitter lumen scaling should scale spotlight energy")
 	var params: Dictionary = root.anchor.get_meta("peraviz_beam_last_params", {})
 	test.check(is_equal_approx(float(params.get("beam_intensity", -1.0)), 10.0), "Emitter lumen scaling should scale beam intensity")
+	root._visual_settings["enable_realtime_spotlights"] = false
+	var counters_before_disabled: Dictionary = service.get_visual_apply_counters()
+	var disabled: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.75, 15.0, 8.0, 15.0, 3.0)
+	var counters_after_disabled: Dictionary = service.get_visual_apply_counters()
+	test.check(int(counters_after_disabled.get("light_properties_written", 0)) - int(counters_before_disabled.get("light_properties_written", 0)) <= 2, "Disabling a realtime spotlight may only transition node/RID visibility")
+	test.check(float(root.anchor.get_meta("peraviz_beam_last_params", {}).get("beam_intensity", -1.0)) > 0.0, "Disabled realtime spotlight must retain scaled beam intensity")
+	var counters_before_disabled_repeat: Dictionary = service.get_visual_apply_counters()
+	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.5, 10.0, 6.0, 10.0, 2.0)
+	var counters_after_disabled_repeat: Dictionary = service.get_visual_apply_counters()
+	test.check(int(counters_after_disabled_repeat.get("light_properties_written", 0)) == int(counters_before_disabled_repeat.get("light_properties_written", 0)), "Disabled spotlight Dimmer changes must not write Light3D properties")
+	root._visual_settings["enable_realtime_spotlights"] = true
+	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.75, 15.0, 8.0, 15.0, 3.0)
+	test.check(is_equal_approx(root.anchor.light_energy, 4.0), "Re-enabling realtime spotlights must apply held scaled energy")
+	var counters_before_repeat: Dictionary = service.get_visual_apply_counters()
+	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.75, 15.0, 8.0, 15.0, 3.0)
+	var counters_after_repeat: Dictionary = service.get_visual_apply_counters()
+	test.check(int(counters_after_repeat.get("light_properties_written", 0)) == int(counters_before_repeat.get("light_properties_written", 0)), "Repeated enabled spotlight state must not rewrite Light3D properties")
+	test.check(int(counters_after_repeat.get("beam_topology_rebuilds", 0)) == int(counters_before_repeat.get("beam_topology_rebuilds", 0)), "Unchanged beam state must not fall back to topology work")
+	test.check(int(counters_after_repeat.get("beam_shader_parameters_written", 0)) == int(counters_before_repeat.get("beam_shader_parameters_written", 0)), "Unchanged beam state must not rewrite shader parameters")
+	root.target_record["emitter_records"] = [{"beam_type": "Glow", "has_projected_beam": false, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.5}]
+	var beam_updates_before_glow: int = int(service.get_visual_apply_counters().get("beam_intensity_updates", 0))
+	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 10.0, 20.0, 4.0)
+	test.check(not prism.visible, "BeamType Glow must keep emissive geometry without a projected beam")
+	test.check(int(service.get_visual_apply_counters().get("beam_intensity_updates", 0)) == beam_updates_before_glow, "BeamType Glow must not perform beam shader work")
 	var hidden: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)
 	test.check(bool(hidden.get("dimmer_applied", false)), "Final zero dimmer should apply")
 	test.check(not prism.visible, "Returning to zero should hide the prism")
