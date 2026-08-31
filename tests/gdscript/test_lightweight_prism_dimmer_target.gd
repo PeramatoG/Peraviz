@@ -54,6 +54,12 @@ class PrismLoader:
 	func _get_native_dimmer_target_record(target_id: int) -> Dictionary:
 		return target_record if target_id == 201 else {}
 
+	func _has_native_color_target(target_id: int) -> bool:
+		return target_id == 301
+
+	func _get_native_color_target_record(target_id: int) -> Dictionary:
+		return target_record if target_id == 301 else {}
+
 	func _get_beam_resource_for_light(light: SpotLight3D) -> MeshInstance3D:
 		return renderer.get_beam_resource(light)
 
@@ -109,17 +115,33 @@ func _run() -> void:
 	test.check(root.ready_calls == 1, "PrismLoader setup should run exactly once through SceneTree readiness")
 	test.check(prism != null, "Prism beam resource should be created during setup")
 	test.check(not prism.visible, "Zero-initialized prism should remain hidden")
+	root.anchor.remove_meta("peraviz_beam_last_params")
+	var full_before_initialization: int = int(service.get_visual_apply_counters().get("beam_full_state_applies", 0))
 	var zero: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)
 	test.check(bool(zero.get("dimmer_applied", false)), "Zero dimmer should apply to the registered target")
 	test.check(not prism.visible, "Zero dimmer should keep the prism hidden")
+	test.check(int(service.get_visual_apply_counters().get("beam_full_state_applies", 0)) == full_before_initialization + 1, "First zero Dimmer must initialize held projected-beam state once")
 	var mid: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.5, 10.0, 0.0, 10.0, 2.0)
 	test.check(bool(mid.get("dimmer_applied", false)), "Mid dimmer should apply to the registered target")
 	test.check(prism.visible, "Mid dimmer should make the prism visible")
+	test.check(int(service.get_visual_apply_counters().get("beam_full_state_applies", 0)) == full_before_initialization + 1, "Nonzero Dimmer after zero initialization must use the dynamic path")
 	test.check(int(mid.get("materials_mutated", 0)) > 0, "Mid dimmer should update lens emission")
 	var maxed: Dictionary = service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 0.0, 20.0, 4.0)
 	test.check(bool(maxed.get("dimmer_applied", false)), "Full dimmer should apply to the registered target")
 	test.check(prism.visible, "Full dimmer should keep the prism visible")
 	test.check(int(maxed.get("materials_mutated", 0)) > 0, "Increasing dimmer should update the higher lens emission value")
+	var dynamic_before: Dictionary = service.get_visual_apply_counters()
+	for step in [0.1, 0.2, 0.3, 0.4]:
+		service.apply_emitter_intensity(root, "fixture-a", 201, 2, step, step * 20.0, 0.0, step * 20.0, step * 4.0)
+	var dynamic_after: Dictionary = service.get_visual_apply_counters()
+	test.check(int(dynamic_after.get("beam_dynamic_changed", 0)) > int(dynamic_before.get("beam_dynamic_changed", 0)), "Continuously changing Dimmer must use dynamic beam updates")
+	test.check(int(dynamic_after.get("beam_full_state_applies", 0)) == int(dynamic_before.get("beam_full_state_applies", 0)), "Continuously changing Dimmer must not run full beam state")
+	test.check(int(dynamic_after.get("beam_topology_rebuilds", 0)) == int(dynamic_before.get("beam_topology_rebuilds", 0)), "Continuously changing Dimmer must not rebuild topology")
+	var color_before: Dictionary = service.get_visual_apply_counters()
+	service.apply_emitter_color(root, "fixture-a", 301, 1 << 2, Color(0.2, 0.4, 0.8), 1.0)
+	var color_after: Dictionary = service.get_visual_apply_counters()
+	test.check(int(color_after.get("beam_full_state_applies", 0)) == int(color_before.get("beam_full_state_applies", 0)), "Color-only changes must not run full beam state")
+	test.check(int(color_after.get("beam_topology_rebuilds", 0)) == int(color_before.get("beam_topology_rebuilds", 0)), "Color-only changes must not rebuild topology")
 	service.set_render_diagnostic_mode("no-beams")
 	var beam_updates_before_no_beams: int = int(service.get_visual_apply_counters().get("beam_intensity_updates", 0))
 	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 0.0, 20.0, 4.0)

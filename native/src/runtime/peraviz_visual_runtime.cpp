@@ -788,7 +788,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         const int32_t int_offset = static_cast<int32_t>(frame.integers.size());
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const GoboRow &row : gobo_rows) {
-            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.beam_target_id, row.wheel_id, row.wheel_instance_index, row.slot_index, row.asset_id, static_cast<int32_t>(row.mode), static_cast<int32_t>(VisualChangeGobo), row.revision});
+            frame.integers.insert(frame.integers.end(), {row.fixture_id, row.beam_target_id, row.wheel_id, row.wheel_instance_index, row.slot_index, row.asset_id, static_cast<int32_t>(row.mode), static_cast<int32_t>(VisualChangeGobo | VisualChangeBeamTopology), row.revision});
             frame.floats.push_back(0.0f);
         }
         append_descriptor(frame, VisualSectionType::GoboSelection, static_cast<int32_t>(gobo_rows.size()), int_offset, float_offset);
@@ -930,7 +930,7 @@ PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_so
 // Maps a semantic parameter to the render domains it can dirty.
 uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter parameter) {
     switch (parameter) {
-        case SemanticParameter::Dimmer: return VisualChangeDimmer | VisualChangeMaterial | VisualChangeBeamTopology;
+        case SemanticParameter::Dimmer: return VisualChangeDimmer | VisualChangeMaterial;
         case SemanticParameter::Pan:
         case SemanticParameter::Tilt: return VisualChangeTransform;
         case SemanticParameter::Zoom: return VisualChangeZoom;
@@ -1180,9 +1180,6 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_pr
     } else {
         if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer);
         if (previous.has_zoom_physical != next_state.has_zoom_physical || !nearly_equal(previous.zoom, next_state.zoom, kAngleEpsilon) || !nearly_equal(previous.zoom_normalized, next_state.zoom_normalized, kDefaultEpsilon) || !nearly_equal(previous.beam_angle, next_state.beam_angle, kAngleEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Zoom);
-        const bool previous_visible = previous.dimmer > kDefaultEpsilon;
-        const bool current_visible = next_state.dimmer > kDefaultEpsilon;
-        if ((installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer)) != 0U && previous_visible != current_visible) result.changed_visual_mask |= VisualChangeBeamTopology;
     }
     result.changed_visual_mask &= installed_mask;
     result.changed = result.changed_visual_mask != VisualChangeNone;

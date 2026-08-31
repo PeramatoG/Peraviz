@@ -36,6 +36,12 @@ var _visual_apply_counters: Dictionary = {
 	"light_rids_updated": 0,
 	"materials_updated": 0,
 	"beam_topology_rebuilds": 0,
+	"beam_full_state_applies": 0,
+	"beam_full_state_reason_initialization": 0,
+	"beam_full_state_reason_topology_mask": 0,
+	"beam_dynamic_changed": 0,
+	"beam_dynamic_unchanged": 0,
+	"beam_dynamic_unresolved": 0,
 	"beam_intensity_updates": 0,
 	"beam_optics_rows": 0,
 	"beam_optics_parametric_updates": 0,
@@ -768,6 +774,8 @@ func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLi
 
 
 func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, photometric: Dictionary, dimmer_norm: float, beam_color: Color, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_intensity: float, material_energy: float) -> void:
+	_visual_apply_counters["beam_full_state_applies"] += 1
+	_visual_apply_counters["beam_full_state_reason_initialization"] += 1
 	var render_ready_values := PackedFloat32Array([
 		beam_energy,
 		spot_energy,
@@ -786,8 +794,11 @@ func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, p
 func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int, visible: bool, dimmer_norm: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
 	if not loader.has_method("_update_beam_for_light"):
 		return
-	var needs_topology: bool = ((visual_mask & VISUAL_CHANGE_BEAM_TOPOLOGY) != 0 and (visual_mask & VISUAL_CHANGE_ZOOM) == 0) or not light.has_meta("peraviz_beam_last_params")
+	var topology_masked: bool = (visual_mask & VISUAL_CHANGE_BEAM_TOPOLOGY) != 0 and (visual_mask & VISUAL_CHANGE_ZOOM) == 0
+	var needs_initialization: bool = not light.has_meta("peraviz_beam_last_params")
+	var needs_topology: bool = topology_masked or needs_initialization
 	if needs_topology:
+		_visual_apply_counters["beam_full_state_reason_initialization" if needs_initialization else "beam_full_state_reason_topology_mask"] += 1
 		var beam_phase_start: int = Time.get_ticks_usec()
 		_apply_visual_frame_beam_topology(loader, light, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
 		_track_phase("beam_update", beam_phase_start)
@@ -805,15 +816,22 @@ func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int
 				loader._apply_beam_optics_for_light(light, optics_params)
 		var dynamic_result: int = loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color, beam_intensity)
 		if dynamic_result == BeamRendererBase.INTENSITY_CHANGED:
+			_visual_apply_counters["beam_dynamic_changed"] += 1
 			_visual_apply_counters["beam_intensity_updates"] = int(_visual_apply_counters.get("beam_intensity_updates", 0)) + 1
 			_visual_apply_counters["beam_shader_parameters_written"] += int(loader._get_last_beam_parameter_write_count()) if loader.has_method("_get_last_beam_parameter_write_count") else 0
-		elif dynamic_result == BeamRendererBase.INTENSITY_UNRESOLVED and visible:
-			_apply_visual_frame_beam_topology(loader, light, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
+		elif dynamic_result == BeamRendererBase.INTENSITY_UNCHANGED:
+			_visual_apply_counters["beam_dynamic_unchanged"] += 1
+		elif dynamic_result == BeamRendererBase.INTENSITY_UNRESOLVED:
+			_visual_apply_counters["beam_dynamic_unresolved"] += 1
+			if visible:
+				_visual_apply_counters["beam_full_state_reason_initialization"] += 1
+				_apply_visual_frame_beam_topology(loader, light, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
 		if tracked_beam != null and is_instance_valid(tracked_beam) and tracked_beam.visible != was_visible:
 			_visual_apply_counters["beam_visibility_transitions"] += 1
 		_track_phase("beam_update", beam_phase_start)
 
 func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible: bool, dimmer_norm: float, beam_angle: float, beam_color: Color, beam_intensity: float) -> void:
+	_visual_apply_counters["beam_full_state_applies"] += 1
 	loader._ensure_beam_runtime_for_light(light)
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}).duplicate(false) if light.has_meta("peraviz_beam_last_params") else {}
 	if beam_params.is_empty():
