@@ -162,6 +162,8 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 		beam.visible = false
 		_sync_debug_axis(light, false)
 		return INTENSITY_UNCHANGED
+	if intensity > threshold and not is_beam_dynamic_ready(light):
+		return INTENSITY_UNRESOLVED
 	var signature: Array = [intensity, intensity_max, threshold, params.get("beam_color", Color.WHITE)]
 	if beam.get_meta("peraviz_intensity_signature", []) == signature:
 		return INTENSITY_UNCHANGED
@@ -193,6 +195,10 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 
 func get_last_parameter_write_count() -> int:
 	return _last_parameter_write_count
+
+func is_beam_dynamic_ready(light: SpotLight3D) -> bool:
+	var beam: MeshInstance3D = get_beam_resource(light)
+	return beam != null and beam.mesh != null
 
 func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	update_beam(light, params)

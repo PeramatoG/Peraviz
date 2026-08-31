@@ -27,7 +27,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
-- Prevented beam-optics debug axes from appearing as red shafts during normal playback and stopped Dimmer changes from requesting expensive beam-topology work when only intensity, visibility, or emission changed.
+- Prevented beam-optics debug axes from appearing as red shafts during normal playback, stopped Dimmer changes from requesting expensive beam-topology work, and restored beams that first receive a zero Dimmer value before becoming visible.
 
 - Preserved selected gobos and continuous rotation across renderer refreshes, asset updates, and DMX runtime binding rebuilds, so held lighting state no longer requires a new Art-Net value change to reappear.
 - Fixed inconsistent continuous gobo rotation and clear/reselect recovery across repeated fixtures by making selection and motion state belong to the physical Beam/wheel layer instead of fixture-derived binding IDs.
