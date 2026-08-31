@@ -422,7 +422,6 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var beam_half_angle: float = _fixture_beam_half_angle(fixture_uuid)
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
 	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
-	var previous_visible: bool = light.visible
 	var previous_beam_updates: int = int(_visual_apply_counters.get("beam_intensity_updates", 0))
 	_update_desired_light_state(light, light_energy, beam_half_angle, beam_color, _should_enable_realtime_spotlight(loader, visible))
 	var light_writes: int = _apply_desired_light_state(loader, light)
@@ -804,10 +803,11 @@ func _apply_visual_frame_beam(loader: Node, light: SpotLight3D, visual_mask: int
 			light.set_meta("peraviz_beam_last_params", optics_params)
 			if loader.has_method("_apply_beam_optics_for_light"):
 				loader._apply_beam_optics_for_light(light, optics_params)
-		if loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color, beam_intensity):
+		var dynamic_result: int = loader._update_beam_intensity_for_light(light, dimmer_norm, beam_color, beam_intensity)
+		if dynamic_result == BeamRendererBase.INTENSITY_CHANGED:
 			_visual_apply_counters["beam_intensity_updates"] = int(_visual_apply_counters.get("beam_intensity_updates", 0)) + 1
-			_visual_apply_counters["beam_shader_parameters_written"] += int(loader._get_last_beam_parameter_write_count()) if loader.has_method("_get_last_beam_parameter_write_count") else 1
-		elif visible:
+			_visual_apply_counters["beam_shader_parameters_written"] += int(loader._get_last_beam_parameter_write_count()) if loader.has_method("_get_last_beam_parameter_write_count") else 0
+		elif dynamic_result == BeamRendererBase.INTENSITY_UNRESOLVED and visible:
 			_apply_visual_frame_beam_topology(loader, light, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
 		if tracked_beam != null and is_instance_valid(tracked_beam) and tracked_beam.visible != was_visible:
 			_visual_apply_counters["beam_visibility_transitions"] += 1

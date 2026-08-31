@@ -65,15 +65,15 @@ class PrismLoader:
 		renderer.ensure_beam(light)
 		renderer.update_beam(light, params)
 
-	func _update_beam_intensity_for_light(light: SpotLight3D, dimmer_norm: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> bool:
+	func _update_beam_intensity_for_light(light: SpotLight3D, dimmer_norm: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> int:
 		var params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else _build_cached_beam_params(light, 25.0, beam_color, dimmer_norm, scaled_intensity_override, 0.03, {})
 		params["normalized_dimmer"] = dimmer_norm
 		params["scaled_intensity"] = scaled_intensity_override if scaled_intensity_override >= 0.0 else dimmer_norm * 20.0
 		params["beam_intensity"] = params["scaled_intensity"]
 		params["intensity_max"] = BEAM_INTENSITY_MAX
-		var changed: bool = renderer.update_beam_intensity(light, params)
+		var result: int = renderer.update_beam_intensity(light, params)
 		light.set_meta("peraviz_beam_last_params", params)
-		return changed
+		return result
 
 	func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, controls: Dictionary = {}) -> void:
 		var values: PackedFloat32Array = controls.get("render_ready_values", PackedFloat32Array())
@@ -151,6 +151,8 @@ func _run() -> void:
 	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 0.75, 15.0, 8.0, 15.0, 3.0)
 	var counters_after_repeat: Dictionary = service.get_visual_apply_counters()
 	test.check(int(counters_after_repeat.get("light_properties_written", 0)) == int(counters_before_repeat.get("light_properties_written", 0)), "Repeated enabled spotlight state must not rewrite Light3D properties")
+	test.check(int(counters_after_repeat.get("beam_topology_rebuilds", 0)) == int(counters_before_repeat.get("beam_topology_rebuilds", 0)), "Unchanged beam state must not fall back to topology work")
+	test.check(int(counters_after_repeat.get("beam_shader_parameters_written", 0)) == int(counters_before_repeat.get("beam_shader_parameters_written", 0)), "Unchanged beam state must not rewrite shader parameters")
 	root.target_record["emitter_records"] = [{"beam_type": "Glow", "has_projected_beam": false, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.5}]
 	var beam_updates_before_glow: int = int(service.get_visual_apply_counters().get("beam_intensity_updates", 0))
 	service.apply_emitter_intensity(root, "fixture-a", 201, 2, 1.0, 20.0, 10.0, 20.0, 4.0)

@@ -586,24 +586,24 @@ func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionar
 	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
 	var scaled_intensity_override: float = render_ready_values[7] if render_ready_values.size() >= 9 else -1.0
-	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color, scaled_intensity_override)
+	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color, scaled_intensity_override) == BeamRendererBase.INTENSITY_CHANGED
 
-func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> bool:
+func _update_beam_intensity_for_light(light: SpotLight3D, normalized_dimmer: float, beam_color: Color, scaled_intensity_override: float = -1.0) -> int:
 	if _active_beam_renderer == null or not light.has_meta("peraviz_beam_last_params"):
-		return false
+		return BeamRendererBase.INTENSITY_UNRESOLVED
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
 	if beam_params.is_empty():
-		return false
+		return BeamRendererBase.INTENSITY_UNRESOLVED
 	var scaled_intensity: float = clamp(scaled_intensity_override, 0.0, BEAM_INTENSITY_MAX) if scaled_intensity_override >= 0.0 else clamp(normalized_dimmer * float(_visual_settings.get("beam_multiplier", 20.0)), 0.0, BEAM_INTENSITY_MAX)
 	beam_params["normalized_dimmer"] = clamp(normalized_dimmer, 0.0, 1.0)
 	beam_params["scaled_intensity"] = scaled_intensity
 	beam_params["beam_intensity"] = scaled_intensity
 	beam_params["beam_color"] = beam_color
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
-	if _active_beam_renderer.update_beam_intensity(light, beam_params):
+	var result: int = _active_beam_renderer.update_beam_intensity(light, beam_params)
+	if result != BeamRendererBase.INTENSITY_UNRESOLVED:
 		light.set_meta("peraviz_beam_last_params", beam_params)
-		return true
-	return false
+	return result
 
 func _get_last_beam_parameter_write_count() -> int:
 	return _active_beam_renderer.get_last_parameter_write_count() if _active_beam_renderer != null else 0
