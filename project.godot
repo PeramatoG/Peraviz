@@ -19,6 +19,10 @@ config/icon="res://icon.svg"
 
 window/size/mode=2
 
+[editor]
+
+run/main_run_args="--peraviz-perf-trace"
+
 [peraviz]
 
 peraviz_debug_baseline=false
