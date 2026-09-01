@@ -40,6 +40,7 @@ uniform bool gobo_mirror_z = false;
 
 varying vec3 v_view;
 varying vec3 v_local;
+varying flat vec4 v_beam_response;
 
 vec2 project_gobo_uv(vec3 local_pos) {
 	float source_y = 0.5 * cone_height;
@@ -99,6 +100,17 @@ float sample_gobo_mask(vec2 uv) {
 }
 
 void vertex() {
+	float raw_intensity = max(beam_dynamic_state.a, 0.0);
+	float beam_intensity_norm = clamp(raw_intensity / 20.0, 0.0, 1.0);
+	float beam_intensity = pow(beam_intensity_norm, 2.2);
+	float beam_overdrive = 0.0;
+	if (intensity_max > 20.0) {
+		beam_overdrive = clamp((raw_intensity - 20.0) / (intensity_max - 20.0), 0.0, 1.0);
+	}
+	float intensity_alpha_input = clamp((raw_intensity / 20.0) * 4.0, 0.0, 3.6);
+	float overdrive_brightness_gain = mix(1.0, 30.0, beam_overdrive);
+	float max_brightness = mix(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain;
+	v_beam_response = vec4(beam_intensity, beam_overdrive, intensity_alpha_input, max_brightness);
 	if (use_normalized_gobo_topology) {
 		float axial = clamp(0.5 - VERTEX.y, 0.0, 1.0);
 		float radius = mix(topology_near_radius, topology_far_radius, axial);
@@ -113,16 +125,10 @@ float get_linear_depth(float raw_depth, mat4 inv_proj_mat) {
 }
 
 void fragment() {
-	float raw_intensity = max(beam_dynamic_state.a, 0.0);
-	float beam_intensity_norm = clamp(raw_intensity / 20.0, 0.0, 1.0);
-	float beam_intensity = pow(beam_intensity_norm, 2.2);
-	float beam_overdrive = 0.0;
-	if (intensity_max > 20.0) {
-		beam_overdrive = clamp((raw_intensity - 20.0) / (intensity_max - 20.0), 0.0, 1.0);
-	}
-	float intensity_alpha_input = clamp((raw_intensity / 20.0) * 4.0, 0.0, 3.6);
-	float overdrive_brightness_gain = mix(1.0, 30.0, beam_overdrive);
-	float max_brightness = mix(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain;
+	float beam_intensity = v_beam_response.x;
+	float beam_overdrive = v_beam_response.y;
+	float intensity_alpha_input = v_beam_response.z;
+	float max_brightness = v_beam_response.w;
 	float dist = length(v_view);
 	float near_alpha = smoothstep(near_fade_start, near_fade_end, dist);
 	float far_alpha = 1.0 - smoothstep(far_fade_start, far_fade_end, dist);
@@ -157,7 +163,6 @@ void fragment() {
 
 
 
-	float boosted_intensity = clamp(beam_intensity + (1.25 * beam_overdrive), 0.0, 2.0);
 	float intensity_alpha = 0.25 + (0.9 * clamp(beam_intensity, 0.0, 1.0)) + (0.95 * beam_overdrive);
 	float visibility = 1.0;
 	float overdrive_alpha_gain = 1.0 + (2.6 * beam_overdrive);

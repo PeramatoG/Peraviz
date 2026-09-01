@@ -188,6 +188,7 @@ func _apply_intensity_max(beam: MeshInstance3D, intensity_max: float) -> void:
 		return
 	beam.set_meta(INTENSITY_MAX_META_KEY, intensity_max)
 	beam.set_instance_shader_parameter("intensity_max", intensity_max)
+	_last_parameter_write_count += 1
 
 func get_last_parameter_write_count() -> int:
 	return _last_parameter_write_count
