@@ -43,6 +43,8 @@ func _run() -> void:
 	var registry = RegistryScript.new()
 	registry.configure({"node_index": {"base": harness.base, "beam": harness.emitter}, "callbacks": {"collect_emitter_lights": Callable(harness, "collect_emitter_lights"), "ensure_beam_runtime": Callable(harness, "ensure_beam_runtime"), "get_beam_resource": Callable(harness, "get_beam_resource")}})
 	registry.install_manifest([{"fixture_uuid": "fixture", "targets": [{"semantic": "beam_profile", "geometry_key": "fixture/Base/Beam", "render_target_id": 201, "beam_optical_profile": {"beam_type": "Spot", "has_projected_beam": true}}, {"semantic": "dimmer", "geometry_key": "fixture/Base", "render_target_id": 201}]}])
+	test.check(is_zero_approx(harness.light.light_energy) and not harness.light.visible and harness.light.light_projector == null and not harness.light.shadow_enabled, "Native target setup must leave synthetic fixture light output black before DMX")
+	test.check(harness.light.get_node_or_null("PeravizFogVolumeGoboBeam") == null and not harness.light.has_meta("peraviz_gobo_plane"), "Zero-DMX setup must not create fog or mask presentation resources")
 	var record: Dictionary = registry.get_dimmer_target_record(201)
 	var previous: MeshInstance3D = record.get("beam_instances", [])[0] as MeshInstance3D
 	harness.renderer.cleanup_beam(harness.light)

@@ -146,8 +146,9 @@ func _apply_beam_material_params(beam: MeshInstance3D, beam_range: float, shape_
 func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	_last_parameter_write_count = 0
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
-		_update_experimental_beam(light, params)
-		return INTENSITY_CHANGED
+		var result: Dictionary = _update_experimental_beam(light, params)
+		_last_parameter_write_count = int(result.get("parameter_write_count", 0))
+		return INTENSITY_CHANGED if bool(result.get("changed", false)) else INTENSITY_UNCHANGED
 	if not light.has_meta(BEAM_META_KEY):
 		return INTENSITY_UNRESOLVED
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
@@ -231,16 +232,21 @@ func cleanup_beam(light: SpotLight3D) -> void:
 		light.remove_meta(BEAM_META_KEY)
 	_cleanup_debug_axis(light)
 
-func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> void:
+func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> Dictionary:
+	var result := {"changed": false, "resource_created": false, "visibility_changed": false, "parameter_write_count": 0}
 	var existing: MeshInstance3D = get_beam_resource(light)
-	if existing != null:
+	if existing != null and existing.visible:
 		existing.visible = false
+		result["changed"] = true
+		result["visibility_changed"] = true
 	var gobo_texture: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
 	if _presentation_mode == PRESENTATION_FOG_VOLUME:
-		_fog_controller.update_for_light(light, params, gobo_texture, _settings)
+		result = _fog_controller.update_for_light(light, params, gobo_texture, _settings)
 	else:
 		_fog_controller.clear_for_light(light)
 	light.set_meta("peraviz_beam_last_params", params)
+	_last_parameter_write_count = int(result.get("parameter_write_count", 0))
+	return result
 
 func _select_shape_provider() -> VolumetricBeamShapeProvider:
 	var requested_mode: String = str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)).to_lower()

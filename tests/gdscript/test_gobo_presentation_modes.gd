@@ -36,8 +36,10 @@ func _run() -> void:
 	var loader := VisualLoader.new()
 	get_root().add_child(loader)
 	var apply_service = FixtureLightApplyServiceScript.new()
+	apply_service._update_desired_light_state(light, 0.0, 10.0, Color.WHITE, false)
 	apply_service._apply_canonical_light_visibility(loader, light, true, false)
-	test.check(not bool(apply_service._light_desired_for(light).get("applied_realtime_visible", true)), "Vector Prism without a projector must retain the optional realtime spotlight policy")
+	test.check(not bool(apply_service._light_desired_for(light).get("applied_realtime_visible", true)), "Parent visibility must not make an inactive physical output realtime")
+	apply_service._update_desired_light_state(light, 10.0, 10.0, Color.WHITE, true)
 	projector._set_light_projector_texture(light, texture)
 	apply_service._apply_canonical_light_visibility(loader, light, true, false)
 	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "An active surface projector must keep its realtime SpotLight RID visible")
@@ -46,6 +48,7 @@ func _run() -> void:
 	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Fog Volume with a surface projector must keep the realtime SpotLight RID visible")
 	projector._set_light_projector_texture(light, null)
 	loader._visual_settings["beam_presentation"] = 2
+	apply_service._update_desired_light_state(light, 10.0, 10.0, Color.WHITE, true)
 	apply_service._apply_canonical_light_visibility(loader, light, true, false)
 	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Native Shadow mode must keep the realtime SpotLight RID visible without a gobo")
 	var presentation_counters: Dictionary = apply_service.get_visual_apply_counters()
@@ -53,6 +56,16 @@ func _run() -> void:
 
 	var renderer = VolumetricBeamRendererScript.new()
 	var params := {"beam_type": "Spot", "beam_range": 8.0, "beam_angle": 20.0, "scaled_intensity": 10.0, "intensity_max": 50.0, "beam_color": Color.WHITE}
+	renderer.configure(null, {"beam_presentation": 0})
+	var inactive_params: Dictionary = params.duplicate()
+	inactive_params["scaled_intensity"] = 0.0
+	renderer.update_beam(light, inactive_params)
+	test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "Inactive Fog mode must not allocate a FogVolume")
+	for rejected_type in ["None", "Glow"]:
+		inactive_params["beam_type"] = rejected_type
+		inactive_params["scaled_intensity"] = 10.0
+		renderer.update_beam(light, inactive_params)
+		test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "Non-projected beam types must not allocate FogVolumes")
 	light.set_meta("peraviz_gobo_texture", texture)
 	for mode in [1, 0, 2, 1, 0, 1]:
 		renderer.cleanup_beam(light)
@@ -65,12 +78,14 @@ func _run() -> void:
 			var fog_volume: FogVolume = light.get_node("PeravizFogVolumeGoboBeam") as FogVolume
 			test.check(fog_volume.shape == RenderingServer.FOG_VOLUME_SHAPE_BOX and fog_volume.position.z < 0.0 and fog_volume.rotation == Vector3.ZERO, "Fog Volume must use the analytic local-negative-Z box contract")
 			var original_material: Material = fog_volume.material
+			var unchanged_result: int = renderer.update_beam_intensity(light, params.duplicate())
+			test.check(unchanged_result == BeamRendererBase.INTENSITY_UNCHANGED and renderer.get_last_parameter_write_count() == 0, "Unchanged Fog state must perform zero shader writes")
 			var dynamic_params: Dictionary = params.duplicate()
 			dynamic_params["scaled_intensity"] = 5.0
 			dynamic_params["beam_color"] = Color.RED
 			dynamic_params["gobo_rotation_deg"] = 45.0
 			renderer.update_beam(light, dynamic_params)
-			test.check(light.get_node("PeravizFogVolumeGoboBeam") == fog_volume and fog_volume.material == original_material, "Fog dynamic updates must retain the volume and material")
+			test.check(light.get_node("PeravizFogVolumeGoboBeam") == fog_volume and fog_volume.material == original_material and renderer.get_last_parameter_write_count() == 3, "Fog dynamic updates must retain resources and write only intensity, color, and rotation")
 		else:
 			test.check(fog_count == 0, "Non-Fog-Volume modes must not retain an orphan FogVolume")
 		var mask_count: int = 1 if light.has_meta("peraviz_gobo_plane") else 0

@@ -36,7 +36,9 @@ void fog() {
 
 	float radial = length(projected);
 	float radial_mask = pow(clamp(1.0 - radial, 0.0, 1.0), max(radial_falloff, 0.05));
-	float edge_mask = smoothstep(edge_softness, edge_softness - 0.1, radial);
+	float edge_start = clamp(edge_softness - 0.1, 0.0, 0.99);
+	float edge_end = max(edge_softness, edge_start + 0.001);
+	float edge_mask = 1.0 - smoothstep(edge_start, edge_end, radial);
 	float longitudinal_mask = pow(depth_t, max(longitudinal_falloff, 0.05));
 	float final_mask = radial_mask * edge_mask * longitudinal_mask * projected_bounds;
 

@@ -18,6 +18,10 @@ var _renderer_generation: int = 0
 var _mesh_builder: RefCounted = GoboPrismMeshBuilderScript.new()
 var _vectorizer: Object = null
 var _counters: Dictionary = {}
+var _presentation_callback: Callable
+
+func set_presentation_callback(callback: Callable) -> void:
+	_presentation_callback = callback
 
 func _init() -> void:
 	if ClassDB.class_exists("PeravizGoboVectorizer"):
@@ -280,7 +284,12 @@ func _apply_resource_to_target(target_record: Dictionary, resource: Dictionary) 
 	for light_item in target_record.get("emitter_anchors", []):
 		var light: SpotLight3D = light_item as SpotLight3D
 		if light != null:
-			light.set_meta("peraviz_gobo_texture", texture)
+			if texture != null:
+				light.set_meta("peraviz_gobo_texture", texture)
+			else:
+				light.remove_meta("peraviz_gobo_texture")
+			if _presentation_callback.is_valid():
+				_presentation_callback.call(light, texture, NAN)
 	for beam_item in target_record.get("beam_instances", []):
 		var beam: MeshInstance3D = beam_item as MeshInstance3D
 		if beam != null:
@@ -290,6 +299,10 @@ func _apply_rotation_to_target(target_record: Dictionary, physical_angle_degrees
 	var backend: String = _presentation_backend(target_record)
 	for beam_item in target_record.get("beam_instances", []):
 		GoboRotationPresentationScript.apply_physical_angle(beam_item as MeshInstance3D, physical_angle_degrees, backend)
+	for light_item in target_record.get("emitter_anchors", []):
+		var light: SpotLight3D = light_item as SpotLight3D
+		if light != null and _presentation_callback.is_valid():
+			_presentation_callback.call(light, light.get_meta("peraviz_gobo_texture", null), physical_angle_degrees)
 
 func _presentation_backend(target_record: Dictionary) -> String:
 	for light_item in target_record.get("emitter_anchors", []):

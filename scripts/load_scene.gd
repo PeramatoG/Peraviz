@@ -113,6 +113,7 @@ var _visual_settings := {
 	"beam_visual_length_m": 75.0,
 	"ambient_fog_density": 0.0,
 	"volumetric_fog_density": 0.0,
+	"volumetric_fog_length": 110.0,
 	"volumetric_fog_fade": 0.02,
 	"light_volumetric_fog_energy": 12.0,
 	"use_native_fog_projector_gobos": true,
@@ -447,6 +448,8 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 1)) != 1
 		world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001 or presentation_uses_fog
 		world_environment.environment.volumetric_fog_density = volumetric_fog_density
+		if _environment_has_property(world_environment.environment, "volumetric_fog_length"):
+			world_environment.environment.volumetric_fog_length = clamp(float(_visual_settings.get("volumetric_fog_length", 110.0)), 1.0, 500.0)
 		if _environment_has_property(world_environment.environment, "volumetric_fog_fade"):
 			world_environment.environment.volumetric_fog_fade = max(float(_visual_settings.get("volumetric_fog_fade", 0.02)), 0.005)
 
@@ -511,11 +514,17 @@ func _update_beam_renderer_mode(force_refresh: bool) -> void:
 	var requested_presentation: int = int(_visual_settings.get("beam_presentation", VolumetricBeamRendererScript.PRESENTATION_VECTOR_PRISM))
 	var presentation_changed: bool = requested_presentation != _active_beam_presentation
 	if force_refresh or requested_mode != _active_beam_mode or presentation_changed:
+		var cleaned_lights: Dictionary = {}
 		for fixture_uuid in _fixture_emitter_light_cache.keys():
 			var lights: Array = _fixture_emitter_light_cache.get(fixture_uuid, [])
 			for light_node in lights:
 				if light_node is SpotLight3D and is_instance_valid(light_node):
 					_cleanup_light_beam_renderers(light_node)
+					cleaned_lights[light_node.get_instance_id()] = true
+		for native_light_item in _native_target_registry.get_emitter_anchors():
+			var native_light: SpotLight3D = native_light_item as SpotLight3D
+			if native_light != null and not cleaned_lights.has(native_light.get_instance_id()):
+				_cleanup_light_beam_renderers(native_light)
 
 	_active_beam_mode = requested_mode
 	_active_beam_presentation = requested_presentation
@@ -552,7 +561,7 @@ func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
 	var light_rid: RID = _get_light_base_rid(light)
 	if not light_rid.is_valid():
 		return
-	var base_energy: float = float(light.get_meta("peraviz_base_light_energy", light.light_energy))
+	var base_energy: float = float(light.get_meta("peraviz_base_light_energy", 0.0))
 	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
 	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
 
@@ -580,6 +589,7 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void
 	light.set_meta("peraviz_beam_last_params", beam_params)
 	_active_beam_renderer.ensure_beam(light)
 	_active_beam_renderer.update_beam(light, beam_params)
+	_refresh_native_gobo_presentation(light)
 	_native_target_registry.rebind_beam_resource(light, _active_beam_renderer.get_beam_resource(light))
 
 func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
@@ -1695,8 +1705,31 @@ func _configure_native_target_registry() -> void:
 			"get_beam_resource": Callable(self, "_get_beam_resource_for_light"),
 			"apply_beam_optics": Callable(self, "_apply_beam_optics_for_light"),
 			"is_emitter_lens_mesh": Callable(self, "_is_emitter_lens_mesh"),
+			"present_native_gobo": Callable(self, "_present_native_gobo"),
 		},
 	})
+
+func _present_native_gobo(light: SpotLight3D, texture: Texture2D, rotation_degrees: float) -> void:
+	if light == null or not is_instance_valid(light):
+		return
+	if not is_nan(rotation_degrees):
+		var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
+		params["gobo_rotation_deg"] = rotation_degrees
+		light.set_meta("peraviz_beam_last_params", params)
+	_refresh_native_gobo_presentation(light, texture)
+	if _active_beam_presentation == VolumetricBeamRendererScript.PRESENTATION_FOG_VOLUME and light.get_node_or_null("PeravizFogVolumeGoboBeam") != null:
+		_active_beam_renderer.update_beam_intensity(light, light.get_meta("peraviz_beam_last_params", {}))
+
+func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null) -> void:
+	if _fixture_gobo_projector == null:
+		return
+	var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
+	var active: bool = float(params.get("scaled_intensity", 0.0)) > float(params.get("intensity_visibility_threshold", 0.015))
+	var resolved_texture: Texture2D = texture if texture != null else (light.get_meta("peraviz_gobo_texture", null) as Texture2D)
+	_fixture_gobo_projector._set_light_projector_texture(light, resolved_texture if active else null)
+	_fixture_gobo_projector.set_shadow_mask_enabled(light, active and resolved_texture != null and int(_visual_settings.get("beam_presentation", 1)) == 2)
+	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service._apply_desired_light_state(self, light)
 
 func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 	_native_target_registry.install_manifest(renderer_manifest)
@@ -1981,6 +2014,9 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 	var lens_radius: float = _estimate_emitter_lens_radius(emitter_node)
 	for child in emitter_node.get_children():
 		if child is SpotLight3D and child.name == "PeravizEmitterLight":
+			if not child.has_meta("peraviz_base_light_energy"):
+				child.light_energy = 0.0
+				child.visible = false
 			if child.rotation_degrees != EMITTER_LIGHT_DIRECTION_FIX:
 				child.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
 			# Projector-active lights retain shadows because Godot 4.7 requires them for surface projection.
@@ -1996,6 +2032,9 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 	light.position = Vector3.ZERO
 	light.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
 	light.light_negative = false
+	light.light_energy = 0.0
+	light.light_projector = null
+	light.visible = false
 	light.shadow_enabled = false
 	light.shadow_bias = 0.05
 	light.shadow_normal_bias = 1.2

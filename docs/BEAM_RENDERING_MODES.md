@@ -16,6 +16,8 @@ One box `FogVolume` encloses each relevant emitter beam along renderer-child loc
 
 The shader deliberately uses emission with a small integration density and black albedo. This is a predictable presentation approximation, not physically authoritative light scattering; black albedo prevents unrelated lights from coloring the custom volume while the nonzero local density keeps Godot's fog integration active. It does not react to scene shadows. Peraviz enables volumetric processing without forcing global environment haze and retains its 64 by 64 froxel settings.
 
+Fog volumes are allocated only after a projected physical output crosses the visibility threshold. Inactive emitters do not allocate fog resources or write shader parameters, and previously active volumes are hidden and retained for cheap reuse. Parameter signatures separate presets, optics, gobos, and live color/intensity/rotation updates.
+
 ### Vector Gobo Prism (Reference)
 
 The existing cached vectorized prism remains the reference and fallback. It represents the seated mask as geometry and therefore has gobo-dependent primitive counts. Parametric indexed rotation continues to reuse topology. Surface projection still uses the independent projector path.
@@ -25,6 +27,8 @@ The existing cached vectorized prism remains the reference and fallback. It repr
 This mode uses no visible custom beam mesh. It enables environment volumetric fog and places a small alpha-scissored, shadows-only quad at the aperture. Open texels transmit the real spotlight; closed texels cast a shadow into fog. The light projector remains responsible for the crisp surface image. Stable-engine froxel and shadow resolution can make the fog pattern soft or unstable at distance.
 
 Peraviz keeps the realtime spotlight renderer instance active whenever this mode is selected, and whenever any presentation has an active surface projector. This is independent from the optional all-fixture realtime spotlight policy.
+
+The experiment presets use a 110 m volumetric-fog length. This improves overview-camera coverage compared with Godot's shorter default, but distributes the fixed froxel depth across more distance and therefore reduces depth detail. Fog Volume uses zero global density and no real-light fog energy; Native Shadow starts at global density `0.0001` and per-light fog energy `1000`. These are Peraviz presentation values, not GDTF photometric semantics.
 
 ## Coordinates and lifecycle
 
@@ -43,6 +47,8 @@ The deterministic comparison below describes resource scaling before GPU-depende
 | Native Shadow | 1 / 16 / 64 / 128 mask quads | Constant two triangles per active gobo | 1 / 16 / 64 / 128 | No |
 
 Peraviz diagnostics expose mesh rebuilds, parametric updates, texture compositions, and shader/material writes. RenderingServer profiler counters provide draw calls, primitives, CPU frame time, and GPU frame time where supported. Fog Volume currently looks most promising for topology stability and coherent shafts; retain all modes until visual quality and 128-emitter GPU measurements are collected on representative hardware.
+
+`[peraviz-presentation]` distinguishes allocated and visible FogVolumes, interval volume creations and fog-parameter writes, real SpotLight RIDs, shadowed lights, projectors, masks, and active open/gobo outputs. This makes presentation cost directly comparable with the number of emitting physical outputs.
 
 ## Current limitations
 

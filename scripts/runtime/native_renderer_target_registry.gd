@@ -27,6 +27,7 @@ func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
 	_scene_registry = dependencies.get("scene_registry", null)
 	_callbacks = dependencies.get("callbacks", {})
+	_gobo_resources.set_presentation_callback(_callbacks.get("present_native_gobo", Callable()))
 	clear_scene_state()
 
 func clear_scene_state() -> void:
@@ -150,6 +151,19 @@ func get_beam_output_record(beam_target_id: int) -> Dictionary:
 	if beam_target_id <= 0:
 		return {}
 	return _beam_output_records_by_id.get(beam_target_id, {})
+
+func get_emitter_anchors() -> Array:
+	var result: Array = []
+	var seen: Dictionary = {}
+	for record_item in _beam_output_records_by_id.values():
+		var record: Dictionary = record_item
+		for light_item in record.get("emitter_anchors", []):
+			var light: SpotLight3D = light_item as SpotLight3D
+			if light == null or not is_instance_valid(light) or seen.has(light.get_instance_id()):
+				continue
+			seen[light.get_instance_id()] = true
+			result.append(light)
+	return result
 
 func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
 	if light == null or not is_instance_valid(light):

@@ -150,7 +150,7 @@ static func _preserves_neighbor_turns(ring: PackedVector2Array, removed_index: i
 	var new_next_turn: float = (next - previous).cross(next_next - next)
 	return _same_nonzero_sign(old_previous_turn, new_previous_turn) and _same_nonzero_sign(old_next_turn, new_next_turn)
 
-static func _same_nonzero_sign(reference: float, candidate: float) -> bool:
-	if absf(reference) <= 0.0000001:
+static func _same_nonzero_sign(reference_turn: float, candidate: float) -> bool:
+	if absf(reference_turn) <= 0.0000001:
 		return true
-	return candidate * reference > 0.0
+	return candidate * reference_turn > 0.0
