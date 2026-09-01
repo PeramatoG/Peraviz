@@ -105,20 +105,28 @@ static func has_self_intersections(ring: PackedVector2Array) -> bool:
 				return true
 	return false
 
-static func simplify_closed_ring(ring: PackedVector2Array, target_points: int) -> PackedVector2Array:
+static func simplify_closed_ring(ring: PackedVector2Array, target_points: int, area_threshold: float = 0.0) -> PackedVector2Array:
 	var result := PackedVector2Array(ring)
 	var original_sign: bool = signed_area(ring) > 0.0
-	while result.size() > maxi(target_points, MIN_RING_POINTS):
+	var safe_target: int = maxi(target_points, MIN_RING_POINTS)
+	while result.size() > MIN_RING_POINTS:
 		var candidates: Array[Dictionary] = []
 		for index in range(result.size()):
 			var previous: Vector2 = result[(index - 1 + result.size()) % result.size()]
 			var next: Vector2 = result[(index + 1) % result.size()]
 			candidates.append({"index": index, "area": absf((result[index] - previous).cross(next - result[index]))})
 		candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["area"]) < float(b["area"]))
+		if result.size() <= safe_target and (candidates.is_empty() or float(candidates[0]["area"]) > area_threshold):
+			break
 		var removed: bool = false
 		for candidate in candidates:
+			if result.size() <= safe_target and float(candidate["area"]) > area_threshold:
+				break
+			var candidate_index: int = int(candidate["index"])
+			if not _preserves_neighbor_turns(result, candidate_index):
+				continue
 			var trial := PackedVector2Array(result)
-			trial.remove_at(int(candidate["index"]))
+			trial.remove_at(candidate_index)
 			if not has_self_intersections(trial) and (signed_area(trial) > 0.0) == original_sign:
 				result = trial
 				removed = true
@@ -126,3 +134,23 @@ static func simplify_closed_ring(ring: PackedVector2Array, target_points: int) -
 		if not removed:
 			break
 	return result
+
+static func _preserves_neighbor_turns(ring: PackedVector2Array, removed_index: int) -> bool:
+	var count: int = ring.size()
+	if count <= 4:
+		return true
+	var previous_previous: Vector2 = ring[(removed_index - 2 + count) % count]
+	var previous: Vector2 = ring[(removed_index - 1 + count) % count]
+	var removed: Vector2 = ring[removed_index]
+	var next: Vector2 = ring[(removed_index + 1) % count]
+	var next_next: Vector2 = ring[(removed_index + 2) % count]
+	var old_previous_turn: float = (previous - previous_previous).cross(removed - previous)
+	var new_previous_turn: float = (previous - previous_previous).cross(next - previous)
+	var old_next_turn: float = (next - removed).cross(next_next - next)
+	var new_next_turn: float = (next - previous).cross(next_next - next)
+	return _same_nonzero_sign(old_previous_turn, new_previous_turn) and _same_nonzero_sign(old_next_turn, new_next_turn)
+
+static func _same_nonzero_sign(reference: float, candidate: float) -> bool:
+	if absf(reference) <= 0.0000001:
+		return true
+	return candidate * reference > 0.0

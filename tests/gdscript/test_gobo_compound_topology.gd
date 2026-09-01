@@ -62,6 +62,19 @@ func _test_concave_and_budget_simplification() -> void:
 	var reduced: Array[PackedVector2Array] = Builder.new()._reduce_polygon_point_count([curved, PackedVector2Array(curved)], Builder.MAX_TOTAL_VECTOR_POINTS)
 	var reduced_points: int = reduced.reduce(func(total: int, ring: PackedVector2Array) -> int: return total + ring.size(), 0)
 	test.check(reduced_points <= Builder.MAX_TOTAL_VECTOR_POINTS, "the cached beam topology must respect the renderer point budget")
+	var smooth_curve := PackedVector2Array()
+	for index in range(96):
+		var angle: float = TAU * float(index) / 96.0
+		smooth_curve.append(Vector2(cos(angle), sin(angle)) * 0.8)
+	var automatically_reduced: Array[PackedVector2Array] = Builder.new()._reduce_polygon_point_count([smooth_curve], Builder.MAX_TOTAL_VECTOR_POINTS)
+	test.check(automatically_reduced[0].size() < smooth_curve.size(), "large smooth contours must shed redundant points even below the global budget")
+	test.check(_all_turns_match_winding(automatically_reduced[0]), "smooth contour reduction must not introduce corrective reverse turns")
+	var point_gobo: Array[PackedVector2Array] = []
+	for index in range(40):
+		var center := Vector2(float(index % 8) * 0.1, float(index / 8) * 0.1)
+		point_gobo.append(PackedVector2Array([center, center + Vector2(0.01, 0), center + Vector2(0.01, 0.01), center + Vector2(0, 0.01)]))
+	var preserved_points: Array[PackedVector2Array] = Builder.new()._reduce_polygon_point_count(point_gobo, Builder.MAX_TOTAL_VECTOR_POINTS)
+	test.check(preserved_points.size() == point_gobo.size() and preserved_points.all(func(ring: PackedVector2Array) -> bool: return ring.size() == 4), "small disconnected point gobos must retain their components and silhouettes")
 	var narrow_hole := PackedVector2Array([Vector2(-0.2, -3), Vector2(-0.2, 3), Vector2(0.2, 3), Vector2(0.2, -3)])
 	var narrow_components: Array[Dictionary] = Topology.build([outer_square(5.0), narrow_hole])
 	test.check((narrow_components[0]["holes"] as Array).size() == 1, "a narrow meaningful cut-out must remain a distinct hole")
@@ -93,3 +106,12 @@ func _triangles_cover(triangles: Array[Dictionary], point: Vector2) -> bool:
 		if Geometry2D.is_point_in_polygon(point, PackedVector2Array([triangle["a"], triangle["b"], triangle["c"]])):
 			return true
 	return false
+
+func _all_turns_match_winding(ring: PackedVector2Array) -> bool:
+	var winding: float = signf(Topology.signed_area(ring))
+	for index in range(ring.size()):
+		var previous: Vector2 = ring[(index - 1 + ring.size()) % ring.size()]
+		var turn: float = (ring[index] - previous).cross(ring[(index + 1) % ring.size()] - ring[index])
+		if turn * winding <= 0.0:
+			return false
+	return true

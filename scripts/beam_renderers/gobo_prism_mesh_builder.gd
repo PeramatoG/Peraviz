@@ -5,6 +5,8 @@ const VECTORIZATION_MAX_SIZE: int = 256
 const VECTORIZATION_ALPHA_THRESHOLD: float = 0.5
 const VECTORIZATION_EPSILON: float = 0.8
 const MAX_TOTAL_VECTOR_POINTS: int = 280
+const AUTO_SIMPLIFY_MIN_RING_AREA: float = 0.004
+const AUTO_SIMPLIFY_TRIANGLE_AREA: float = 0.0008
 const MIN_POLYGON_AREA: float = 0.00004
 const FALLBACK_SEGMENTS: int = 36
 const BINARY_LUMA_THRESHOLD: float = 0.5
@@ -83,7 +85,7 @@ func _shape_cache_key(gobo_texture: Texture2D, apply_edge_mask_correction: bool)
 	if gobo_texture == null:
 		return "__fallback_shape_%s" % [str(apply_edge_mask_correction)]
 	var content_id: int = int(gobo_texture.get_meta("peraviz_gobo_asset_id", gobo_texture.get_rid().get_id()))
-	return "__shape_v3_%d_%s_%d_%.2f" % [content_id, str(apply_edge_mask_correction), MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
+	return "__shape_v4_%d_%s_%d_%.2f_%.5f" % [content_id, str(apply_edge_mask_correction), MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON, AUTO_SIMPLIFY_TRIANGLE_AREA]
 
 func _vectorize_gobo(gobo_texture: Texture2D, gobo_scale: float, apply_edge_mask_correction: bool = true) -> Array[PackedVector2Array]:
 	if gobo_texture == null:
@@ -137,7 +139,7 @@ func _get_or_build_normalized_raster_polygons(gobo_texture: Texture2D, apply_edg
 func _normalized_polygon_cache_key(gobo_texture: Texture2D, apply_edge_mask_correction: bool) -> String:
 	if gobo_texture == null:
 		return "__normalized_fallback_%s_%.3f" % [str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD]
-	return "__normalized_v3_%d_%s_%.3f_%d_%.2f" % [gobo_texture.get_rid().get_id(), str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD, MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
+	return "__normalized_v4_%d_%s_%.3f_%d_%.2f_%.5f" % [gobo_texture.get_rid().get_id(), str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD, MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON, AUTO_SIMPLIFY_TRIANGLE_AREA]
 
 func _vectorize_texture_to_normalized_polygons(gobo_texture: Texture2D, apply_edge_mask_correction: bool) -> Array[PackedVector2Array]:
 	var image: Image = gobo_texture.get_image()
@@ -309,19 +311,22 @@ func _fit_polygon_to_circle(polygon: PackedVector2Array) -> PackedVector2Array:
 func _reduce_polygon_point_count(polygons: Array[PackedVector2Array], max_points: int) -> Array[PackedVector2Array]:
 	if polygons.is_empty():
 		return []
-	if _count_polygon_points(polygons) <= max_points:
-		return polygons
 
 	var minimum_budget: int = polygons.size() * 3
 	var available_budget: int = maxi(max_points, minimum_budget)
 	var source_points: int = _count_polygon_points(polygons)
+	var requires_budget_reduction: bool = source_points > available_budget
 	var reduced: Array[PackedVector2Array] = []
 	var assigned: int = 0
 	for index in range(polygons.size()):
 		var remaining_rings: int = polygons.size() - index - 1
-		var proportional: int = maxi(3, int(round(float(polygons[index].size()) * float(available_budget) / float(source_points))))
-		var target: int = mini(polygons[index].size(), mini(proportional, available_budget - assigned - remaining_rings * 3))
-		reduced.append(GoboCompoundTopologyScript.simplify_closed_ring(polygons[index], target))
+		var target: int = polygons[index].size()
+		if requires_budget_reduction:
+			var proportional: int = maxi(3, int(round(float(polygons[index].size()) * float(available_budget) / float(source_points))))
+			target = mini(target, mini(proportional, available_budget - assigned - remaining_rings * 3))
+		var ring_area: float = absf(_signed_polygon_area(polygons[index]))
+		var automatic_threshold: float = AUTO_SIMPLIFY_TRIANGLE_AREA if ring_area >= AUTO_SIMPLIFY_MIN_RING_AREA else 0.0
+		reduced.append(GoboCompoundTopologyScript.simplify_closed_ring(polygons[index], target, automatic_threshold))
 		assigned += reduced[-1].size()
 	return reduced
 
