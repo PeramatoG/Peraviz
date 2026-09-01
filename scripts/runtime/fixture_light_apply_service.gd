@@ -62,6 +62,7 @@ var _visual_apply_counters: Dictionary = {
 	"emitter_output_commit_candidates": 0,
 	"emitter_output_commits": 0,
 	"emitter_output_commits_coalesced": 0,
+	"emitter_output_commit_usec": 0,
 }
 var _diagnostic_warning_keys: Dictionary = {}
 var _diagnostic_info_keys: Dictionary = {}
@@ -86,6 +87,7 @@ func begin_visual_snapshot() -> void:
 func end_visual_snapshot() -> void:
 	if not _snapshot_commit_active:
 		return
+	var commit_start_usec: int = Time.get_ticks_usec()
 	_snapshot_commit_active = false
 	for pending_item in _snapshot_output_commits.values():
 		var pending: Dictionary = pending_item
@@ -98,6 +100,7 @@ func end_visual_snapshot() -> void:
 		_apply_beam_output_record(loader, fixture_uuid, output_record, int(pending.get("changed_mask", 0)), float(state.get("dimmer", 0.0)), state.get("beam_color", Color.WHITE), max(float(state.get("color_gain", 1.0)), 0.0))
 		_visual_apply_counters["emitter_output_commits"] += 1
 	_snapshot_output_commits.clear()
+	_visual_apply_counters["emitter_output_commit_usec"] += max(Time.get_ticks_usec() - commit_start_usec, 0)
 	_visual_apply_counters["beam_visible_count"] = _visible_beam_ids.size()
 	_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
 
@@ -192,12 +195,14 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	var materials_mutated: int = 0
 	var visible_beams: int = 0
 	var visible_lights: int = 0
+	var commit_deferred: bool = false
 	if not output_records.is_empty():
 		for output_item in output_records:
 			var output_record: Dictionary = output_item
 			var output_id: int = _output_id_from_record(output_record, dimmer_target_id)
 			_set_target_intensity_state(output_id, fixture_uuid, dimmer_norm, beam_energy, spot_energy, beam_intensity, material_energy)
 			var result: Dictionary = _queue_or_apply_output(loader, fixture_uuid, output_id, output_record, changed_mask)
+			commit_deferred = commit_deferred or bool(result.get("commit_deferred", false))
 			lights_mutated += int(result.get("lights_mutated", 0))
 			beams_mutated += int(result.get("beams_mutated", 0))
 			materials_mutated += int(result.get("materials_mutated", 0))
@@ -239,7 +244,7 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 	if mutable_resources <= 0:
 		return {"dimmer_requested": true, "target_resolved": true, "lights_considered": 0, "lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "visible_output_after_apply": false, "dimmer_applied": false, "failed": 1, "failure_reason": "target has no mutable Dimmer resources"}
 	var emitter_lights_count: int = int(target_record.get("emitter_anchors", target_record.get("emitter_lights", [])).size())
-	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": resolved_lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": true, "unchanged": mutations == 0, "failed": 0, "failure_reason": ""}
+	return {"dimmer_requested": true, "target_resolved": true, "lights_considered": emitter_lights_count, "beam_instances_considered": beam_instances.size(), "lens_material_targets_considered": resolved_lens_material_targets.size(), "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_output_after_apply": visible_lights > 0 or visible_beams > 0 or _any_beam_instance_visible(beam_instances) or material_energy > 0.0001, "dimmer_applied": true, "commit_deferred": commit_deferred, "unchanged": mutations == 0 and not commit_deferred, "failed": 0, "failure_reason": ""}
 
 func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: int, changed_mask: int, beam_color: Color, color_gain: float) -> Dictionary:
 	if color_target_id <= 0 or (loader.has_method("_has_native_color_target") and not loader._has_native_color_target(color_target_id)):
@@ -250,12 +255,14 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: in
 	var materials_mutated: int = 0
 	var lights_mutated: int = 0
 	var beams_mutated: int = 0
+	var commit_deferred: bool = false
 	if not output_records.is_empty():
 		for output_item in output_records:
 			var output_record: Dictionary = output_item
 			var output_id: int = _output_id_from_record(output_record, color_target_id)
 			_set_target_color_state(output_id, fixture_uuid, beam_color, color_gain)
 			var result: Dictionary = _queue_or_apply_output(loader, fixture_uuid, output_id, output_record, changed_mask)
+			commit_deferred = commit_deferred or bool(result.get("commit_deferred", false))
 			lights_mutated += int(result.get("lights_mutated", 0))
 			beams_mutated += int(result.get("beams_mutated", 0))
 			materials_mutated += int(result.get("materials_mutated", 0))
@@ -283,7 +290,7 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: in
 				else:
 					beams_mutated += _set_beam_visible(beam, false)
 	var mutations: int = lights_mutated + beams_mutated + materials_mutated
-	return {"color_requested": true, "target_resolved": true, "color_applied": true, "unchanged": mutations == 0, "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "failed": 0, "color_gain": color_gain}
+	return {"color_requested": true, "target_resolved": true, "color_applied": true, "commit_deferred": commit_deferred, "unchanged": mutations == 0 and not commit_deferred, "lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "failed": 0, "color_gain": color_gain}
 
 func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int, _changed_mask: int, beam_half_angle: float, beam_angle: float, zoom_norm: float) -> Dictionary:
 	if optics_target_id <= 0 or (loader.has_method("_has_native_optics_target") and not loader._has_native_optics_target(optics_target_id)):

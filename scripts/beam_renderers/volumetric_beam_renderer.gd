@@ -4,13 +4,13 @@ class_name VolumetricBeamRenderer
 
 const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 const BEAM_META_KEY: String = "peraviz_volumetric_beam"
-const VOLUMETRIC_INTENSITY_SCALE: float = 4.0
-const VOLUMETRIC_INTENSITY_RESPONSE_EXPONENT: float = 2.2
-const INTENSITY_REFERENCE_MAX: float = 20.0
-const VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX: float = 30.0
 const DEBUG_AXIS_KEY: String = "peraviz_beam_debug_axis"
 const SHAPE_MODE_GOBO_PRISM: String = "gobo_prism"
 const SHAPE_MODE_CONE: String = "cone"
+const DYNAMIC_STATE_META_KEY: String = "peraviz_beam_dynamic_state"
+const DYNAMIC_STATE_APPLIED_META_KEY: String = "peraviz_beam_dynamic_state_applied"
+const INTENSITY_MAX_DESIRED_META_KEY: String = "peraviz_beam_intensity_max_desired"
+const INTENSITY_MAX_META_KEY: String = "peraviz_beam_intensity_max"
 
 var _beam_material_template: ShaderMaterial
 var _camera: Camera3D
@@ -59,19 +59,14 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
-	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
-	var beam_intensity_norm: float = clamp(intensity / reference_max, 0.0, 1.0)
-	var perceptual_intensity: float = pow(beam_intensity_norm, VOLUMETRIC_INTENSITY_RESPONSE_EXPONENT)
-	var overdrive_norm: float = 0.0
-	if intensity_max > reference_max:
-		overdrive_norm = clamp((intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
 	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 
 	if intensity <= threshold:
 		beam.visible = false
-		beam.set_instance_shader_parameter("beam_visibility", 0.0)
+		_store_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
+		beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
 		_sync_debug_axis(light, false)
 		return
 	_sync_debug_axis(light, bool(params.get("beam_debug_optics", false)))
@@ -87,19 +82,14 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 	beam.visible = true
 
-	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
-	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
-	beam.set_instance_shader_parameter("beam_visibility", 1.0)
-	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
-	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
+	_apply_intensity_max(beam, intensity_max)
+	_apply_dynamic_state(beam, beam_color, intensity)
 	_apply_static_beam_params(beam, params)
 	beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
 	beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
 	GoboRotationPresentationScript.reapply_after_base_alignment(beam, beam_rotation_deg)
 	beam.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
 	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
-	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
-	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
 	_apply_beam_material_params(beam, beam_range, shape_result)
 
 func _compute_beam_settings_hash() -> int:
@@ -164,34 +154,40 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 		return INTENSITY_UNCHANGED
 	if intensity > threshold and not is_beam_dynamic_ready(light):
 		return INTENSITY_UNRESOLVED
-	var signature: Array = [intensity, intensity_max, threshold, params.get("beam_color", Color.WHITE)]
-	if beam.get_meta("peraviz_intensity_signature", []) == signature:
+	var beam_color: Color = params.get("beam_color", Color.WHITE)
+	var dynamic_state := Color(beam_color.r, beam_color.g, beam_color.b, intensity)
+	var signature := Color(dynamic_state.r, dynamic_state.g, dynamic_state.b, threshold)
+	if beam.get_meta("peraviz_intensity_signature", Color(-1.0, -1.0, -1.0, -1.0)) == signature and float(beam.get_meta(DYNAMIC_STATE_META_KEY, Color(0.0, 0.0, 0.0, 0.0)).a) == intensity and float(beam.get_meta(INTENSITY_MAX_DESIRED_META_KEY, -1.0)) == intensity_max:
 		return INTENSITY_UNCHANGED
 	beam.set_meta("peraviz_intensity_signature", signature)
+	_store_dynamic_state(beam, beam_color, intensity)
+	beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
 	if intensity <= threshold:
 		beam.visible = false
-		beam.set_instance_shader_parameter("beam_visibility", 0.0)
 		_sync_debug_axis(light, false)
-		_last_parameter_write_count = 1
 		return INTENSITY_CHANGED
 
-	var reference_max: float = max(INTENSITY_REFERENCE_MAX, 0.01)
-	var beam_intensity_norm: float = clamp(intensity / reference_max, 0.0, 1.0)
-	var perceptual_intensity: float = pow(beam_intensity_norm, VOLUMETRIC_INTENSITY_RESPONSE_EXPONENT)
-	var overdrive_norm: float = 0.0
-	if intensity_max > reference_max:
-		overdrive_norm = clamp((intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
-	var beam_color: Color = params.get("beam_color", Color.WHITE)
-	var intensity_alpha: float = clamp((intensity / reference_max) * VOLUMETRIC_INTENSITY_SCALE, 0.0, 3.6)
-	var overdrive_brightness_gain: float = lerp(1.0, VOLUMETRIC_OVERDRIVE_BRIGHTNESS_MAX, overdrive_norm)
+	_apply_intensity_max(beam, intensity_max)
 	beam.visible = true
-	beam.set_instance_shader_parameter("base_color", Color(beam_color.r, beam_color.g, beam_color.b, intensity_alpha))
-	beam.set_instance_shader_parameter("beam_visibility", 1.0)
-	beam.set_instance_shader_parameter("max_brightness", lerp(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain)
-	beam.set_instance_shader_parameter("beam_intensity", perceptual_intensity)
-	beam.set_instance_shader_parameter("beam_overdrive", overdrive_norm)
-	_last_parameter_write_count = 5
+	_apply_dynamic_state(beam, beam_color, intensity)
 	return INTENSITY_CHANGED
+
+func _store_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) -> void:
+	beam.set_meta(DYNAMIC_STATE_META_KEY, Color(color.r, color.g, color.b, intensity))
+
+func _apply_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) -> void:
+	var dynamic_state := Color(color.r, color.g, color.b, intensity)
+	if beam.get_meta(DYNAMIC_STATE_APPLIED_META_KEY, Color(-1.0, -1.0, -1.0, -1.0)) == dynamic_state:
+		return
+	beam.set_meta(DYNAMIC_STATE_APPLIED_META_KEY, dynamic_state)
+	beam.set_instance_shader_parameter("beam_dynamic_state", dynamic_state)
+	_last_parameter_write_count += 1
+
+func _apply_intensity_max(beam: MeshInstance3D, intensity_max: float) -> void:
+	if is_equal_approx(float(beam.get_meta(INTENSITY_MAX_META_KEY, -1.0)), intensity_max):
+		return
+	beam.set_meta(INTENSITY_MAX_META_KEY, intensity_max)
+	beam.set_instance_shader_parameter("intensity_max", intensity_max)
 
 func get_last_parameter_write_count() -> int:
 	return _last_parameter_write_count
