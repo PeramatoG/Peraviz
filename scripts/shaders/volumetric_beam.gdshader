@@ -3,7 +3,7 @@ render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabl
 
 uniform sampler2D DEPTH_TEXTURE : hint_depth_texture, filter_linear_mipmap;
 
-instance uniform vec4 base_color : source_color = vec4(1.0, 0.95, 0.85, 0.5);
+instance uniform vec4 beam_dynamic_state : source_color = vec4(1.0, 0.95, 0.85, 0.0);
 uniform float falloff_power : hint_range(0.1, 10.0) = 2.2;
 uniform float facing_boost : hint_range(0.0, 10.0) = 2.2;
 uniform float facing_power : hint_range(0.1, 20.0) = 1.8;
@@ -14,7 +14,7 @@ uniform float near_fade_start : hint_range(0.0, 50.0) = 0.01;
 uniform float near_fade_end : hint_range(0.0, 50.0) = 1.0;
 uniform float far_fade_start : hint_range(0.1, 100.0) = 25.0;
 uniform float far_fade_end : hint_range(0.1, 100.0) = 80.0;
-instance uniform float max_brightness : hint_range(1.0, 500.0) = 10.0;
+instance uniform float intensity_max = 100.0;
 uniform bool depth_feather_enabled = true;
 uniform float depth_fade_distance : hint_range(0.01, 5.0) = 0.5;
 uniform sampler2D gobo_texture : source_color;
@@ -34,15 +34,13 @@ instance uniform float beam_softness = 0.35;
 instance uniform float gobo_scale = 1.0;
 instance uniform float gobo_rotation_deg = 0.0;
 instance uniform float haze_density = 0.35;
-instance uniform float beam_intensity : hint_range(0.0, 1.0) = 1.0;
-instance uniform float beam_overdrive : hint_range(0.0, 1.0) = 0.0;
-instance uniform float beam_visibility : hint_range(0.0, 1.0) = 1.0;
 uniform bool gobo_mirror_x = true;
 uniform bool gobo_mirror_z = false;
 
 
 varying vec3 v_view;
 varying vec3 v_local;
+varying flat vec4 v_beam_response;
 
 vec2 project_gobo_uv(vec3 local_pos) {
 	float source_y = 0.5 * cone_height;
@@ -102,6 +100,17 @@ float sample_gobo_mask(vec2 uv) {
 }
 
 void vertex() {
+	float raw_intensity = max(beam_dynamic_state.a, 0.0);
+	float beam_intensity_norm = clamp(raw_intensity / 20.0, 0.0, 1.0);
+	float beam_intensity = pow(beam_intensity_norm, 2.2);
+	float beam_overdrive = 0.0;
+	if (intensity_max > 20.0) {
+		beam_overdrive = clamp((raw_intensity - 20.0) / (intensity_max - 20.0), 0.0, 1.0);
+	}
+	float intensity_alpha_input = clamp((raw_intensity / 20.0) * 4.0, 0.0, 3.6);
+	float overdrive_brightness_gain = mix(1.0, 30.0, beam_overdrive);
+	float max_brightness = mix(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain;
+	v_beam_response = vec4(beam_intensity, beam_overdrive, intensity_alpha_input, max_brightness);
 	if (use_normalized_gobo_topology) {
 		float axial = clamp(0.5 - VERTEX.y, 0.0, 1.0);
 		float radius = mix(topology_near_radius, topology_far_radius, axial);
@@ -116,9 +125,10 @@ float get_linear_depth(float raw_depth, mat4 inv_proj_mat) {
 }
 
 void fragment() {
-	if (beam_visibility <= 0.001) {
-		discard;
-	}
+	float beam_intensity = v_beam_response.x;
+	float beam_overdrive = v_beam_response.y;
+	float intensity_alpha_input = v_beam_response.z;
+	float max_brightness = v_beam_response.w;
 	float dist = length(v_view);
 	float near_alpha = smoothstep(near_fade_start, near_fade_end, dist);
 	float far_alpha = 1.0 - smoothstep(far_fade_start, far_fade_end, dist);
@@ -127,7 +137,7 @@ void fragment() {
 	float source_y = 0.5 * cone_height;
 	float axial_progress = clamp((source_y - v_local.y) / max(cone_height, 0.0001), 0.0, 1.0);
 	float apex_fade = pow(max(1.0 - axial_progress, 0.001), max(falloff_power * longitudinal_falloff, 0.1));
-	float base_brightness = base_color.a * apex_fade;
+	float base_brightness = intensity_alpha_input * apex_fade;
 
 	vec3 n = normalize(NORMAL);
 	vec3 v = normalize(-v_view);
@@ -153,9 +163,8 @@ void fragment() {
 
 
 
-	float boosted_intensity = clamp(beam_intensity + (1.25 * beam_overdrive), 0.0, 2.0);
 	float intensity_alpha = 0.25 + (0.9 * clamp(beam_intensity, 0.0, 1.0)) + (0.95 * beam_overdrive);
-	float visibility = clamp(beam_visibility, 0.0, 1.0);
+	float visibility = 1.0;
 	float overdrive_alpha_gain = 1.0 + (2.6 * beam_overdrive);
 	float physical_alpha = feather_alpha * radial_profile * depth_mult * dist_fade * max(haze_density, 0.2) * intensity_alpha * overdrive_alpha_gain * visibility;
 	float radial_alpha_floor = 0.04 * visibility * mix(0.25, 1.0, pow(clamp(radial_profile, 0.0, 1.0), 1.2)) * mix(1.0, 1.6, beam_overdrive);
@@ -167,7 +176,7 @@ void fragment() {
 		gobo_mask = sample_gobo_mask(gobo_uv);
 	}
 
-	ALBEDO = base_color.rgb * brightness * gobo_mask;
+	ALBEDO = beam_dynamic_state.rgb * brightness * gobo_mask;
 	ALPHA = clamp(final_alpha * max(gobo_mask, 0.8), 0.0, 1.0);
 	EMISSION = ALBEDO * (1.6 + (8.0 * clamp(beam_intensity, 0.0, 1.0)) + (34.0 * beam_overdrive));
 }

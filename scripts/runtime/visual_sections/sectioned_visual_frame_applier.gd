@@ -50,6 +50,7 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 	_native_now_seconds = float(snapshot.get("runtime_now_seconds", 0.0))
 	if descriptors.is_empty() or descriptors.size() % DESCRIPTOR_STRIDE != 0:
 		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}, "skip_diagnostics": _new_skip_diagnostics()}
+	light_apply_service.begin_visual_snapshot()
 	var counts: Dictionary = _new_counts()
 	var skip_diagnostics: Dictionary = _new_skip_diagnostics()
 	var updated_fixtures: Dictionary = {}
@@ -98,6 +99,8 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 				continue
 			updated_fixtures[fixture_uuid] = true
 			applied_rows += 1
+	# Renderer mutation is deferred past all semantic sections so optics and gobos observe final held state.
+	light_apply_service.end_visual_snapshot()
 	return {"updated": updated_fixtures.size(), "skipped": skipped, "fixtures_considered": updated_fixtures.size() + skipped, "visual_mask_counts": counts, "targets_applied": applied_rows, "targets_failed": failed_rows, "skip_diagnostics": skip_diagnostics}
 
 func _new_counts() -> Dictionary:
