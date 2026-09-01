@@ -69,7 +69,7 @@ func get_debug_counters() -> Dictionary:
 func set_shadow_mask_enabled(light: SpotLight3D, enabled: bool) -> void:
 	if light == null or not is_instance_valid(light):
 		return
-	var texture: Texture2D = light.get_meta(GOBO_TEXTURE_META_KEY, null) as Texture2D
+	var texture: Texture2D = light.get_meta(GOBO_TEXTURE_META_KEY) as Texture2D if light.has_meta(GOBO_TEXTURE_META_KEY) else light.light_projector
 	if not enabled or texture == null:
 		_remove_gobo_plane(light)
 		return

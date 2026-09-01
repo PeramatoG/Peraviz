@@ -112,7 +112,7 @@ var _visual_settings := {
 	"beam_debug_optics": false,
 	"beam_visual_length_m": 75.0,
 	"ambient_fog_density": 0.0,
-	"volumetric_fog_density": 0.0,
+	"volumetric_fog_density": 0.0015,
 	"volumetric_fog_fade": 0.02,
 	"light_volumetric_fog_energy": 12.0,
 	"use_native_fog_projector_gobos": true,
@@ -443,7 +443,8 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 		if world_environment.environment.fog_enabled:
 			world_environment.environment.fog_density = ambient_fog_density
 		var volumetric_fog_density: float = max(float(_visual_settings.get("volumetric_fog_density", 0.0)), 0.0)
-		world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001
+		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 0)) != 1
+		world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001 or presentation_uses_fog
 		world_environment.environment.volumetric_fog_density = volumetric_fog_density
 		if _environment_has_property(world_environment.environment, "volumetric_fog_fade"):
 			world_environment.environment.volumetric_fog_fade = max(float(_visual_settings.get("volumetric_fog_fade", 0.02)), 0.005)
@@ -2211,7 +2212,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	if gobo_topology_changed:
 		_emitter_mesh_rebuild_count += 1
 		_cleanup_light_beam_renderers(light)
-	beam_params["gobo_texture"] = light.get_meta("peraviz_gobo_texture", null)
+	beam_params["gobo_texture"] = light.get_meta("peraviz_gobo_texture") if light.has_meta("peraviz_gobo_texture") else null
 	_set_light_property_float(light, "light_volumetric_fog_energy", float(_visual_settings.get("light_volumetric_fog_energy", 12.0)) * float(_visual_settings.get("haze_density_multiplier", 0.22)), last_state)
 	var beam_phase_start: int = Time.get_ticks_usec()
 	_update_beam_for_light(light, beam_params)

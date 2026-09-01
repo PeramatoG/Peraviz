@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS := {
 	"lens_shift_y": 0.0,
 	"beam_debug_optics": false,
 	"ambient_fog_density": 0.0,
-	"volumetric_fog_density": 0.0,
+	"volumetric_fog_density": 0.0015,
 	"volumetric_fog_fade": 0.02,
 	"light_volumetric_fog_energy": 12.0,
 	"use_native_fog_projector_gobos": true,

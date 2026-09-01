@@ -4,6 +4,8 @@ class_name FogVolumeGoboBeamController
 const FOG_VOLUME_NODE_NAME: String = "PeravizFogVolumeGoboBeam"
 const FOG_SHADER_PATH: String = "res://scripts/shaders/fog_volume_gobo_beam.gdshader"
 
+var _open_texture: Texture2D
+
 func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture: Texture2D, visual_settings: Dictionary) -> void:
 	if light == null or not is_instance_valid(light):
 		return
@@ -25,7 +27,7 @@ func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture:
 	var fog_material: ShaderMaterial = fog_volume.material as ShaderMaterial
 	if fog_material == null:
 		return
-	fog_material.set_shader_parameter("gobo_texture", gobo_texture)
+	fog_material.set_shader_parameter("gobo_texture", gobo_texture if gobo_texture != null else _get_open_texture())
 	fog_material.set_shader_parameter("use_gobo", gobo_texture != null)
 	fog_material.set_shader_parameter("light_color", Color(beam_params.get("beam_color", Color.WHITE)))
 	fog_material.set_shader_parameter("intensity", scaled_intensity / max(float(beam_params.get("intensity_max", 100.0)), 0.01))
@@ -60,3 +62,11 @@ func _ensure_volume(light: SpotLight3D) -> FogVolume:
 	fog_material.shader = load(FOG_SHADER_PATH)
 	light.add_child(fog_volume)
 	return fog_volume
+
+func _get_open_texture() -> Texture2D:
+	if _open_texture != null:
+		return _open_texture
+	var image := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	image.fill(Color.WHITE)
+	_open_texture = ImageTexture.create_from_image(image)
+	return _open_texture

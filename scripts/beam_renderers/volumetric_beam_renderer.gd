@@ -233,7 +233,7 @@ func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var existing: MeshInstance3D = get_beam_resource(light)
 	if existing != null:
 		existing.visible = false
-	var gobo_texture: Texture2D = light.get_meta("peraviz_gobo_texture", null) as Texture2D
+	var gobo_texture: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
 	if _presentation_mode == PRESENTATION_FOG_VOLUME:
 		_fog_controller.update_for_light(light, params, gobo_texture, _settings)
 	else:

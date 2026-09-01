@@ -24,15 +24,8 @@ void fog() {
 	vec2 projected = (UVW.xy - vec2(0.5)) / depth_t;
 	projected = rotate2d(projected / max(gobo_scale, 0.05), radians(gobo_rotation_deg));
 	vec2 projected_uv = projected * 0.5 + vec2(0.5);
-
-	if (projected_uv.x < 0.0 || projected_uv.x > 1.0 || projected_uv.y < 0.0 || projected_uv.y > 1.0) {
-		DENSITY = 0.0;
-		ALBEDO = vec3(0.0);
-		EMISSION = vec3(0.0);
-		return;
-	}
-
-	vec4 gobo_sample = texture(gobo_texture, projected_uv);
+	float projected_bounds = float(projected_uv.x >= 0.0 && projected_uv.x <= 1.0 && projected_uv.y >= 0.0 && projected_uv.y <= 1.0);
+	vec4 gobo_sample = texture(gobo_texture, clamp(projected_uv, vec2(0.0), vec2(1.0)));
 	float gobo_intensity = use_gobo ? clamp(dot(gobo_sample.rgb, vec3(0.299, 0.587, 0.114)) * gobo_sample.a, 0.0, 1.0) : 1.0;
 	if (invert_gobo) {
 		gobo_intensity = 1.0 - gobo_intensity;
@@ -42,7 +35,7 @@ void fog() {
 	float radial_mask = pow(clamp(1.0 - radial, 0.0, 1.0), max(radial_falloff, 0.05));
 	float edge_mask = smoothstep(edge_softness, edge_softness - 0.1, radial);
 	float longitudinal_mask = pow(depth_t, max(longitudinal_falloff, 0.05));
-	float final_mask = radial_mask * edge_mask * longitudinal_mask;
+	float final_mask = radial_mask * edge_mask * longitudinal_mask * projected_bounds;
 
 	// Emission is an intentionally predictable presentation approximation; density stays zero to avoid cross-light fog coupling.
 	DENSITY = 0.0;

@@ -14,7 +14,7 @@ Godot 4.7 does not apply `light_projector` textures to volumetric fog. The nativ
 
 One cone `FogVolume` follows each relevant emitter along renderer-child local `-Z`. Its shader projects every froxel sample back toward the aperture before sampling the composed mask, so openings form coherent shafts rather than a texture wrapped around a cone. Open slots use a continuous circular field. Rotation, scale, color, and intensity are parameter updates and do not rebuild topology.
 
-The shader deliberately uses emission with zero contributed density. This is a predictable presentation approximation, not physically authoritative light scattering; it avoids density from overlapping fixture volumes changing how unrelated lights scatter. It consequently does not react to scene shadows. The project retains its conservative 64 by 64 froxel settings.
+The shader deliberately uses emission with zero contributed density. This is a predictable presentation approximation, not physically authoritative light scattering; it avoids density from overlapping fixture volumes changing how unrelated lights scatter. It consequently does not react to scene shadows. Peraviz enables volumetric processing for this presentation and starts with a conservative `0.0015` environment density while retaining its 64 by 64 froxel settings.
 
 ### Vector Gobo Prism (Reference)
 
