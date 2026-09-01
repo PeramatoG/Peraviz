@@ -37,8 +37,8 @@ void fog() {
 	float longitudinal_mask = pow(depth_t, max(longitudinal_falloff, 0.05));
 	float final_mask = radial_mask * edge_mask * longitudinal_mask * projected_bounds;
 
-	// Emission is an intentionally predictable presentation approximation; density stays zero to avoid cross-light fog coupling.
-	DENSITY = 0.0;
-	ALBEDO = light_color.rgb;
+	// A small density keeps Godot's fog integration active while black albedo prevents unrelated lights from coloring this volume.
+	DENSITY = 0.01 * final_mask;
+	ALBEDO = vec3(0.0);
 	EMISSION = light_color.rgb * emission_strength * intensity * gobo_intensity * final_mask * density_scale;
 }

@@ -526,7 +526,8 @@ func _update_desired_light_state(light: SpotLight3D, energy: float, angle: float
 
 func _apply_desired_light_state(loader: Node, light: SpotLight3D) -> int:
 	var state: Dictionary = _light_desired_for(light)
-	var enabled: bool = _should_enable_realtime_spotlight(loader, bool(state.get("visible", false))) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
+	var requested_visible: bool = bool(state.get("visible", false))
+	var enabled: bool = (_should_enable_realtime_spotlight(loader, requested_visible) or _requires_realtime_spotlight(loader, light, requested_visible)) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
 	var writes: int = 0
 	var property_writes: int = 0
 	if enabled:
@@ -898,9 +899,10 @@ func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible
 	_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1
 
 # Keeps the light node available as a beam parent while independently gating the real SpotLight RID.
-func _apply_canonical_light_visibility(_loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> int:
+func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> int:
 	if light == null or not is_instance_valid(light):
 		return 0
+	real_spot_visible = real_spot_visible or _requires_realtime_spotlight(loader, light, visible)
 	var writes: int = 0
 	if light.visible != visible:
 		light.visible = visible
@@ -942,6 +944,14 @@ func _should_enable_realtime_spotlight(loader: Node, visible: bool) -> bool:
 	if settings is Dictionary:
 		return bool((settings as Dictionary).get("enable_realtime_spotlights", false))
 	return false
+
+func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: bool) -> bool:
+	if not visible or light == null or not is_instance_valid(light):
+		return false
+	if light.light_projector != null:
+		return true
+	var settings: Variant = loader.get("_visual_settings") if loader != null else null
+	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 0)) == 2
 
 # Emits a one-time diagnostic message for live visual-frame state transitions.
 func _is_visual_debug_logging_enabled(loader: Node) -> bool:

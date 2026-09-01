@@ -2213,7 +2213,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		_emitter_mesh_rebuild_count += 1
 		_cleanup_light_beam_renderers(light)
 	beam_params["gobo_texture"] = light.get_meta("peraviz_gobo_texture") if light.has_meta("peraviz_gobo_texture") else null
-	_set_light_property_float(light, "light_volumetric_fog_energy", float(_visual_settings.get("light_volumetric_fog_energy", 12.0)) * float(_visual_settings.get("haze_density_multiplier", 0.22)), last_state)
+	_set_light_property_float(light, "light_volumetric_fog_energy", float(_visual_settings.get("light_volumetric_fog_energy", 12.0)), last_state)
 	var beam_phase_start: int = Time.get_ticks_usec()
 	_update_beam_for_light(light, beam_params)
 	if _fixture_light_apply_service != null:

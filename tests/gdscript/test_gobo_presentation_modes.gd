@@ -2,9 +2,14 @@ extends SceneTree
 
 const FixtureGoboProjectorScript = preload("res://scripts/fixture_gobo_projector.gd")
 const VolumetricBeamRendererScript = preload("res://scripts/beam_renderers/volumetric_beam_renderer.gd")
+const FixtureLightApplyServiceScript = preload("res://scripts/runtime/fixture_light_apply_service.gd")
 const HeadlessTestCaseScript = preload("res://tests/gdscript/headless_test_case.gd")
 
 var test = HeadlessTestCaseScript.new()
+
+class VisualLoader:
+	extends Node
+	var _visual_settings: Dictionary = {"enable_realtime_spotlights": false, "beam_presentation": 1}
 
 func _init() -> void:
 	call_deferred("_run")
@@ -28,6 +33,17 @@ func _run() -> void:
 	projector.apply_gobo_projection(light, {"has_gobo": false, "gobo_runtime_bindings": []})
 	test.check(light.light_projector == null and not light.has_meta("peraviz_gobo_texture"), "An open slot must leave normal unmasked spot lighting")
 
+	var loader := VisualLoader.new()
+	get_root().add_child(loader)
+	var apply_service = FixtureLightApplyServiceScript.new()
+	projector._set_light_projector_texture(light, texture)
+	apply_service._apply_canonical_light_visibility(loader, light, true, false)
+	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "An active surface projector must keep its realtime SpotLight RID visible")
+	projector._set_light_projector_texture(light, null)
+	loader._visual_settings["beam_presentation"] = 2
+	apply_service._apply_canonical_light_visibility(loader, light, true, false)
+	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Native Shadow mode must keep the realtime SpotLight RID visible without a gobo")
+
 	var renderer = VolumetricBeamRendererScript.new()
 	var params := {"beam_type": "Spot", "beam_range": 8.0, "beam_angle": 20.0, "scaled_intensity": 10.0, "intensity_max": 50.0, "beam_color": Color.WHITE}
 	for mode in [0, 1, 2, 0]:
@@ -45,6 +61,7 @@ func _run() -> void:
 			var vector_beam: MeshInstance3D = renderer.get_beam_resource(light)
 			test.check(vector_beam != null and vector_beam.mesh != null and vector_beam.visible, "Vector Prism mode must retain visible gobo-equipped beams")
 	renderer.cleanup_beam(light)
+	loader.queue_free()
 	light.queue_free()
 	await process_frame
 	test.finish(self)

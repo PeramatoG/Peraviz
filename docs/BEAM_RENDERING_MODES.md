@@ -14,7 +14,7 @@ Godot 4.7 does not apply `light_projector` textures to volumetric fog. The nativ
 
 One cone `FogVolume` follows each relevant emitter along renderer-child local `-Z`. Its shader projects every froxel sample back toward the aperture before sampling the composed mask, so openings form coherent shafts rather than a texture wrapped around a cone. Open slots use a continuous circular field. Rotation, scale, color, and intensity are parameter updates and do not rebuild topology.
 
-The shader deliberately uses emission with zero contributed density. This is a predictable presentation approximation, not physically authoritative light scattering; it avoids density from overlapping fixture volumes changing how unrelated lights scatter. It consequently does not react to scene shadows. Peraviz enables volumetric processing for this presentation and starts with a conservative `0.0015` environment density while retaining its 64 by 64 froxel settings.
+The shader deliberately uses emission with a small integration density and black albedo. This is a predictable presentation approximation, not physically authoritative light scattering; black albedo prevents unrelated lights from coloring the custom volume while the nonzero density keeps Godot's fog integration active. It does not react to scene shadows. Peraviz enables volumetric processing for this presentation and starts with a conservative `0.0015` environment density while retaining its 64 by 64 froxel settings.
 
 ### Vector Gobo Prism (Reference)
 
@@ -23,6 +23,8 @@ The existing cached vectorized prism remains the reference and fallback. It repr
 ### Native Fog + Shadow Gobo (Experimental)
 
 This mode uses no visible custom beam mesh. It enables environment volumetric fog and places a small alpha-scissored, shadows-only quad at the aperture. Open texels transmit the real spotlight; closed texels cast a shadow into fog. The light projector remains responsible for the crisp surface image. Stable-engine froxel and shadow resolution can make the fog pattern soft or unstable at distance.
+
+Peraviz keeps the realtime spotlight renderer instance active whenever this mode is selected, and whenever any presentation has an active surface projector. This is independent from the optional all-fixture realtime spotlight policy.
 
 ## Coordinates and lifecycle
 
