@@ -85,7 +85,7 @@ var _visual_settings := {
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
-	"beam_presentation": 0,
+	"beam_presentation": 1,
 	"beam_quality": 2,
 	"use_fog_volume_gobo_beam": false,
 	"fog_volume_density_scale": 1.1,
@@ -112,7 +112,7 @@ var _visual_settings := {
 	"beam_debug_optics": false,
 	"beam_visual_length_m": 75.0,
 	"ambient_fog_density": 0.0,
-	"volumetric_fog_density": 0.0015,
+	"volumetric_fog_density": 0.0,
 	"volumetric_fog_fade": 0.02,
 	"light_volumetric_fog_energy": 12.0,
 	"use_native_fog_projector_gobos": true,
@@ -146,6 +146,7 @@ var _fixture_light_apply_service: FixtureLightApplyService
 var _live_gobo_diagnostic_keys: Dictionary = {}
 var _active_beam_renderer: BeamRendererBase
 var _active_beam_mode: int = -1
+var _active_beam_presentation: int = 1
 
 const BeamRendererBaseScript = preload("res://scripts/beam_renderers/beam_renderer_base.gd")
 const LegacyConeBeamRendererScript = preload("res://scripts/beam_renderers/legacy_cone_beam_renderer.gd")
@@ -443,7 +444,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 		if world_environment.environment.fog_enabled:
 			world_environment.environment.fog_density = ambient_fog_density
 		var volumetric_fog_density: float = max(float(_visual_settings.get("volumetric_fog_density", 0.0)), 0.0)
-		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 0)) != 1
+		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 1)) != 1
 		world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001 or presentation_uses_fog
 		world_environment.environment.volumetric_fog_density = volumetric_fog_density
 		if _environment_has_property(world_environment.environment, "volumetric_fog_fade"):
@@ -459,7 +460,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 
 	var beam_scalar_changed: bool = (
 		not is_equal_approx(float(previous_settings.get("beam_multiplier", 20.0)), float(_visual_settings.get("beam_multiplier", 20.0)))
-		or int(previous_settings.get("beam_presentation", 0)) != int(_visual_settings.get("beam_presentation", 0))
+		or int(previous_settings.get("beam_presentation", 1)) != int(_visual_settings.get("beam_presentation", 1))
 	)
 	if beam_scalar_changed:
 		_refresh_existing_beam_material_scalars()
@@ -507,7 +508,9 @@ func _update_beam_renderer_mode(force_refresh: bool) -> void:
 	if requested_renderer == null:
 		return
 
-	if force_refresh or requested_mode != _active_beam_mode:
+	var requested_presentation: int = int(_visual_settings.get("beam_presentation", VolumetricBeamRendererScript.PRESENTATION_VECTOR_PRISM))
+	var presentation_changed: bool = requested_presentation != _active_beam_presentation
+	if force_refresh or requested_mode != _active_beam_mode or presentation_changed:
 		for fixture_uuid in _fixture_emitter_light_cache.keys():
 			var lights: Array = _fixture_emitter_light_cache.get(fixture_uuid, [])
 			for light_node in lights:
@@ -515,6 +518,7 @@ func _update_beam_renderer_mode(force_refresh: bool) -> void:
 					_cleanup_light_beam_renderers(light_node)
 
 	_active_beam_mode = requested_mode
+	_active_beam_presentation = requested_presentation
 	_active_beam_renderer = requested_renderer
 	if _status_presenter != null:
 		var render_mode_label: String = "Volumetric" if _active_beam_mode == BEAM_RENDER_MODE_VOLUMETRIC else "Legacy"
@@ -541,7 +545,7 @@ func _refresh_existing_beam_material_scalars() -> void:
 		for light in lights:
 			if light is SpotLight3D and is_instance_valid(light):
 				if _fixture_gobo_projector != null:
-					_fixture_gobo_projector.set_shadow_mask_enabled(light, int(_visual_settings.get("beam_presentation", 0)) == 2)
+					_fixture_gobo_projector.set_shadow_mask_enabled(light, int(_visual_settings.get("beam_presentation", 1)) == 2)
 				_update_existing_beam_material_scalars(light)
 
 func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
@@ -576,6 +580,7 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void
 	light.set_meta("peraviz_beam_last_params", beam_params)
 	_active_beam_renderer.ensure_beam(light)
 	_active_beam_renderer.update_beam(light, beam_params)
+	_native_target_registry.rebind_beam_resource(light, _active_beam_renderer.get_beam_resource(light))
 
 func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
 	if light == null or not is_instance_valid(light) or not light.has_meta("peraviz_beam_last_params"):
@@ -1814,7 +1819,7 @@ func _apply_live_visual_gobo_to_light(fixture_uuid: String, light: SpotLight3D, 
 		"gobo_debug_shake_frequency_hz": controls.get("gobo_debug_shake_frequency_hz", 0.0),
 		"gobo_debug_shake_waveform": controls.get("gobo_debug_shake_waveform", 0),
 		"frame_delta_sec": visual_gobo_state.get("frame_delta_sec", controls.get("frame_delta_sec", 0.0)),
-		"prefer_native_fog_projector": controls.get("prefer_native_fog_projector", true),
+		"use_native_shadow_gobo_mask": int(_visual_settings.get("beam_presentation", 1)) == 2,
 		"gobo_scale": controls.get("gobo_scale", 1.0),
 		"gobo_slots": resolved_gobo_controls.get("gobo_slots", []),
 		"gobo_runtime_bindings": resolved_gobo_controls.get("gobo_runtime_bindings", []),
@@ -2191,7 +2196,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 			"gobo_debug_shake_frequency_hz": controls.get("gobo_debug_shake_frequency_hz", 0.0),
 			"gobo_debug_shake_waveform": controls.get("gobo_debug_shake_waveform", 0),
 			"frame_delta_sec": controls.get("frame_delta_sec", 0.0),
-			"prefer_native_fog_projector": controls.get("prefer_native_fog_projector", true),
+			"use_native_shadow_gobo_mask": int(_visual_settings.get("beam_presentation", 1)) == 2,
 			"gobo_scale": controls.get("gobo_scale", 1.0),
 			"gobo_slots": resolved_gobo_controls.get("gobo_slots", []),
 			"gobo_runtime_bindings": resolved_gobo_controls.get("gobo_runtime_bindings", []),

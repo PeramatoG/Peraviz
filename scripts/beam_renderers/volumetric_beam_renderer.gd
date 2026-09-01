@@ -23,7 +23,7 @@ var _beam_settings_hash: int = 0
 var _shape_providers: Dictionary = {}
 var _active_shape_provider: VolumetricBeamShapeProvider
 var _last_parameter_write_count: int = 0
-var _presentation_mode: int = PRESENTATION_FOG_VOLUME
+var _presentation_mode: int = PRESENTATION_VECTOR_PRISM
 var _fog_controller: FogVolumeGoboBeamController = FogVolumeControllerScript.new()
 
 func _init() -> void:
@@ -41,6 +41,8 @@ func configure(view_camera: Camera3D, settings: Dictionary) -> void:
 	_active_shape_provider = _select_shape_provider()
 
 func ensure_beam(light: SpotLight3D) -> void:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
+		return
 	if light.has_meta(BEAM_META_KEY):
 		return
 	var beam := MeshInstance3D.new()

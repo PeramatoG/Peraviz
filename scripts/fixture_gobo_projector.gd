@@ -154,14 +154,14 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 		"texture_load_success": not source_textures.is_empty(),
 	})
 	var composed_texture_cache_key: String = _build_composed_gobo_cache_key(source_texture_cache_keys)
-	var prefer_native_fog_projector: bool = bool(controls.get("prefer_native_fog_projector", true))
+	var use_native_shadow_gobo_mask: bool = bool(controls.get("use_native_shadow_gobo_mask", false))
 	var has_composed_texture: bool = not source_textures.is_empty()
 	var mode: String = "fallback_vector"
 	if has_runtime_gobo and has_composed_texture:
 		mode = "runtime_slots"
 	var topology_state: Dictionary = {
 		"mode": mode,
-		"prefer_native_fog_projector": prefer_native_fog_projector,
+		"use_native_shadow_gobo_mask": use_native_shadow_gobo_mask,
 		"has_composed_texture": has_composed_texture,
 		"texture_cache_key": composed_texture_cache_key,
 		"wheel_slot_index_by_wheel": wheel_slot_state,
@@ -512,8 +512,8 @@ func _apply_gobo_visuals(light: SpotLight3D, gobo_texture: Texture2D, controls: 
 	if gobo_texture == null:
 		_remove_gobo_plane(light)
 		return
-	var prefer_native_fog_projector: bool = bool(controls.get("prefer_native_fog_projector", true))
-	if prefer_native_fog_projector:
+	var use_native_shadow_gobo_mask: bool = bool(controls.get("use_native_shadow_gobo_mask", false))
+	if not use_native_shadow_gobo_mask:
 		_remove_gobo_plane(light)
 		return
 	var gobo_plane: MeshInstance3D = _ensure_gobo_plane(light)
@@ -599,7 +599,7 @@ func _topology_signature_from_state(applied_state: Dictionary) -> String:
 		return ""
 	return "%s|%s|%s" % [
 		str(topology_state.get("mode", "")),
-		str(bool(topology_state.get("prefer_native_fog_projector", true))),
+		str(bool(topology_state.get("use_native_shadow_gobo_mask", false))),
 		str(bool(topology_state.get("has_composed_texture", false))),
 	]
 
@@ -609,7 +609,7 @@ func _build_applied_state_key(topology_state: Dictionary) -> String:
 	var wheel_mode_key: String = JSON.stringify(topology_state.get("wheel_mode_by_wheel", {}))
 	return "%s|%s|%s|%s|%s" % [
 		str(topology_state.get("mode", "")),
-		str(bool(topology_state.get("prefer_native_fog_projector", true))),
+		str(bool(topology_state.get("use_native_shadow_gobo_mask", false))),
 		str(bool(topology_state.get("has_composed_texture", false))),
 		texture_key,
 		wheel_slot_key + "|" + wheel_mode_key,

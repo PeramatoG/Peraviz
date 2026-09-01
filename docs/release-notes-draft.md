@@ -31,8 +31,8 @@ Changes since the previous Peraviz release.
 ## Fixes
 
 - Restored crisp surface gobo projection on Godot 4.7 by managing the projector's required shadow state, and prevented Visual Settings refreshes from replacing held beam intensity with zero when optional metadata is absent.
-- Restored visible beams after project load for all three presentation modes by correcting the fog shader, enabling conservative startup volumetric fog, and keeping open and gobo-equipped emitters active during live switching.
-- Kept projector and native-shadow spotlight instances active during DMX playback, and increased the custom fog integration signal so gobo-equipped Vector Prism fixtures and both fog experiments remain visible.
+- Corrected fog shader compilation and kept projector and native-shadow spotlight instances active during DMX playback.
+- Restored Vector Gobo Prism as the startup reference, rebound native renderer targets after gobo topology replacement, and changed Fog Volume to an analytic local-beam frustum without forcing global haze.
 
 - Corrected vector gobo silhouettes for complex concave artwork, preserved raster cut-outs and nested islands in prism caps and walls, and aligned asymmetric artwork and indexed rotation with the documented source-image convention. Adaptive cached-beam simplification now reduces large curves more aggressively, removes redundant faces and reverse-turn artifacts, and retains small star-field details.
 

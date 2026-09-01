@@ -62,7 +62,7 @@ static func BuildGoboControls(controls: Dictionary, visual_settings: Dictionary,
 	var merged_defaults: Dictionary = _build_merged_defaults(defaults)
 	var gobo_controls: Dictionary = controls.duplicate(false)
 	# Only the native-shadow experiment needs the physical alpha-scissored mask plane.
-	gobo_controls["prefer_native_fog_projector"] = int(visual_settings.get("beam_presentation", 0)) != 2
+	gobo_controls["use_native_shadow_gobo_mask"] = int(visual_settings.get("beam_presentation", 1)) == 2
 	gobo_controls["gobo_scale"] = float(visual_settings.get("gobo_scale", merged_defaults.get("gobo_scale", 1.0)))
 	gobo_controls["gobo_rotation_deg"] = float(visual_settings.get("gobo_rotation_deg", merged_defaults.get("gobo_rotation_deg", 0.0)))
 	if OS.is_debug_build():

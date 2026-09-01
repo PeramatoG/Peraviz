@@ -12,6 +12,7 @@ uniform float gobo_scale : hint_range(0.05, 8.0) = 1.0;
 uniform float gobo_rotation_deg : hint_range(-360.0, 360.0) = 0.0;
 uniform float radial_falloff : hint_range(0.05, 4.0) = 1.25;
 uniform float longitudinal_falloff : hint_range(0.05, 4.0) = 1.1;
+uniform float near_radius_ratio : hint_range(0.0, 1.0) = 0.0;
 
 vec2 rotate2d(vec2 point, float angle_rad) {
 	float c = cos(angle_rad);
@@ -21,7 +22,9 @@ vec2 rotate2d(vec2 point, float angle_rad) {
 
 void fog() {
 	float depth_t = clamp(1.0 - UVW.z, 0.001, 1.0);
-	vec2 projected = (UVW.xy - vec2(0.5)) / depth_t;
+	vec2 transverse = (UVW.xy - vec2(0.5)) * 2.0;
+	float radius_at_depth = mix(near_radius_ratio, 1.0, depth_t);
+	vec2 projected = transverse / max(radius_at_depth, 0.001);
 	projected = rotate2d(projected / max(gobo_scale, 0.05), radians(gobo_rotation_deg));
 	vec2 projected_uv = projected * 0.5 + vec2(0.5);
 	float projected_bounds = float(projected_uv.x >= 0.0 && projected_uv.x <= 1.0 && projected_uv.y >= 0.0 && projected_uv.y <= 1.0);

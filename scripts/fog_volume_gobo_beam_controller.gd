@@ -15,11 +15,12 @@ func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture:
 
 	var beam_range: float = max(float(beam_params.get("beam_range", light.spot_range)), 0.1)
 	var beam_angle: float = max(float(beam_params.get("beam_angle", light.spot_angle * 2.0)), 0.1)
-	var cone_radius: float = tan(deg_to_rad(beam_angle * 0.5)) * beam_range
+	var lens_radius: float = max(float(beam_params.get("lens_radius", 0.03)), 0.001)
+	var cone_radius: float = lens_radius + tan(deg_to_rad(beam_angle * 0.5)) * beam_range
 	fog_volume.size = Vector3(max(cone_radius * 2.0, 0.1), max(cone_radius * 2.0, 0.1), beam_range)
 	fog_volume.position = Vector3(0.0, 0.0, -beam_range * 0.5)
-	# Godot's cone volume faces local +Z; Peraviz renderer children emit along local -Z.
-	fog_volume.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+	# The box spans from the emitter at local Z zero to the beam end at local negative Z.
+	fog_volume.rotation_degrees = Vector3.ZERO
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_params.get("beam_intensity", 0.0))), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	fog_volume.visible = scaled_intensity > threshold
@@ -39,6 +40,7 @@ func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture:
 	fog_material.set_shader_parameter("invert_gobo", bool(visual_settings.get("fog_volume_invert_gobo", false)))
 	fog_material.set_shader_parameter("gobo_scale", max(float(beam_params.get("gobo_scale", 1.0)), 0.05))
 	fog_material.set_shader_parameter("gobo_rotation_deg", float(beam_params.get("gobo_rotation_deg", 0.0)))
+	fog_material.set_shader_parameter("near_radius_ratio", clamp(lens_radius / max(cone_radius, 0.001), 0.0, 1.0))
 	fog_material.set_shader_parameter("radial_falloff", max(float(beam_params.get("beam_radial_falloff", 1.25)), 0.05))
 	fog_material.set_shader_parameter("longitudinal_falloff", max(float(beam_params.get("beam_longitudinal_falloff", 1.1)), 0.05))
 
@@ -57,7 +59,7 @@ func _ensure_volume(light: SpotLight3D) -> FogVolume:
 
 	var fog_volume := FogVolume.new()
 	fog_volume.name = FOG_VOLUME_NODE_NAME
-	fog_volume.shape = RenderingServer.FOG_VOLUME_SHAPE_CONE
+	fog_volume.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
 	fog_volume.material = ShaderMaterial.new()
 	var fog_material: ShaderMaterial = fog_volume.material as ShaderMaterial
 	fog_material.shader = load(FOG_SHADER_PATH)

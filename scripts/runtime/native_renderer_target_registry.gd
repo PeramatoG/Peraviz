@@ -151,6 +151,26 @@ func get_beam_output_record(beam_target_id: int) -> Dictionary:
 		return {}
 	return _beam_output_records_by_id.get(beam_target_id, {})
 
+func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
+	if light == null or not is_instance_valid(light):
+		return
+	for output_record in _beam_output_records_by_id.values():
+		_rebind_record_beam(output_record as Dictionary, light, beam)
+	for target_map in [_dimmer_targets, _optics_targets, _color_targets]:
+		for target_record in (target_map as Dictionary).values():
+			_rebind_record_beam(target_record as Dictionary, light, beam)
+
+func _rebind_record_beam(record: Dictionary, light: SpotLight3D, beam: MeshInstance3D) -> void:
+	var anchors: Array = record.get("emitter_anchors", [])
+	var index: int = anchors.find(light)
+	if index < 0:
+		return
+	var beams: Array = record.get("beam_instances", [])
+	while beams.size() <= index:
+		beams.append(null)
+	beams[index] = beam
+	record["beam_instances"] = beams
+
 func get_target_failure(target_id: int) -> Variant:
 	return _target_resolution_failures.get(target_id, null)
 
