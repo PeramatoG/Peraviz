@@ -8,7 +8,7 @@ For selected-mode `Gobo(n)` ChannelFunctions, native C++ compiles indexed wheel 
 
 During structural setup, `NativeGoboResourceRegistry` loads and retains original PNG/mask resources and prepares reusable normalized vector-prism topology. Live rows select these registered resources by stable numeric ID; they do not carry paths, images, or semantic dictionaries. An open or missing-media slot clears deterministically.
 
-Vector topology uses the source artwork convention: image X points right and image Y points down when viewed along the emitted beam toward its projected footprint. Contour nesting determines fill parity (outer, hole, island), and renderer alignment applies no implicit mirror or half-turn. Positive indexed gobo angles rotate that source-oriented shape positively around the emitted optical axis. Optical compatibility transforms, when explicitly configured, are renderer presentation settings and never alter or invalidate cached topology.
+Vector topology uses the source artwork convention: image X points right and image Y points down when viewed along the emitted beam toward its projected footprint. Opaque and bounded transparent raster regions produce explicit contour rings; nesting determines fill parity (outer, hole, island). Setup-time simplification applies one shared bounded point budget while retaining every ring. Renderer alignment applies no implicit mirror or half-turn, and positive indexed gobo angles rotate that source-oriented shape positively around the emitted optical axis. Optical compatibility transforms never alter or invalidate cached topology.
 
 ## Static multi-wheel composition
 

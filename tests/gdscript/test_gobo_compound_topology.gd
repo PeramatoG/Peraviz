@@ -11,6 +11,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_hierarchy_and_hole_caps()
+	_test_raster_hole_extraction()
 	_test_concave_and_budget_simplification()
 	_test_orientation_and_cache()
 	test.finish(self)
@@ -29,6 +30,23 @@ func _test_hierarchy_and_hole_caps() -> void:
 	test.check(not _triangles_cover(triangles, Vector2(2, 0)), "cap triangles must not cover a point inside the donut hole")
 	test.check(_triangles_cover(triangles, Vector2(4, 0)), "cap triangles must cover the illuminated donut body")
 
+func _test_raster_hole_extraction() -> void:
+	var image := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	for y in range(8, 56):
+		for x in range(8, 56):
+			image.set_pixel(x, y, Color.WHITE)
+	for y in range(24, 40):
+		for x in range(24, 40):
+			image.set_pixel(x, y, Color(0, 0, 0, 0))
+	var builder = Builder.new()
+	var rings: Array[PackedVector2Array] = builder._vectorize_texture_to_normalized_polygons(ImageTexture.create_from_image(image), false)
+	var components: Array[Dictionary] = Topology.build(builder._finalize_vector_polygons(rings, 1.0))
+	test.check(rings.size() == 2, "raster vectorization must extract bounded transparent cut-outs as rings")
+	test.check(components.size() == 1 and (components[0]["holes"] as Array).size() == 1, "raster donut contours must classify as one outer with one hole")
+	var triangles: Array[Dictionary] = Topology.triangulate(components[0])
+	test.check(not _triangles_cover(triangles, Vector2.ZERO), "triangulated raster caps must leave the extracted central cut-out open")
+
 func _test_concave_and_budget_simplification() -> void:
 	var crescent := PackedVector2Array([Vector2(4, 0), Vector2(2, 1), Vector2(0, 4), Vector2(-4, 1), Vector2(-3, -3), Vector2(0, -1), Vector2(2, -2)])
 	var simplified: PackedVector2Array = Topology.simplify_closed_ring(crescent, 5)
@@ -41,6 +59,9 @@ func _test_concave_and_budget_simplification() -> void:
 		curved.append(Vector2(cos(angle), sin(angle)) * radius)
 	var budgeted: PackedVector2Array = Topology.simplify_closed_ring(curved, 40)
 	test.check(budgeted.size() == 40 and not Topology.has_self_intersections(budgeted), "high-point curved contours must meet their budget without crossings")
+	var reduced: Array[PackedVector2Array] = Builder.new()._reduce_polygon_point_count([curved, PackedVector2Array(curved)], Builder.MAX_TOTAL_VECTOR_POINTS)
+	var reduced_points: int = reduced.reduce(func(total: int, ring: PackedVector2Array) -> int: return total + ring.size(), 0)
+	test.check(reduced_points <= Builder.MAX_TOTAL_VECTOR_POINTS, "the cached beam topology must respect the renderer point budget")
 	var narrow_hole := PackedVector2Array([Vector2(-0.2, -3), Vector2(-0.2, 3), Vector2(0.2, 3), Vector2(0.2, -3)])
 	var narrow_components: Array[Dictionary] = Topology.build([outer_square(5.0), narrow_hole])
 	test.check((narrow_components[0]["holes"] as Array).size() == 1, "a narrow meaningful cut-out must remain a distinct hole")

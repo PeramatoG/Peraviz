@@ -29,7 +29,7 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
-- Corrected vector gobo silhouettes for complex concave artwork, preserved internal cut-outs and nested islands in prism caps and walls, and aligned asymmetric artwork and indexed rotation with the documented source-image convention without rebuilding cached topology.
+- Corrected vector gobo silhouettes for complex concave artwork, preserved raster cut-outs and nested islands in prism caps and walls, and aligned asymmetric artwork and indexed rotation with the documented source-image convention. Cached beam topology now uses a bounded lightweight polygon budget to reduce opacity and rendering cost.
 
 - Prevented beam-optics debug axes from appearing as red shafts during normal playback, stopped Dimmer changes from requesting expensive beam-topology work, and restored beams that first receive a zero Dimmer value before becoming visible.
 

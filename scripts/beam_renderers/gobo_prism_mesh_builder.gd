@@ -1,10 +1,10 @@
 extends RefCounted
 class_name GoboPrismMeshBuilder
 
-const VECTORIZATION_MAX_SIZE: int = 512
+const VECTORIZATION_MAX_SIZE: int = 256
 const VECTORIZATION_ALPHA_THRESHOLD: float = 0.5
-const VECTORIZATION_EPSILON: float = 0.45
-const MAX_TOTAL_VECTOR_POINTS: int = 768
+const VECTORIZATION_EPSILON: float = 0.8
+const MAX_TOTAL_VECTOR_POINTS: int = 280
 const MIN_POLYGON_AREA: float = 0.00004
 const FALLBACK_SEGMENTS: int = 36
 const BINARY_LUMA_THRESHOLD: float = 0.5
@@ -83,7 +83,7 @@ func _shape_cache_key(gobo_texture: Texture2D, apply_edge_mask_correction: bool)
 	if gobo_texture == null:
 		return "__fallback_shape_%s" % [str(apply_edge_mask_correction)]
 	var content_id: int = int(gobo_texture.get_meta("peraviz_gobo_asset_id", gobo_texture.get_rid().get_id()))
-	return "__shape_v2_%d_%s_%d_%.2f" % [content_id, str(apply_edge_mask_correction), MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
+	return "__shape_v3_%d_%s_%d_%.2f" % [content_id, str(apply_edge_mask_correction), MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
 
 func _vectorize_gobo(gobo_texture: Texture2D, gobo_scale: float, apply_edge_mask_correction: bool = true) -> Array[PackedVector2Array]:
 	if gobo_texture == null:
@@ -137,7 +137,7 @@ func _get_or_build_normalized_raster_polygons(gobo_texture: Texture2D, apply_edg
 func _normalized_polygon_cache_key(gobo_texture: Texture2D, apply_edge_mask_correction: bool) -> String:
 	if gobo_texture == null:
 		return "__normalized_fallback_%s_%.3f" % [str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD]
-	return "__normalized_v2_%d_%s_%.3f_%d_%.2f" % [gobo_texture.get_rid().get_id(), str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD, MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
+	return "__normalized_v3_%d_%s_%.3f_%d_%.2f" % [gobo_texture.get_rid().get_id(), str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD, MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
 
 func _vectorize_texture_to_normalized_polygons(gobo_texture: Texture2D, apply_edge_mask_correction: bool) -> Array[PackedVector2Array]:
 	var image: Image = gobo_texture.get_image()
@@ -158,6 +158,7 @@ func _vectorize_texture_to_normalized_polygons(gobo_texture: Texture2D, apply_ed
 	var bitmap := BitMap.new()
 	bitmap.create_from_image_alpha(image, VECTORIZATION_ALPHA_THRESHOLD)
 	var all_polygons: Array = bitmap.opaque_to_polygons(Rect2i(0, 0, image.get_width(), image.get_height()), VECTORIZATION_EPSILON)
+	all_polygons.append_array(_extract_transparent_hole_polygons(image))
 	if all_polygons.is_empty():
 		return []
 	var inv_width: float = 1.0 / max(float(image.get_width()), 1.0)
@@ -173,6 +174,26 @@ func _vectorize_texture_to_normalized_polygons(gobo_texture: Texture2D, apply_ed
 		if normalized_polygon.size() >= 3:
 			normalized.append(normalized_polygon)
 	return normalized
+
+func _extract_transparent_hole_polygons(image: Image) -> Array[PackedVector2Array]:
+	var inverse := Image.create(image.get_width(), image.get_height(), false, Image.FORMAT_RGBA8)
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var transparent_alpha: float = 1.0 if image.get_pixel(x, y).a < VECTORIZATION_ALPHA_THRESHOLD else 0.0
+			inverse.set_pixel(x, y, Color(1.0, 1.0, 1.0, transparent_alpha))
+	var inverse_bitmap := BitMap.new()
+	inverse_bitmap.create_from_image_alpha(inverse, VECTORIZATION_ALPHA_THRESHOLD)
+	var holes: Array[PackedVector2Array] = []
+	for polygon in inverse_bitmap.opaque_to_polygons(Rect2i(0, 0, image.get_width(), image.get_height()), VECTORIZATION_EPSILON):
+		if polygon is PackedVector2Array and not _polygon_touches_image_border(polygon as PackedVector2Array, image.get_width(), image.get_height()):
+			holes.append(polygon as PackedVector2Array)
+	return holes
+
+func _polygon_touches_image_border(polygon: PackedVector2Array, width: int, height: int) -> bool:
+	for point in polygon:
+		if point.x <= 0.0 or point.y <= 0.0 or point.x >= float(width) or point.y >= float(height):
+			return true
+	return false
 
 func _normalize_polygon_to_local_space(polygon: PackedVector2Array, inv_width: float, inv_height: float) -> PackedVector2Array:
 	var center := Vector2(0.5, 0.5)
