@@ -13,6 +13,7 @@ namespace {
 
 constexpr int kOuterBorderPixels = 1;
 constexpr float kApertureBorderRatio = 0.985F;
+constexpr float kContourEpsilon = 0.8F;
 
 void prepare_binary_mask_image(const godot::Ref<godot::Image> &image,
                                float luma_alpha_threshold,
@@ -56,6 +57,48 @@ void prepare_binary_mask_image(const godot::Ref<godot::Image> &image,
     }
 }
 
+// Reports whether a contour belongs to the transparent background connected to an image edge.
+bool polygon_touches_image_border(const godot::PackedVector2Array &polygon,
+                                  int width,
+                                  int height) {
+    for (int index = 0; index < polygon.size(); ++index) {
+        const godot::Vector2 point = polygon[index];
+        if (point.x <= 0.0F || point.y <= 0.0F ||
+            point.x >= static_cast<float>(width) ||
+            point.y >= static_cast<float>(height)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Extracts bounded transparent regions so raster cut-outs retain explicit contour rings.
+godot::Array extract_transparent_hole_polygons(const godot::Ref<godot::Image> &image) {
+    godot::Ref<godot::Image> inverse = godot::Image::create(
+        image->get_width(), image->get_height(), false, godot::Image::FORMAT_RGBA8);
+    for (int y = 0; y < image->get_height(); ++y) {
+        for (int x = 0; x < image->get_width(); ++x) {
+            const float alpha = image->get_pixel(x, y).a < 0.5F ? 1.0F : 0.0F;
+            inverse->set_pixel(x, y, godot::Color(1.0F, 1.0F, 1.0F, alpha));
+        }
+    }
+
+    godot::Ref<godot::BitMap> inverse_bitmap;
+    inverse_bitmap.instantiate();
+    inverse_bitmap->create_from_image_alpha(inverse, 0.5F);
+    const godot::Rect2i rect(0, 0, image->get_width(), image->get_height());
+    const godot::Array transparent_polygons =
+        inverse_bitmap->opaque_to_polygons(rect, kContourEpsilon);
+    godot::Array holes;
+    for (int index = 0; index < transparent_polygons.size(); ++index) {
+        const godot::PackedVector2Array polygon = transparent_polygons[index];
+        if (!polygon_touches_image_border(polygon, image->get_width(), image->get_height())) {
+            holes.append(polygon);
+        }
+    }
+    return holes;
+}
+
 } // namespace
 
 namespace godot {
@@ -65,7 +108,7 @@ void PeravizGoboVectorizer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("vectorize_image", "image_path", "max_size",
                                    "luma_alpha_threshold", "apply_edge_mask_correction"),
                          &PeravizGoboVectorizer::vectorize_image,
-                         DEFVAL(192), DEFVAL(0.5), DEFVAL(true));
+                         DEFVAL(256), DEFVAL(0.5), DEFVAL(true));
 }
 
 Dictionary PeravizGoboVectorizer::vectorize_image(const String &image_path,
@@ -116,7 +159,8 @@ Dictionary PeravizGoboVectorizer::vectorize_image(const String &image_path,
     bitmap->create_from_image_alpha(image, 0.5);
 
     const Rect2i rect(0, 0, image->get_width(), image->get_height());
-    Array polygons = bitmap->opaque_to_polygons(rect, 1.6);
+    Array polygons = bitmap->opaque_to_polygons(rect, kContourEpsilon);
+    polygons.append_array(extract_transparent_hole_polygons(image));
 
     result["ok"] = true;
     result["width"] = image->get_width();

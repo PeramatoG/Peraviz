@@ -29,8 +29,12 @@ static func _sanitize_single_polygon(polygon: PackedVector2Array, min_area: floa
 	if simplified.size() < 3:
 		return PackedVector2Array()
 
+	# Never reorder a concave contour: centroid-angle sorting changes its topology.
 	if _has_edge_crossings(simplified):
-		simplified = _reorder_points_by_angle(simplified)
+		if not _has_edge_crossings(deduped):
+			simplified = deduped
+		else:
+			return PackedVector2Array()
 
 	if simplified.size() < 3:
 		return PackedVector2Array()
@@ -38,9 +42,6 @@ static func _sanitize_single_polygon(polygon: PackedVector2Array, min_area: floa
 	var area: float = _signed_polygon_area(simplified)
 	if abs(area) < min_area:
 		return PackedVector2Array()
-
-	if area < 0.0:
-		simplified.reverse()
 
 	return simplified
 
@@ -105,27 +106,6 @@ static func _has_edge_crossings(polygon: PackedVector2Array) -> bool:
 			if Geometry2D.segment_intersects_segment(a0, a1, b0, b1) != null:
 				return true
 	return false
-
-static func _reorder_points_by_angle(polygon: PackedVector2Array) -> PackedVector2Array:
-	var centroid := Vector2.ZERO
-	for point in polygon:
-		centroid += point
-	centroid /= float(max(polygon.size(), 1))
-
-	var items: Array[Dictionary] = []
-	for point in polygon:
-		items.append({
-			"point": point,
-			"angle": atan2(point.y - centroid.y, point.x - centroid.x),
-		})
-	items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return float(a.get("angle", 0.0)) < float(b.get("angle", 0.0))
-	)
-
-	var ordered := PackedVector2Array()
-	for item in items:
-		ordered.append(item.get("point", Vector2.ZERO) as Vector2)
-	return _remove_near_duplicate_points(ordered)
 
 static func _signed_polygon_area(polygon: PackedVector2Array) -> float:
 	var count: int = polygon.size()

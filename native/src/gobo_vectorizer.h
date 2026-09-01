@@ -16,7 +16,7 @@ protected:
 
 public:
     Dictionary vectorize_image(const String &image_path,
-                               int max_size = 192,
+                               int max_size = 256,
                                float luma_alpha_threshold = 0.5,
                                bool apply_edge_mask_correction = true) const;
 };

@@ -42,7 +42,7 @@ func _init() -> void:
 	registry.apply_selection(99, 11, 1, 1, 101, 0, shader_target)
 	registry.apply_indexed_rotation(99, 11, 1, 30.0, shader_target)
 	RotationPresentationScript.reapply_after_base_alignment(shader_beam, 180.0)
-	_check(is_equal_approx(float(shader_beam.get_instance_shader_parameter("gobo_rotation_deg")), 150.0), "Volumetric shader path should combine base alignment with physical Pos exactly once.", failures)
+	_check(is_equal_approx(float(shader_beam.get_instance_shader_parameter("gobo_rotation_deg")), 210.0), "Volumetric shader path should combine base alignment with positive source-oriented Pos exactly once.", failures)
 	var unchanged: Dictionary = registry.apply_selection(77, 11, 1, 1, 101, 0, target)
 	_check(bool(unchanged.get("unchanged", false)) and beam.mesh == first_mesh, "Unchanged selection should preserve topology identity.", failures)
 	registry.apply_selection(77, 12, 2, 1, 102, 0, target)

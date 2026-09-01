@@ -31,10 +31,10 @@ static func _reapply(beam: MeshInstance3D, base_alignment_was_refreshed: bool) -
 	var physical_angle_degrees: float = physical_angle(beam)
 	if backend == SHADER_BACKEND:
 		var base_shader_angle: float = float(beam.get_meta(BASE_SHADER_ANGLE_META, 0.0))
-		beam.set_instance_shader_parameter("gobo_rotation_deg", base_shader_angle - physical_angle_degrees)
+		beam.set_instance_shader_parameter("gobo_rotation_deg", base_shader_angle + physical_angle_degrees)
 		return
 	var previously_applied: float = 0.0 if base_alignment_was_refreshed else float(beam.get_meta(APPLIED_ANGLE_META, 0.0))
-	var presentation_delta: float = -physical_angle_degrees - previously_applied
+	var presentation_delta: float = physical_angle_degrees - previously_applied
 	# Raw prism topology is longitudinal on local Y; spinning around Y leaves its scaled beam-length axis invariant.
 	beam.rotate_object_local(Vector3.UP, deg_to_rad(presentation_delta))
-	beam.set_meta(APPLIED_ANGLE_META, -physical_angle_degrees)
+	beam.set_meta(APPLIED_ANGLE_META, physical_angle_degrees)
