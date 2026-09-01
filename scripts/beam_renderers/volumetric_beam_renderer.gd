@@ -11,6 +11,10 @@ const DYNAMIC_STATE_META_KEY: String = "peraviz_beam_dynamic_state"
 const DYNAMIC_STATE_APPLIED_META_KEY: String = "peraviz_beam_dynamic_state_applied"
 const INTENSITY_MAX_DESIRED_META_KEY: String = "peraviz_beam_intensity_max_desired"
 const INTENSITY_MAX_META_KEY: String = "peraviz_beam_intensity_max"
+const PRESENTATION_FOG_VOLUME: int = 0
+const PRESENTATION_VECTOR_PRISM: int = 1
+const PRESENTATION_NATIVE_SHADOW: int = 2
+const FogVolumeControllerScript = preload("res://scripts/fog_volume_gobo_beam_controller.gd")
 
 var _beam_material_template: ShaderMaterial
 var _camera: Camera3D
@@ -19,6 +23,8 @@ var _beam_settings_hash: int = 0
 var _shape_providers: Dictionary = {}
 var _active_shape_provider: VolumetricBeamShapeProvider
 var _last_parameter_write_count: int = 0
+var _presentation_mode: int = PRESENTATION_FOG_VOLUME
+var _fog_controller: FogVolumeGoboBeamController = FogVolumeControllerScript.new()
 
 func _init() -> void:
 	_beam_material_template = ShaderMaterial.new()
@@ -30,6 +36,7 @@ func _init() -> void:
 func configure(view_camera: Camera3D, settings: Dictionary) -> void:
 	_camera = view_camera
 	_settings = settings.duplicate(true)
+	_presentation_mode = int(settings.get("beam_presentation", PRESENTATION_VECTOR_PRISM))
 	_beam_settings_hash = _compute_beam_settings_hash()
 	_active_shape_provider = _select_shape_provider()
 
@@ -47,6 +54,9 @@ func ensure_beam(light: SpotLight3D) -> void:
 	_apply_static_beam_params(beam, {})
 
 func update_beam(light: SpotLight3D, params: Dictionary) -> void:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
+		_update_experimental_beam(light, params)
+		return
 	ensure_beam(light)
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 	if beam == null:
@@ -94,7 +104,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 
 func _compute_beam_settings_hash() -> int:
 	var hash_value: int = 2166136261
-	for key in ["beam_noise_amount", "beam_noise_scale", "beam_haze_density", "beam_anisotropy", "beam_quality"]:
+	for key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff"]:
 		hash_value = int((hash_value ^ hash(_settings.get(key, null))) * 16777619)
 	return hash_value
 
@@ -108,12 +118,7 @@ func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void
 	if int(beam.get_meta("peraviz_static_beam_hash", 0)) == static_hash:
 		return
 	beam.set_meta("peraviz_static_beam_hash", static_hash)
-	beam.set_instance_shader_parameter("beam_noise_amount", float(_settings.get("beam_noise_amount", 0.06)))
-	beam.set_instance_shader_parameter("beam_noise_scale", float(_settings.get("beam_noise_scale", 1.4)))
-	beam.set_instance_shader_parameter("beam_haze_density", float(_settings.get("beam_haze_density", 0.17)) * haze_density)
 	beam.set_instance_shader_parameter("haze_density", max(haze_density, 0.2))
-	beam.set_instance_shader_parameter("beam_anisotropy", float(_settings.get("beam_anisotropy", 0.62)))
-	beam.set_instance_shader_parameter("beam_quality", int(_settings.get("beam_quality", 1)))
 	beam.set_instance_shader_parameter("radial_falloff", max(float(params.get("beam_radial_falloff", 1.1)), 0.05))
 	beam.set_instance_shader_parameter("longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05))
 	beam.set_instance_shader_parameter("beam_softness", clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0))
@@ -138,6 +143,9 @@ func _apply_beam_material_params(beam: MeshInstance3D, beam_range: float, shape_
 
 func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	_last_parameter_write_count = 0
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
+		_update_experimental_beam(light, params)
+		return INTENSITY_CHANGED
 	if not light.has_meta(BEAM_META_KEY):
 		return INTENSITY_UNRESOLVED
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
@@ -213,12 +221,24 @@ func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 	return beam if beam != null and is_instance_valid(beam) else null
 
 func cleanup_beam(light: SpotLight3D) -> void:
+	_fog_controller.clear_for_light(light)
 	if light.has_meta(BEAM_META_KEY):
 		var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 		if beam != null and is_instance_valid(beam):
 			beam.queue_free()
 		light.remove_meta(BEAM_META_KEY)
 	_cleanup_debug_axis(light)
+
+func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> void:
+	var existing: MeshInstance3D = get_beam_resource(light)
+	if existing != null:
+		existing.visible = false
+	var gobo_texture: Texture2D = light.get_meta("peraviz_gobo_texture", null) as Texture2D
+	if _presentation_mode == PRESENTATION_FOG_VOLUME:
+		_fog_controller.update_for_light(light, params, gobo_texture, _settings)
+	else:
+		_fog_controller.clear_for_light(light)
+	light.set_meta("peraviz_beam_last_params", params)
 
 func _select_shape_provider() -> VolumetricBeamShapeProvider:
 	var requested_mode: String = str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)).to_lower()

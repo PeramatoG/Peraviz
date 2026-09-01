@@ -1,6 +1,8 @@
 shader_type fog;
 
 uniform sampler2D gobo_texture : source_color;
+uniform bool use_gobo = false;
+uniform float intensity : hint_range(0.0, 1.0) = 0.0;
 uniform float density_scale : hint_range(0.0, 10.0) = 0.9;
 uniform float emission_strength : hint_range(0.0, 10.0) = 0.55;
 uniform vec4 light_color : source_color = vec4(1.0);
@@ -31,7 +33,7 @@ void fog() {
 	}
 
 	vec4 gobo_sample = texture(gobo_texture, projected_uv);
-	float gobo_intensity = clamp(dot(gobo_sample.rgb, vec3(0.299, 0.587, 0.114)) * gobo_sample.a, 0.0, 1.0);
+	float gobo_intensity = use_gobo ? clamp(dot(gobo_sample.rgb, vec3(0.299, 0.587, 0.114)) * gobo_sample.a, 0.0, 1.0) : 1.0;
 	if (invert_gobo) {
 		gobo_intensity = 1.0 - gobo_intensity;
 	}
@@ -42,7 +44,8 @@ void fog() {
 	float longitudinal_mask = pow(depth_t, max(longitudinal_falloff, 0.05));
 	float final_mask = radial_mask * edge_mask * longitudinal_mask;
 
-	DENSITY = gobo_intensity * density_scale * final_mask;
+	// Emission is an intentionally predictable presentation approximation; density stays zero to avoid cross-light fog coupling.
+	DENSITY = 0.0;
 	ALBEDO = light_color.rgb;
-	EMISSION = light_color.rgb * emission_strength * gobo_intensity * final_mask;
+	EMISSION = light_color.rgb * emission_strength * intensity * gobo_intensity * final_mask * density_scale;
 }

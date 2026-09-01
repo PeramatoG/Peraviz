@@ -85,6 +85,7 @@ var _visual_settings := {
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
+	"beam_presentation": 0,
 	"beam_quality": 2,
 	"use_fog_volume_gobo_beam": false,
 	"fog_volume_density_scale": 1.1,
@@ -457,7 +458,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 
 	var beam_scalar_changed: bool = (
 		not is_equal_approx(float(previous_settings.get("beam_multiplier", 20.0)), float(_visual_settings.get("beam_multiplier", 20.0)))
-		or int(previous_settings.get("beam_quality", 1)) != int(_visual_settings.get("beam_quality", 1))
+		or int(previous_settings.get("beam_presentation", 0)) != int(_visual_settings.get("beam_presentation", 0))
 	)
 	if beam_scalar_changed:
 		_refresh_existing_beam_material_scalars()
@@ -538,6 +539,8 @@ func _refresh_existing_beam_material_scalars() -> void:
 		var lights: Array = _fixture_emitter_light_cache.get(fixture_uuid, [])
 		for light in lights:
 			if light is SpotLight3D and is_instance_valid(light):
+				if _fixture_gobo_projector != null:
+					_fixture_gobo_projector.set_shadow_mask_enabled(light, int(_visual_settings.get("beam_presentation", 0)) == 2)
 				_update_existing_beam_material_scalars(light)
 
 func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
@@ -549,13 +552,12 @@ func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
 	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
 
 func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
-	var base_intensity: float = float(light.get_meta("peraviz_beam_base_intensity", 0.0))
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
 	if beam_params.is_empty():
 		return
+	var base_intensity: float = float(light.get_meta("peraviz_beam_base_intensity", beam_params.get("normalized_dimmer", 0.0)))
 	var beam_multiplier: float = float(_visual_settings.get("beam_multiplier", 20.0))
 	beam_params["scaled_intensity"] = clamp(base_intensity * beam_multiplier, 0.0, BEAM_INTENSITY_MAX)
-	beam_params["beam_quality"] = int(_visual_settings.get("beam_quality", 1))
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
 	var beam_phase_start: int = Time.get_ticks_usec()
 	_update_beam_for_light(light, beam_params)
@@ -1975,8 +1977,9 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 		if child is SpotLight3D and child.name == "PeravizEmitterLight":
 			if child.rotation_degrees != EMITTER_LIGHT_DIRECTION_FIX:
 				child.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
-			# Fixture beams use dedicated mesh shaders, so positional shadows stay off by default.
-			child.shadow_enabled = false
+			# Projector-active lights retain shadows because Godot 4.7 requires them for surface projection.
+			if child.light_projector == null and not child.has_meta("peraviz_pre_projector_shadow_enabled"):
+				child.shadow_enabled = false
 			child.shadow_bias = 0.05
 			child.shadow_normal_bias = 1.2
 			child.set_meta("peraviz_lens_radius", lens_radius)
@@ -2208,6 +2211,7 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	if gobo_topology_changed:
 		_emitter_mesh_rebuild_count += 1
 		_cleanup_light_beam_renderers(light)
+	beam_params["gobo_texture"] = light.get_meta("peraviz_gobo_texture", null)
 	_set_light_property_float(light, "light_volumetric_fog_energy", float(_visual_settings.get("light_volumetric_fog_energy", 12.0)) * float(_visual_settings.get("haze_density_multiplier", 0.22)), last_state)
 	var beam_phase_start: int = Time.get_ticks_usec()
 	_update_beam_for_light(light, beam_params)

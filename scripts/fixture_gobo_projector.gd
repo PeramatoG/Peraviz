@@ -5,6 +5,7 @@ const FAKE_GOBO_TEXTURE_SIZE: int = 1024
 const GOBO_TEXTURE_META_KEY: String = "peraviz_gobo_texture"
 const FALLBACK_GOBO_META_KEY: String = "peraviz_is_vector_fallback_gobo"
 const GOBO_PLANE_META_KEY: String = "peraviz_gobo_plane"
+const PRE_PROJECTOR_SHADOW_META_KEY: String = "peraviz_pre_projector_shadow_enabled"
 const GOBO_SHADER_PATH: String = "res://scripts/shaders/gobo_alpha_projector.gdshader"
 const GOBO_PLANE_LOCAL_Z: float = -0.043
 const GOBO_PLANE_MESH_SIZE: Vector2 = Vector2(0.017, 0.017)
@@ -64,6 +65,18 @@ func get_debug_counters() -> Dictionary:
 		"texture_compositions": _texture_composition_count,
 		"parametric_updates": _parametric_update_count,
 	}
+
+func set_shadow_mask_enabled(light: SpotLight3D, enabled: bool) -> void:
+	if light == null or not is_instance_valid(light):
+		return
+	var texture: Texture2D = light.get_meta(GOBO_TEXTURE_META_KEY, null) as Texture2D
+	if not enabled or texture == null:
+		_remove_gobo_plane(light)
+		return
+	var plane: MeshInstance3D = _ensure_gobo_plane(light)
+	if plane != null and plane.material_override is ShaderMaterial:
+		(plane.material_override as ShaderMaterial).set_shader_parameter("gobo_texture", texture)
+		_update_gobo_plane_scale(light, plane)
 
 func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 	if light == null or not is_instance_valid(light):
@@ -171,7 +184,11 @@ func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 
 	# Expensive path: texture slot/composition changed.
 	if source_textures.is_empty():
-		_apply_vector_fallback_gobo(light, previous_meta_texture, gobo_controls)
+		if has_runtime_gobo:
+			_apply_vector_fallback_gobo(light, previous_meta_texture, gobo_controls)
+		else:
+			_clear_gobo_visuals(light)
+			light.set_meta(GOBO_TEXTURE_META_KEY, null)
 	else:
 		var projected_gobo: Texture2D = _compose_gobo_textures(source_textures, composed_texture_cache_key)
 		_apply_gobo_visuals(light, projected_gobo, gobo_controls)
@@ -532,6 +549,13 @@ func _set_light_projector_texture(light: SpotLight3D, texture: Texture2D) -> voi
 		light.set("projector", texture)
 	if _has_property(light, "light_projector"):
 		light.set("light_projector", texture)
+	if texture != null:
+		if not light.has_meta(PRE_PROJECTOR_SHADOW_META_KEY):
+			light.set_meta(PRE_PROJECTOR_SHADOW_META_KEY, light.shadow_enabled)
+		light.shadow_enabled = true
+	elif light.has_meta(PRE_PROJECTOR_SHADOW_META_KEY):
+		light.shadow_enabled = bool(light.get_meta(PRE_PROJECTOR_SHADOW_META_KEY, false))
+		light.remove_meta(PRE_PROJECTOR_SHADOW_META_KEY)
 
 func _has_property(object: Object, property_name: String) -> bool:
 	if object == null:
@@ -599,7 +623,7 @@ func _ensure_gobo_plane(light: SpotLight3D) -> MeshInstance3D:
 
 	var gobo_plane := MeshInstance3D.new()
 	gobo_plane.name = "PeravizGoboPlane"
-	gobo_plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+	gobo_plane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	var quad := QuadMesh.new()
 	quad.size = GOBO_PLANE_MESH_SIZE
 	gobo_plane.mesh = quad

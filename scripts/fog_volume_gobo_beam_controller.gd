@@ -7,10 +7,6 @@ const FOG_SHADER_PATH: String = "res://scripts/shaders/fog_volume_gobo_beam.gdsh
 func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture: Texture2D, visual_settings: Dictionary) -> void:
 	if light == null or not is_instance_valid(light):
 		return
-	if gobo_texture == null:
-		clear_for_light(light)
-		return
-
 	var fog_volume: FogVolume = _ensure_volume(light)
 	if fog_volume == null:
 		return
@@ -20,6 +16,8 @@ func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture:
 	var cone_radius: float = tan(deg_to_rad(beam_angle * 0.5)) * beam_range
 	fog_volume.size = Vector3(max(cone_radius * 2.0, 0.1), max(cone_radius * 2.0, 0.1), beam_range)
 	fog_volume.position = Vector3(0.0, 0.0, -beam_range * 0.5)
+	# Godot's cone volume faces local +Z; Peraviz renderer children emit along local -Z.
+	fog_volume.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_params.get("beam_intensity", 0.0))), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	fog_volume.visible = scaled_intensity > threshold
@@ -28,7 +26,9 @@ func update_for_light(light: SpotLight3D, beam_params: Dictionary, gobo_texture:
 	if fog_material == null:
 		return
 	fog_material.set_shader_parameter("gobo_texture", gobo_texture)
+	fog_material.set_shader_parameter("use_gobo", gobo_texture != null)
 	fog_material.set_shader_parameter("light_color", Color(beam_params.get("beam_color", Color.WHITE)))
+	fog_material.set_shader_parameter("intensity", scaled_intensity / max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	var haze_density: float = max(float(beam_params.get("haze_density_multiplier", 0.22)), 0.01)
 	fog_material.set_shader_parameter("density_scale", float(visual_settings.get("fog_volume_density_scale", 0.9)) * haze_density)
 	fog_material.set_shader_parameter("emission_strength", float(visual_settings.get("fog_volume_emission_strength", 0.55)))
@@ -44,6 +44,7 @@ func clear_for_light(light: SpotLight3D) -> void:
 		return
 	var existing: Node = light.get_node_or_null(FOG_VOLUME_NODE_NAME)
 	if existing != null:
+		light.remove_child(existing)
 		existing.queue_free()
 
 func _ensure_volume(light: SpotLight3D) -> FogVolume:
@@ -53,20 +54,9 @@ func _ensure_volume(light: SpotLight3D) -> FogVolume:
 
 	var fog_volume := FogVolume.new()
 	fog_volume.name = FOG_VOLUME_NODE_NAME
-	_assign_fog_volume_shape(fog_volume)
+	fog_volume.shape = RenderingServer.FOG_VOLUME_SHAPE_CONE
 	fog_volume.material = ShaderMaterial.new()
 	var fog_material: ShaderMaterial = fog_volume.material as ShaderMaterial
 	fog_material.shader = load(FOG_SHADER_PATH)
 	light.add_child(fog_volume)
 	return fog_volume
-
-func _assign_fog_volume_shape(fog_volume: FogVolume) -> void:
-	if fog_volume == null:
-		return
-	var cone_shape: Variant = ClassDB.instantiate("ConeFogVolumeShape3D")
-	if cone_shape != null:
-		fog_volume.shape = cone_shape
-		return
-	var cylinder_shape: Variant = ClassDB.instantiate("CylinderFogVolumeShape3D")
-	if cylinder_shape != null:
-		fog_volume.shape = cylinder_shape

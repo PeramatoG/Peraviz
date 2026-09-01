@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS := {
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
-	"beam_quality": 2,
+	"beam_presentation": 0,
 	"beam_haze_density": 0.17,
 	"beam_anisotropy": 0.62,
 	"beam_noise_amount": 0.06,
@@ -66,8 +66,8 @@ const DEFAULT_SETTINGS := {
 }
 
 const QUICK_PRESETS := {
-	"Preview": {
-		"beam_quality": 0,
+	"Fog Volume": {
+		"beam_presentation": 0,
 		"beam_multiplier": 12.0,
 		"spot_multiplier": 0.8,
 		"bloom_multiplier": 0.0,
@@ -75,8 +75,8 @@ const QUICK_PRESETS := {
 		"light_volumetric_fog_energy": 8.0,
 		"environment_current_preset": 1,
 	},
-	"Balanced": {
-		"beam_quality": 1,
+	"Vector Prism": {
+		"beam_presentation": 1,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
 		"bloom_multiplier": 0.25,
@@ -84,8 +84,8 @@ const QUICK_PRESETS := {
 		"light_volumetric_fog_energy": 12.0,
 		"environment_current_preset": 2,
 	},
-	"Quality": {
-		"beam_quality": 2,
+	"Native Shadow": {
+		"beam_presentation": 2,
 		"beam_multiplier": 26.0,
 		"spot_multiplier": 1.1,
 		"bloom_multiplier": 0.4,
@@ -162,7 +162,7 @@ func _build_ui() -> void:
 	presets_label.text = "Quick presets"
 	mode_row.add_child(presets_label)
 
-	for preset_name in ["Preview", "Balanced", "Quality"]:
+	for preset_name in ["Fog Volume", "Vector Prism", "Native Shadow"]:
 		var preset_button: Button = Button.new()
 		preset_button.text = preset_name
 		preset_button.pressed.connect(func() -> void:
