@@ -1,18 +1,15 @@
 extends RefCounted
 class_name GoboPrismMeshBuilder
 
-const VECTORIZATION_MAX_SIZE: int = 192
+const VECTORIZATION_MAX_SIZE: int = 512
 const VECTORIZATION_ALPHA_THRESHOLD: float = 0.5
-const VECTORIZATION_EPSILON: float = 1.6
-const MAX_TOTAL_VECTOR_POINTS: int = 280
+const VECTORIZATION_EPSILON: float = 0.45
+const MAX_TOTAL_VECTOR_POINTS: int = 768
 const MIN_POLYGON_AREA: float = 0.00004
 const FALLBACK_SEGMENTS: int = 36
 const BINARY_LUMA_THRESHOLD: float = 0.5
 const OUTER_BORDER_PIXELS: int = 1
 const APERTURE_BORDER_RATIO: float = 0.985
-const POINT_REDUCTION_EPSILON_START: float = 0.001
-const POINT_REDUCTION_EPSILON_MULTIPLIER: float = 1.35
-const POINT_REDUCTION_EPSILON_MAX: float = 0.08
 const GOBO_VECTOR_POLYGONS_META_KEY: String = "peraviz_gobo_vector_polygons"
 const GOBO_VECTOR_WIDTH_META_KEY: String = "peraviz_gobo_vector_width"
 const GOBO_VECTOR_HEIGHT_META_KEY: String = "peraviz_gobo_vector_height"
@@ -22,6 +19,7 @@ const CIRCULAR_MAX_DEVIATION_RATIO_THRESHOLD: float = 0.14
 const CIRCULAR_MIN_POINTS: int = 16
 
 const GoboPolygonCleanupScript = preload("res://scripts/beam_renderers/gobo_polygon_cleanup.gd")
+const GoboCompoundTopologyScript = preload("res://scripts/beam_renderers/gobo_compound_topology.gd")
 
 var _shape_cache: Dictionary = {}
 var _mesh_cache: Dictionary = {}
@@ -45,7 +43,7 @@ func build_normalized_beam_mesh(gobo_texture: Texture2D, apply_edge_mask_correct
 	var polygons: Array[PackedVector2Array] = _get_or_build_shape_base(gobo_texture, apply_edge_mask_correction)
 	if polygons.is_empty():
 		polygons = [_build_fallback_circle()]
-	var mesh: ArrayMesh = _build_extruded_mesh(polygons, 1.0, 1.0, 1.0)
+	var mesh: ArrayMesh = _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, 1.0)
 	_mesh_cache[topology_key] = mesh
 	_counters["normalized_topology_creations"] += 1
 	return mesh
@@ -63,7 +61,7 @@ func build_aperture_beam_mesh(aperture_profile: Dictionary, beam_height: float) 
 		polygons = [_build_normalized_rectangle(ratio)]
 	else:
 		polygons = [_build_fallback_circle()]
-	var mesh: ArrayMesh = _build_extruded_mesh(polygons, 1.0, 1.0, max(beam_height, 0.001))
+	var mesh: ArrayMesh = _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, max(beam_height, 0.001))
 	_mesh_cache[key] = mesh
 	return mesh
 
@@ -85,7 +83,7 @@ func _shape_cache_key(gobo_texture: Texture2D, apply_edge_mask_correction: bool)
 	if gobo_texture == null:
 		return "__fallback_shape_%s" % [str(apply_edge_mask_correction)]
 	var content_id: int = int(gobo_texture.get_meta("peraviz_gobo_asset_id", gobo_texture.get_rid().get_id()))
-	return "__shape_v1_%d_%s" % [content_id, str(apply_edge_mask_correction)]
+	return "__shape_v2_%d_%s_%d_%.2f" % [content_id, str(apply_edge_mask_correction), MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
 
 func _vectorize_gobo(gobo_texture: Texture2D, gobo_scale: float, apply_edge_mask_correction: bool = true) -> Array[PackedVector2Array]:
 	if gobo_texture == null:
@@ -139,7 +137,7 @@ func _get_or_build_normalized_raster_polygons(gobo_texture: Texture2D, apply_edg
 func _normalized_polygon_cache_key(gobo_texture: Texture2D, apply_edge_mask_correction: bool) -> String:
 	if gobo_texture == null:
 		return "__normalized_fallback_%s_%.3f" % [str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD]
-	return "__normalized_%d_%s_%.3f" % [gobo_texture.get_rid().get_id(), str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD]
+	return "__normalized_v2_%d_%s_%.3f_%d_%.2f" % [gobo_texture.get_rid().get_id(), str(apply_edge_mask_correction), VECTORIZATION_ALPHA_THRESHOLD, MAX_TOTAL_VECTOR_POINTS, VECTORIZATION_EPSILON]
 
 func _vectorize_texture_to_normalized_polygons(gobo_texture: Texture2D, apply_edge_mask_correction: bool) -> Array[PackedVector2Array]:
 	var image: Image = gobo_texture.get_image()
@@ -182,7 +180,8 @@ func _normalize_polygon_to_local_space(polygon: PackedVector2Array, inv_width: f
 	for point in polygon:
 		var uv := Vector2(point.x * inv_width, point.y * inv_height)
 		var local := (uv - center) * 2.0
-		normalized_polygon.append(Vector2(local.x, -local.y))
+		# Preserve source artwork orientation; renderer alignment owns any optical transform.
+		normalized_polygon.append(local)
 	return normalized_polygon
 
 func _finalize_vector_polygons(normalized_polygons: Array[PackedVector2Array], gobo_scale: float) -> Array[PackedVector2Array]:
@@ -292,120 +291,24 @@ func _reduce_polygon_point_count(polygons: Array[PackedVector2Array], max_points
 	if _count_polygon_points(polygons) <= max_points:
 		return polygons
 
-	var reduced: Array[PackedVector2Array] = polygons.duplicate(true)
-	var epsilon: float = POINT_REDUCTION_EPSILON_START
-	while _count_polygon_points(reduced) > max_points and epsilon <= POINT_REDUCTION_EPSILON_MAX:
-		var iteration: Array[PackedVector2Array] = []
-		for polygon in reduced:
-			var simplified: PackedVector2Array = _simplify_closed_polygon(polygon, epsilon)
-			if simplified.size() < 3:
-				continue
-			var simplified_area: float = abs(_signed_polygon_area(simplified))
-			if simplified_area < MIN_POLYGON_AREA:
-				iteration.append(polygon)
-				continue
-			iteration.append(simplified)
-		reduced = iteration
-		epsilon *= POINT_REDUCTION_EPSILON_MULTIPLIER
-
-	if reduced.is_empty():
-		return []
-	if _count_polygon_points(reduced) <= max_points:
-		return reduced
-
-	var sorted: Array[Dictionary] = []
-	for polygon in reduced:
-		sorted.append({"polygon": polygon, "area": abs(_signed_polygon_area(polygon))})
-	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return float(a.get("area", 0.0)) > float(b.get("area", 0.0))
-	)
-
-	var final_polygons: Array[PackedVector2Array] = []
-	var total_points: int = 0
-	for item in sorted:
-		var polygon: PackedVector2Array = item.get("polygon", PackedVector2Array()) as PackedVector2Array
-		var polygon_points: int = polygon.size()
-		if final_polygons.size() > 0 and (total_points + polygon_points) > max_points:
-			continue
-		final_polygons.append(polygon)
-		total_points += polygon_points
-
-	if final_polygons.is_empty():
-		final_polygons.append(sorted[0].get("polygon", PackedVector2Array()) as PackedVector2Array)
-	var final_cleaned: Array[PackedVector2Array] = GoboPolygonCleanupScript.sanitize_polygons(final_polygons, MIN_POLYGON_AREA)
-	return final_cleaned if not final_cleaned.is_empty() else final_polygons
+	var minimum_budget: int = polygons.size() * 3
+	var available_budget: int = maxi(max_points, minimum_budget)
+	var source_points: int = _count_polygon_points(polygons)
+	var reduced: Array[PackedVector2Array] = []
+	var assigned: int = 0
+	for index in range(polygons.size()):
+		var remaining_rings: int = polygons.size() - index - 1
+		var proportional: int = maxi(3, int(round(float(polygons[index].size()) * float(available_budget) / float(source_points))))
+		var target: int = mini(polygons[index].size(), mini(proportional, available_budget - assigned - remaining_rings * 3))
+		reduced.append(GoboCompoundTopologyScript.simplify_closed_ring(polygons[index], target))
+		assigned += reduced[-1].size()
+	return reduced
 
 func _count_polygon_points(polygons: Array[PackedVector2Array]) -> int:
 	var total: int = 0
 	for polygon in polygons:
 		total += polygon.size()
 	return total
-
-func _simplify_closed_polygon(polygon: PackedVector2Array, epsilon: float) -> PackedVector2Array:
-	if polygon.size() < 4 or epsilon <= 0.0:
-		return polygon
-
-	var closed_path := PackedVector2Array(polygon)
-	closed_path.append(polygon[0])
-	var kept_indices: PackedInt32Array = _rdp_keep_indices(closed_path, epsilon)
-	if kept_indices.size() < 4:
-		return polygon
-
-	var simplified_path := PackedVector2Array()
-	for index in kept_indices:
-		simplified_path.append(closed_path[index])
-	if simplified_path[0].distance_to(simplified_path[simplified_path.size() - 1]) <= 0.0001:
-		simplified_path.remove_at(simplified_path.size() - 1)
-	if simplified_path.size() < 3:
-		return polygon
-	return simplified_path
-
-func _rdp_keep_indices(path: PackedVector2Array, epsilon: float) -> PackedInt32Array:
-	var count: int = path.size()
-	if count < 2:
-		return PackedInt32Array()
-	var keep: Array[bool] = []
-	keep.resize(count)
-	for i in range(count):
-		keep[i] = false
-	keep[0] = true
-	keep[count - 1] = true
-	_rdp_mark(path, 0, count - 1, epsilon, keep)
-
-	var indices := PackedInt32Array()
-	for i in range(count):
-		if keep[i]:
-			indices.append(i)
-	return indices
-
-func _rdp_mark(path: PackedVector2Array, start_index: int, end_index: int, epsilon: float, keep: Array[bool]) -> void:
-	if (end_index - start_index) <= 1:
-		return
-	var segment_start: Vector2 = path[start_index]
-	var segment_end: Vector2 = path[end_index]
-	var max_distance: float = -1.0
-	var split_index: int = -1
-	for i in range(start_index + 1, end_index):
-		var distance: float = _distance_point_to_segment(path[i], segment_start, segment_end)
-		if distance > max_distance:
-			max_distance = distance
-			split_index = i
-	if split_index == -1:
-		return
-	if max_distance > epsilon:
-		keep[split_index] = true
-		_rdp_mark(path, start_index, split_index, epsilon, keep)
-		_rdp_mark(path, split_index, end_index, epsilon, keep)
-
-func _distance_point_to_segment(point: Vector2, segment_start: Vector2, segment_end: Vector2) -> float:
-	var segment: Vector2 = segment_end - segment_start
-	var segment_length_squared: float = segment.length_squared()
-	if segment_length_squared <= 0.0000001:
-		return point.distance_to(segment_start)
-	var t: float = clamp((point - segment_start).dot(segment) / segment_length_squared, 0.0, 1.0)
-	var projection: Vector2 = segment_start + (segment * t)
-	return point.distance_to(projection)
-
 
 func _prepare_binary_mask_image(image: Image) -> void:
 	var width: int = image.get_width()
@@ -446,30 +349,24 @@ func _build_fallback_circle() -> PackedVector2Array:
 		polygon.append(Vector2(cos(angle), sin(angle)))
 	return polygon
 
-func _build_extruded_mesh(polygons: Array[PackedVector2Array], near_radius: float, far_radius: float, beam_height: float) -> ArrayMesh:
+func _build_extruded_mesh(components: Array[Dictionary], near_radius: float, far_radius: float, beam_height: float) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var half_height: float = beam_height * 0.5
-	for polygon in polygons:
-		if polygon.size() < 3:
-			continue
-		_add_caps(st, polygon, near_radius, far_radius, half_height)
-		_add_sides(st, polygon, near_radius, far_radius, half_height)
+	for component in components:
+		_add_caps(st, component, near_radius, far_radius, half_height)
+		_add_sides(st, component.get("outer", PackedVector2Array()) as PackedVector2Array, near_radius, far_radius, half_height)
+		for hole in component.get("holes", []) as Array[PackedVector2Array]:
+			_add_sides(st, hole, near_radius, far_radius, half_height)
 	st.generate_normals()
 	return st.commit()
 
-func _add_caps(st: SurfaceTool, polygon: PackedVector2Array, near_radius: float, far_radius: float, half_height: float) -> void:
+func _add_caps(st: SurfaceTool, component: Dictionary, near_radius: float, far_radius: float, half_height: float) -> void:
 	st.set_smooth_group(-1)
-	var indices: PackedInt32Array = Geometry2D.triangulate_polygon(polygon)
-	if indices.is_empty():
-		return
-	for i in range(0, indices.size(), 3):
-		var ia: int = indices[i]
-		var ib: int = indices[i + 1]
-		var ic: int = indices[i + 2]
-		var a: Vector2 = polygon[ia]
-		var b: Vector2 = polygon[ib]
-		var c: Vector2 = polygon[ic]
+	for triangle in GoboCompoundTopologyScript.triangulate(component):
+		var a: Vector2 = triangle["a"]
+		var b: Vector2 = triangle["b"]
+		var c: Vector2 = triangle["c"]
 		st.add_vertex(Vector3(a.x * near_radius, half_height, a.y * near_radius))
 		st.add_vertex(Vector3(b.x * near_radius, half_height, b.y * near_radius))
 		st.add_vertex(Vector3(c.x * near_radius, half_height, c.y * near_radius))

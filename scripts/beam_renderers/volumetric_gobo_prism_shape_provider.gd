@@ -6,8 +6,8 @@ const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_index
 
 
 const GOBO_TEXTURE_META_KEY: String = "peraviz_gobo_texture"
-const DEFAULT_MIRROR_BEAM_SHAPE_X: bool = true
-const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = true
+const DEFAULT_MIRROR_BEAM_SHAPE_X: bool = false
+const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = false
 
 var _mesh_builder: GoboPrismMeshBuilder = GoboPrismMeshBuilder.new()
 
@@ -27,7 +27,7 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	var alignment_rotation_deg: float = float(params.get("beam_gobo_alignment_rotation_deg", 0.0))
 	# The light node already carries gobo wheel/index rotation via FixtureGoboProjector.
 	# Keep only local alignment on the prism node to avoid double-rotating versus the footprint.
-	var beam_rotation_deg: float = wrapf(alignment_rotation_deg + 180.0, 0.0, 360.0)
+	var beam_rotation_deg: float = wrapf(alignment_rotation_deg, 0.0, 360.0)
 	var mirror_x: bool = bool(params.get("beam_gobo_mirror_x", DEFAULT_MIRROR_BEAM_SHAPE_X))
 	var mirror_z: bool = bool(params.get("beam_gobo_mirror_z", DEFAULT_MIRROR_BEAM_SHAPE_Z))
 	var prism_mesh: ArrayMesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
@@ -62,4 +62,4 @@ func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
 	if node == null:
 		return
 	node.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
-	node.rotate_object_local(Vector3.UP, deg_to_rad(-beam_rotation_deg))
+	node.rotate_object_local(Vector3.UP, deg_to_rad(beam_rotation_deg))

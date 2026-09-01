@@ -29,6 +29,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Corrected vector gobo silhouettes for complex concave artwork, preserved internal cut-outs and nested islands in prism caps and walls, and aligned asymmetric artwork and indexed rotation with the documented source-image convention without rebuilding cached topology.
+
 - Prevented beam-optics debug axes from appearing as red shafts during normal playback, stopped Dimmer changes from requesting expensive beam-topology work, and restored beams that first receive a zero Dimmer value before becoming visible.
 
 - Preserved selected gobos and continuous rotation across renderer refreshes, asset updates, and DMX runtime binding rebuilds, so held lighting state no longer requires a new Art-Net value change to reappear.

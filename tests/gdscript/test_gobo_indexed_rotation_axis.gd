@@ -34,9 +34,9 @@ func _test_parent_orientation(parent_rotation_degrees: Vector3, mirror_scale: Ve
 		if is_equal_approx(absf(angle), 180.0):
 			test.check(beam.global_transform.basis.x.normalized().dot(zero_transverse) < -0.9999, "Pos 180 must flip the transverse gobo axis without reversing the beam")
 		if is_equal_approx(angle, 90.0):
-			test.check(beam.global_transform.basis.x.normalized().dot(zero_transverse_z) > 0.9999, "Positive Pos must follow the existing renderer local-Y handedness")
+			test.check(beam.global_transform.basis.x.normalized().dot(zero_transverse_z) < -0.9999, "Positive Pos must follow the documented source-artwork rotation direction")
 		if is_equal_approx(angle, -90.0):
-			test.check(beam.global_transform.basis.x.normalized().dot(zero_transverse_z) < -0.9999, "Negative Pos must follow the opposite renderer local-Y handedness")
+			test.check(beam.global_transform.basis.x.normalized().dot(zero_transverse_z) > 0.9999, "Negative Pos must follow the opposite source-artwork direction")
 		if is_equal_approx(angle, 360.0):
 			test.check(beam.global_transform.basis.x.normalized().dot(zero_transverse) > 0.9999, "Pos 360 must return to the Pos 0 transverse orientation")
 	PresentationScript.apply_physical_angle(beam, 45.0, "vector_prism")
@@ -73,7 +73,7 @@ func _test_shader_alignment() -> void:
 	PresentationScript.apply_physical_angle(beam, 45.0, PresentationScript.SHADER_BACKEND)
 	PresentationScript.reapply_after_base_alignment(beam, 180.0)
 	test.check(beam.transform.basis == original_basis, "Shader Pos must not rotate beam geometry")
-	test.check(is_equal_approx(float(beam.get_instance_shader_parameter("gobo_rotation_deg")), 135.0), "Shader Pos must combine base alignment and handedness exactly once")
+	test.check(is_equal_approx(float(beam.get_instance_shader_parameter("gobo_rotation_deg")), 225.0), "Shader Pos must combine base alignment and source-artwork direction exactly once")
 	PresentationScript.apply_physical_angle(beam, -45.0, PresentationScript.SHADER_BACKEND)
-	test.check(is_equal_approx(float(beam.get_instance_shader_parameter("gobo_rotation_deg")), 225.0), "Shader negative Pos must use the opposite presentation direction")
+	test.check(is_equal_approx(float(beam.get_instance_shader_parameter("gobo_rotation_deg")), 135.0), "Shader negative Pos must use the opposite presentation direction")
 	beam.queue_free()

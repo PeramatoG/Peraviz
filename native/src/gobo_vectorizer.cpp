@@ -65,7 +65,7 @@ void PeravizGoboVectorizer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("vectorize_image", "image_path", "max_size",
                                    "luma_alpha_threshold", "apply_edge_mask_correction"),
                          &PeravizGoboVectorizer::vectorize_image,
-                         DEFVAL(192), DEFVAL(0.5), DEFVAL(true));
+                         DEFVAL(512), DEFVAL(0.5), DEFVAL(true));
 }
 
 Dictionary PeravizGoboVectorizer::vectorize_image(const String &image_path,
@@ -116,7 +116,7 @@ Dictionary PeravizGoboVectorizer::vectorize_image(const String &image_path,
     bitmap->create_from_image_alpha(image, 0.5);
 
     const Rect2i rect(0, 0, image->get_width(), image->get_height());
-    Array polygons = bitmap->opaque_to_polygons(rect, 1.6);
+    Array polygons = bitmap->opaque_to_polygons(rect, 0.45);
 
     result["ok"] = true;
     result["width"] = image->get_width();

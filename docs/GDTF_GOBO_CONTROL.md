@@ -8,6 +8,8 @@ For selected-mode `Gobo(n)` ChannelFunctions, native C++ compiles indexed wheel 
 
 During structural setup, `NativeGoboResourceRegistry` loads and retains original PNG/mask resources and prepares reusable normalized vector-prism topology. Live rows select these registered resources by stable numeric ID; they do not carry paths, images, or semantic dictionaries. An open or missing-media slot clears deterministically.
 
+Vector topology uses the source artwork convention: image X points right and image Y points down when viewed along the emitted beam toward its projected footprint. Contour nesting determines fill parity (outer, hole, island), and renderer alignment applies no implicit mirror or half-turn. Positive indexed gobo angles rotate that source-oriented shape positively around the emitted optical axis. Optical compatibility transforms, when explicitly configured, are renderer presentation settings and never alter or invalidate cached topology.
+
 ## Static multi-wheel composition
 
 When more than one seated gobo wheel targets the same Beam and all selected layers are static, Godot forms a canonical ordered key, multiplies the binary masks, caches the composed mask, and vectorizes that combination once. Topology excludes fixture UUID and live presentation values so repeated fixtures can reuse it. Original masks remain independently retained.
