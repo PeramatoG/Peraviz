@@ -292,13 +292,15 @@ func _apply_resource_to_target(target_record: Dictionary, resource: Dictionary) 
 				_presentation_callback.call(light, texture, NAN)
 	for beam_item in target_record.get("beam_instances", []):
 		var beam: MeshInstance3D = beam_item as MeshInstance3D
-		if beam != null:
+		if beam != null and not bool(beam.get_meta("peraviz_shader_beam_proxy_instance", false)):
 			beam.mesh = mesh
 
 func _apply_rotation_to_target(target_record: Dictionary, physical_angle_degrees: float) -> void:
 	var backend: String = _presentation_backend(target_record)
 	for beam_item in target_record.get("beam_instances", []):
-		GoboRotationPresentationScript.apply_physical_angle(beam_item as MeshInstance3D, physical_angle_degrees, backend)
+		var beam: MeshInstance3D = beam_item as MeshInstance3D
+		if beam != null and not bool(beam.get_meta("peraviz_shader_beam_proxy_instance", false)):
+			GoboRotationPresentationScript.apply_physical_angle(beam, physical_angle_degrees, backend)
 	for light_item in target_record.get("emitter_anchors", []):
 		var light: SpotLight3D = light_item as SpotLight3D
 		if light != null and _presentation_callback.is_valid():

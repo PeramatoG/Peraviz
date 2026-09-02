@@ -449,7 +449,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 		if world_environment.environment.fog_enabled:
 			world_environment.environment.fog_density = ambient_fog_density
 		var volumetric_fog_density: float = max(float(_visual_settings.get("volumetric_fog_density", 0.0)), 0.0)
-		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 1)) != 1
+		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 1)) in [0, 2]
 		world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001 or presentation_uses_fog
 		world_environment.environment.volumetric_fog_density = volumetric_fog_density
 		if _environment_has_property(world_environment.environment, "volumetric_fog_length"):
@@ -458,7 +458,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 			world_environment.environment.volumetric_fog_fade = max(float(_visual_settings.get("volumetric_fog_fade", 0.02)), 0.005)
 	if _shared_haze_controller == null:
 		_shared_haze_controller = SharedHazeControllerScript.new()
-	_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) != 1, _visual_settings)
+	_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) in [0, 2], _visual_settings)
 
 	# Renderer-level volumetric fog froxel settings are kept static in project.godot.
 	# Do not mutate froxel sizing/filtering at runtime, as it can cause renderer signal churn.
@@ -1226,7 +1226,7 @@ func _rebuild_loaded_bounds() -> void:
 		if child is Node3D:
 			_expand_loaded_bounds_from_node(child)
 	if _shared_haze_controller != null:
-		_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) != 1, _visual_settings)
+		_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) in [0, 2], _visual_settings)
 
 func _create_scene_node(data: Dictionary) -> Node3D:
 	return _node_factory.create_scene_node(data, _loader, _asset_cache)
@@ -1727,6 +1727,8 @@ func _present_native_gobo(light: SpotLight3D, texture: Texture2D, gobo_rotation_
 		light.set_meta("peraviz_beam_last_params", params)
 		_fixture_gobo_projector.set_presentation_rotation(light, gobo_rotation_degrees)
 	_refresh_native_gobo_presentation(light, texture)
+	if _active_beam_presentation == VolumetricBeamRendererScript.PRESENTATION_SHADER_PROXY and _active_beam_renderer != null:
+		_active_beam_renderer.update_beam(light, light.get_meta("peraviz_beam_last_params", {}))
 
 func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null) -> void:
 	if _fixture_gobo_projector == null:
@@ -1755,6 +1757,8 @@ func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 	var haze: FogVolume = _shared_haze_controller.get_volume() if _shared_haze_controller != null else null
 	result["shared_haze"] = haze != null and haze.visible
 	result["shared_haze_density"] = float(_visual_settings.get("shared_haze_density", 0.0))
+	if _active_beam_renderer != null and _active_beam_renderer.has_method("get_proxy_diagnostics"):
+		result.merge(_active_beam_renderer.get_proxy_diagnostics(), true)
 	return result
 
 func _register_native_runtime_targets(renderer_manifest: Array) -> void:

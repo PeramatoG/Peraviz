@@ -3,6 +3,8 @@ extends VBoxContainer
 
 class_name RendererSettingsPanel
 
+const BeamPresentationOptionsScript = preload("res://scripts/ui/visual/beam_presentation_options.gd")
+
 signal setting_changed(key: String, value: Variant)
 
 const BASIC_KEYS := {
@@ -34,7 +36,7 @@ func _build_ui() -> void:
 	_add_slider_row("Volumetric fog length", "volumetric_fog_length", 1.0, 200.0, 1.0)
 	_add_slider_row("Volumetric fog fade", "volumetric_fog_fade", 0.0, 0.2, 0.005)
 	_add_slider_row("Native light fog energy", "light_volumetric_fog_energy", 0.0, 1500.0, 10.0)
-	_add_option_row("Beam presentation", "beam_presentation", ["Shared Haze (Experimental)", "Vector Gobo Prism (Reference)", "Shared Haze + Gobo Shadow (Experimental)"])
+	_add_option_row("Beam presentation", "beam_presentation", BeamPresentationOptionsScript.LABELS)
 	_add_color_row("Background color", "background_color")
 
 func set_advanced_mode(enabled: bool) -> void:

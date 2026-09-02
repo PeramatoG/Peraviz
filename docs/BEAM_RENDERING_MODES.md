@@ -4,7 +4,7 @@ Peraviz resolves GDTF/MVR and live DMX in the native runtime. The modes below co
 
 ## Independent surface projection
 
-An active native gobo selection assigns the cached composed texture to `SpotLight3D.light_projector` in every mode. Godot 4.7 requires shadows for reliable projector output, so Peraviz enables them while a projector is present and restores the prior policy when it is cleared. The projector light rolls around the beam axis by the authoritative physical gobo angle; the Vector Prism child receives the inverse parent-roll compensation, preserving its recovered topology and orientation.
+An active native gobo selection assigns the cached composed texture to `SpotLight3D.light_projector` in every mode. Godot 4.7 requires shadows for reliable projector output, so Peraviz enables them while a projector is present and restores the prior policy when it is cleared. Projector roll is composed into the saved local optical basis around local `-Z`; it does not rewrite Euler angles, the emitter origin, or the beam direction. The Vector Prism child receives an explicit inverse presentation roll around its documented longitudinal axis, preserving its recovered topology and centerline.
 
 The shadows-only aperture mask is a separate resource. It exists only for an active gobo in Shared Haze + Gobo Shadow and shapes volumetric light through real shadows. It is not the crisp surface-projector path.
 
@@ -24,6 +24,12 @@ This reuses the same shared haze and active real SpotLights. Each active gobo ou
 
 Godot 4.7 does not apply `light_projector` textures directly to volumetric fog. Shadow maps and the fixed froxel grid can make the volumetric gobo softer than the surface footprint, particularly at distance.
 
+### Shader Beam Proxy
+
+This experimental Peraviz presentation is inspired by established real-time DMX-previsualization architecture, but is not an Unreal Engine dependency and is not part of GDTF or MVR. It uses one shared normalized low-poly stack of frustum slices and a per-instance additive shader. Length, aperture, angle, color, intensity, composed gobo texture, scale, and rotation are uniforms or instance transforms; gobo motion never vectorizes or rebuilds topology.
+
+The proxy selects a bounded 4, 8, or 12 slice tier: wide beams use fewer visible slices and narrow beams use more. A Forward+ scene-depth texture softly clips fragments behind the closest opaque surface. Transparent-depth ordering and unusual camera projections can still expose clipping artifacts, so this remains an experimental approximation rather than physical volumetric scattering.
+
 ## Shared haze and range
 
 The presets keep global Environment fog density at zero; the local shared FogVolume supplies density. Both haze modes enable Environment volumetric fog and use a 110 m fog length. The longer range helps overview cameras see fixtures whose beams commonly reach about 75 m, but distributes the fixed froxel depth over more distance and reduces detail. Froxel resolution remains unchanged.
@@ -39,14 +45,24 @@ Presentation ownership is explicit:
 - A main realtime SpotLight contributes to haze only when its authoritative physical output is active and the selected haze mode requires it.
 - Surface projection owns the crisp projector and its Godot 4.7 shadow dependency.
 - The physical mask belongs only to Shared Haze + Gobo Shadow.
+- Shader Beam Proxy owns one cached proxy instance per relevant emitter and requires neither shared haze nor a realtime SpotLight for its shaft.
 
-`[peraviz-presentation]` reports native target/output/emitter ownership, authoritative active outputs and emitters, cached fixture lights, vector resources, the shared haze, emitter FogVolumes, surface projectors, masks, realtime SpotLights, and shadowed SpotLights. Counts use stable target/emitter identities rather than per-frame SceneTree scans. They distinguish roughly 95 native Dimmer target records from the larger set of physical emitter anchors produced by multi-emitter fixture geometries; the trace shows whether those anchors are unique and authoritatively active rather than assuming either count is a leak.
+`[peraviz-presentation]` reports native target/output/emitter ownership, authoritative active outputs and emitters, cached fixture lights, vector resources, proxy visibility/creation/parameter/texture counters, the shared haze, emitter FogVolumes, surface projectors, masks, realtime SpotLights, and shadowed SpotLights. Counts use stable target/emitter identities rather than per-frame SceneTree scans.
+
+| Mode | Shaft resource scaling | Gobo motion | Native SpotLight for shaft |
+| --- | --- | --- | --- |
+| Vector Prism | One cached gobo-dependent mesh per emitter | Parametric rotation; texture selection can change topology | No |
+| Shared Haze | One scene FogVolume plus active native lights | Surface projector only | Yes |
+| Shared Haze + Gobo Shadow | Same scene FogVolume plus one mask per active gobo | Parametric mask/projector roll | Yes |
+| Shader Beam Proxy | One instance of shared normalized topology per active/reused emitter | Texture/uniform only | No |
 
 ## Current limitations
 
 - Surface projector correctness depends on real-time shadows in stable Godot 4.7.
 - Projector textures do not shape stable Godot volumetric fog.
 - Native gobo shadows are limited by froxel and shadow-map resolution.
+- Shader proxy depth clipping is screen-space and does not provide physical shadowing or robust transparent-object occlusion.
+- Lens texture/mask presentation remains independent future work.
 - A scene with many genuinely active physical emitters can still make native volumetric lighting expensive; future aggregation or culling is outside this experiment.
 - The broader live-DMX output/apply CPU bottleneck is separate work and is not solved by changing beam presentation.
 - Focus, Frost, Iris, prism, and shutter semantics remain limited exactly as documented in the [GDTF support matrix](gdtf-support-matrix.md).
@@ -57,5 +73,6 @@ Presentation ownership is explicit:
 2. Start Art-Net and select Vector Prism. Confirm open beams and vector gobo shafts are unchanged, and an asymmetric surface footprint rotates coherently with the prism.
 3. Select Shared Haze without changing DMX. Confirm exactly one shared haze, zero emitter FogVolumes, active open shafts in haze, and a crisp gobo surface footprint.
 4. Select Shared Haze + Gobo Shadow. Confirm the same haze is reused, active gobo outputs have masks, open outputs do not, and volumetric light reacts to the mask as Godot's resolution permits.
-5. Switch Vector, Shared Haze, Shared Haze + Gobo Shadow, and Vector without a new DMX event; confirm no stale white footprint or missing gobo.
-6. Capture diagnostics and at least ten settled `--peraviz-perf-trace` lines in each haze mode.
+5. Select Shader Beam Proxy and confirm open/gobo shafts use the same surface centerline at two Pan/Tilt orientations and four indexed angles.
+6. Switch all four modes repeatedly without a new DMX event; confirm no accumulated drift, stale white footprint, or missing gobo.
+7. Capture diagnostics and at least ten settled `--peraviz-perf-trace` lines per experimental mode.

@@ -32,6 +32,7 @@ static func apply_parent_roll_compensation(beam: MeshInstance3D, parent_roll_deg
 		return
 	var previous: float = float(beam.get_meta(PARENT_ROLL_COMPENSATION_META, 0.0))
 	var desired: float = -parent_roll_degrees
+	# The beam's local Y axis is the optical axis after its fixed renderer alignment.
 	beam.rotate_object_local(Vector3.UP, deg_to_rad(desired - previous))
 	beam.set_meta(PARENT_ROLL_COMPENSATION_META, desired)
 

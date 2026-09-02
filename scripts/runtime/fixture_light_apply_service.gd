@@ -963,7 +963,7 @@ func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: boo
 	if light.light_projector != null:
 		return true
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
-	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) != 1
+	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) in [0, 2]
 
 # Emits a one-time diagnostic message for live visual-frame state transitions.
 func _is_visual_debug_logging_enabled(loader: Node) -> bool:

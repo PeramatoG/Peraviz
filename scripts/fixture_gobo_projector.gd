@@ -25,7 +25,7 @@ const GOBO_WHEEL_SHAKE_PHASE_META_KEY: String = "peraviz_gobo_wheel_shake_phase"
 const GOBO_WHEEL_SHAKE_RANGE_META_KEY: String = "peraviz_gobo_wheel_shake_range"
 const GOBO_LAST_UPDATE_MSEC_META_KEY: String = "peraviz_gobo_last_update_msec"
 const GOBO_APPLIED_ROTATION_DEG_META_KEY: String = "peraviz_gobo_applied_rotation_deg"
-const PROJECTOR_BASE_ROLL_META_KEY: String = "peraviz_projector_base_roll_deg"
+const PROJECTOR_BASE_BASIS_META_KEY: String = "peraviz_projector_base_basis"
 const GOBO_APPLIED_SHAKE_TILT_DEG_META_KEY: String = "peraviz_gobo_applied_shake_tilt_deg"
 const GOBO_WHEEL_MODE_META_KEY: String = "peraviz_gobo_wheel_mode"
 const GOBO_APPLIED_STATE_META_KEY: String = "peraviz_gobo_applied_state"
@@ -83,11 +83,13 @@ func set_shadow_mask_enabled(light: SpotLight3D, enabled: bool) -> void:
 func set_presentation_rotation(light: SpotLight3D, gobo_rotation_degrees: float) -> void:
 	if light == null or not is_instance_valid(light):
 		return
-	if not light.has_meta(PROJECTOR_BASE_ROLL_META_KEY):
-		light.set_meta(PROJECTOR_BASE_ROLL_META_KEY, light.rotation_degrees.z)
-	var rotation: Vector3 = light.rotation_degrees
-	rotation.z = float(light.get_meta(PROJECTOR_BASE_ROLL_META_KEY)) + gobo_rotation_degrees
-	light.rotation_degrees = rotation
+	if not light.has_meta(PROJECTOR_BASE_BASIS_META_KEY):
+		light.set_meta(PROJECTOR_BASE_BASIS_META_KEY, light.transform.basis.orthonormalized())
+	var base_basis: Basis = light.get_meta(PROJECTOR_BASE_BASIS_META_KEY) as Basis
+	var local_roll := Basis(Vector3(0.0, 0.0, -1.0), deg_to_rad(gobo_rotation_degrees))
+	var current_transform := light.transform
+	current_transform.basis = base_basis * local_roll
+	light.transform = current_transform
 	if light.has_meta("peraviz_volumetric_beam"):
 		GoboRotationPresentationScript.apply_parent_roll_compensation(light.get_meta("peraviz_volumetric_beam") as MeshInstance3D, gobo_rotation_degrees)
 	if light.has_meta(GOBO_PLANE_META_KEY):

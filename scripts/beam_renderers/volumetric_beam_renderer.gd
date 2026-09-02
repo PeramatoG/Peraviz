@@ -14,7 +14,9 @@ const INTENSITY_MAX_META_KEY: String = "peraviz_beam_intensity_max"
 const PRESENTATION_FOG_VOLUME: int = 0
 const PRESENTATION_VECTOR_PRISM: int = 1
 const PRESENTATION_NATIVE_SHADOW: int = 2
+const PRESENTATION_SHADER_PROXY: int = 3
 const FogVolumeControllerScript = preload("res://scripts/fog_volume_gobo_beam_controller.gd")
+const ShaderBeamProxyControllerScript = preload("res://scripts/beam_renderers/shader_beam_proxy_controller.gd")
 
 var _beam_material_template: ShaderMaterial
 var _camera: Camera3D
@@ -25,6 +27,7 @@ var _active_shape_provider: VolumetricBeamShapeProvider
 var _last_parameter_write_count: int = 0
 var _presentation_mode: int = PRESENTATION_VECTOR_PRISM
 var _fog_controller: FogVolumeGoboBeamController = FogVolumeControllerScript.new()
+var _proxy_controller: ShaderBeamProxyController = ShaderBeamProxyControllerScript.new()
 
 func _init() -> void:
 	_beam_material_template = ShaderMaterial.new()
@@ -218,6 +221,8 @@ func get_beam_optics_state(light: SpotLight3D) -> Dictionary:
 	return {}
 
 func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
+	if _presentation_mode == PRESENTATION_SHADER_PROXY:
+		return _proxy_controller.get_proxy(light)
 	if not light.has_meta(BEAM_META_KEY):
 		return null
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
@@ -225,6 +230,7 @@ func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 
 func cleanup_beam(light: SpotLight3D) -> void:
 	_fog_controller.clear_for_light(light)
+	_proxy_controller.hide_for_light(light)
 	if light.has_meta(BEAM_META_KEY):
 		var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 		if beam != null and is_instance_valid(beam):
@@ -240,9 +246,17 @@ func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> Dictio
 		result["changed"] = true
 		result["visibility_changed"] = true
 	_fog_controller.clear_for_light(light)
+	if _presentation_mode == PRESENTATION_SHADER_PROXY:
+		var texture: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
+		result = _proxy_controller.update_for_light(light, params, texture)
+	else:
+		_proxy_controller.hide_for_light(light)
 	light.set_meta("peraviz_beam_last_params", params)
 	_last_parameter_write_count = int(result.get("parameter_write_count", 0))
 	return result
+
+func get_proxy_diagnostics() -> Dictionary:
+	return _proxy_controller.counters()
 
 func _select_shape_provider() -> VolumetricBeamShapeProvider:
 	var requested_mode: String = str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)).to_lower()

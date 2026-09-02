@@ -10,6 +10,7 @@ const UiVisibilityPolicyScript = preload("res://scripts/ui/ui_visibility_policy.
 const RendererSettingsPanelScript = preload("res://scripts/ui/visual/renderer_settings_panel.gd")
 const EnvironmentSettingsPanelScript = preload("res://scripts/ui/visual/environment_settings_panel.gd")
 const DebugGoboSettingsPanelScript = preload("res://scripts/ui/visual/debug_gobo_settings_panel.gd")
+const BeamPresentationOptionsScript = preload("res://scripts/ui/visual/beam_presentation_options.gd")
 
 const DEFAULT_SETTINGS := {
 	"ambient_multiplier": 0.08,
@@ -76,7 +77,7 @@ const QUICK_PRESETS := {
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
-		"light_volumetric_fog_energy": 0.0,
+		"light_volumetric_fog_energy": 350.0,
 		"shared_haze_density": 0.015,
 		"shared_haze_margin": 5.0,
 		"environment_current_preset": 1,
@@ -101,6 +102,18 @@ const QUICK_PRESETS := {
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
 		"light_volumetric_fog_energy": 500.0,
+		"shared_haze_density": 0.015,
+		"shared_haze_margin": 5.0,
+		"environment_current_preset": 1,
+	},
+	"Shader Beam Proxy": {
+		"beam_presentation": 3,
+		"beam_multiplier": 20.0,
+		"spot_multiplier": 1.0,
+		"bloom_multiplier": 0.0,
+		"volumetric_fog_density": 0.0,
+		"volumetric_fog_length": 110.0,
+		"light_volumetric_fog_energy": 0.0,
 		"shared_haze_density": 0.015,
 		"shared_haze_margin": 5.0,
 		"environment_current_preset": 1,
@@ -161,7 +174,6 @@ func _build_ui() -> void:
 	root.add_child(layout)
 
 	var mode_row: HBoxContainer = HBoxContainer.new()
-	mode_row.add_theme_constant_override("separation", 8)
 	layout.add_child(mode_row)
 
 	_advanced_mode_toggle = CheckBox.new()
@@ -170,17 +182,22 @@ func _build_ui() -> void:
 	_advanced_mode_toggle.toggled.connect(_on_advanced_mode_toggled)
 	mode_row.add_child(_advanced_mode_toggle)
 
-	var presets_label: Label = Label.new()
-	presets_label.text = "Quick presets"
-	mode_row.add_child(presets_label)
-
-	for preset_name in ["Shared Haze", "Vector Prism", "Shared Haze + Gobo Shadow"]:
-		var preset_button: Button = Button.new()
-		preset_button.text = preset_name
-		preset_button.pressed.connect(func() -> void:
-			_apply_quick_preset(preset_name)
-		)
-		mode_row.add_child(preset_button)
+	var preset_row := HBoxContainer.new()
+	preset_row.add_theme_constant_override("separation", 8)
+	layout.add_child(preset_row)
+	var presets_label := Label.new()
+	presets_label.text = "Quick preset"
+	preset_row.add_child(presets_label)
+	var preset_option := OptionButton.new()
+	preset_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for preset_name in BeamPresentationOptionsScript.PRESET_NAMES:
+		preset_option.add_item(preset_name)
+	preset_option.select(-1)
+	preset_option.item_selected.connect(func(index: int) -> void:
+		_apply_quick_preset(BeamPresentationOptionsScript.PRESET_NAMES[index])
+		preset_option.select(-1)
+	)
+	preset_row.add_child(preset_option)
 
 	_tabs = TabContainer.new()
 	_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL

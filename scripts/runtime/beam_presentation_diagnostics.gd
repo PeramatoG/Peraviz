@@ -1,7 +1,7 @@
 extends RefCounted
 class_name BeamPresentationDiagnostics
 
-var _ids: Dictionary = {"vector": {}, "fog_allocated": {}, "fog_visible": {}, "mask": {}, "projector": {}, "shadow": {}, "gobo_visible": {}, "open_visible": {}}
+var _ids: Dictionary = {"vector": {}, "proxy": {}, "fog_allocated": {}, "fog_visible": {}, "mask": {}, "projector": {}, "shadow": {}, "gobo_visible": {}, "open_visible": {}}
 var _fog_totals_by_light: Dictionary = {}
 var _fog_creations: int = 0
 var _fog_parameter_writes: int = 0
@@ -11,8 +11,10 @@ func update(loader: Node, light: SpotLight3D) -> Dictionary:
 	var beam: MeshInstance3D = light.get_meta("peraviz_volumetric_beam") as MeshInstance3D if light.has_meta("peraviz_volumetric_beam") else null
 	var beam_visible: bool = beam != null and is_instance_valid(beam) and beam.visible
 	var physical_visible: bool = bool(light.get_meta("peraviz_physical_output_visible")) if light.has_meta("peraviz_physical_output_visible") else false
+	var proxy: MeshInstance3D = light.get_meta("peraviz_shader_beam_proxy") as MeshInstance3D if light.has_meta("peraviz_shader_beam_proxy") else null
 	var flags: Dictionary = {
 		"vector": beam_visible,
+		"proxy": proxy != null and is_instance_valid(proxy) and proxy.visible,
 		"fog_allocated": light.get_node_or_null("PeravizFogVolumeGoboBeam") != null,
 		"fog_visible": light.get_node_or_null("PeravizFogVolumeGoboBeam") is FogVolume and (light.get_node_or_null("PeravizFogVolumeGoboBeam") as FogVolume).visible,
 		"mask": light.has_meta("peraviz_gobo_plane"),
@@ -36,6 +38,7 @@ func update(loader: Node, light: SpotLight3D) -> Dictionary:
 	return {
 		"beam_presentation": int((settings as Dictionary).get("beam_presentation", 1)) if settings is Dictionary else 1,
 		"active_vector_prisms": (_ids["vector"] as Dictionary).size(),
+		"active_shader_proxies": (_ids["proxy"] as Dictionary).size(),
 		"allocated_fog_volumes": (_ids["fog_allocated"] as Dictionary).size(),
 		"active_fog_volumes": (_ids["fog_visible"] as Dictionary).size(),
 		"fog_volume_creations": _fog_creations,

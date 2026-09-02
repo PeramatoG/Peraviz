@@ -68,7 +68,8 @@ func _run() -> void:
 		test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "User-facing Shared Haze must not allocate per-emitter FogVolumes")
 	light.set_meta("peraviz_gobo_texture", texture)
 	var vector_mesh: Mesh = null
-	for mode in [1, 0, 2, 1, 0, 1]:
+	var proxy_mesh: Mesh = null
+	for mode in [1, 0, 2, 3, 1, 3, 1]:
 		renderer.cleanup_beam(light)
 		renderer.configure(null, {"beam_presentation": mode})
 		projector.set_shadow_mask_enabled(light, mode == 2)
@@ -84,11 +85,24 @@ func _run() -> void:
 				vector_mesh = vector_beam.mesh
 			else:
 				test.check(vector_beam.mesh == vector_mesh, "Presentation switching must not redesign Vector Prism topology")
+		elif mode == 3:
+			var proxy: MeshInstance3D = renderer.get_beam_resource(light)
+			test.check(proxy != null and proxy.visible and proxy.mesh != null, "Shader Beam Proxy must create one visible reusable proxy")
+			if proxy_mesh == null:
+				proxy_mesh = proxy.mesh
+			else:
+				test.check(proxy.mesh == proxy_mesh, "Shader proxy instances must share normalized topology")
 	projector._set_light_projector_texture(light, texture)
 	var texture_identity: Texture2D = light.light_projector
-	for angle in [0.0, 90.0, 180.0, 270.0]:
-		projector.set_presentation_rotation(light, angle)
-		test.check(light.light_projector == texture_identity and is_equal_approx(light.rotation_degrees.z, angle), "Surface projector rotation must be parametric and retain texture identity")
+	for pan_tilt in [Vector3(0.35, -0.6, 0.2), Vector3(-0.45, 0.8, -0.1)]:
+		light.transform = Transform3D(Basis.from_euler(pan_tilt), Vector3(1.0, 2.0, 3.0))
+		light.remove_meta("peraviz_projector_base_basis")
+		var optical_origin := light.transform.origin
+		var optical_direction := -light.transform.basis.z.normalized()
+		for angle in [0.0, 90.0, 180.0, 270.0]:
+			projector.set_presentation_rotation(light, angle)
+			test.check(light.light_projector == texture_identity, "Surface projector rotation must retain texture identity")
+			test.check(light.transform.origin.is_equal_approx(optical_origin) and (-light.transform.basis.z.normalized()).is_equal_approx(optical_direction), "Gobo roll must preserve optical origin and centerline at multiple Pan/Tilt orientations")
 	projector.set_shadow_mask_enabled(light, true)
 	projector.set_presentation_rotation(light, 180.0)
 	var rotated_mask: MeshInstance3D = light.get_meta("peraviz_gobo_plane") as MeshInstance3D
