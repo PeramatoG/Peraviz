@@ -22,6 +22,7 @@ const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUA
 
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
+const BeamPresentationDiagnosticsScript = preload("res://scripts/runtime/beam_presentation_diagnostics.gd")
 
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
@@ -71,6 +72,7 @@ var _light_desired_state: Dictionary = {}
 var _render_diagnostic_mode: String = RenderDiagnosticPolicyScript.FULL
 var _visible_beam_ids: Dictionary = {}
 var _visible_light_ids: Dictionary = {}
+var _presentation_diagnostics: RefCounted = BeamPresentationDiagnosticsScript.new()
 var _beam_optics_signatures: Dictionary = {}
 var _snapshot_output_commits: Dictionary = {}
 var _snapshot_commit_active: bool = false
@@ -231,7 +233,7 @@ func apply_emitter_intensity(loader: Node, fixture_uuid: String, dimmer_target_i
 			var light_result: Dictionary = _apply_intensity_to_light(loader, fixture_uuid, light, photometric, changed_mask, dimmer_norm, gained_beam_energy, gained_spot_energy, gained_beam_intensity, gained_material_energy, beam_color)
 			lights_mutated += int(light_result.get("lights_mutated", 0))
 			beams_mutated += int(light_result.get("beams_mutated", 0))
-			if _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001):
+			if bool(_light_desired_for(light).get("applied_realtime_visible", false)):
 				visible_lights += 1
 			if _beam_is_visible(light, _clamped_beam_intensity(_scaled_projected_value(gained_beam_intensity, photometric))):
 				visible_beams += 1
@@ -280,7 +282,7 @@ func apply_emitter_color(loader: Node, fixture_uuid: String, color_target_id: in
 			if light == null or not is_instance_valid(light):
 				continue
 			var final_light_energy: float = final_spot_energy if final_spot_energy > 0.0 else final_beam_energy
-			_update_desired_light_state(light, final_light_energy, float(_light_desired_for(light).get("angle", light.spot_angle)), beam_color, _should_enable_realtime_spotlight(loader, true))
+			_update_desired_light_state(light, final_light_energy, float(_light_desired_for(light).get("angle", light.spot_angle)), beam_color, bool(_light_desired_for(light).get("visible", false)) and final_light_energy > 0.0)
 			lights_mutated += _apply_desired_light_state(loader, light)
 			var beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 			if beam != null and is_instance_valid(beam):
@@ -309,7 +311,8 @@ func apply_beam_optics(loader: Node, fixture_uuid: String, optics_target_id: int
 		var spot: SpotLight3D = light as SpotLight3D
 		if spot == null or not is_instance_valid(spot):
 			continue
-		_update_desired_light_state(spot, float(_light_desired_for(spot).get("energy", spot.light_energy)), beam_half_angle, _light_desired_for(spot).get("color", spot.light_color), _should_enable_realtime_spotlight(loader, true))
+		var desired: Dictionary = _light_desired_for(spot)
+		_update_desired_light_state(spot, float(desired.get("energy", spot.light_energy)), beam_half_angle, desired.get("color", spot.light_color), bool(desired.get("visible", false)))
 		_apply_desired_light_state(loader, spot)
 		var last_params: Dictionary = spot.get_meta("peraviz_beam_last_params", {}) if spot.has_meta("peraviz_beam_last_params") else {}
 		var state: Dictionary = _target_state(output_id, fixture_uuid)
@@ -476,7 +479,7 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var beam_angle: float = _fixture_beam_angle(fixture_uuid)
 	var light_energy: float = scaled_spot_energy if scaled_spot_energy > 0.0 else scaled_beam_energy
 	var previous_beam_updates: int = int(_visual_apply_counters.get("beam_intensity_updates", 0))
-	_update_desired_light_state(light, light_energy, beam_half_angle, beam_color, _should_enable_realtime_spotlight(loader, visible))
+	_update_desired_light_state(light, light_energy, beam_half_angle, beam_color, visible and light_energy > 0.0)
 	var light_writes: int = _apply_desired_light_state(loader, light)
 	var previous_beam: MeshInstance3D = loader._get_beam_resource_for_light(light) if loader.has_method("_get_beam_resource_for_light") else null
 	var previous_beam_visible: bool = previous_beam != null and is_instance_valid(previous_beam) and previous_beam.visible
@@ -497,7 +500,7 @@ func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLi
 		_visible_beam_ids[light_id] = true
 	else:
 		_visible_beam_ids.erase(light_id)
-	if _should_enable_realtime_spotlight(loader, visible):
+	if bool(_light_desired_for(light).get("applied_realtime_visible", false)):
 		_visible_light_ids[light_id] = true
 	else:
 		_visible_light_ids.erase(light_id)
@@ -523,10 +526,12 @@ func _update_desired_light_state(light: SpotLight3D, energy: float, angle: float
 	state["angle"] = angle
 	state["color"] = color
 	state["visible"] = visible
+	light.set_meta("peraviz_physical_output_visible", visible)
 
 func _apply_desired_light_state(loader: Node, light: SpotLight3D) -> int:
 	var state: Dictionary = _light_desired_for(light)
-	var enabled: bool = _should_enable_realtime_spotlight(loader, bool(state.get("visible", false))) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
+	var requested_visible: bool = bool(state.get("visible", false))
+	var enabled: bool = (_should_enable_realtime_spotlight(loader, requested_visible) or _requires_realtime_spotlight(loader, light, requested_visible)) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
 	var writes: int = 0
 	var property_writes: int = 0
 	if enabled:
@@ -797,9 +802,8 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> Dictionary:
 	var light_phase_start: int = Time.get_ticks_usec()
 	var visible: bool = dimmer_norm > 0.0001
-	var real_spot_visible: bool = _should_enable_realtime_spotlight(loader, visible)
 	var light_energy: float = spot_energy if spot_energy > 0.0 else beam_energy
-	_update_desired_light_state(light, light_energy, beam_half_angle, beam_color, real_spot_visible)
+	_update_desired_light_state(light, light_energy, beam_half_angle, beam_color, visible and light_energy > 0.0)
 	_apply_desired_light_state(loader, light)
 	_track_phase("light_apply", light_phase_start)
 	var gobo_topology_changed: bool = _apply_visual_frame_gobo(loader, fixture_uuid, light, visual_mask, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
@@ -815,6 +819,7 @@ func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLi
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	var beam_visible: bool = scaled_intensity > threshold
+	var real_spot_visible: bool = bool(_light_desired_for(light).get("applied_realtime_visible", false))
 	_log_visual_once("beam_parent_visible_spot_rid_hidden", "[PeravizVisualRuntime] Beam intensity is visible while realtime SpotLight rendering is disabled; the SpotLight node stays visible as the beam parent and its RenderingServer instance remains hidden.", dimmer_norm > 0.0001 and beam_visible and not real_spot_visible and _is_visual_debug_logging_enabled(loader))
 	_warn_visual_once(str(light.get_instance_id()) + ":beam_params_not_visible", "Light %s has dimmer %.3f but beam params are not visible." % [str(light.get_instance_id()), dimmer_norm], dimmer_norm > 0.0001 and not beam_visible)
 	return {"light_visible": real_spot_visible, "beam_visible": beam_visible}
@@ -898,9 +903,11 @@ func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible
 	_visual_apply_counters["beam_topology_rebuilds"] = int(_visual_apply_counters.get("beam_topology_rebuilds", 0)) + 1
 
 # Keeps the light node available as a beam parent while independently gating the real SpotLight RID.
-func _apply_canonical_light_visibility(_loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> int:
+func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> int:
 	if light == null or not is_instance_valid(light):
 		return 0
+	var physical_output_visible: bool = bool(_light_desired_for(light).get("visible", false))
+	real_spot_visible = physical_output_visible and (real_spot_visible or _requires_realtime_spotlight(loader, light, physical_output_visible))
 	var writes: int = 0
 	if light.visible != visible:
 		light.visible = visible
@@ -908,12 +915,19 @@ func _apply_canonical_light_visibility(_loader: Node, light: SpotLight3D, visibl
 	var last_state: Dictionary = _light_desired_for(light)
 	var previous_realtime_visible: bool = bool(last_state.get("applied_realtime_visible", not real_spot_visible))
 	last_state["applied_realtime_visible"] = real_spot_visible
+	var light_id: int = light.get_instance_id()
+	if real_spot_visible:
+		_visible_light_ids[light_id] = true
+	else:
+		_visible_light_ids.erase(light_id)
+	_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
 	var instance_rid: RID = light.get_instance()
 	if instance_rid.is_valid() and previous_realtime_visible != real_spot_visible:
 		RenderingServer.instance_set_visible(instance_rid, real_spot_visible)
 		_visual_apply_counters["rendering_server_calls"] = int(_visual_apply_counters.get("rendering_server_calls", 0)) + 1
 		_visual_apply_counters["light_visibility_calls"] += 1
 		writes += 1
+	_visual_apply_counters.merge(_presentation_diagnostics.update(loader, light), true)
 	return writes
 
 func _apply_cached_material_state(material_rid: RID, color: Color, energy: float) -> int:
@@ -943,6 +957,14 @@ func _should_enable_realtime_spotlight(loader: Node, visible: bool) -> bool:
 		return bool((settings as Dictionary).get("enable_realtime_spotlights", false))
 	return false
 
+func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: bool) -> bool:
+	if not visible or light == null or not is_instance_valid(light):
+		return false
+	if light.light_projector != null:
+		return true
+	var settings: Variant = loader.get("_visual_settings") if loader != null else null
+	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) in [0, 2]
+
 # Emits a one-time diagnostic message for live visual-frame state transitions.
 func _is_visual_debug_logging_enabled(loader: Node) -> bool:
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
@@ -964,6 +986,13 @@ func _warn_visual_once(key: String, message: String, condition: bool = true) -> 
 
 func get_visual_apply_counters() -> Dictionary:
 	return _visual_apply_counters.duplicate(false)
+
+func get_active_physical_emitter_ids() -> Dictionary:
+	var result: Dictionary = {}
+	for light_id in _light_desired_state:
+		if bool((_light_desired_state[light_id] as Dictionary).get("visible", false)):
+			result[light_id] = true
+	return result
 
 func resolve_capability_bucket(controls: Dictionary, capability_type: String) -> Array:
 	var capabilities: Dictionary = controls.get("capabilities", {})

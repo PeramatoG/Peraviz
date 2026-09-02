@@ -11,6 +11,8 @@ Changes since the previous Peraviz release.
 ## New features
 
 - Added continuous selected-gobo rotation for exact GDTF `Gobo(n)PosRotate` controls, preserving signed physical speed, indexed-angle handoff, and smooth renderer-local motion without rebuilding gobo resources.
+- Added live comparison of Vector Prism, one auto-sized Shared Haze volume, and Shared Haze with physical gobo shadows without changing resolved GDTF or DMX behavior.
+- Added an experimental shader beam proxy with shared low-poly topology, texture-driven gobos, bounded adaptive slice tiers, and screen-depth clipping.
 
 ## Improvements
 
@@ -28,6 +30,14 @@ Changes since the previous Peraviz release.
 - Indexed gobo angle changes now update reusable presentation resources parametrically without image composition, vectorization, mesh generation, or topology rebuilds.
 
 ## Fixes
+
+- Restored crisp surface gobo projection on Godot 4.7 by managing the projector's required shadow state, and prevented Visual Settings refreshes from replacing held beam intensity with zero when optional metadata is absent.
+- Corrected fog shader compilation and kept projector and native-shadow spotlight instances active during DMX playback.
+- Restored Vector Gobo Prism as the startup reference, rebound native renderer targets after gobo topology replacement, and changed Fog Volume to an analytic local-beam frustum without forcing global haze.
+- Replaced the user-facing per-emitter fog experiment with one auto-sized shared haze volume, synchronized native gobo texture and rotation across surface projectors and shadow masks, and removed stale presentation resources during live mode switching.
+- Prevented missing optional gobo metadata from flooding the Godot debugger and limited native haze lights to authoritative active physical outputs.
+- Kept rotating gobo footprints on the imported optical centerline by composing roll through the emitter basis instead of Euler angles, and made Visual Settings presets scalable through a dropdown.
+- Fixture-generated lights now start fail-closed at zero energy before authoritative output arrives, while normal environment daylight and shadows remain independent.
 
 - Corrected vector gobo silhouettes for complex concave artwork, preserved raster cut-outs and nested islands in prism caps and walls, and aligned asymmetric artwork and indexed rotation with the documented source-image convention. Adaptive cached-beam simplification now reduces large curves more aggressively, removes redundant faces and reverse-turn artifacts, and retains small star-field details.
 

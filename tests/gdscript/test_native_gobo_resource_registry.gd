@@ -6,9 +6,22 @@ const RotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_r
 
 var test = HeadlessTestCaseScript.new()
 
+class PresentationSink:
+	extends RefCounted
+	var texture: Texture2D
+	var rotation_degrees: float = NAN
+	var calls: int = 0
+
+	func present(_light: SpotLight3D, resolved_texture: Texture2D, resolved_rotation_degrees: float) -> void:
+		texture = resolved_texture
+		rotation_degrees = resolved_rotation_degrees
+		calls += 1
+
 func _init() -> void:
 	var failures := PackedStringArray()
 	var registry: RefCounted = RegistryScript.new()
+	var presentation_sink := PresentationSink.new()
+	registry.set_presentation_callback(Callable(presentation_sink, "present"))
 	var paths := [_write_mask("gobo_a.png", false), _write_mask("gobo_b.png", true)]
 	registry.install_assets([
 		{"gobo_asset_id": 101, "wheel_id": 11, "slot_index": 1, "extracted_media_path": paths[0], "media_valid": true},
@@ -20,9 +33,11 @@ func _init() -> void:
 	var first: Dictionary = registry.apply_selection(77, 11, 1, 1, 101, 0, target)
 	var first_mesh: Mesh = beam.mesh
 	_check(bool(first.get("applied", false)) and first_mesh != null, "One native asset should install a normalized prism.", failures)
+	_check(presentation_sink.texture == light.get_meta("peraviz_gobo_texture", null), "Native selection must bridge the authoritative texture to presentation.", failures)
 	var light_basis: Basis = light.transform.basis
 	var topology_before_pos: int = int(registry.counters().get("topology_resource_updates", 0))
 	registry.apply_indexed_rotation(77, 11, 1, 45.0, target)
+	_check(is_equal_approx(presentation_sink.rotation_degrees, 45.0), "Native indexed rotation must bridge the authoritative physical angle.", failures)
 	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam), 45.0), "+45 degrees should remain an unoffset physical Pos value.", failures)
 	_check(beam.mesh == first_mesh and light.transform.basis == light_basis, "Pos must reuse the mesh and leave SpotLight orientation unchanged.", failures)
 	registry.apply_indexed_rotation(77, 11, 1, -45.0, target)
@@ -60,6 +75,9 @@ func _init() -> void:
 	_check(beam.transform.basis == other_wheel_basis, "An open Gobo1 Pos must not rotate the visible Gobo2 layer.", failures)
 	registry.apply_selection(77, 12, 2, 2, 0, 0, target)
 	_check(beam.mesh == null, "Open slots should deterministically clear the prism.", failures)
+	_check(not light.has_meta("peraviz_gobo_texture") and presentation_sink.texture == null, "Open slots must clear native gobo presentation state.", failures)
+	registry.apply_indexed_rotation(77, 12, 2, 90.0, target)
+	_check(presentation_sink.texture == null, "Open-slot rotation callbacks must remain safe without optional gobo metadata.", failures)
 	beam.free()
 	light.free()
 	shader_beam.free()

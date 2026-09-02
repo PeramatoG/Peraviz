@@ -27,6 +27,7 @@ func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
 	_scene_registry = dependencies.get("scene_registry", null)
 	_callbacks = dependencies.get("callbacks", {})
+	_gobo_resources.set_presentation_callback(_callbacks.get("present_native_gobo", Callable()))
 	clear_scene_state()
 
 func clear_scene_state() -> void:
@@ -150,6 +151,65 @@ func get_beam_output_record(beam_target_id: int) -> Dictionary:
 	if beam_target_id <= 0:
 		return {}
 	return _beam_output_records_by_id.get(beam_target_id, {})
+
+func get_emitter_anchors() -> Array:
+	var result: Array = []
+	var seen: Dictionary = {}
+	for record_item in _beam_output_records_by_id.values():
+		var record: Dictionary = record_item
+		for light_item in record.get("emitter_anchors", []):
+			var light: SpotLight3D = light_item as SpotLight3D
+			if light == null or not is_instance_valid(light) or seen.has(light.get_instance_id()):
+				continue
+			seen[light.get_instance_id()] = true
+			result.append(light)
+	return result
+
+func get_presentation_ownership_diagnostics(active_emitter_ids: Dictionary) -> Dictionary:
+	var unique_emitters: Dictionary = {}
+	var active_emitters: Dictionary = {}
+	var active_records: int = 0
+	for record_item in _beam_output_records_by_id.values():
+		var record: Dictionary = record_item
+		var record_active: bool = false
+		for light_item in record.get("emitter_anchors", []):
+			var light: SpotLight3D = light_item as SpotLight3D
+			if light == null or not is_instance_valid(light):
+				continue
+			var light_id: int = light.get_instance_id()
+			unique_emitters[light_id] = true
+			if active_emitter_ids.has(light_id):
+				active_emitters[light_id] = true
+				record_active = true
+		if record_active:
+			active_records += 1
+	return {
+		"native_dimmer_targets": _dimmer_targets.size(),
+		"native_output_records": _beam_output_records_by_id.size(),
+		"unique_native_emitters": unique_emitters.size(),
+		"active_output_records": active_records,
+		"active_native_emitters": active_emitters.size(),
+	}
+
+func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
+	if light == null or not is_instance_valid(light):
+		return
+	for output_record in _beam_output_records_by_id.values():
+		_rebind_record_beam(output_record as Dictionary, light, beam)
+	for target_map in [_dimmer_targets, _optics_targets, _color_targets]:
+		for target_record in (target_map as Dictionary).values():
+			_rebind_record_beam(target_record as Dictionary, light, beam)
+
+func _rebind_record_beam(record: Dictionary, light: SpotLight3D, beam: MeshInstance3D) -> void:
+	var anchors: Array = record.get("emitter_anchors", [])
+	var index: int = anchors.find(light)
+	if index < 0:
+		return
+	var beams: Array = record.get("beam_instances", [])
+	while beams.size() <= index:
+		beams.append(null)
+	beams[index] = beam
+	record["beam_instances"] = beams
 
 func get_target_failure(target_id: int) -> Variant:
 	return _target_resolution_failures.get(target_id, null)
