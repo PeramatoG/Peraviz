@@ -22,7 +22,6 @@ const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUA
 
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
-const BeamPresentationDiagnosticsScript = preload("res://scripts/runtime/beam_presentation_diagnostics.gd")
 
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
@@ -62,6 +61,8 @@ var _visual_apply_counters: Dictionary = {
 	"material_parameters_written": 0,
 	"emitter_output_commit_candidates": 0,
 	"emitter_output_commits": 0,
+	"emitter_output_commits_signature_skipped": 0,
+	"clustered_element_limit": 0,
 	"emitter_output_commits_coalesced": 0,
 	"emitter_output_commit_usec": 0,
 }
@@ -72,13 +73,20 @@ var _light_desired_state: Dictionary = {}
 var _render_diagnostic_mode: String = RenderDiagnosticPolicyScript.FULL
 var _visible_beam_ids: Dictionary = {}
 var _visible_light_ids: Dictionary = {}
-var _presentation_diagnostics: RefCounted = BeamPresentationDiagnosticsScript.new()
 var _beam_optics_signatures: Dictionary = {}
+var _target_states: Dictionary = {}
+var _committed_output_states: Dictionary = {}
 var _snapshot_output_commits: Dictionary = {}
 var _snapshot_commit_active: bool = false
+var _performance_trace_enabled: bool = false
 
 func set_render_diagnostic_mode(mode: String) -> void:
 	_render_diagnostic_mode = mode
+
+func set_performance_trace_enabled(enabled: bool) -> void:
+	_performance_trace_enabled = enabled
+	if enabled:
+		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
 
 # Starts snapshot-local collection of canonical physical-output renderer commits.
 func begin_visual_snapshot() -> void:
@@ -89,34 +97,39 @@ func begin_visual_snapshot() -> void:
 func end_visual_snapshot() -> void:
 	if not _snapshot_commit_active:
 		return
-	var commit_start_usec: int = Time.get_ticks_usec()
+	var commit_start_usec: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
 	_snapshot_commit_active = false
-	for pending_item in _snapshot_output_commits.values():
-		var pending: Dictionary = pending_item
+	for output_key in _snapshot_output_commits:
+		var pending: Dictionary = _snapshot_output_commits[output_key]
 		var output_id: int = int(pending.get("output_id", 0))
 		var fixture_uuid: String = str(pending.get("fixture_uuid", ""))
 		var loader: Node = pending.get("loader") as Node
 		var output_record: Dictionary = pending.get("output_record", {})
 		var state: Dictionary = _target_state(output_id, fixture_uuid)
-		_visual_apply_counters["physical_outputs_considered"] += 1
-		_apply_beam_output_record(loader, fixture_uuid, output_record, int(pending.get("changed_mask", 0)), float(state.get("dimmer", 0.0)), state.get("beam_color", Color.WHITE), max(float(state.get("color_gain", 1.0)), 0.0))
-		_visual_apply_counters["emitter_output_commits"] += 1
+		if _performance_trace_enabled:
+			_visual_apply_counters["physical_outputs_considered"] += 1
+		var result: Dictionary = _apply_beam_output_record(loader, fixture_uuid, output_record, int(pending.get("changed_mask", 0)), state)
+		if _performance_trace_enabled:
+			_visual_apply_counters["emitter_output_commits" if not bool(result.get("signature_skipped", false)) else "emitter_output_commits_signature_skipped"] = int(_visual_apply_counters.get("emitter_output_commits" if not bool(result.get("signature_skipped", false)) else "emitter_output_commits_signature_skipped", 0)) + 1
 	_snapshot_output_commits.clear()
-	_visual_apply_counters["emitter_output_commit_usec"] += max(Time.get_ticks_usec() - commit_start_usec, 0)
-	_visual_apply_counters["beam_visible_count"] = _visible_beam_ids.size()
-	_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
+	if _performance_trace_enabled:
+		_visual_apply_counters["emitter_output_commit_usec"] += max(Time.get_ticks_usec() - commit_start_usec, 0)
+		_visual_apply_counters["beam_visible_count"] = _visible_beam_ids.size()
+		_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
 
 # Defers a canonical output commit while preserving one entry per stable output ID.
 func _queue_or_apply_output(loader: Node, fixture_uuid: String, output_id: int, output_record: Dictionary, changed_mask: int) -> Dictionary:
 	if not _snapshot_commit_active:
 		_visual_apply_counters["physical_outputs_considered"] += 1
 		var state: Dictionary = _target_state(output_id, fixture_uuid)
-		return _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, float(state.get("dimmer", 0.0)), state.get("beam_color", Color.WHITE), max(float(state.get("color_gain", 1.0)), 0.0))
-	_visual_apply_counters["emitter_output_commit_candidates"] += 1
+		return _apply_beam_output_record(loader, fixture_uuid, output_record, changed_mask, state)
+	if _performance_trace_enabled:
+		_visual_apply_counters["emitter_output_commit_candidates"] += 1
 	if _snapshot_output_commits.has(output_id):
 		var pending: Dictionary = _snapshot_output_commits[output_id]
 		pending["changed_mask"] = int(pending.get("changed_mask", 0)) | changed_mask
-		_visual_apply_counters["emitter_output_commits_coalesced"] += 1
+		if _performance_trace_enabled:
+			_visual_apply_counters["emitter_output_commits_coalesced"] += 1
 	else:
 		_snapshot_output_commits[output_id] = {"loader": loader, "fixture_uuid": fixture_uuid, "output_id": output_id, "output_record": output_record, "changed_mask": changed_mask}
 	return {"lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "commit_deferred": true}
@@ -429,9 +442,11 @@ func _wheel_visual_beam_gain(physical_gain: float) -> float:
 	var perceptual_gain: float = pow(clamped_gain, 1.0 / 2.2)
 	return lerp(1.0, perceptual_gain, 0.75)
 
-func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record: Dictionary, changed_mask: int, dimmer_norm: float, beam_color: Color, color_gain: float) -> Dictionary:
+func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record: Dictionary, changed_mask: int, state: Dictionary) -> Dictionary:
 	var output_id: int = _output_id_from_record(output_record, int(output_record.get("target_id", 0)))
-	var state: Dictionary = _target_state(output_id, fixture_uuid)
+	var dimmer_norm: float = float(state.get("dimmer", 0.0))
+	var beam_color: Color = state.get("beam_color", Color.WHITE)
+	var color_gain: float = max(float(state.get("color_gain", 1.0)), 0.0)
 	var photometric: Dictionary = output_record.get("beam_optical_profile", {})
 	if photometric.is_empty():
 		var records: Array = output_record.get("emitter_records", [])
@@ -442,7 +457,17 @@ func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record
 	var final_spot_energy: float = float(state.get("spot_energy", 0.0)) * color_gain
 	var final_beam_intensity: float = float(state.get("beam_intensity", 0.0)) * visual_beam_gain
 	var final_material_energy: float = float(state.get("material_energy", 0.0)) * color_gain
-	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, output_record.get("emitter_nodes", []), beam_color, final_material_energy, output_record.get("lens_material_targets", []), true)
+	var previous: Dictionary = _committed_output_states.get(output_id, {})
+	var intensity_changed: bool = (changed_mask & VISUAL_CHANGE_DIMMER) != 0 and (not is_equal_approx(float(previous.get("dimmer", -1.0)), dimmer_norm) or not is_equal_approx(float(previous.get("beam_intensity", -1.0)), final_beam_intensity))
+	var color_changed: bool = (changed_mask & VISUAL_CHANGE_COLOR) != 0 and (previous.get("beam_color", Color(-1.0, -1.0, -1.0)) != beam_color or not is_equal_approx(float(previous.get("color_gain", -1.0)), color_gain))
+	var material_changed: bool = intensity_changed or color_changed or (changed_mask & VISUAL_CHANGE_MATERIAL) != 0
+	var force_apply: bool = previous.is_empty() or (changed_mask & VISUAL_CHANGE_BEAM_TOPOLOGY) != 0
+	if not force_apply and not intensity_changed and not color_changed and not material_changed:
+		return {"lights_mutated": 0, "beams_mutated": 0, "materials_mutated": 0, "signature_skipped": true}
+	var effective_mask: int = changed_mask
+	if force_apply:
+		effective_mask |= VISUAL_CHANGE_DIMMER | VISUAL_CHANGE_COLOR | VISUAL_CHANGE_MATERIAL
+	var materials_mutated: int = _apply_visual_frame_materials(loader, fixture_uuid, output_record.get("emitter_nodes", []), beam_color, final_material_energy, output_record.get("lens_material_targets", []), true) if material_changed or force_apply else 0
 	var lights_mutated: int = 0
 	var beams_mutated: int = 0
 	var visible_light: bool = false
@@ -456,14 +481,16 @@ func _apply_beam_output_record(loader: Node, fixture_uuid: String, output_record
 		if not _has_projected_beam(photometric):
 			beams_mutated += _hide_beam_for_light(loader, spot)
 			continue
-		var light_result: Dictionary = _apply_intensity_to_light(loader, fixture_uuid, spot, photometric, changed_mask, dimmer_norm, final_beam_energy, final_spot_energy, _clamped_beam_intensity(final_beam_intensity), final_material_energy, beam_color)
+		var light_result: Dictionary = _apply_intensity_to_light(loader, fixture_uuid, spot, photometric, effective_mask, dimmer_norm, final_beam_energy, final_spot_energy, _clamped_beam_intensity(final_beam_intensity), final_material_energy, beam_color)
 		lights_mutated += int(light_result.get("lights_mutated", 0))
 		beams_mutated += int(light_result.get("beams_mutated", 0))
 		visible_light = visible_light or _should_enable_realtime_spotlight(loader, dimmer_norm > 0.0001)
 		visible_beam = visible_beam or bool(light_result.get("beam_visible", false))
 		last_visibility_diagnostics = light_result.get("visibility_diagnostics", {})
-	last_visibility_diagnostics["physical_color_gain"] = color_gain
-	last_visibility_diagnostics["visual_beam_gain"] = visual_beam_gain
+	_committed_output_states[output_id] = {"dimmer": dimmer_norm, "beam_intensity": final_beam_intensity, "beam_color": beam_color, "color_gain": color_gain, "material_energy": final_material_energy}
+	if _performance_trace_enabled:
+		last_visibility_diagnostics["physical_color_gain"] = color_gain
+		last_visibility_diagnostics["visual_beam_gain"] = visual_beam_gain
 	return {"lights_mutated": lights_mutated, "beams_mutated": beams_mutated, "materials_mutated": materials_mutated, "visible_light": visible_light, "visible_beam": visible_beam, "visibility_diagnostics": last_visibility_diagnostics}
 
 func _apply_intensity_to_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, changed_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float, beam_color: Color) -> Dictionary:
@@ -587,13 +614,9 @@ func _any_beam_instance_visible(beam_instances: Array) -> bool:
 			return true
 	return false
 
-func _target_state_key(target_id: int, fixture_uuid: String) -> String:
-	return "target_state:%d:%s" % [target_id, fixture_uuid]
-
 func _target_state(target_id: int, fixture_uuid: String) -> Dictionary:
-	var key: String = _target_state_key(target_id, fixture_uuid)
-	if not _diagnostic_info_keys.has(key):
-		_diagnostic_info_keys[key] = {
+	if not _target_states.has(target_id):
+		_target_states[target_id] = {
 			"beam_render_target_id": target_id,
 			"fixture_uuid": fixture_uuid,
 			"dimmer": 0.0,
@@ -604,7 +627,7 @@ func _target_state(target_id: int, fixture_uuid: String) -> Dictionary:
 			"beam_color": Color.WHITE,
 			"color_gain": 1.0,
 		}
-	return _diagnostic_info_keys[key]
+	return _target_states[target_id]
 
 func _set_target_intensity_state(target_id: int, fixture_uuid: String, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
 	var state: Dictionary = _target_state(target_id, fixture_uuid)
@@ -927,7 +950,10 @@ func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible
 		_visual_apply_counters["rendering_server_calls"] = int(_visual_apply_counters.get("rendering_server_calls", 0)) + 1
 		_visual_apply_counters["light_visibility_calls"] += 1
 		writes += 1
-	_visual_apply_counters.merge(_presentation_diagnostics.update(loader, light), true)
+	if _performance_trace_enabled:
+		_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
+		var clustered_limit: int = int(_visual_apply_counters.get("clustered_element_limit", 512))
+		_warn_visual_once("clustered_element_budget", "Shared Haze requested more realtime SpotLights than the Forward+ clustered-element limit (%d). This mode is diagnostic at this scale." % clustered_limit, _visible_light_ids.size() > clustered_limit)
 	return writes
 
 func _apply_cached_material_state(material_rid: RID, color: Color, energy: float) -> int:

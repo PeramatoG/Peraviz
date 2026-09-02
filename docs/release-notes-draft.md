@@ -16,6 +16,8 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Reduced live DMX renderer-apply overhead with changed-domain commits, final committed-state guards, opt-in accounting, and one physical-output commit per snapshot. Performance tracing is no longer enabled automatically for editor runs.
+- Added one-time physical-output fan-out reporting and a concise warning when diagnostic Shared Haze exceeds the effective Forward+ clustered-element budget.
 - Added opt-in live DMX performance tracing with direct CPU receive-to-renderer-apply latency, truthful interval renderer counters, per-domain timing, and full, transforms-only, and no-beams A/B modes.
 - Reduced redundant light, material, beam parameter, and visibility writes while preserving held state for disabled realtime spotlights and later reactivation.
 - Coalesced simultaneous intensity and color updates into one renderer commit per physical emitter output, reducing live playback CPU work without merging independently controlled lenses.
@@ -31,6 +33,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Kept Shader Beam Proxy resources under their active renderer's ownership so ordinary DMX updates no longer hide and immediately reshow them, and made Quick Preset retain its selected value with a clear Custom state after manual edits.
+- Enabled directional shadow split blending for smoother cascaded directional-shadow transitions. This isolated option has a moderate cost and does not change spotlight projectors, volumetric fog, or beam rendering.
 - Restored crisp surface gobo projection on Godot 4.7 by managing the projector's required shadow state, and prevented Visual Settings refreshes from replacing held beam intensity with zero when optional metadata is absent.
 - Corrected fog shader compilation and kept projector and native-shadow spotlight instances active during DMX playback.
 - Restored Vector Gobo Prism as the startup reference, rebound native renderer targets after gobo topology replacement, and changed Fog Volume to an analytic local-beam frustum without forcing global haze.

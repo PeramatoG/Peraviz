@@ -99,6 +99,20 @@ func install_manifest(renderer_manifest: Array) -> void:
 		_register_legacy_manifest_row(row)
 	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
 	_log_summary_once()
+	_log_output_fanout_once()
+
+func _log_output_fanout_once() -> void:
+	var fanouts: Array[int] = []
+	var top: Array[Dictionary] = []
+	for target_id in _dimmer_targets:
+		var count: int = ((_dimmer_targets[target_id] as Dictionary).get("beam_output_records", []) as Array).size()
+		fanouts.append(count)
+		top.append({"target_id": int(target_id), "outputs": count})
+	if fanouts.is_empty():
+		return
+	fanouts.sort()
+	top.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["outputs"]) > int(b["outputs"]))
+	print("[native-renderer-fanout] dimmer_targets=%d output_records=%d unique_emitters=%d min=%d median=%d max=%d top=%s" % [_dimmer_targets.size(), _beam_output_records_by_id.size(), get_emitter_anchors().size(), fanouts[0], fanouts[fanouts.size() / 2], fanouts[-1], str(top.slice(0, mini(10, top.size())))])
 
 func apply_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	var pan_axis: Node3D = _pan_targets.get(pan_component_id, null) as Node3D

@@ -4,6 +4,8 @@
 
 `--peraviz-perf-trace` emits one compact `[peraviz-perf]` line approximately once per second. `rx_apply_us` measures relevant ArtDmx receipt through completion of Godot scene/resource mutation on the CPU. It does not include render submission, GPU execution, frame queueing, or display presentation. `pump_hz` counts production pumps from the render `_process` path; the 125 ms status refresh only updates UI.
 
+Tracing is explicitly opt-in. Use `godot --path .` for the production baseline and `godot --path . -- --peraviz-perf-trace` for a diagnostic benchmark. Trace-off avoids rich row categorization, per-row clocks, native stats payloads, and presentation SceneTree sampling. Compare settled runs because trace-on accounting still has measurable cost.
+
 With tracing disabled, playback performs no `Performance` monitor reads, trace formatting, interval diagnostic retention, or per-frame deep diagnostic copy. Existing lightweight renderer counters and the one-time bootstrap diagnostic remain. Enabling tracing retains interval row/timing summaries, snapshots cumulative counters once per applied frame, reads Godot monitors, and formats only at the one-second report boundary.
 
 ## Trace fields
