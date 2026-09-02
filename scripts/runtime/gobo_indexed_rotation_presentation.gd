@@ -6,6 +6,7 @@ const APPLIED_ANGLE_META := "peraviz_gobo_applied_indexed_rotation_deg"
 const BACKEND_META := "peraviz_gobo_rotation_backend"
 const BASE_SHADER_ANGLE_META := "peraviz_gobo_base_shader_rotation_deg"
 const SHADER_BACKEND := "shader_mask"
+const PARENT_ROLL_COMPENSATION_META := "peraviz_gobo_parent_roll_compensation_deg"
 
 static func apply_physical_angle(beam: MeshInstance3D, physical_angle_degrees: float, backend: String) -> void:
 	if beam == null:
@@ -25,6 +26,14 @@ static func reapply_after_base_alignment(beam: MeshInstance3D, base_shader_angle
 
 static func physical_angle(beam: MeshInstance3D) -> float:
 	return float(beam.get_meta(ANGLE_META, 0.0)) if beam != null else 0.0
+
+static func apply_parent_roll_compensation(beam: MeshInstance3D, parent_roll_degrees: float) -> void:
+	if beam == null:
+		return
+	var previous: float = float(beam.get_meta(PARENT_ROLL_COMPENSATION_META, 0.0))
+	var desired: float = -parent_roll_degrees
+	beam.rotate_object_local(Vector3.UP, deg_to_rad(desired - previous))
+	beam.set_meta(PARENT_ROLL_COMPENSATION_META, desired)
 
 static func _reapply(beam: MeshInstance3D, base_alignment_was_refreshed: bool) -> void:
 	var backend: String = str(beam.get_meta(BACKEND_META, "vector_prism"))

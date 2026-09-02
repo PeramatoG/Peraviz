@@ -76,6 +76,8 @@ func _init() -> void:
 	registry.apply_selection(77, 12, 2, 2, 0, 0, target)
 	_check(beam.mesh == null, "Open slots should deterministically clear the prism.", failures)
 	_check(not light.has_meta("peraviz_gobo_texture") and presentation_sink.texture == null, "Open slots must clear native gobo presentation state.", failures)
+	registry.apply_indexed_rotation(77, 12, 2, 90.0, target)
+	_check(presentation_sink.texture == null, "Open-slot rotation callbacks must remain safe without optional gobo metadata.", failures)
 	beam.free()
 	light.free()
 	shader_beam.free()

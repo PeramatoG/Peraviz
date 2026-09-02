@@ -25,6 +25,7 @@ const GOBO_WHEEL_SHAKE_PHASE_META_KEY: String = "peraviz_gobo_wheel_shake_phase"
 const GOBO_WHEEL_SHAKE_RANGE_META_KEY: String = "peraviz_gobo_wheel_shake_range"
 const GOBO_LAST_UPDATE_MSEC_META_KEY: String = "peraviz_gobo_last_update_msec"
 const GOBO_APPLIED_ROTATION_DEG_META_KEY: String = "peraviz_gobo_applied_rotation_deg"
+const PROJECTOR_BASE_ROLL_META_KEY: String = "peraviz_projector_base_roll_deg"
 const GOBO_APPLIED_SHAKE_TILT_DEG_META_KEY: String = "peraviz_gobo_applied_shake_tilt_deg"
 const GOBO_WHEEL_MODE_META_KEY: String = "peraviz_gobo_wheel_mode"
 const GOBO_APPLIED_STATE_META_KEY: String = "peraviz_gobo_applied_state"
@@ -52,6 +53,7 @@ const GOBO_BEHAVIOR_SHAKE: int = 3
 
 const DmxGoboRangeResolverScript = preload("res://scripts/dmx_gobo_range_resolver.gd")
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
+const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
 var _texture_cache: Dictionary = {}
 var _texture_composition_count: int = 0
@@ -77,6 +79,21 @@ func set_shadow_mask_enabled(light: SpotLight3D, enabled: bool) -> void:
 	if plane != null and plane.material_override is ShaderMaterial:
 		(plane.material_override as ShaderMaterial).set_shader_parameter("gobo_texture", texture)
 		_update_gobo_plane_scale(light, plane)
+
+func set_presentation_rotation(light: SpotLight3D, gobo_rotation_degrees: float) -> void:
+	if light == null or not is_instance_valid(light):
+		return
+	if not light.has_meta(PROJECTOR_BASE_ROLL_META_KEY):
+		light.set_meta(PROJECTOR_BASE_ROLL_META_KEY, light.rotation_degrees.z)
+	var rotation: Vector3 = light.rotation_degrees
+	rotation.z = float(light.get_meta(PROJECTOR_BASE_ROLL_META_KEY)) + gobo_rotation_degrees
+	light.rotation_degrees = rotation
+	if light.has_meta("peraviz_volumetric_beam"):
+		GoboRotationPresentationScript.apply_parent_roll_compensation(light.get_meta("peraviz_volumetric_beam") as MeshInstance3D, gobo_rotation_degrees)
+	if light.has_meta(GOBO_PLANE_META_KEY):
+		var mask: MeshInstance3D = light.get_meta(GOBO_PLANE_META_KEY) as MeshInstance3D
+		if mask != null:
+			mask.set_meta("peraviz_gobo_presentation_rotation_deg", gobo_rotation_degrees)
 
 func apply_gobo_projection(light: SpotLight3D, controls: Dictionary) -> bool:
 	if light == null or not is_instance_valid(light):

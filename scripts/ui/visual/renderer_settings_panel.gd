@@ -29,10 +29,12 @@ func _build_ui() -> void:
 	_add_slider_row("Bloom", "bloom_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Ambient fog density", "ambient_fog_density", 0.0, 0.05, 0.001)
 	_add_slider_row("Volumetric fog density", "volumetric_fog_density", 0.0, 0.01, 0.0001)
+	_add_slider_row("Shared haze density", "shared_haze_density", 0.0, 0.05, 0.0005)
+	_add_slider_row("Shared haze margin", "shared_haze_margin", 0.0, 30.0, 0.5)
 	_add_slider_row("Volumetric fog length", "volumetric_fog_length", 1.0, 200.0, 1.0)
 	_add_slider_row("Volumetric fog fade", "volumetric_fog_fade", 0.0, 0.2, 0.005)
-	_add_slider_row("Light fog energy", "light_volumetric_fog_energy", 0.0, 5000.0, 10.0)
-	_add_option_row("Beam presentation", "beam_presentation", ["Fog Volume Gobo (Experimental)", "Vector Gobo Prism (Reference)", "Native Fog + Shadow Gobo (Experimental)"])
+	_add_slider_row("Native light fog energy", "light_volumetric_fog_energy", 0.0, 1500.0, 10.0)
+	_add_option_row("Beam presentation", "beam_presentation", ["Shared Haze (Experimental)", "Vector Gobo Prism (Reference)", "Shared Haze + Gobo Shadow (Experimental)"])
 	_add_color_row("Background color", "background_color")
 
 func set_advanced_mode(enabled: bool) -> void:

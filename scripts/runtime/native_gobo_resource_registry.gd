@@ -302,7 +302,8 @@ func _apply_rotation_to_target(target_record: Dictionary, physical_angle_degrees
 	for light_item in target_record.get("emitter_anchors", []):
 		var light: SpotLight3D = light_item as SpotLight3D
 		if light != null and _presentation_callback.is_valid():
-			_presentation_callback.call(light, light.get_meta("peraviz_gobo_texture", null), physical_angle_degrees)
+			var texture: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
+			_presentation_callback.call(light, texture, physical_angle_degrees)
 
 func _presentation_backend(target_record: Dictionary) -> String:
 	for light_item in target_record.get("emitter_anchors", []):

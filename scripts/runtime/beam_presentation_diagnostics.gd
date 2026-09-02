@@ -10,6 +10,7 @@ func update(loader: Node, light: SpotLight3D) -> Dictionary:
 	var light_id: int = light.get_instance_id()
 	var beam: MeshInstance3D = light.get_meta("peraviz_volumetric_beam") as MeshInstance3D if light.has_meta("peraviz_volumetric_beam") else null
 	var beam_visible: bool = beam != null and is_instance_valid(beam) and beam.visible
+	var physical_visible: bool = bool(light.get_meta("peraviz_physical_output_visible")) if light.has_meta("peraviz_physical_output_visible") else false
 	var flags: Dictionary = {
 		"vector": beam_visible,
 		"fog_allocated": light.get_node_or_null("PeravizFogVolumeGoboBeam") != null,
@@ -17,8 +18,8 @@ func update(loader: Node, light: SpotLight3D) -> Dictionary:
 		"mask": light.has_meta("peraviz_gobo_plane"),
 		"projector": light.light_projector != null,
 		"shadow": light.shadow_enabled,
-		"gobo_visible": light.has_meta("peraviz_gobo_texture") and beam_visible,
-		"open_visible": not light.has_meta("peraviz_gobo_texture") and beam_visible,
+		"gobo_visible": light.has_meta("peraviz_gobo_texture") and physical_visible,
+		"open_visible": not light.has_meta("peraviz_gobo_texture") and physical_visible,
 	}
 	for key in flags.keys():
 		var category: Dictionary = _ids[key]

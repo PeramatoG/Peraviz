@@ -38,6 +38,8 @@ const DEFAULT_SETTINGS := {
 	"beam_debug_optics": false,
 	"ambient_fog_density": 0.0,
 	"volumetric_fog_density": 0.0,
+	"shared_haze_density": 0.015,
+	"shared_haze_margin": 5.0,
 	"volumetric_fog_length": 110.0,
 	"volumetric_fog_fade": 0.02,
 	"light_volumetric_fog_energy": 12.0,
@@ -67,7 +69,7 @@ const DEFAULT_SETTINGS := {
 }
 
 const QUICK_PRESETS := {
-	"Fog Volume": {
+	"Shared Haze": {
 		"beam_presentation": 0,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
@@ -75,8 +77,8 @@ const QUICK_PRESETS := {
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
 		"light_volumetric_fog_energy": 0.0,
-		"fog_volume_density_scale": 1.1,
-		"fog_volume_emission_strength": 1.5,
+		"shared_haze_density": 0.015,
+		"shared_haze_margin": 5.0,
 		"environment_current_preset": 1,
 	},
 	"Vector Prism": {
@@ -87,20 +89,20 @@ const QUICK_PRESETS := {
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
 		"light_volumetric_fog_energy": 0.0,
-		"fog_volume_density_scale": 1.1,
-		"fog_volume_emission_strength": 1.5,
+		"shared_haze_density": 0.015,
+		"shared_haze_margin": 5.0,
 		"environment_current_preset": 1,
 	},
-	"Native Shadow": {
+	"Shared Haze + Gobo Shadow": {
 		"beam_presentation": 2,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
 		"bloom_multiplier": 0.0,
-		"volumetric_fog_density": 0.0001,
+		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
-		"light_volumetric_fog_energy": 1000.0,
-		"fog_volume_density_scale": 1.1,
-		"fog_volume_emission_strength": 1.5,
+		"light_volumetric_fog_energy": 500.0,
+		"shared_haze_density": 0.015,
+		"shared_haze_margin": 5.0,
 		"environment_current_preset": 1,
 	},
 }
@@ -172,7 +174,7 @@ func _build_ui() -> void:
 	presets_label.text = "Quick presets"
 	mode_row.add_child(presets_label)
 
-	for preset_name in ["Fog Volume", "Vector Prism", "Native Shadow"]:
+	for preset_name in ["Shared Haze", "Vector Prism", "Shared Haze + Gobo Shadow"]:
 		var preset_button: Button = Button.new()
 		preset_button.text = preset_name
 		preset_button.pressed.connect(func() -> void:

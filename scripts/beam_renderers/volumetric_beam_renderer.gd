@@ -239,11 +239,7 @@ func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> Dictio
 		existing.visible = false
 		result["changed"] = true
 		result["visibility_changed"] = true
-	var gobo_texture: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
-	if _presentation_mode == PRESENTATION_FOG_VOLUME:
-		result = _fog_controller.update_for_light(light, params, gobo_texture, _settings)
-	else:
-		_fog_controller.clear_for_light(light)
+	_fog_controller.clear_for_light(light)
 	light.set_meta("peraviz_beam_last_params", params)
 	_last_parameter_write_count = int(result.get("parameter_write_count", 0))
 	return result

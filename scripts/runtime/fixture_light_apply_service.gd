@@ -526,6 +526,7 @@ func _update_desired_light_state(light: SpotLight3D, energy: float, angle: float
 	state["angle"] = angle
 	state["color"] = color
 	state["visible"] = visible
+	light.set_meta("peraviz_physical_output_visible", visible)
 
 func _apply_desired_light_state(loader: Node, light: SpotLight3D) -> int:
 	var state: Dictionary = _light_desired_for(light)
@@ -962,7 +963,7 @@ func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: boo
 	if light.light_projector != null:
 		return true
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
-	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) == 2
+	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) != 1
 
 # Emits a one-time diagnostic message for live visual-frame state transitions.
 func _is_visual_debug_logging_enabled(loader: Node) -> bool:
@@ -985,6 +986,13 @@ func _warn_visual_once(key: String, message: String, condition: bool = true) -> 
 
 func get_visual_apply_counters() -> Dictionary:
 	return _visual_apply_counters.duplicate(false)
+
+func get_active_physical_emitter_ids() -> Dictionary:
+	var result: Dictionary = {}
+	for light_id in _light_desired_state:
+		if bool((_light_desired_state[light_id] as Dictionary).get("visible", false)):
+			result[light_id] = true
+	return result
 
 func resolve_capability_bucket(controls: Dictionary, capability_type: String) -> Array:
 	var capabilities: Dictionary = controls.get("capabilities", {})

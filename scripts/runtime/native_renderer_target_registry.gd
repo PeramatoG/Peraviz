@@ -165,6 +165,32 @@ func get_emitter_anchors() -> Array:
 			result.append(light)
 	return result
 
+func get_presentation_ownership_diagnostics(active_emitter_ids: Dictionary) -> Dictionary:
+	var unique_emitters: Dictionary = {}
+	var active_emitters: Dictionary = {}
+	var active_records: int = 0
+	for record_item in _beam_output_records_by_id.values():
+		var record: Dictionary = record_item
+		var record_active: bool = false
+		for light_item in record.get("emitter_anchors", []):
+			var light: SpotLight3D = light_item as SpotLight3D
+			if light == null or not is_instance_valid(light):
+				continue
+			var light_id: int = light.get_instance_id()
+			unique_emitters[light_id] = true
+			if active_emitter_ids.has(light_id):
+				active_emitters[light_id] = true
+				record_active = true
+		if record_active:
+			active_records += 1
+	return {
+		"native_dimmer_targets": _dimmer_targets.size(),
+		"native_output_records": _beam_output_records_by_id.size(),
+		"unique_native_emitters": unique_emitters.size(),
+		"active_output_records": active_records,
+		"active_native_emitters": active_emitters.size(),
+	}
+
 func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
 	if light == null or not is_instance_valid(light):
 		return

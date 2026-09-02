@@ -45,12 +45,12 @@ func _run() -> void:
 	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "An active surface projector must keep its realtime SpotLight RID visible")
 	loader._visual_settings["beam_presentation"] = 0
 	apply_service._apply_canonical_light_visibility(loader, light, true, false)
-	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Fog Volume with a surface projector must keep the realtime SpotLight RID visible")
+	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Shared Haze with a surface projector must keep the realtime SpotLight RID visible")
 	projector._set_light_projector_texture(light, null)
 	loader._visual_settings["beam_presentation"] = 2
 	apply_service._update_desired_light_state(light, 10.0, 10.0, Color.WHITE, true)
 	apply_service._apply_canonical_light_visibility(loader, light, true, false)
-	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Native Shadow mode must keep the realtime SpotLight RID visible without a gobo")
+	test.check(bool(apply_service._light_desired_for(light).get("applied_realtime_visible", false)), "Shared Haze + Gobo Shadow must keep the realtime SpotLight RID visible without a gobo")
 	var presentation_counters: Dictionary = apply_service.get_visual_apply_counters()
 	test.check(int(presentation_counters.get("beam_presentation", -1)) == 2 and int(presentation_counters.get("spotlight_visible_count", 0)) == 1, "Presentation diagnostics must report the final forced realtime spotlight state")
 
@@ -60,39 +60,39 @@ func _run() -> void:
 	var inactive_params: Dictionary = params.duplicate()
 	inactive_params["scaled_intensity"] = 0.0
 	renderer.update_beam(light, inactive_params)
-	test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "Inactive Fog mode must not allocate a FogVolume")
+	test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "Inactive Shared Haze mode must not allocate a per-emitter FogVolume")
 	for rejected_type in ["None", "Glow"]:
 		inactive_params["beam_type"] = rejected_type
 		inactive_params["scaled_intensity"] = 10.0
 		renderer.update_beam(light, inactive_params)
-		test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "Non-projected beam types must not allocate FogVolumes")
+		test.check(light.get_node_or_null("PeravizFogVolumeGoboBeam") == null, "User-facing Shared Haze must not allocate per-emitter FogVolumes")
 	light.set_meta("peraviz_gobo_texture", texture)
+	var vector_mesh: Mesh = null
 	for mode in [1, 0, 2, 1, 0, 1]:
 		renderer.cleanup_beam(light)
 		renderer.configure(null, {"beam_presentation": mode})
 		projector.set_shadow_mask_enabled(light, mode == 2)
 		renderer.update_beam(light, params.duplicate())
 		var fog_count: int = 1 if light.get_node_or_null("PeravizFogVolumeGoboBeam") is FogVolume else 0
-		if mode == 0:
-			test.check(fog_count == 1, "Fog Volume mode must own exactly one reusable FogVolume")
-			var fog_volume: FogVolume = light.get_node("PeravizFogVolumeGoboBeam") as FogVolume
-			test.check(fog_volume.shape == RenderingServer.FOG_VOLUME_SHAPE_BOX and fog_volume.position.z < 0.0 and fog_volume.rotation == Vector3.ZERO, "Fog Volume must use the analytic local-negative-Z box contract")
-			var original_material: Material = fog_volume.material
-			var unchanged_result: int = renderer.update_beam_intensity(light, params.duplicate())
-			test.check(unchanged_result == BeamRendererBase.INTENSITY_UNCHANGED and renderer.get_last_parameter_write_count() == 0, "Unchanged Fog state must perform zero shader writes")
-			var dynamic_params: Dictionary = params.duplicate()
-			dynamic_params["scaled_intensity"] = 5.0
-			dynamic_params["beam_color"] = Color.RED
-			dynamic_params["gobo_rotation_deg"] = 45.0
-			renderer.update_beam(light, dynamic_params)
-			test.check(light.get_node("PeravizFogVolumeGoboBeam") == fog_volume and fog_volume.material == original_material and renderer.get_last_parameter_write_count() == 3, "Fog dynamic updates must retain resources and write only intensity, color, and rotation")
-		else:
-			test.check(fog_count == 0, "Non-Fog-Volume modes must not retain an orphan FogVolume")
+		test.check(fog_count == 0, "No user-facing presentation may retain a per-emitter FogVolume")
 		var mask_count: int = 1 if light.has_meta("peraviz_gobo_plane") else 0
 		test.check(mask_count == (1 if mode == 2 else 0), "Only Native Shadow mode may retain one physical gobo mask")
 		if mode == 1:
 			var vector_beam: MeshInstance3D = renderer.get_beam_resource(light)
 			test.check(vector_beam != null and vector_beam.mesh != null and vector_beam.visible, "Vector Prism mode must retain visible gobo-equipped beams")
+			if vector_mesh == null:
+				vector_mesh = vector_beam.mesh
+			else:
+				test.check(vector_beam.mesh == vector_mesh, "Presentation switching must not redesign Vector Prism topology")
+	projector._set_light_projector_texture(light, texture)
+	var texture_identity: Texture2D = light.light_projector
+	for angle in [0.0, 90.0, 180.0, 270.0]:
+		projector.set_presentation_rotation(light, angle)
+		test.check(light.light_projector == texture_identity and is_equal_approx(light.rotation_degrees.z, angle), "Surface projector rotation must be parametric and retain texture identity")
+	projector.set_shadow_mask_enabled(light, true)
+	projector.set_presentation_rotation(light, 180.0)
+	var rotated_mask: MeshInstance3D = light.get_meta("peraviz_gobo_plane") as MeshInstance3D
+	test.check(rotated_mask.get_meta("peraviz_gobo_presentation_rotation_deg") == 180.0, "Native shadow mask must follow authoritative physical rotation")
 	renderer.cleanup_beam(light)
 	loader.queue_free()
 	light.queue_free()
