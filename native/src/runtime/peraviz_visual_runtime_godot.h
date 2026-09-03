@@ -25,6 +25,7 @@ public:
     Dictionary consume_latest_visual_frame();
     Dictionary get_visual_frame_schema() const;
     Dictionary get_stats() const;
+    void set_performance_trace_enabled(bool enabled);
     peraviz::runtime::PeravizVisualRuntimeCore &native_core();
 
 private:

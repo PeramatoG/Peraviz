@@ -1746,6 +1746,7 @@ func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = 
 
 func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 	var result: Dictionary = base_counters.duplicate(false)
+	result["beam_presentation"] = _active_beam_presentation
 	var active_ids: Dictionary = _fixture_light_apply_service.get_active_physical_emitter_ids() if _fixture_light_apply_service != null else {}
 	result.merge(_native_target_registry.get_presentation_ownership_diagnostics(active_ids), true)
 	var cached_ids: Dictionary = {}
@@ -1785,6 +1786,9 @@ func _apply_native_gobo_rotation_state(beam_target_id: int, wheel_id: int, wheel
 
 func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	return _native_target_registry.apply_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
+
+func _apply_native_transform_targets_fast(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> bool:
+	return _native_target_registry.apply_transform_targets_fast(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
 
 func _has_native_dimmer_target(dimmer_target_id: int) -> bool:
 	return _native_target_registry.has_dimmer_target(dimmer_target_id)

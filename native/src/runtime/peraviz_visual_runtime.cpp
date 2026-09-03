@@ -366,6 +366,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
         universe.has_last_relevant_values = true;
         if (changed_offsets.empty()) continue;
+        if (performance_trace_enabled_) stats_.changed_relevant_offsets += changed_offsets.size();
 
         std::set<int> property_indices;
         std::set<int> color_target_indices;
@@ -376,7 +377,20 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             auto property_it = universe.property_indices_by_offset.find(offset);
             if (property_it != universe.property_indices_by_offset.end()) property_indices.insert(property_it->second.begin(), property_it->second.end());
             auto color_it = universe.color_target_indices_by_offset.find(offset);
-            if (color_it != universe.color_target_indices_by_offset.end()) color_target_indices.insert(color_it->second.begin(), color_it->second.end());
+            if (color_it != universe.color_target_indices_by_offset.end()) {
+                if (performance_trace_enabled_) {
+                    ++stats_.color_changed_offsets;
+                    stats_.color_changed_offset_candidates += color_it->second.size();
+                    const uint64_t fanout = color_it->second.size();
+                    stats_.color_offset_fanout_max = std::max(stats_.color_offset_fanout_max, fanout);
+                    if (fanout == 1) ++stats_.color_offset_fanout_1;
+                    else if (fanout <= 4) ++stats_.color_offset_fanout_2_4;
+                    else if (fanout <= 16) ++stats_.color_offset_fanout_5_16;
+                    else if (fanout <= 64) ++stats_.color_offset_fanout_17_64;
+                    else ++stats_.color_offset_fanout_65_plus;
+                }
+                color_target_indices.insert(color_it->second.begin(), color_it->second.end());
+            }
             auto wheel_it = universe.wheel_binding_indices_by_offset.find(offset);
             if (wheel_it != universe.wheel_binding_indices_by_offset.end()) wheel_binding_indices.insert(wheel_it->second.begin(), wheel_it->second.end());
             auto gobo_it = universe.gobo_layers_by_offset.find(offset);
@@ -699,13 +713,28 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             if (target_index >= 0 && target_index < static_cast<int>(universe.color_targets.size())) dirty_color_targets.insert(universe.color_targets[static_cast<size_t>(target_index)].target.beam_render_target_id);
         }
         dirty_color_targets.insert(wheel_dirty_targets.begin(), wheel_dirty_targets.end());
+        if (performance_trace_enabled_) stats_.color_dirty_candidates += dirty_color_targets.size();
         for (int32_t beam_target_id : dirty_color_targets) {
             CookedEmitterColor composed = compose_ordered_target_color(beam_target_id);
             CookedEmitterColor &previous = color_state_by_target_[beam_target_id];
-            const bool changed = !previous.initialized || !nearly_equal(previous.srgb_red, composed.srgb_red, kDefaultEpsilon) || !nearly_equal(previous.srgb_green, composed.srgb_green, kDefaultEpsilon) || !nearly_equal(previous.srgb_blue, composed.srgb_blue, kDefaultEpsilon) || !nearly_equal(previous.gain, composed.gain, kDefaultEpsilon) || previous.valid != composed.valid;
+            const bool initialized = previous.initialized;
+            const float useful_delta = initialized ? std::max({std::fabs(previous.srgb_red - composed.srgb_red), std::fabs(previous.srgb_green - composed.srgb_green), std::fabs(previous.srgb_blue - composed.srgb_blue), std::fabs(previous.gain - composed.gain)}) : 1.0f;
+            const bool changed = !initialized || useful_delta > kDefaultEpsilon || previous.valid != composed.valid;
             previous = composed;
             previous.initialized = true;
-            if (!changed) { ++stats_.fixtures_skipped; continue; }
+            if (!changed) {
+                ++stats_.fixtures_skipped;
+                if (performance_trace_enabled_) ++stats_.color_composed_unchanged;
+                continue;
+            }
+            if (performance_trace_enabled_) {
+                const uint64_t delta_microunits = static_cast<uint64_t>(std::llround(static_cast<double>(useful_delta) * 1000000.0));
+                stats_.color_delta_sum_microunits += delta_microunits;
+                stats_.color_delta_max_microunits = std::max(stats_.color_delta_max_microunits, delta_microunits);
+                if (useful_delta < 0.001f) ++stats_.color_delta_tiny;
+                else if (useful_delta < 0.01f) ++stats_.color_delta_small;
+                else ++stats_.color_delta_visible;
+            }
             int fixture_id = 0;
             for (const ColorTargetRuntime &target : universe.color_targets) if (target.target.beam_render_target_id == beam_target_id) { fixture_id = target.target.fixture_id; break; }
             if (fixture_id == 0) for (const WheelBindingRuntime &wheel : universe.wheel_bindings) if (wheel.binding.beam_render_target_id == beam_target_id) { fixture_id = wheel.binding.fixture_id; break; }
@@ -811,6 +840,9 @@ const VisualFrameSchema &PeravizVisualRuntimeCore::schema() const { return schem
 
 // Returns cumulative runtime counters for debug UI and benchmarks.
 const VisualFrameStats &PeravizVisualRuntimeCore::stats() const { return stats_; }
+
+// Enables bounded color-dirty diagnostics without affecting production playback.
+void PeravizVisualRuntimeCore::set_performance_trace_enabled(bool enabled) { performance_trace_enabled_ = enabled; }
 
 // Returns the runtime-local monotonic time used by authoritative motion commands.
 double PeravizVisualRuntimeCore::runtime_now_seconds() const {

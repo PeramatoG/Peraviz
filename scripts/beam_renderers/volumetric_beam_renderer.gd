@@ -241,7 +241,8 @@ func cleanup_beam(light: SpotLight3D) -> void:
 func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	var result := {"changed": false, "resource_created": false, "visibility_changed": false, "parameter_write_count": 0}
 	var existing: MeshInstance3D = get_beam_resource(light)
-	if existing != null and existing.visible:
+	# Only hide the vector resource when an experimental renderer owns the current update.
+	if _presentation_mode != PRESENTATION_SHADER_PROXY and existing != null and existing.visible:
 		existing.visible = false
 		result["changed"] = true
 		result["visibility_changed"] = true

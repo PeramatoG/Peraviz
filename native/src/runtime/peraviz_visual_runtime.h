@@ -47,6 +47,7 @@ public:
     SectionedVisualFrame consume_latest_visual_frame();
     const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
+    void set_performance_trace_enabled(bool enabled);
     double runtime_now_seconds() const;
     void set_runtime_now_seconds_for_testing(double seconds);
     std::vector<std::pair<uint16_t, std::vector<uint16_t>>> realtime_interest_offsets() const;
@@ -238,6 +239,7 @@ private:
     VisualFrameSchema schema_ = make_visual_frame_schema(1, VisualFrameSchemaCapabilities());
     int32_t next_schema_generation_ = 1;
     VisualFrameStats stats_;
+    bool performance_trace_enabled_ = false;
 };
 
 } // namespace peraviz::runtime

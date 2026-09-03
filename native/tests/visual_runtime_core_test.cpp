@@ -547,6 +547,7 @@ bool test_native_color_mixing_rows() {
     scene.color_targets.push_back(color_target);
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
     runtime.install_compiled_scene(scene);
+    runtime.set_performance_trace_enabled(true);
     std::vector<uint8_t> frame(512, 0);
     frame[5] = 255;
     frame[6] = 128;
@@ -567,6 +568,7 @@ bool test_native_color_mixing_rows() {
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     peraviz::runtime::SectionedVisualFrame stable = runtime.consume_latest_visual_frame();
     if (!stable.descriptors.empty()) return fail("Expected unchanged color inputs to skip visual updates");
+    if (runtime.stats().color_changed_offsets != 5 || runtime.stats().color_dirty_candidates != 1 || runtime.stats().color_rows != 1) return fail("Expected trace diagnostics to distinguish input fan-out from final color rows");
     frame[9] = 255;
     runtime.submit_universe_frame(10, frame.data(), static_cast<int>(frame.size()));
     peraviz::runtime::SectionedVisualFrame filtered = runtime.consume_latest_visual_frame();

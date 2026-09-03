@@ -21,7 +21,6 @@ window/size/mode=2
 
 [editor]
 
-run/main_run_args="--peraviz-perf-trace"
 
 [peraviz]
 

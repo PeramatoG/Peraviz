@@ -11,6 +11,7 @@ void PeravizVisualRuntime::_bind_methods() {
     ClassDB::bind_method(D_METHOD("consume_latest_visual_frame"), &PeravizVisualRuntime::consume_latest_visual_frame);
     ClassDB::bind_method(D_METHOD("get_visual_frame_schema"), &PeravizVisualRuntime::get_visual_frame_schema);
     ClassDB::bind_method(D_METHOD("get_stats"), &PeravizVisualRuntime::get_stats);
+    ClassDB::bind_method(D_METHOD("set_performance_trace_enabled", "enabled"), &PeravizVisualRuntime::set_performance_trace_enabled);
 }
 
 // Clears all native fixture bindings, render parameters, pending frames, and stats.
@@ -95,6 +96,11 @@ Dictionary PeravizVisualRuntime::get_stats() const {
     return stats_to_dictionary(core_.stats());
 }
 
+// Toggles trace-only native dirty-state aggregation.
+void PeravizVisualRuntime::set_performance_trace_enabled(bool enabled) {
+    core_.set_performance_trace_enabled(enabled);
+}
+
 // Provides native coordinators direct access without marshaling raw universe payloads through Godot.
 peraviz::runtime::PeravizVisualRuntimeCore &PeravizVisualRuntime::native_core() {
     return core_;
@@ -117,6 +123,22 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["color_targets_dirty"] = static_cast<int64_t>(stats.color_targets_dirty);
     out["color_inputs_evaluated"] = static_cast<int64_t>(stats.color_inputs_evaluated);
     out["color_targets_cooked"] = static_cast<int64_t>(stats.color_targets_cooked);
+    out["color_changed_offsets"] = static_cast<int64_t>(stats.color_changed_offsets);
+    out["changed_relevant_offsets"] = static_cast<int64_t>(stats.changed_relevant_offsets);
+    out["color_changed_offset_candidates"] = static_cast<int64_t>(stats.color_changed_offset_candidates);
+    out["color_offset_fanout_1"] = static_cast<int64_t>(stats.color_offset_fanout_1);
+    out["color_offset_fanout_2_4"] = static_cast<int64_t>(stats.color_offset_fanout_2_4);
+    out["color_offset_fanout_5_16"] = static_cast<int64_t>(stats.color_offset_fanout_5_16);
+    out["color_offset_fanout_17_64"] = static_cast<int64_t>(stats.color_offset_fanout_17_64);
+    out["color_offset_fanout_65_plus"] = static_cast<int64_t>(stats.color_offset_fanout_65_plus);
+    out["color_offset_fanout_max"] = static_cast<int64_t>(stats.color_offset_fanout_max);
+    out["color_dirty_candidates"] = static_cast<int64_t>(stats.color_dirty_candidates);
+    out["color_composed_unchanged"] = static_cast<int64_t>(stats.color_composed_unchanged);
+    out["color_delta_sum_microunits"] = static_cast<int64_t>(stats.color_delta_sum_microunits);
+    out["color_delta_max_microunits"] = static_cast<int64_t>(stats.color_delta_max_microunits);
+    out["color_delta_tiny"] = static_cast<int64_t>(stats.color_delta_tiny);
+    out["color_delta_small"] = static_cast<int64_t>(stats.color_delta_small);
+    out["color_delta_visible"] = static_cast<int64_t>(stats.color_delta_visible);
     out["changed_gobo"] = static_cast<int64_t>(stats.changed_gobo);
     out["changed_gobo_rotation"] = static_cast<int64_t>(stats.changed_gobo_rotation);
     out["gobo_topology_updates"] = static_cast<int64_t>(stats.gobo_topology_updates);

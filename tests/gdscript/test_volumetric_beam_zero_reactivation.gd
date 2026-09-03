@@ -76,6 +76,7 @@ func _run() -> void:
 	get_root().add_child(loader)
 	await process_frame
 	var service = FixtureLightApplyServiceScript.new()
+	service.set_performance_trace_enabled(true)
 	var beam: MeshInstance3D = loader.renderer.get_beam_resource(loader.anchor)
 	test.check(beam != null and beam.mesh == null, "Allocated volumetric beam should remain uninitialized before its first state")
 	service.apply_emitter_intensity(loader, "fixture", 201, 2, 0.0, 0.0, 0.0, 0.0, 0.0)

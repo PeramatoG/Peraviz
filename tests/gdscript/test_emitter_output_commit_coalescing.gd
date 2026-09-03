@@ -89,6 +89,7 @@ func _run() -> void:
 	get_root().add_child(loader)
 	await process_frame
 	var service = FixtureLightApplyServiceScript.new()
+	service.set_performance_trace_enabled(true)
 	var before: Dictionary = service.get_visual_apply_counters()
 	service.begin_visual_snapshot()
 	var deferred_intensity: Dictionary = service.apply_emitter_intensity(loader, "fixture", 201, 1 << 1, 0.5, 10.0, 8.0, 10.0, 2.0)
