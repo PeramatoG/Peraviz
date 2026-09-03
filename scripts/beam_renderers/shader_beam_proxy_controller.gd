@@ -12,6 +12,7 @@ static var _shared_material: ShaderMaterial
 static var _topology_creations := 0
 var _creations := 0
 var _parameter_writes := 0
+var _visibility_transitions := 0
 var _texture_changes := 0
 var _allocated_ids: Dictionary = {}
 var _visible_ids: Dictionary = {}
@@ -32,6 +33,7 @@ func update_for_light(light: SpotLight3D, params: Dictionary, texture: Texture2D
 	var writes := 0
 	if proxy.visible != visible:
 		proxy.visible = visible
+		_visibility_transitions += 1
 		writes += 1
 	if not visible:
 		_set_visibility_diagnostics(light, false, 0)
@@ -78,15 +80,16 @@ func clear_for_light(light: SpotLight3D) -> void:
 
 func hide_for_light(light: SpotLight3D) -> void:
 	var proxy := _get_proxy(light)
-	if proxy != null:
+	if proxy != null and proxy.visible:
 		proxy.visible = false
+		_visibility_transitions += 1
 		_set_visibility_diagnostics(light, false, 0)
 
 func get_proxy(light: SpotLight3D) -> MeshInstance3D:
 	return _get_proxy(light)
 
 func counters() -> Dictionary:
-	return {"allocated_shader_proxies": _allocated_ids.size(), "active_shader_proxies": _visible_ids.size(), "proxy_resource_creations": _creations, "proxy_topology_creations": _topology_creations, "proxy_topology_rebuilds": 0, "proxy_parameter_writes": _parameter_writes, "proxy_gobo_texture_changes": _texture_changes, "proxy_tier_4": (_tier_ids[4] as Dictionary).size(), "proxy_tier_8": (_tier_ids[8] as Dictionary).size(), "proxy_tier_12": (_tier_ids[12] as Dictionary).size()}
+	return {"allocated_shader_proxies": _allocated_ids.size(), "active_shader_proxies": _visible_ids.size(), "proxy_resource_creations": _creations, "proxy_topology_creations": _topology_creations, "proxy_topology_rebuilds": 0, "proxy_parameter_writes": _parameter_writes, "proxy_visibility_transitions": _visibility_transitions, "proxy_gobo_texture_changes": _texture_changes, "proxy_tier_4": (_tier_ids[4] as Dictionary).size(), "proxy_tier_8": (_tier_ids[8] as Dictionary).size(), "proxy_tier_12": (_tier_ids[12] as Dictionary).size()}
 
 func _create_proxy(light: SpotLight3D) -> MeshInstance3D:
 	var proxy := MeshInstance3D.new()

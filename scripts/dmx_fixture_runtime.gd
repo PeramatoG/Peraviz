@@ -242,6 +242,8 @@ func set_render_diagnostic_mode(mode: String) -> void:
 
 func set_performance_trace_enabled(enabled: bool) -> void:
 	_performance_trace_enabled = enabled
+	if _native_visual_runtime != null and _native_visual_runtime.has_method("set_performance_trace_enabled"):
+		_native_visual_runtime.set_performance_trace_enabled(enabled)
 	if _sectioned_visual_frame_applier != null:
 		_sectioned_visual_frame_applier.set_performance_trace_enabled(enabled)
 
@@ -388,8 +390,8 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		"visual_frame_size": _last_visual_frame_size,
 		"visual_mask_counts": _last_visual_mask_counts.duplicate(false),
 		"visual_apply_counters": light_apply_service.get_visual_apply_counters() if _performance_trace_enabled and light_apply_service != null else {},
-		"native_stats": _native_visual_runtime.get_stats() if _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
-		"native_setup_summary": _native_setup_summary.duplicate(true),
+		"native_stats": _native_visual_runtime.get_stats() if _performance_trace_enabled and _native_visual_runtime != null and _native_visual_runtime.has_method("get_stats") else {},
+		"native_setup_summary": _native_setup_summary.duplicate(true) if _performance_trace_enabled else {},
 		"native_live_diagnostics": _native_live_diagnostics.duplicate(true) if _performance_trace_enabled else {},
 		"universes_submitted_to_native": submitted_universes,
 	}

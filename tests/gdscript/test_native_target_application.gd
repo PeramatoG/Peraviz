@@ -144,6 +144,7 @@ func _init() -> void:
 
 func _run() -> void:
 	var applier = SectionedVisualFrameApplierScript.new()
+	applier.set_performance_trace_enabled(true)
 	applier.install_schema({"sections": [
 		{"section_type": 1, "row_stride_ints": 4, "row_stride_floats": 2},
 		{"section_type": 2, "row_stride_ints": 3, "row_stride_floats": 5},
@@ -170,7 +171,8 @@ func _run() -> void:
 	var unchanged_result: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	var unchanged_diagnostics: Dictionary = unchanged_result.get("skip_diagnostics", {})
 	test.check(int(unchanged_diagnostics.get("dimmer_failed", 0)) == 0, "A resolved Dimmer target already at the requested state must not fail")
-	test.check(int(unchanged_diagnostics.get("dimmer_unchanged", 0)) == 1, "A resolved Dimmer no-op must be classified as unchanged")
+	test.check(int(unchanged_diagnostics.get("dimmer_unchanged", 0)) == 0, "A deferred Dimmer row must remain applied until the final output signature guard runs")
+	test.check(int(light_apply_service.get_visual_apply_counters().get("emitter_output_commits_signature_skipped", 0)) == 1, "The final output signature guard must record the unchanged renderer commit")
 	var energy_before_transforms_only: float = loader.last_dimmer_light.light_energy
 	applier.set_render_diagnostic_mode("transforms-only")
 	var transforms_only: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})

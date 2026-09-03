@@ -11,6 +11,7 @@ const RendererSettingsPanelScript = preload("res://scripts/ui/visual/renderer_se
 const EnvironmentSettingsPanelScript = preload("res://scripts/ui/visual/environment_settings_panel.gd")
 const DebugGoboSettingsPanelScript = preload("res://scripts/ui/visual/debug_gobo_settings_panel.gd")
 const BeamPresentationOptionsScript = preload("res://scripts/ui/visual/beam_presentation_options.gd")
+const CUSTOM_PRESET_NAME := "Custom"
 
 const DEFAULT_SETTINGS := {
 	"ambient_multiplier": 0.08,
@@ -123,6 +124,7 @@ const QUICK_PRESETS := {
 var _settings: Dictionary = DEFAULT_SETTINGS.duplicate(true)
 var _ui_visibility_policy = UiVisibilityPolicyScript
 var _tabs: TabContainer
+var _preset_option: OptionButton
 var _advanced_mode_toggle: CheckBox
 var _renderer_panel: RendererSettingsPanel
 var _environment_panel: EnvironmentSettingsPanel
@@ -188,16 +190,18 @@ func _build_ui() -> void:
 	var presets_label := Label.new()
 	presets_label.text = "Quick preset"
 	preset_row.add_child(presets_label)
-	var preset_option := OptionButton.new()
-	preset_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_preset_option = OptionButton.new()
+	_preset_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for preset_name in BeamPresentationOptionsScript.PRESET_NAMES:
-		preset_option.add_item(preset_name)
-	preset_option.select(-1)
-	preset_option.item_selected.connect(func(index: int) -> void:
+		_preset_option.add_item(preset_name)
+	_preset_option.add_item(CUSTOM_PRESET_NAME)
+	_preset_option.select(BeamPresentationOptionsScript.PRESET_NAMES.find("Vector Prism"))
+	_preset_option.item_selected.connect(func(index: int) -> void:
+		if index >= BeamPresentationOptionsScript.PRESET_NAMES.size():
+			return
 		_apply_quick_preset(BeamPresentationOptionsScript.PRESET_NAMES[index])
-		preset_option.select(-1)
 	)
-	preset_row.add_child(preset_option)
+	preset_row.add_child(_preset_option)
 
 	_tabs = TabContainer.new()
 	_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -237,6 +241,22 @@ func _apply_settings_to_controls() -> void:
 	if _debug_panel != null:
 		_debug_panel.apply_settings(_settings)
 	_apply_mode_to_panels()
+	_sync_quick_preset_selection()
+
+func _sync_quick_preset_selection() -> void:
+	if _preset_option == null:
+		return
+	for index in range(BeamPresentationOptionsScript.PRESET_NAMES.size()):
+		var preset_name: String = BeamPresentationOptionsScript.PRESET_NAMES[index]
+		var matches: bool = true
+		for key in (QUICK_PRESETS[preset_name] as Dictionary):
+			if _settings.get(key) != (QUICK_PRESETS[preset_name] as Dictionary).get(key):
+				matches = false
+				break
+		if matches:
+			_preset_option.select(index)
+			return
+	_preset_option.select(BeamPresentationOptionsScript.PRESET_NAMES.size())
 
 func _apply_mode_to_panels() -> void:
 	var advanced_enabled: bool = _advanced_mode_toggle != null and _advanced_mode_toggle.button_pressed
@@ -280,6 +300,7 @@ func _apply_quick_preset(preset_name: String) -> void:
 
 func _on_panel_setting_changed(key: String, value: Variant) -> void:
 	_settings[key] = value
+	_sync_quick_preset_selection()
 	_emit_settings_changed()
 
 func _on_advanced_mode_toggled(_enabled: bool) -> void:

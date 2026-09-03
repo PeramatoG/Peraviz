@@ -26,6 +26,10 @@ func _run() -> void:
 	test.check(first_proxy.mesh == second_proxy.mesh, "All shader proxies must share one normalized mesh")
 	var mesh_identity := first_proxy.mesh
 	var material_identity := first_proxy.material_override
+	var stable_counters: Dictionary = controller.counters()
+	var repeated_result: Dictionary = controller.update_for_light(first, params, texture)
+	test.check(not bool(repeated_result.get("changed", true)), "Repeated identical proxy state must perform no writes")
+	test.check(int(controller.counters().get("proxy_visibility_transitions", -1)) == int(stable_counters.get("proxy_visibility_transitions", -2)), "Repeated visible proxy state must not toggle visibility")
 	for angle in [90.0, 180.0, 270.0]:
 		params["gobo_rotation_deg"] = angle
 		controller.update_for_light(first, params, texture)
@@ -37,6 +41,9 @@ func _run() -> void:
 	params["scaled_intensity"] = 0.0
 	controller.update_for_light(first, params, texture)
 	test.check(not first_proxy.visible and controller.get_proxy(first) == first_proxy, "Inactive proxies must be hidden and retained")
+	var hidden_transitions: int = int(controller.counters().get("proxy_visibility_transitions", 0))
+	controller.update_for_light(first, params, texture)
+	test.check(int(controller.counters().get("proxy_visibility_transitions", 0)) == hidden_transitions, "Repeated inactive proxy state must remain hidden without a transition")
 	first.queue_free()
 	second.queue_free()
 	await process_frame

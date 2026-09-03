@@ -111,6 +111,7 @@ func _run() -> void:
 	get_root().add_child(root)
 	await process_frame
 	var service = FixtureLightApplyServiceScript.new()
+	service.set_performance_trace_enabled(true)
 	var prism: MeshInstance3D = root.renderer.get_beam_resource(root.anchor)
 	test.check(root.ready_calls == 1, "PrismLoader setup should run exactly once through SceneTree readiness")
 	test.check(prism != null, "Prism beam resource should be created during setup")

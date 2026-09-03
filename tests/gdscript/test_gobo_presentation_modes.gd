@@ -36,6 +36,7 @@ func _run() -> void:
 	var loader := VisualLoader.new()
 	get_root().add_child(loader)
 	var apply_service = FixtureLightApplyServiceScript.new()
+	apply_service.set_performance_trace_enabled(true)
 	apply_service._update_desired_light_state(light, 0.0, 10.0, Color.WHITE, false)
 	apply_service._apply_canonical_light_visibility(loader, light, true, false)
 	test.check(not bool(apply_service._light_desired_for(light).get("applied_realtime_visible", true)), "Parent visibility must not make an inactive physical output realtime")

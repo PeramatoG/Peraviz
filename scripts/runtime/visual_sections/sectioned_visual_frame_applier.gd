@@ -44,6 +44,7 @@ func install_schema(schema: Dictionary) -> void:
 
 func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, scene_fixture_uuids: Dictionary = {}) -> Dictionary:
 	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
+	light_apply_service.set_performance_trace_enabled(_performance_trace_enabled)
 	var descriptors: PackedInt32Array = snapshot.get("descriptors", PackedInt32Array())
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
@@ -51,8 +52,8 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 	if descriptors.is_empty() or descriptors.size() % DESCRIPTOR_STRIDE != 0:
 		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}, "skip_diagnostics": _new_skip_diagnostics()}
 	light_apply_service.begin_visual_snapshot()
-	var counts: Dictionary = _new_counts()
-	var skip_diagnostics: Dictionary = _new_skip_diagnostics()
+	var counts: Dictionary = _new_counts() if _performance_trace_enabled else {}
+	var skip_diagnostics: Dictionary = _new_skip_diagnostics() if _performance_trace_enabled else {"first_failures": []}
 	var updated_fixtures: Dictionary = {}
 	var skipped: int = 0
 	var applied_rows: int = 0
@@ -67,15 +68,17 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 		var float_stride: int = int(strides.get("floats", 0))
 		if int_stride <= 0 or float_stride < 0:
 			skipped += row_count
-			skip_diagnostics["invalid_schema_payload"] = int(skip_diagnostics.get("invalid_schema_payload", 0)) + row_count
-			_record_failure(skip_diagnostics, {"reason": "invalid schema stride", "section_type": section_type})
+			if _performance_trace_enabled:
+				skip_diagnostics["invalid_schema_payload"] += row_count
+				_record_failure(skip_diagnostics, {"reason": "invalid schema stride", "section_type": section_type})
 			continue
 		for row_index in range(row_count):
-			skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1
 			if _performance_trace_enabled:
+				skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1
 				_record_section_row(section_type, skip_diagnostics)
 			if not RenderDiagnosticPolicyScript.applies_section(_render_diagnostic_mode, section_type):
-				skip_diagnostics["rows_diagnostic_suppressed"] = int(skip_diagnostics.get("rows_diagnostic_suppressed", 0)) + 1
+				if _performance_trace_enabled:
+					skip_diagnostics["rows_diagnostic_suppressed"] = int(skip_diagnostics.get("rows_diagnostic_suppressed", 0)) + 1
 				continue
 			var row_int_base: int = int_offset + (row_index * int_stride)
 			var row_float_base: int = float_offset + (row_index * float_stride)
@@ -83,16 +86,27 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 			var fixture_uuid: String = str(fixture_uuids_by_id.get(fixture_id, ""))
 			if fixture_uuid.is_empty():
 				skipped += 1
-				skip_diagnostics["unknown_fixture_id"] = int(skip_diagnostics.get("unknown_fixture_id", 0)) + 1
-				_record_failure(skip_diagnostics, {"reason": "unknown fixture ID", "fixture_id": fixture_id, "section_type": section_type})
+				if _performance_trace_enabled:
+					skip_diagnostics["unknown_fixture_id"] += 1
+					_record_failure(skip_diagnostics, {"reason": "unknown fixture ID", "fixture_id": fixture_id, "section_type": section_type})
 				continue
 			if not scene_fixture_uuids.is_empty() and not scene_fixture_uuids.has(fixture_uuid):
 				skipped += 1
-				skip_diagnostics["missing_scene_fixture"] = int(skip_diagnostics.get("missing_scene_fixture", 0)) + 1
-				_record_failure(skip_diagnostics, {"reason": "fixture not present in SceneRegistry", "fixture_id": fixture_id, "fixture_uuid": fixture_uuid, "section_type": section_type})
+				if _performance_trace_enabled:
+					skip_diagnostics["missing_scene_fixture"] += 1
+					_record_failure(skip_diagnostics, {"reason": "fixture not present in SceneRegistry", "fixture_id": fixture_id, "fixture_uuid": fixture_uuid, "section_type": section_type})
+				continue
+			if not _performance_trace_enabled and section_type in [SECTION_GEOMETRY_TRANSFORM, SECTION_EMITTER_INTENSITY, SECTION_EMITTER_COLOR]:
+				if not _apply_section_row_fast(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid):
+					skipped += 1
+					failed_rows += 1
+					continue
+				updated_fixtures[fixture_uuid] = true
+				applied_rows += 1
 				continue
 			var row_result: Dictionary = _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts)
-			_merge_application_result(skip_diagnostics, row_result)
+			if _performance_trace_enabled:
+				_merge_application_result(skip_diagnostics, row_result)
 			if not bool(row_result.get("applied", false)):
 				skipped += 1
 				failed_rows += 1
@@ -102,6 +116,23 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 	# Renderer mutation is deferred past all semantic sections so optics and gobos observe final held state.
 	light_apply_service.end_visual_snapshot()
 	return {"updated": updated_fixtures.size(), "skipped": skipped, "fixtures_considered": updated_fixtures.size() + skipped, "visual_mask_counts": counts, "targets_applied": applied_rows, "targets_failed": failed_rows, "skip_diagnostics": skip_diagnostics}
+
+func _apply_section_row_fast(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String) -> bool:
+	var changed_mask: int = _changed_mask_for_row(section_type, int_base, integers)
+	match section_type:
+		SECTION_GEOMETRY_TRANSFORM:
+			if int_base + 2 >= integers.size() or float_base + 1 >= floats.size():
+				return false
+			return light_apply_service.apply_transform_targets_fast(loader, integers[int_base + 1], integers[int_base + 2], floats[float_base], floats[float_base + 1])
+		SECTION_EMITTER_INTENSITY:
+			if int_base + 1 >= integers.size() or float_base + 4 >= floats.size():
+				return false
+			return light_apply_service.apply_emitter_intensity_fast(loader, fixture_uuid, integers[int_base + 1], changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
+		SECTION_EMITTER_COLOR:
+			if int_base + 1 >= integers.size() or float_base + 3 >= floats.size():
+				return false
+			return light_apply_service.apply_emitter_color_fast(loader, fixture_uuid, integers[int_base + 1], changed_mask, Color(floats[float_base], floats[float_base + 1], floats[float_base + 2], 1.0), floats[float_base + 3])
+	return false
 
 func _new_counts() -> Dictionary:
 	return {
@@ -178,7 +209,8 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 	if int_base < 0 or int_base >= integers.size() or float_base < 0 or float_base > floats.size():
 		return {"applied": false}
 	var changed_mask: int = _changed_mask_for_row(section_type, int_base, integers)
-	_record_changed_mask(changed_mask, counts)
+	if _performance_trace_enabled:
+		_record_changed_mask(changed_mask, counts)
 	if not _performance_trace_enabled:
 		return _apply_section_row_timed(section_type, int_base, float_base, integers, floats, loader, light_apply_service, fixture_uuid, changed_mask, counts)
 	var apply_start_usec: int = Time.get_ticks_usec()
@@ -190,20 +222,20 @@ func _apply_section_row(section_type: int, int_base: int, float_base: int, integ
 func _apply_section_row_timed(section_type: int, int_base: int, float_base: int, integers: PackedInt32Array, floats: PackedFloat32Array, loader: Node, light_apply_service: FixtureLightApplyService, fixture_uuid: String, changed_mask: int, counts: Dictionary) -> Dictionary:
 	match section_type:
 		SECTION_GEOMETRY_TRANSFORM:
-			counts["transform_rows_generated"] += 1
+			if _performance_trace_enabled: counts["transform_rows_generated"] += 1
 			if float_base + 1 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid transform payload", "fixture_uuid": fixture_uuid}}
 			var pan_component_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
 			var tilt_component_id: int = integers[int_base + 2] if int_base + 2 < integers.size() else 0
 			var transform_result: Dictionary = light_apply_service.apply_transform_targets(loader, pan_component_id, tilt_component_id, floats[float_base], floats[float_base + 1])
 			transform_result["applied"] = bool(transform_result.get("pan_applied", false)) or bool(transform_result.get("tilt_applied", false))
-			return _categorized_transform_result(loader, fixture_uuid, pan_component_id, tilt_component_id, transform_result)
+			return _categorized_transform_result(loader, fixture_uuid, pan_component_id, tilt_component_id, transform_result) if _performance_trace_enabled else transform_result
 		SECTION_EMITTER_INTENSITY:
-			counts["intensity_rows_generated"] += 1
+			if _performance_trace_enabled: counts["intensity_rows_generated"] += 1
 			if float_base + 4 >= floats.size(): return {"applied": false, "failure": {"reason": "invalid intensity payload", "fixture_uuid": fixture_uuid}}
 			var dimmer_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
 			var intensity_result: Dictionary = light_apply_service.apply_emitter_intensity(loader, fixture_uuid, dimmer_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2], floats[float_base + 3], floats[float_base + 4])
 			intensity_result["applied"] = bool(intensity_result.get("dimmer_applied", false))
-			return _categorized_dimmer_result(loader, fixture_uuid, dimmer_target_id, intensity_result)
+			return _categorized_dimmer_result(loader, fixture_uuid, dimmer_target_id, intensity_result) if _performance_trace_enabled else intensity_result
 		SECTION_EMITTER_COLOR:
 			if float_base + 3 >= floats.size(): return {"applied": false}
 			var color_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
@@ -211,7 +243,7 @@ func _apply_section_row_timed(section_type: int, int_base: int, float_base: int,
 			color_result["applied"] = bool(color_result.get("color_applied", false))
 			return color_result
 		SECTION_BEAM_OPTICS:
-			counts["beam_optics_rows_generated"] += 1
+			if _performance_trace_enabled: counts["beam_optics_rows_generated"] += 1
 			if float_base + 2 >= floats.size(): return {"applied": false}
 			var optics_target_id: int = integers[int_base + 1] if int_base + 1 < integers.size() else 0
 			var optics_result: Dictionary = light_apply_service.apply_beam_optics(loader, fixture_uuid, optics_target_id, changed_mask, floats[float_base], floats[float_base + 1], floats[float_base + 2])

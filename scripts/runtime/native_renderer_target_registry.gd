@@ -99,6 +99,28 @@ func install_manifest(renderer_manifest: Array) -> void:
 		_register_legacy_manifest_row(row)
 	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
 	_log_summary_once()
+	_log_output_fanout_once()
+
+func _log_output_fanout_once() -> void:
+	var fanouts: Array[int] = []
+	var top: Array[Dictionary] = []
+	var histogram: Dictionary = {}
+	var outputs_with_color: Dictionary = {}
+	for target_id in _dimmer_targets:
+		var count: int = ((_dimmer_targets[target_id] as Dictionary).get("beam_output_records", []) as Array).size()
+		fanouts.append(count)
+		top.append({"target_id": int(target_id), "outputs": count})
+		histogram[count] = int(histogram.get(count, 0)) + 1
+	for target_record_item in _color_targets.values():
+		for output_item in (target_record_item as Dictionary).get("beam_output_records", []):
+			if output_item is Dictionary:
+				outputs_with_color[int((output_item as Dictionary).get("beam_render_target_id", 0))] = true
+	if fanouts.is_empty():
+		return
+	fanouts.sort()
+	top.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["outputs"]) > int(b["outputs"]))
+	var median_index: int = int(floor(float(fanouts.size()) * 0.5))
+	print("[native-renderer-fanout] dimmer_targets=%d output_records=%d unique_emitters=%d color_outputs=%d min=%d median=%d max=%d fanout_hist=%s top=%s" % [_dimmer_targets.size(), _beam_output_records_by_id.size(), get_emitter_anchors().size(), outputs_with_color.size(), fanouts[0], fanouts[median_index], fanouts[-1], str(histogram), str(top.slice(0, mini(10, top.size())))])
 
 func apply_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	var pan_axis: Node3D = _pan_targets.get(pan_component_id, null) as Node3D
@@ -119,6 +141,18 @@ func apply_transform_targets(pan_component_id: int, tilt_component_id: int, pan_
 			_target_resolution_failures[tilt_component_id] = {"target_id": tilt_component_id, "semantic": "tilt", "reason": "target never registered"}
 		result["failed"] = int(result["failed"]) + 1
 	return result
+
+func apply_transform_targets_fast(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> bool:
+	var applied: bool = false
+	var pan_axis: Node3D = _pan_targets.get(pan_component_id, null) as Node3D
+	var tilt_axis: Node3D = _tilt_targets.get(tilt_component_id, null) as Node3D
+	if pan_component_id > 0 and pan_axis != null:
+		pan_axis.rotation_degrees.y = pan_degrees
+		applied = true
+	if tilt_component_id > 0 and tilt_axis != null:
+		tilt_axis.rotation_degrees.x = tilt_degrees
+		applied = true
+	return applied
 
 func has_dimmer_target(dimmer_target_id: int) -> bool:
 	return dimmer_target_id > 0 and _dimmer_targets.has(dimmer_target_id)
