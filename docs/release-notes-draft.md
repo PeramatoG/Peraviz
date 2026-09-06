@@ -65,6 +65,7 @@ Changes since the previous Peraviz release.
 ## Documentation
 
 - Consolidated runtime architecture, GDTF capability, static gobo, build, environment, and coordinate guidance into focused current sources of truth, including unambiguous source, mapped-scene, and renderer-child optical axes.
+- Documented the mode-aware physical-output, control-group, and render-group architecture that will guide emitter aggregation, batching, and future beam-renderer performance work without weakening GDTF semantics.
 
 ## Internal changes
 
