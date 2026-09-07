@@ -1,7 +1,9 @@
 # Rendering and performance architecture decisions
 
-**Status:** Working technical reference  
-**Date:** 2026-09-03  
+**Status:** Working technical reference
+
+**Date:** 2026-09-03
+
 **Scope:** GDTF/MVR semantics, physical emitter ownership, render aggregation, batching, beam rendering, and the short-term performance roadmap.
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
