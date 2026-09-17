@@ -58,6 +58,7 @@ Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboRe
 - [GDTF parser ownership ADR](adr-gdtf-parser-ownership.md)
 - [Uniform physical color pipeline](uniform-physical-color-pipeline.md)
 - [Beam rendering modes](BEAM_RENDERING_MODES.md)
+- [Rendering and performance architecture decisions](rendering-performance-architecture.md)
 - [Runtime storage policy](runtime-storage-policy.md)
 - [Godot performance guidelines](godot_performance_guidelines.md)
 

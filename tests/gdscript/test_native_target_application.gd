@@ -76,6 +76,13 @@ class FakeLoader:
 				"lens_material_targets": [],
 				"emitter_photometrics": [],
 			}
+		var beam_output_record: Dictionary = {
+			"beam_render_target_id": dimmer_target_id,
+			"emitter_nodes": [dimmer_node],
+			"emitter_anchors": [last_dimmer_light],
+			"lens_material_targets": [],
+			"beam_optical_profile": DEFAULT_EMITTER_PHOTOMETRICS,
+		}
 		return {
 			"geometry_nodes": [dimmer_node],
 			"emitter_nodes": [dimmer_node],
@@ -83,6 +90,7 @@ class FakeLoader:
 			"beam_instances": [last_dimmer_light],
 			"lens_material_targets": [],
 			"emitter_photometrics": [],
+			"beam_output_records": [beam_output_record],
 		}
 
 	func _get_fixture_geometry_nodes(_fixture_uuid: String) -> Array:
@@ -166,8 +174,8 @@ func _run() -> void:
 	test.check(loader.last_dimmer_light.light_energy > 0.0, "Native dimmer should update light energy")
 	var diagnostics: Dictionary = result.get("skip_diagnostics", {})
 	test.check(int(diagnostics.get("dimmer_requested", 0)) == 1, "Dimmer diagnostics should count the request")
-	test.check(int(diagnostics.get("dimmer_mutated", 0)) == 1, "Dimmer diagnostics should count the mutation")
-	test.check(int(diagnostics.get("dimmer_lights_mutated", 0)) >= 1, "Dimmer diagnostics should count mutated lights")
+	test.check(int(diagnostics.get("dimmer_mutated", 0)) == 0, "A deferred Dimmer row must leave final renderer mutations to the output commit")
+	test.check(int(light_apply_service.get_visual_apply_counters().get("emitter_output_commits", 0)) == 1, "The final output commit must record the initial renderer mutation")
 	var unchanged_result: Dictionary = applier.apply_snapshot(snapshot, loader, light_apply_service, 0.016, null, {1: "fixture-a"})
 	var unchanged_diagnostics: Dictionary = unchanged_result.get("skip_diagnostics", {})
 	test.check(int(unchanged_diagnostics.get("dimmer_failed", 0)) == 0, "A resolved Dimmer target already at the requested state must not fail")
@@ -198,6 +206,7 @@ func _run() -> void:
 	runtime.configure(native_loader, null, renderer_registry, null)
 	var pump_guard := NativePumpGuardReceiver.new()
 	runtime._native_visual_runtime_available = true
+	runtime._native_visual_runtime = RefCounted.new()
 	runtime._collect_dmx(pump_guard, Callable())
 	test.check(pump_guard.pump_calls == 1 and pump_guard.forbidden_calls == 0, "Production playback must use only the native realtime pump, never raw universe compatibility APIs")
 	var required_registry_methods := ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_has_native_optics_target", "_get_native_optics_target_record", "_get_native_target_failure"]
