@@ -2,6 +2,7 @@
 
 #include "runtime/visual_frame_schema.h"
 #include "runtime/visual_runtime_types.h"
+#include "runtime/runtime_state_sizes.h"
 
 #include <array>
 #include <chrono>
@@ -47,6 +48,7 @@ public:
     SectionedVisualFrame consume_latest_visual_frame();
     const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
+    RuntimeStateSizes state_sizes() const;
     void set_performance_trace_enabled(bool enabled);
     double runtime_now_seconds() const;
     void set_runtime_now_seconds_for_testing(double seconds);
@@ -62,6 +64,8 @@ private:
         CompiledDmxSourceProgram program;
         uint32_t max_value = 255;
         double inverse_max_value = 1.0 / 255.0;
+        mutable bool diagnosed_byte_count = false;
+        mutable bool diagnosed_missing_byte = false;
     };
 
     struct ColorInputRuntime {

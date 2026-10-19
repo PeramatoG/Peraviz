@@ -35,3 +35,7 @@ func get_beam_resource(_light: SpotLight3D) -> MeshInstance3D:
 
 func cleanup_beam(_light: SpotLight3D) -> void:
 	pass
+
+# Drops scene-specific resource caches after the owner retires its emitter nodes.
+func reset_scene_state() -> void:
+	pass

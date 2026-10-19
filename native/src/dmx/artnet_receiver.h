@@ -35,6 +35,11 @@ struct ArtNetReceiverStats {
     uint64_t relevant_unchanged_packets = 0;
     uint64_t relevant_state_updates = 0;
     uint64_t mailbox_overwrites = 0;
+    size_t mailbox_pending_dirty = 0;
+    size_t mailbox_pending_high_water = 0;
+    size_t mailbox_allocated_slots = 0;
+    size_t mailbox_subscribed_universes = 0;
+    size_t mailbox_approximate_bytes = 0;
     uint64_t scene_dirty_states_consumed = 0;
     uint64_t monitor_payload_captures = 0;
     uint64_t monitor_payload_skipped_budget = 0;

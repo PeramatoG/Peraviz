@@ -284,6 +284,16 @@ The `codex/optimize-live-dmx-render-apply-path` performance work must reach thes
 - Whether 95 controls fanning out to 1,095 physical outputs is legitimate is established.
 - GDTF and MVR semantics remain intact.
 
+### Phase A2: sustained-playback stability baseline
+
+Before implementing grouping, audit progressive growth, retire stale lifecycle
+state, and compare bounded interval latency with CPU/GPU render times on the
+canonical machine. The [Phase A2 audit](phase-a2-stability-audit.md) records the
+bounded structures, concrete diagnostic/lifecycle fixes and deterministic soak
+regressions. The [latency diagnostics](live-render-latency-diagnostics.md) define
+the trace and exact production/diagnostic A/B commands. Fixed-scene Windows
+slowdown is not yet attributed to a proven cause.
+
 ### Phase 2: native mode-aware RenderEmitterGrouping
 
 If the high fan-out is legitimate:

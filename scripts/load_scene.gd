@@ -1602,8 +1602,12 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 	return "box"
 
 func _clear_scene() -> void:
+	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service.reset_scene_state()
 	_clear_fixture_inspection_panel()
 	_clear_fixture_node_cache()
+	for renderer in _beam_renderers.values():
+		renderer.reset_scene_state()
 	_native_target_registry.clear()
 	_fixture_row_provider.clear()
 	_scene_import_service.clear_scene(
@@ -1763,6 +1767,8 @@ func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 	return result
 
 func _register_native_runtime_targets(renderer_manifest: Array) -> void:
+	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service.reset_scene_state()
 	_native_target_registry.install_manifest(renderer_manifest)
 
 func _install_native_gobo_assets(asset_rows: Array) -> void:
@@ -2924,6 +2930,11 @@ func _process(delta: float) -> void:
 		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:
 		_dmx_controller.process_dmx(delta)
+
+# PeravizLoader extends Object; release its scene model when this owner is destroyed.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_loader):
+		_loader.free()
 
 func _exit_tree() -> void:
 	_save_user_preferences()

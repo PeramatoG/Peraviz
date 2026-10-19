@@ -33,6 +33,7 @@ float linear_to_srgb(float value) {
 // Clears bindings, cached frames, fixture state, and runtime counters.
 void PeravizVisualRuntimeCore::clear() {
     universes_.clear();
+    diagnostics_.clear();
     render_params_by_fixture_.clear();
     transform_state_by_fixture_.clear();
     property_state_by_property_.clear();
@@ -886,16 +887,22 @@ uint32_t PeravizVisualRuntimeCore::max_raw_value_for_source_count(size_t source_
     return max_value;
 }
 
-// Reads a compiled DMX program by assembling preordered source bytes into a raw integer value.
+// Assembles source bytes and reports each invalid-input category once per installed program.
 uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
     if (program.program.sources.empty() || program.program.sources.size() > 4) {
-        if (diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program.program_id)});
+        if (diagnostics != nullptr && !program.diagnosed_byte_count) {
+            diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program.program_id)});
+            program.diagnosed_byte_count = true;
+        }
         return 0U;
     }
     uint32_t raw_value = 0;
     for (const CompiledDmxByteSource &source : program.program.sources) {
         const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
-        if (!valid && diagnostics != nullptr) diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program.program_id)});
+        if (!valid && diagnostics != nullptr && !program.diagnosed_missing_byte) {
+            diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program.program_id)});
+            program.diagnosed_missing_byte = true;
+        }
         const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
         raw_value = (raw_value << 8U) | value;
     }

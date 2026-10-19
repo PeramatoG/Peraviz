@@ -4,6 +4,7 @@ class_name DmxController
 const DmxMonitorWindowScript = preload("res://scripts/dmx_monitor_window.gd")
 const DmxFixtureRuntimeScript = preload("res://scripts/dmx_fixture_runtime.gd")
 const DmxQuickPanelScript = preload("res://scripts/ui/dmx_quick_panel.gd")
+const PerformanceTraceSnapshotScript = preload("res://scripts/runtime/performance_trace_snapshot.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
 var _owner: Node
@@ -43,6 +44,7 @@ var _render_diagnostic_mode: String = RenderDiagnosticPolicyScript.FULL
 var _perf_previous_renderer_counters: Dictionary = {}
 var _perf_previous_native_counters: Dictionary = {}
 var _perf_interval: Dictionary = {}
+var _perf_snapshot: RefCounted
 
 func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_controls_callback: Callable) -> void:
 	_owner = owner
@@ -50,6 +52,10 @@ func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_cont
 	_apply_dmx_controls_callback = apply_dmx_controls_callback
 	_perf_trace_enabled = OS.get_cmdline_args().has("--peraviz-perf-trace")
 	_render_diagnostic_mode = RenderDiagnosticPolicyScript.from_arguments(OS.get_cmdline_args())
+	if _perf_trace_enabled:
+		_perf_snapshot = PerformanceTraceSnapshotScript.new()
+		_perf_snapshot.configure(owner.get_viewport())
+		_perf_trace_last_msec = Time.get_ticks_msec()
 
 func set_status_callbacks(dmx_status_changed_callback: Callable, dmx_start_failed_callback: Callable) -> void:
 	_dmx_status_changed_callback = dmx_status_changed_callback
@@ -118,6 +124,7 @@ func setup_controls() -> void:
 
 	if ClassDB.class_exists("PeravizDmxReceiver"):
 		_dmx_receiver = ClassDB.instantiate("PeravizDmxReceiver")
+		_dmx_receiver.set_performance_trace_enabled(_perf_trace_enabled)
 		_dmx_monitor_button.disabled = false
 		_dmx_quick_panel.set_monitor_available(true)
 	else:
@@ -238,6 +245,12 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 			_dmx_toggle_button.text = "DMX ON"
 			_dmx_toggle_button.tooltip_text = ""
 		_last_dmx_tick_msec = Time.get_ticks_msec()
+		if _perf_trace_enabled:
+			_perf_trace_last_msec = _last_dmx_tick_msec
+			_perf_interval.clear()
+			_production_pump_calls = 0
+			_worst_dmx_tick_usec = 0
+			_perf_previous_stats = _dmx_receiver.get_stats()
 		_emit_dmx_status(true, false)
 		return true
 
@@ -298,6 +311,7 @@ func _report_performance_trace_if_needed() -> void:
 	if now_msec - _perf_trace_last_msec < 1000:
 		return
 	var stats: Dictionary = _dmx_receiver.get_stats()
+	var latency: Dictionary = _dmx_receiver.consume_interval_latency()
 	var counters: Dictionary = _perf_last_apply_stats.get("visual_apply_counters", {})
 	if _owner != null and _owner.has_method("_get_presentation_diagnostics"):
 		counters = _owner._get_presentation_diagnostics(counters)
@@ -306,11 +320,26 @@ func _report_performance_trace_if_needed() -> void:
 	var native_delta: Dictionary = _counter_delta(native_counters, _perf_previous_native_counters)
 	var accepted_delta: int = int(stats.get("valid_artdmx_accepted", 0)) - int(_perf_previous_stats.get("valid_artdmx_accepted", 0))
 	var relevant_delta: int = int(stats.get("relevant_packets", 0)) - int(_perf_previous_stats.get("relevant_packets", 0))
-	print("[peraviz-perf] mode=%s fps=%.1f process_ms=%.2f draws=%d objects=%d primitives=%d nodes=%d resources=%d packets=%d relevant=%d irrelevant=%d rejects=%d overwrites=%d pump_hz=%d states=%d rx_native_us=%d/%d/%d native_apply_us=%d/%d/%d rx_apply_us=%d/%d/%d frames=%d rows=%d applied=%d noop=%d failed=%d domains=%s domain_us=%s outputs=%d beams_considered=%d light_props=%d light_visibility=%d beam_params=%d beam_visibility=%d beam_topology=%d beam_full=%d beam_full_init=%d beam_full_mask=%d beam_dynamic=%d/%d/%d material_params=%d gobo_topology=%d gobo_params=%d visible_beams=%d visible_lights=%d emitter_commits=%d/%d/%d/%d emitter_commit_us=%d apply_max_us=%d color_rows=%d color_dirty=%d" % [_render_diagnostic_mode, Performance.get_monitor(Performance.TIME_FPS), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), accepted_delta, relevant_delta, _stat_delta(stats, "irrelevant_packets"), _stat_delta(stats, "out_of_order_dropped"), _stat_delta(stats, "mailbox_overwrites"), _production_pump_calls, int(_perf_interval.get("states", 0)), int(stats.get("rx_to_native_p50_us", 0)), int(stats.get("rx_to_native_p95_us", 0)), int(stats.get("rx_to_native_max_us", 0)), int(stats.get("native_to_apply_p50_us", 0)), int(stats.get("native_to_apply_p95_us", 0)), int(stats.get("native_to_apply_max_us", 0)), int(stats.get("rx_to_apply_p50_us", 0)), int(stats.get("rx_to_apply_p95_us", 0)), int(stats.get("rx_to_apply_max_us", 0)), int(_perf_interval.get("frames", 0)), int(_perf_interval.get("rows", 0)), int(_perf_interval.get("applied", 0)), int(_perf_interval.get("noop", 0)), int(_perf_interval.get("failed", 0)), str(_perf_interval.get("domains", {})), str(_perf_interval.get("domain_us", {})), int(counter_delta.get("physical_outputs_considered", 0)), int(counter_delta.get("beams_considered", 0)), int(counter_delta.get("light_properties_written", 0)), int(counter_delta.get("light_visibility_calls", 0)), int(counter_delta.get("beam_shader_parameters_written", 0)), int(counter_delta.get("beam_visibility_transitions", 0)), int(counter_delta.get("beam_topology_rebuilds", 0)), int(counter_delta.get("beam_full_state_applies", 0)), int(counter_delta.get("beam_full_state_reason_initialization", 0)), int(counter_delta.get("beam_full_state_reason_topology_mask", 0)), int(counter_delta.get("beam_dynamic_changed", 0)), int(counter_delta.get("beam_dynamic_unchanged", 0)), int(counter_delta.get("beam_dynamic_unresolved", 0)), int(counter_delta.get("material_parameters_written", 0)), int(counter_delta.get("gobo_topology_updates", 0)), int(counter_delta.get("gobo_parametric_updates", 0)), int(counters.get("beam_visible_count", 0)), int(counters.get("spotlight_visible_count", 0)), int(counter_delta.get("emitter_output_commit_candidates", 0)), int(counter_delta.get("emitter_output_commits", 0)), int(counter_delta.get("emitter_output_commits_signature_skipped", 0)), int(counter_delta.get("emitter_output_commits_coalesced", 0)), int(counter_delta.get("emitter_output_commit_usec", 0)), _worst_dmx_tick_usec, int(native_delta.get("color_rows", 0)), int(native_delta.get("color_dirty_candidates", 0))])
+	print("[peraviz-perf] mode=%s fps=%.1f process_ms=%.2f draws=%d objects=%d primitives=%d nodes=%d resources=%d packets=%d relevant=%d irrelevant=%d rejects=%d overwrites=%d pump_hz=%d states=%d rx_native_interval_us=%d/%d/%d native_apply_interval_us=%d/%d/%d rx_apply_interval_us=%d/%d/%d frames=%d rows=%d applied=%d noop=%d failed=%d domains=%s domain_us=%s outputs=%d beams_considered=%d light_props=%d light_visibility=%d beam_params=%d beam_visibility=%d beam_topology=%d beam_full=%d beam_full_init=%d beam_full_mask=%d beam_dynamic=%d/%d/%d material_params=%d gobo_topology=%d gobo_params=%d visible_beams=%d visible_lights=%d emitter_commits=%d/%d/%d/%d emitter_commit_us=%d apply_max_us=%d color_rows=%d color_dirty=%d" % [_render_diagnostic_mode, Performance.get_monitor(Performance.TIME_FPS), Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)), int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), accepted_delta, relevant_delta, _stat_delta(stats, "irrelevant_packets"), _stat_delta(stats, "out_of_order_dropped"), _stat_delta(stats, "mailbox_overwrites"), _production_pump_calls, int(_perf_interval.get("states", 0)), int(latency.get("rx_to_native_interval_p50_us", 0)), int(latency.get("rx_to_native_interval_p95_us", 0)), int(latency.get("rx_to_native_interval_max_us", 0)), int(latency.get("native_to_apply_interval_p50_us", 0)), int(latency.get("native_to_apply_interval_p95_us", 0)), int(latency.get("native_to_apply_interval_max_us", 0)), int(latency.get("rx_to_apply_interval_p50_us", 0)), int(latency.get("rx_to_apply_interval_p95_us", 0)), int(latency.get("rx_to_apply_interval_max_us", 0)), int(_perf_interval.get("frames", 0)), int(_perf_interval.get("rows", 0)), int(_perf_interval.get("applied", 0)), int(_perf_interval.get("noop", 0)), int(_perf_interval.get("failed", 0)), str(_perf_interval.get("domains", {})), str(_perf_interval.get("domain_us", {})), int(counter_delta.get("physical_outputs_considered", 0)), int(counter_delta.get("beams_considered", 0)), int(counter_delta.get("light_properties_written", 0)), int(counter_delta.get("light_visibility_calls", 0)), int(counter_delta.get("beam_shader_parameters_written", 0)), int(counter_delta.get("beam_visibility_transitions", 0)), int(counter_delta.get("beam_topology_rebuilds", 0)), int(counter_delta.get("beam_full_state_applies", 0)), int(counter_delta.get("beam_full_state_reason_initialization", 0)), int(counter_delta.get("beam_full_state_reason_topology_mask", 0)), int(counter_delta.get("beam_dynamic_changed", 0)), int(counter_delta.get("beam_dynamic_unchanged", 0)), int(counter_delta.get("beam_dynamic_unresolved", 0)), int(counter_delta.get("material_parameters_written", 0)), int(counter_delta.get("gobo_topology_updates", 0)), int(counter_delta.get("gobo_parametric_updates", 0)), int(counters.get("beam_visible_count", 0)), int(counters.get("spotlight_visible_count", 0)), int(counter_delta.get("emitter_output_commit_candidates", 0)), int(counter_delta.get("emitter_output_commits", 0)), int(counter_delta.get("emitter_output_commits_signature_skipped", 0)), int(counter_delta.get("emitter_output_commits_coalesced", 0)), int(counter_delta.get("emitter_output_commit_usec", 0)), _worst_dmx_tick_usec, int(native_delta.get("color_rows", 0)), int(native_delta.get("color_dirty_candidates", 0))])
 	var emitted_rows: int = int(native_delta.get("color_rows", 0))
 	var delta_mean: int = int(floor(float(native_delta.get("color_delta_sum_microunits", 0)) / float(maxi(emitted_rows, 1))))
 	print("[peraviz-color-dirty] relevant_offsets=%d color_offsets=%d offset_candidates=%d fanout_hist=%d/%d/%d/%d/%d fanout_max=%d dirty_candidates=%d emitted=%d unchanged=%d delta_u_mean_max=%d/%d delta_bands=%d/%d/%d" % [int(native_delta.get("changed_relevant_offsets", 0)), int(native_delta.get("color_changed_offsets", 0)), int(native_delta.get("color_changed_offset_candidates", 0)), int(native_delta.get("color_offset_fanout_1", 0)), int(native_delta.get("color_offset_fanout_2_4", 0)), int(native_delta.get("color_offset_fanout_5_16", 0)), int(native_delta.get("color_offset_fanout_17_64", 0)), int(native_delta.get("color_offset_fanout_65_plus", 0)), int(native_counters.get("color_offset_fanout_max", 0)), int(native_delta.get("color_dirty_candidates", 0)), emitted_rows, int(native_delta.get("color_composed_unchanged", 0)), delta_mean, int(native_delta.get("color_delta_max_microunits", 0)), int(native_delta.get("color_delta_tiny", 0)), int(native_delta.get("color_delta_small", 0)), int(native_delta.get("color_delta_visible", 0))])
 	print("[peraviz-presentation] mode=%d shared_haze=%d per_emitter_fog=%d proxies=%d/%d proxy_create=%d topology=%d/%d proxy_writes=%d texture_changes=%d tiers=%d/%d/%d native_targets=%d outputs=%d emitters=%d active=%d/%d cached_lights=%d vectors=%d projectors=%d masks=%d realtime=%d shadows=%d gobo_open=%d/%d" % [int(counters.get("beam_presentation", 1)), 1 if bool(counters.get("shared_haze", false)) else 0, int(counters.get("allocated_fog_volumes", 0)), int(counters.get("active_shader_proxies", 0)), int(counters.get("allocated_shader_proxies", 0)), int(counters.get("proxy_resource_creations", 0)), int(counters.get("proxy_topology_creations", 0)), int(counters.get("proxy_topology_rebuilds", 0)), int(counters.get("proxy_parameter_writes", 0)), int(counters.get("proxy_gobo_texture_changes", 0)), int(counters.get("proxy_tier_4", 0)), int(counters.get("proxy_tier_8", 0)), int(counters.get("proxy_tier_12", 0)), int(counters.get("native_dimmer_targets", 0)), int(counters.get("native_output_records", 0)), int(counters.get("unique_native_emitters", 0)), int(counters.get("active_output_records", 0)), int(counters.get("active_native_emitters", 0)), int(counters.get("cached_fixture_lights", 0)), int(counters.get("active_vector_prisms", 0)), int(counters.get("active_light_projectors", 0)), int(counters.get("active_shadow_masks", 0)), int(counters.get("spotlight_visible_count", 0)), int(counters.get("shadow_enabled_spotlights", 0)), int(counters.get("gobo_visible_beams", 0)), int(counters.get("open_visible_beams", 0))])
+	var native_runtime: Object = _dmx_fixture_runtime.get("_native_visual_runtime") if _dmx_fixture_runtime != null else null
+	var stability: Dictionary = _perf_snapshot.collect(_owner, native_runtime)
+	stability["interval_ms"] = now_msec - _perf_trace_last_msec
+	stability["mode"] = _render_diagnostic_mode
+	for key in ["mailbox_pending_dirty", "mailbox_pending_high_water", "mailbox_allocated_slots", "mailbox_subscribed_universes", "mailbox_approx_bytes", "active_slot_count", "approx_cache_bytes"]:
+		stability[key] = int(stats.get(key, 0))
+	stability["active_universes"] = stats.get("active_universes", PackedInt32Array()).size()
+	for key in ["mailbox_coalesced_states", "mailbox_overwrites", "scene_dirty_states_consumed", "relevant_state_updates"]:
+		stability[key] = _stat_delta(stats, key)
+	for key in latency:
+		stability[key] = latency[key]
+	for key in stats:
+		if "_lifetime_" in str(key):
+			stability[key] = stats[key]
+	print("[peraviz-stability] %s" % JSON.stringify(stability))
 	_perf_previous_stats = stats
 	_perf_previous_renderer_counters = counters
 	_perf_previous_native_counters = native_counters
@@ -346,7 +375,8 @@ func _apply_collected_dmx_controls(apply_stats: Dictionary, tick_usec: int, delt
 		_apply_fixture_time_tick(delta_sec)
 		return
 	if _perf_trace_enabled:
-		_perf_last_apply_stats = apply_stats
+		if apply_stats.has("visual_apply_counters"):
+			_perf_last_apply_stats = apply_stats
 		_accumulate_perf_interval(apply_stats)
 	var controls_batch: Array = apply_stats.get("controls", [])
 	if not controls_batch.is_empty() and not _apply_dmx_controls_callback.is_valid():
@@ -376,7 +406,9 @@ func _counter_delta(current: Dictionary, previous: Dictionary) -> Dictionary:
 	var delta: Dictionary = {}
 	for key in current.keys():
 		if current[key] is int or current[key] is float:
-			delta[key] = int(current[key]) - int(previous.get(key, 0))
+			var value: int = int(current[key])
+			var before: int = int(previous.get(key, 0))
+			delta[key] = value - before if value >= before else value
 	return delta
 
 func _accumulate_perf_interval(apply_stats: Dictionary) -> void:

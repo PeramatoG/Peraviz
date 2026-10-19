@@ -1265,6 +1265,7 @@ bool test_physical_gobo_selection_clear_reapply_cycles();
 
 bool test_gobo_motion_setup_contract();
 bool test_realtime_dmx_coordinator_path();
+bool test_realtime_stability();
 int run_realtime_dmx_load_harness(int argc, char **argv);
 int run_realtime_dmx_udp_load_harness(int argc, char **argv);
 
@@ -1303,5 +1304,6 @@ int main(int argc, char **argv) {
     if (!test_physical_gobo_selection_clear_reapply_cycles()) return 1;
     if (!test_gobo_motion_setup_contract()) return 1;
     if (!test_realtime_dmx_coordinator_path()) return 1;
+    if (!test_realtime_stability()) return 1;
     return 0;
 }

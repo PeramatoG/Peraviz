@@ -14,6 +14,11 @@ func _init() -> void:
 	if ClassDB.class_exists("PeravizGoboVectorizer"):
 		_native_vectorizer = ClassDB.instantiate("PeravizGoboVectorizer")
 
+# The native vectorizer extends Object, so its owning helper must free it explicitly.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_native_vectorizer):
+		_native_vectorizer.free()
+
 func is_available() -> bool:
 	return _native_vectorizer != null
 

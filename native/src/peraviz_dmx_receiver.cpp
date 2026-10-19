@@ -24,6 +24,8 @@ void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("pump_visual_runtime", "runtime"), &PeravizDmxReceiver::pump_visual_runtime);
     ClassDB::bind_method(D_METHOD("set_monitor_capture_enabled", "enabled"), &PeravizDmxReceiver::set_monitor_capture_enabled);
     ClassDB::bind_method(D_METHOD("record_godot_apply_completion"), &PeravizDmxReceiver::record_godot_apply_completion);
+    ClassDB::bind_method(D_METHOD("set_performance_trace_enabled", "enabled"), &PeravizDmxReceiver::set_performance_trace_enabled);
+    ClassDB::bind_method(D_METHOD("consume_interval_latency"), &PeravizDmxReceiver::consume_interval_latency);
 }
 
 // Initializes the wrapper with a dedicated Art-Net receiver instance.
@@ -39,12 +41,10 @@ PeravizDmxReceiver::~PeravizDmxReceiver() {
 // Starts the receiver thread and begins listening for Art-Net packets.
 bool PeravizDmxReceiver::start(const String &bind_ip, int port) {
     const int safe_port = std::max(1, std::min(port, 65535));
-    rx_to_native_buckets_.fill(0);
-    native_to_apply_buckets_.fill(0);
-    rx_to_apply_buckets_.fill(0);
-    rx_to_native_max_us_ = 0;
-    native_to_apply_max_us_ = 0;
-    rx_to_apply_max_us_ = 0;
+    if (receiver_->is_running()) return true;
+    rx_to_native_ = {};
+    native_to_apply_ = {};
+    rx_to_apply_ = {};
     last_native_pump_us_ = 0;
     oldest_pending_receive_us_ = 0;
     return receiver_->start(std::string(bind_ip.utf8().get_data()), static_cast<uint16_t>(safe_port));
@@ -53,6 +53,9 @@ bool PeravizDmxReceiver::start(const String &bind_ip, int port) {
 // Stops the receiver thread and closes the listening socket.
 void PeravizDmxReceiver::stop() {
     receiver_->stop();
+    last_native_pump_us_ = 0;
+    oldest_pending_receive_us_ = 0;
+    rehydrated_states_pending_ = 0;
 }
 
 // Returns whether the receiver background loop is currently running.
@@ -109,15 +112,20 @@ Dictionary PeravizDmxReceiver::get_stats() const {
     out["monitor_payload_skipped_budget"] = static_cast<int64_t>(stats.monitor_payload_skipped_budget);
     out["scene_states_consumed"] = static_cast<int64_t>(scene_states_consumed_);
     out["production_raw_bridge_bytes"] = static_cast<int64_t>(0);
-    out["rx_to_native_p50_us"] = static_cast<int64_t>(latency_percentile(rx_to_native_buckets_, 0.50));
-    out["rx_to_native_p95_us"] = static_cast<int64_t>(latency_percentile(rx_to_native_buckets_, 0.95));
-    out["rx_to_native_max_us"] = static_cast<int64_t>(rx_to_native_max_us_);
-    out["native_to_apply_p50_us"] = static_cast<int64_t>(latency_percentile(native_to_apply_buckets_, 0.50));
-    out["native_to_apply_p95_us"] = static_cast<int64_t>(latency_percentile(native_to_apply_buckets_, 0.95));
-    out["native_to_apply_max_us"] = static_cast<int64_t>(native_to_apply_max_us_);
-    out["rx_to_apply_p50_us"] = static_cast<int64_t>(latency_percentile(rx_to_apply_buckets_, 0.50));
-    out["rx_to_apply_p95_us"] = static_cast<int64_t>(latency_percentile(rx_to_apply_buckets_, 0.95));
-    out["rx_to_apply_max_us"] = static_cast<int64_t>(rx_to_apply_max_us_);
+    append_latency(out, "rx_to_native", rx_to_native_.lifetime);
+    append_latency(out, "native_to_apply", native_to_apply_.lifetime);
+    append_latency(out, "rx_to_apply", rx_to_apply_.lifetime);
+    if (performance_trace_enabled_) {
+        append_latency(out, "rx_to_native_lifetime", rx_to_native_.lifetime);
+        append_latency(out, "native_to_apply_lifetime", native_to_apply_.lifetime);
+        append_latency(out, "rx_to_apply_lifetime", rx_to_apply_.lifetime);
+    }
+    out["mailbox_coalesced_states"] = static_cast<int64_t>(stats.mailbox_overwrites);
+    out["mailbox_pending_dirty"] = static_cast<int64_t>(stats.mailbox_pending_dirty);
+    out["mailbox_pending_high_water"] = static_cast<int64_t>(stats.mailbox_pending_high_water);
+    out["mailbox_allocated_slots"] = static_cast<int64_t>(stats.mailbox_allocated_slots);
+    out["mailbox_subscribed_universes"] = static_cast<int64_t>(stats.mailbox_subscribed_universes);
+    out["mailbox_approx_bytes"] = static_cast<int64_t>(stats.mailbox_approximate_bytes);
     out["active_slot_count"] = static_cast<int64_t>(stats.active_slot_count);
     out["approx_cache_bytes"] = static_cast<int64_t>(stats.approximate_cache_bytes);
     PackedInt32Array active_universes;
@@ -138,11 +146,13 @@ Dictionary PeravizDmxReceiver::get_stats() const {
 // Installs the visual runtime's authoritative compiled source interests in the receiver mailbox.
 bool PeravizDmxReceiver::configure_visual_runtime(Ref<PeravizVisualRuntime> runtime) {
     if (runtime.is_null()) return false;
+    oldest_pending_receive_us_ = 0;
+    last_native_pump_us_ = 0;
     const peraviz::runtime::RealtimePumpResult result = coordinator_.install_subscription(runtime->native_core(), receiver_->realtime_mailbox());
     rehydrated_states_pending_ = result.states_submitted;
     const uint64_t now_us = now_microseconds();
     if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) {
-        observe_latency(rx_to_native_buckets_, now_us - result.oldest_receive_us, rx_to_native_max_us_);
+        rx_to_native_.observe(now_us - result.oldest_receive_us, performance_trace_enabled_);
         oldest_pending_receive_us_ = result.oldest_receive_us;
     }
     return true;
@@ -156,7 +166,7 @@ int PeravizDmxReceiver::pump_visual_runtime(Ref<PeravizVisualRuntime> runtime) {
     const peraviz::runtime::RealtimePumpResult result = coordinator_.pump(runtime->native_core(), receiver_->realtime_mailbox());
     consumed += result.states_submitted;
     const uint64_t now_us = now_microseconds();
-    if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) observe_latency(rx_to_native_buckets_, now_us - result.oldest_receive_us, rx_to_native_max_us_);
+    if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) rx_to_native_.observe(now_us - result.oldest_receive_us, performance_trace_enabled_);
     scene_states_consumed_ += static_cast<uint64_t>(consumed);
     if (consumed > 0) {
         last_native_pump_us_ = now_us;
@@ -176,36 +186,38 @@ void PeravizDmxReceiver::set_monitor_capture_enabled(bool enabled) {
 void PeravizDmxReceiver::record_godot_apply_completion() {
     const uint64_t now_us = now_microseconds();
     if (last_native_pump_us_ > 0 && now_us >= last_native_pump_us_) {
-        observe_latency(native_to_apply_buckets_, now_us - last_native_pump_us_, native_to_apply_max_us_);
+        native_to_apply_.observe(now_us - last_native_pump_us_, performance_trace_enabled_);
         last_native_pump_us_ = 0;
     }
     if (oldest_pending_receive_us_ > 0 && now_us >= oldest_pending_receive_us_) {
-        observe_latency(rx_to_apply_buckets_, now_us - oldest_pending_receive_us_, rx_to_apply_max_us_);
+        rx_to_apply_.observe(now_us - oldest_pending_receive_us_, performance_trace_enabled_);
         oldest_pending_receive_us_ = 0;
     }
 }
 
-// Adds a latency sample to a bounded power-of-two microsecond histogram.
-void PeravizDmxReceiver::observe_latency(std::array<uint64_t, 32> &buckets, uint64_t value_us, uint64_t &maximum_us) {
-    size_t bucket = 0;
-    uint64_t upper = 1;
-    while (bucket + 1 < buckets.size() && value_us > upper) { ++bucket; upper <<= 1U; }
-    ++buckets[bucket];
-    maximum_us = std::max(maximum_us, value_us);
+// Enables interval sampling without putting diagnostic Dictionaries in the playback pump.
+void PeravizDmxReceiver::set_performance_trace_enabled(bool enabled) {
+    performance_trace_enabled_ = enabled;
+    rx_to_native_.interval = {};
+    native_to_apply_.interval = {};
+    rx_to_apply_.interval = {};
 }
 
-// Estimates one percentile from a bounded power-of-two microsecond histogram.
-uint64_t PeravizDmxReceiver::latency_percentile(const std::array<uint64_t, 32> &buckets, double percentile) {
-    uint64_t total = 0;
-    for (const uint64_t count : buckets) total += count;
-    if (total == 0) return 0;
-    const uint64_t target = static_cast<uint64_t>(std::ceil(static_cast<double>(total) * percentile));
-    uint64_t cumulative = 0;
-    for (size_t index = 0; index < buckets.size(); ++index) {
-        cumulative += buckets[index];
-        if (cumulative >= target) return uint64_t {1} << index;
-    }
-    return uint64_t {1} << (buckets.size() - 1);
+// Consumes only the trace reporter's interval; status/monitor reads never reset it.
+Dictionary PeravizDmxReceiver::consume_interval_latency() {
+    Dictionary out;
+    append_latency(out, "rx_to_native_interval", rx_to_native_.consume_interval());
+    append_latency(out, "native_to_apply_interval", native_to_apply_.consume_interval());
+    append_latency(out, "rx_to_apply_interval", rx_to_apply_.consume_interval());
+    return out;
+}
+
+// Serializes one explicitly named fixed histogram at a diagnostic reporting boundary.
+void PeravizDmxReceiver::append_latency(Dictionary &out, const String &prefix, const peraviz::dmx::LatencyHistogram &histogram) {
+    out[prefix + String("_p50_us")] = static_cast<int64_t>(histogram.percentile(50));
+    out[prefix + String("_p95_us")] = static_cast<int64_t>(histogram.percentile(95));
+    out[prefix + String("_max_us")] = static_cast<int64_t>(histogram.maximum_us);
+    out[prefix + String("_samples")] = static_cast<int64_t>(histogram.samples);
 }
 
 // Returns the latest DMX channel data for a universe as an array.

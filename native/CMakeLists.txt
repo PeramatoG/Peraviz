@@ -139,6 +139,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/dmx/gdtf_control_offsets_resolver.cpp
         src/dmx/fixture_dmx_binding.cpp
         src/peraviz_dmx_receiver.cpp
+        src/runtime/runtime_state_sizes.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/realtime_interest_descriptor.cpp
         src/runtime/realtime_dmx_coordinator.cpp
@@ -335,7 +336,9 @@ if(BUILD_TESTING)
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
         tests/realtime_dmx_coordinator_test.cpp
+        tests/realtime_stability_test.cpp
         tests/realtime_dmx_load_harness.cpp
+        src/runtime/runtime_state_sizes.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/realtime_interest_descriptor.cpp
         src/runtime/realtime_dmx_coordinator.cpp

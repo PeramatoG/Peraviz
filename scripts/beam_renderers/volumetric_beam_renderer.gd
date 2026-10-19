@@ -230,7 +230,7 @@ func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 
 func cleanup_beam(light: SpotLight3D) -> void:
 	_fog_controller.clear_for_light(light)
-	_proxy_controller.hide_for_light(light)
+	_proxy_controller.clear_for_light(light)
 	if light.has_meta(BEAM_META_KEY):
 		var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 		if beam != null and is_instance_valid(beam):
@@ -303,3 +303,8 @@ func _cleanup_debug_axis(light: SpotLight3D) -> void:
 	if axis != null and is_instance_valid(axis):
 		axis.queue_free()
 	light.remove_meta(DEBUG_AXIS_KEY)
+
+func reset_scene_state() -> void:
+	for provider in _shape_providers.values():
+		provider.clear_cache()
+	_proxy_controller.reset_scene_state()
