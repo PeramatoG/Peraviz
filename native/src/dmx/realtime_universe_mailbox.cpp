@@ -24,6 +24,7 @@ void RealtimeUniverseMailbox::set_subscription(std::shared_ptr<const RealtimeSub
         }
         if (!slot) {
             slots_[universe] = std::make_unique<Slot>();
+            ++allocated_slots_;
             slot = slots_[universe].get();
         }
         const bool has_new_offsets = !previous || !previous->contains(static_cast<uint16_t>(universe)) ||
@@ -36,6 +37,21 @@ void RealtimeUniverseMailbox::set_subscription(std::shared_ptr<const RealtimeSub
     std::atomic_store_explicit(&subscription_, std::move(subscription), std::memory_order_release);
 }
 
+// Retires pending/held input from a stopped session while preserving compiled interests.
+void RealtimeUniverseMailbox::reset_session() {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    dirty_head_ = 0;
+    dirty_count_ = 0;
+    ++subscription_generation_;
+    for (auto &slot : slots_) {
+        if (!slot) continue;
+        slot->initialized = false;
+        slot->dirty = false;
+        slot->queued = false;
+        slot->generation = subscription_generation_;
+    }
+}
+
 // Enqueues one bounded generation-tagged dirty token for a clean-to-dirty transition.
 void RealtimeUniverseMailbox::enqueue_dirty_locked(uint16_t universe, Slot &slot) {
     if (slot.queued || dirty_count_ >= dirty_tokens_.size()) return;
@@ -43,6 +59,7 @@ void RealtimeUniverseMailbox::enqueue_dirty_locked(uint16_t universe, Slot &slot
     slot.token_id = ++next_token_id_;
     dirty_tokens_[tail] = {universe, slot.generation, slot.token_id};
     ++dirty_count_;
+    pending_high_water_ = std::max(pending_high_water_, dirty_count_);
     slot.queued = true;
 }
 
@@ -160,7 +177,9 @@ size_t RealtimeUniverseMailbox::pending_dirty_count() const {
 
 // Returns a stable snapshot of bounded realtime mailbox counters.
 RealtimeMailboxStats RealtimeUniverseMailbox::stats() const {
-    return {relevant_packets_.load(), irrelevant_packets_.load(), unchanged_relevant_packets_.load(), state_updates_.load(), coalesced_states_.load(), dirty_states_consumed_.load()};
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    const auto subscription = std::atomic_load_explicit(&subscription_, std::memory_order_acquire);
+    return {relevant_packets_.load(), irrelevant_packets_.load(), unchanged_relevant_packets_.load(), state_updates_.load(), coalesced_states_.load(), dirty_states_consumed_.load(), dirty_count_, pending_high_water_, allocated_slots_, subscription ? subscription->universes().size() : 0, sizeof(*this) + allocated_slots_ * sizeof(Slot)};
 }
 
 } // namespace peraviz::dmx

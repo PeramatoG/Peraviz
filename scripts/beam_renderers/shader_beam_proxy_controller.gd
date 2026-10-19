@@ -73,7 +73,8 @@ func clear_for_light(light: SpotLight3D) -> void:
 	var proxy := _get_proxy(light)
 	if proxy != null:
 		proxy.queue_free()
-	light.remove_meta(META_KEY)
+	if light.has_meta(META_KEY):
+		light.remove_meta(META_KEY)
 	var light_id := light.get_instance_id()
 	_allocated_ids.erase(light_id)
 	_set_visibility_diagnostics(light, false, 0)
@@ -168,3 +169,10 @@ static func _mesh() -> ArrayMesh:
 	_shared_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	_topology_creations += 1
 	return _shared_mesh
+
+# Retires IDs after a scene reload; shared fixed topology remains reusable.
+func reset_scene_state() -> void:
+	_allocated_ids.clear()
+	_visible_ids.clear()
+	for tier in _tier_ids.values():
+		(tier as Dictionary).clear()

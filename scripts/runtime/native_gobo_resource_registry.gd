@@ -28,6 +28,11 @@ func _init() -> void:
 		_vectorizer = ClassDB.instantiate("PeravizGoboVectorizer")
 	reset_scene_state()
 
+# The native vectorizer extends Object, so its owning helper must free it explicitly.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_vectorizer):
+		_vectorizer.free()
+
 func reset_scene_state() -> void:
 	_assets.clear()
 	_selections_by_target.clear()

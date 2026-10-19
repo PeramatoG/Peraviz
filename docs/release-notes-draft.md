@@ -16,6 +16,9 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Added bounded interval and explicit lifetime DMX latency statistics, plus opt-in CPU/GPU renderer timing, memory/message-buffer, mailbox and presentation-state size diagnostics for sustained-playback investigations.
+- Fixed repeated short-payload warning accumulation and stale scene/presentation caches, proxy identities and native helper Object ownership; added deterministic sustained-DMX and fan-out stability regressions.
+
 - Reduced live DMX renderer-apply overhead with changed-domain commits, final committed-state guards, opt-in accounting, and one physical-output commit per snapshot. Performance tracing is no longer enabled automatically for editor runs.
 - Removed trace-only counter and result-allocation work from the production Transform, Intensity, and Color row path, and expanded opt-in color dirty-state diagnostics to distinguish real DMX changes from fan-out and composition no-ops.
 - Added one-time physical-output fan-out reporting and a concise warning when diagnostic Shared Haze exceeds the effective Forward+ clustered-element budget.

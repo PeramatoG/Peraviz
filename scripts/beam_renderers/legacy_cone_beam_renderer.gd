@@ -330,3 +330,6 @@ func _cleanup_debug_axis(light: SpotLight3D) -> void:
 	if axis != null and is_instance_valid(axis):
 		axis.queue_free()
 	light.remove_meta(DEBUG_AXIS_KEY)
+
+func reset_scene_state() -> void:
+	_mesh_builder.clear_cache()

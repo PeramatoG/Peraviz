@@ -10,6 +10,7 @@
 #include <godot_cpp/variant/string.hpp>
 
 #include "dmx/artnet_receiver.h"
+#include "dmx/latency_histogram.h"
 #include "runtime/realtime_dmx_coordinator.h"
 
 #include <memory>
@@ -42,6 +43,8 @@ public:
     int pump_visual_runtime(Ref<PeravizVisualRuntime> runtime);
     void set_monitor_capture_enabled(bool enabled);
     void record_godot_apply_completion();
+    void set_performance_trace_enabled(bool enabled);
+    Dictionary consume_interval_latency();
 
 private:
     static uint64_t now_microseconds();
@@ -50,17 +53,15 @@ private:
     uint64_t scene_states_consumed_ = 0;
     int rehydrated_states_pending_ = 0;
     peraviz::runtime::RealtimeDmxCoordinator coordinator_;
-    std::array<uint64_t, 32> rx_to_native_buckets_ {};
-    std::array<uint64_t, 32> native_to_apply_buckets_ {};
-    std::array<uint64_t, 32> rx_to_apply_buckets_ {};
-    uint64_t rx_to_native_max_us_ = 0;
-    uint64_t native_to_apply_max_us_ = 0;
-    uint64_t rx_to_apply_max_us_ = 0;
+    peraviz::dmx::LatencyWindows rx_to_native_;
+    peraviz::dmx::LatencyWindows native_to_apply_;
+    peraviz::dmx::LatencyWindows rx_to_apply_;
+    bool performance_trace_enabled_ = false;
     uint64_t last_native_pump_us_ = 0;
     uint64_t oldest_pending_receive_us_ = 0;
 
-    static void observe_latency(std::array<uint64_t, 32> &buckets, uint64_t value_us, uint64_t &maximum_us);
-    static uint64_t latency_percentile(const std::array<uint64_t, 32> &buckets, double percentile);
+    static void append_latency(Dictionary &out, const String &prefix, const peraviz::dmx::LatencyHistogram &histogram);
+
 };
 
 } // namespace godot

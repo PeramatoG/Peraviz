@@ -11,6 +11,7 @@ void PeravizVisualRuntime::_bind_methods() {
     ClassDB::bind_method(D_METHOD("consume_latest_visual_frame"), &PeravizVisualRuntime::consume_latest_visual_frame);
     ClassDB::bind_method(D_METHOD("get_visual_frame_schema"), &PeravizVisualRuntime::get_visual_frame_schema);
     ClassDB::bind_method(D_METHOD("get_stats"), &PeravizVisualRuntime::get_stats);
+    ClassDB::bind_method(D_METHOD("get_state_sizes"), &PeravizVisualRuntime::get_state_sizes);
     ClassDB::bind_method(D_METHOD("set_performance_trace_enabled", "enabled"), &PeravizVisualRuntime::set_performance_trace_enabled);
 }
 
@@ -94,6 +95,13 @@ Dictionary PeravizVisualRuntime::get_visual_frame_schema() const {
 // Returns cumulative native runtime counters for diagnostics.
 Dictionary PeravizVisualRuntime::get_stats() const {
     return stats_to_dictionary(core_.stats());
+}
+
+// Exposes bounded native state sizes only when explicitly requested by diagnostics.
+Dictionary PeravizVisualRuntime::get_state_sizes() const {
+    Dictionary result;
+    for (const auto &[key, size] : core_.state_sizes()) result[key] = static_cast<int64_t>(size);
+    return result;
 }
 
 // Toggles trace-only native dirty-state aggregation.

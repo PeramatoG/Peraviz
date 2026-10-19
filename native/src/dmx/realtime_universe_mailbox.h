@@ -19,12 +19,18 @@ struct RealtimeMailboxStats {
     uint64_t state_updates = 0;
     uint64_t coalesced_states = 0;
     uint64_t dirty_states_consumed = 0;
+    size_t pending_dirty = 0;
+    size_t pending_high_water = 0;
+    size_t allocated_slots = 0;
+    size_t subscribed_universes = 0;
+    size_t approximate_bytes = 0;
 };
 
 class RealtimeUniverseMailbox {
 public:
     RealtimeUniverseMailbox();
     void set_subscription(std::shared_ptr<const RealtimeSubscription> subscription);
+    void reset_session();
     bool publish(uint16_t universe_id, const uint8_t *data, uint16_t length, uint8_t sequence, uint64_t now_us);
     std::vector<DmxFrame> consume_dirty_frames();
     bool held(uint16_t universe_id, DmxFrame &out_frame) const;
@@ -56,6 +62,8 @@ private:
     std::array<DirtyToken, kArtNetUniverseCount> dirty_tokens_ {};
     size_t dirty_head_ = 0;
     size_t dirty_count_ = 0;
+    size_t pending_high_water_ = 0;
+    size_t allocated_slots_ = 0;
     uint64_t subscription_generation_ = 0;
     uint64_t next_token_id_ = 0;
     std::atomic<uint64_t> relevant_packets_ {0};

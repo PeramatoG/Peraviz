@@ -78,7 +78,25 @@ var _target_states: Dictionary = {}
 var _committed_output_states: Dictionary = {}
 var _snapshot_output_commits: Dictionary = {}
 var _snapshot_commit_active: bool = false
+var _snapshot_commit_high_water: int = 0
 var _performance_trace_enabled: bool = false
+
+# Retires identity/RID caches when a scene or native binding generation is replaced.
+func reset_scene_state() -> void:
+	_snapshot_commit_active = false
+	_snapshot_output_commits.clear()
+	_target_states.clear()
+	_committed_output_states.clear()
+	_beam_optics_signatures.clear()
+	_light_desired_state.clear()
+	_material_state_by_rid.clear()
+	_visible_beam_ids.clear()
+	_visible_light_ids.clear()
+	_diagnostic_warning_keys.clear()
+	_diagnostic_info_keys.clear()
+	_snapshot_commit_high_water = 0
+	_visual_apply_counters["beam_visible_count"] = 0
+	_visual_apply_counters["spotlight_visible_count"] = 0
 
 func set_render_diagnostic_mode(mode: String) -> void:
 	_render_diagnostic_mode = mode
@@ -99,6 +117,8 @@ func end_visual_snapshot() -> void:
 		return
 	var commit_start_usec: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
 	_snapshot_commit_active = false
+	if _performance_trace_enabled:
+		_snapshot_commit_high_water = maxi(_snapshot_commit_high_water, _snapshot_output_commits.size())
 	for output_key in _snapshot_output_commits:
 		var pending: Dictionary = _snapshot_output_commits[output_key]
 		var output_id: int = int(pending.get("output_id", 0))

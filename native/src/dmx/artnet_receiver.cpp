@@ -63,6 +63,7 @@ void ArtNetReceiver::stop() {
     if (worker_.joinable()) {
         worker_.join();
     }
+    realtime_mailbox_.reset_session();
 }
 
 // Returns whether the receiver background loop is currently running.
@@ -131,6 +132,11 @@ ArtNetReceiverStats ArtNetReceiver::get_stats(uint64_t now_us, uint64_t active_w
     stats.relevant_unchanged_packets = mailbox_stats.unchanged_relevant_packets;
     stats.relevant_state_updates = mailbox_stats.state_updates;
     stats.mailbox_overwrites = mailbox_stats.coalesced_states;
+    stats.mailbox_pending_dirty = mailbox_stats.pending_dirty;
+    stats.mailbox_pending_high_water = mailbox_stats.pending_high_water;
+    stats.mailbox_allocated_slots = mailbox_stats.allocated_slots;
+    stats.mailbox_subscribed_universes = mailbox_stats.subscribed_universes;
+    stats.mailbox_approximate_bytes = mailbox_stats.approximate_bytes;
     stats.scene_dirty_states_consumed = mailbox_stats.dirty_states_consumed;
     stats.monitor_payload_captures = monitor_payload_captures_.load(std::memory_order_relaxed);
     stats.monitor_payload_skipped_budget = monitor_payload_skipped_budget_.load(std::memory_order_relaxed);

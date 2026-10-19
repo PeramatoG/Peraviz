@@ -376,8 +376,8 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 		if _performance_trace_enabled or not _native_live_diagnostics_logged:
 			_native_live_diagnostics = compact_result.duplicate(true)
 			_log_native_live_diagnostics_once()
-		if receiver != null and receiver.has_method("record_godot_apply_completion"):
-			receiver.record_godot_apply_completion()
+	if receiver != null and receiver.has_method("record_godot_apply_completion"):
+		receiver.record_godot_apply_completion()
 
 	return {
 		"updated": updated,
