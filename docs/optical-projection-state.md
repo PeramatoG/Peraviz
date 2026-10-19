@@ -46,9 +46,12 @@ conversions; this change targets Vector Gobo Prism, the reference renderer.
 Source artwork is X/right, Y/down along the emitted axis. Raw prism topology is
 longitudinal on Y, so a fixed X quarter-turn maps it into the emitter frame. Explicit
 X/Z mirrors and alignment are resolved with native gobo phase in that basis.
-Godot projector textures use the opposite transverse X convention at reference
-parity; `projector_roll` and `projector_basis` encode that conversion, including
-explicit visual mirrors. Neither conversion changes centerline Z.
+Godot spot-projector U follows light-local +X; its atlas flips V so image Y/down
+follows light-local -Y. The prism applies an explicit raw-mesh X reflection after
+the resolved roll/parity basis, recovering this artwork mapping without changing
+the footprint. `projector_roll` and `projector_basis` still resolve shared roll
+and visual mirrors. This fixed renderer conversion does not change centerline Z.
+Applying the reflection before roll would invert the rotation convention.
 The shaft basis is converted into the light's rolled child coordinates by an
 absolute matrix inverse. It never subtracts a remembered compensation angle and
 never incrementally rotates the already-modified child. Zoom reconstructs the same
@@ -76,6 +79,7 @@ the latest aperture and native gobo phase without needing fresh DMX. Consumer
 revisions can intentionally lag held state while suppressed; both catch up in full.
 
 Regression tests compare actual bases, common near origin, angle conversion,
-revision identity, topology reuse, 600 motion/Zoom/camera updates, blackout and packed
+revision identity, asymmetric source-artwork UV correspondence (both axes),
+topology reuse, 600 motion/Zoom/camera updates, blackout and packed
 dense held-state replay. GPU footprint appearance and RTX 3070 reference FPS still
 require the reference scene on a graphical machine; headless FPS is not comparable.

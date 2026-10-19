@@ -18,6 +18,8 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Corrected the Vector Gobo Prism artwork X conversion to match the surface projector without mirroring the gobo, while retaining shared optical state and synchronized Zoom/rotation.
+
 - Unified Vector Gobo Prism and surface-projector optical geometry in a shared presentation state. Repeated Zoom and gobo motion now derive absolute bases without cumulative compensation drift; hidden Zoom changes remain synchronized through blackout and held-state restoration.
 
 - Consolidated the stable performance foundation and its current 24–25 FPS reference, while keeping batching, instancing, grouping and further scalability work explicitly deferred. Recorded Vector Gobo Prism visual follow-ups without implementing them.

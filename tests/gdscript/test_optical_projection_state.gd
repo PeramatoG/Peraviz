@@ -90,7 +90,17 @@ func run() -> void:
 func check_consumers(state: RefCounted, light: SpotLight3D, beam: MeshInstance3D) -> void:
 	test.check(state.shaft_revision == state.revision and state.footprint_revision == state.revision, "Both consumers have current revision")
 	test.check_close(light.spot_angle * 2.0, state.full_angle_deg, 0.0001, "Projector half angle comes from canonical full angle")
-	test.check(beam.global_basis.x.normalized().dot(-light.global_basis.x.normalized()) > 0.99999, "Source artwork X follows the named projector texture parity conversion")
+	test.check(beam.global_basis.x.normalized().dot(light.global_basis.x.normalized()) > 0.99999, "Source artwork X follows the projector texture U direction")
+	# Godot Forward+ spot projection uses biased clip XY and flips atlas V:
+	# U = 0.5 + X/(2*depth*tan(half_angle)), V = 0.5 - Y/(2*depth*tan(half_angle)).
+	# Compare asymmetric source coordinates, not a circular/symmetric silhouette.
+	# Normalize the finite-lens cross section; the point projector has no near radius.
+	for artwork in [Vector2(-0.7, -0.35), Vector2(0.2, -0.6), Vector2(0.55, 0.8)]:
+		var prism_point := Vector3(artwork.x, -0.5, artwork.y)
+		var local_point: Vector3 = light.global_transform.affine_inverse() * (beam.global_transform * prism_point)
+		var projector_uv := Vector2(0.5 + local_point.x * 0.5, 0.5 - local_point.y * 0.5)
+		var source_uv: Vector2 = (artwork + Vector2.ONE) * 0.5
+		test.check(projector_uv.is_equal_approx(source_uv), "Asymmetric prism artwork maps to the same footprint texel without U/V reflection")
 	var far_radius: float = beam.get_instance_shader_parameter("topology_far_radius")
 	var near_radius: float = beam.get_instance_shader_parameter("topology_near_radius")
 	test.check_close(far_radius - near_radius, tan(deg_to_rad(light.spot_angle)) * state.visual_range, 0.0002, "Shaft spread and projector use one aperture tangent")

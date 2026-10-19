@@ -111,6 +111,10 @@ func apply_shaft(beam: MeshInstance3D) -> void:
 	var renderer_basis := Basis(Vector3.RIGHT, PI * 0.5)
 	renderer_basis = renderer_basis.scaled_local(Vector3(-1.0 if mirror_x else 1.0, visual_range, -1.0 if mirror_z else 1.0))
 	renderer_basis = renderer_basis * Basis(Vector3.UP, deg_to_rad(alignment_roll_deg + gobo_roll_deg))
+	# Raw vector artwork X must follow projector U (+light X), not oppose it.
+	# Apply this mesh-coordinate conversion after the shared roll/parity basis:
+	# moving it before the roll would reverse rotation for asymmetric gobos.
+	renderer_basis = renderer_basis.scaled_local(Vector3(-1.0, 1.0, 1.0))
 	var inverse_roll := projector_basis().inverse()
 	var resolved := Transform3D(inverse_roll * renderer_basis, inverse_roll * Vector3(0.0, 0.0, -visual_range * 0.5))
 	if not beam.transform.is_equal_approx(resolved): beam.transform = resolved
