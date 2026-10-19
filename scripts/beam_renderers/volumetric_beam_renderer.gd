@@ -308,3 +308,23 @@ func reset_scene_state() -> void:
 	for provider in _shape_providers.values():
 		provider.clear_cache()
 	_proxy_controller.reset_scene_state()
+
+# Retains Vector Gobo Prism shading with directly bound beam resources.
+func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Dictionary) -> int:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
+		return update_beam_intensity(light, params)
+	_last_parameter_write_count = 0
+	if not is_instance_valid(beam):
+		return INTENSITY_UNRESOLVED
+	var intensity_max: float = maxf(float(params.get("intensity_max", 100.0)), 0.01)
+	var intensity: float = clampf(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
+	if intensity > float(params.get("intensity_visibility_threshold", 0.015)) and beam.mesh == null:
+		return INTENSITY_UNRESOLVED
+	_store_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
+	beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
+	beam.visible = intensity > float(params.get("intensity_visibility_threshold", 0.015))
+	if not beam.visible:
+		return INTENSITY_CHANGED
+	_apply_intensity_max(beam, intensity_max)
+	_apply_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
+	return INTENSITY_CHANGED

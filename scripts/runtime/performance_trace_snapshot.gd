@@ -59,6 +59,8 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 		var service: Object = owner.get("_fixture_light_apply_service")
 		_sample_collections(sizes, service, APPLY_COLLECTIONS, "apply")
 		if service != null:
+			var dense: RefCounted = service.get("_dense_adapter")
+			if dense != null: result["dense_presentation"] = dense.consume_diagnostics()
 			sizes["snapshot_commit_high_water"] = int(service.get("_snapshot_commit_high_water"))
 		var registry: Object = owner.get("_native_target_registry")
 		_sample_collections(sizes, registry, REGISTRY_COLLECTIONS, "registry")

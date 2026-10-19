@@ -6,6 +6,7 @@ const EXPECTED_NATIVE_CLASSES: PackedStringArray = [
 	"PeravizGoboVectorizer",
 	"PeravizDmxReceiver",
 	"PeravizVisualRuntime",
+	"PeravizPresentationState",
 	"PeravizMvrXchangeClient",
 ]
 

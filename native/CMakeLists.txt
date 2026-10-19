@@ -152,6 +152,8 @@ if(PERAVIZ_ENABLE_DMX)
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
+        src/presentation/dense_presentation_state.cpp
+        src/presentation/presentation_state_godot.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
     )
     target_compile_definitions(peraviz_native PRIVATE PERAVIZ_ENABLE_DMX=1)
@@ -205,6 +207,13 @@ if(PERAVIZ_BUILD_GDEXTENSION AND WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_dense_presentation_tests
+        tests/dense_presentation_state_test.cpp
+        src/presentation/dense_presentation_state.cpp
+    )
+    target_include_directories(peraviz_native_dense_presentation_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME peraviz_native_dense_presentation_tests COMMAND peraviz_native_dense_presentation_tests)
+
     add_executable(peraviz_native_realtime_dmx_state_tests
         tests/realtime_dmx_state_test.cpp
         src/dmx/artnet_sequence_tracker.cpp

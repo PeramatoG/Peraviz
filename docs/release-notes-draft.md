@@ -16,6 +16,8 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Moved physical-output lighting composition and dirty coalescing into bounded native dense state with generation-safe indices and pre-bound renderer handles. Added independent-output allocation/capacity regressions and opt-in compose/adapter/mutation telemetry; the current visual backends remain in use.
+
 - Added bounded interval and explicit lifetime DMX latency statistics, plus opt-in CPU/GPU renderer timing, memory/message-buffer, mailbox and presentation-state size diagnostics for sustained-playback investigations.
 - Fixed repeated short-payload warning accumulation and stale scene/presentation caches, proxy identities and native helper Object ownership; added deterministic sustained-DMX and fan-out stability regressions.
 

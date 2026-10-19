@@ -333,3 +333,26 @@ func _cleanup_debug_axis(light: SpotLight3D) -> void:
 
 func reset_scene_state() -> void:
 	_mesh_builder.clear_cache()
+
+# Uses the existing prism material implementation with setup-bound resources.
+func update_bound_intensity(light: SpotLight3D, prism: MeshInstance3D, params: Dictionary) -> int:
+	_last_parameter_write_count = 0
+	if not is_instance_valid(prism):
+		return INTENSITY_UNRESOLVED
+	var intensity_max: float = maxf(float(params.get("intensity_max", 100.0)), 0.01)
+	var intensity: float = clampf(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
+	var visible: bool = intensity > float(params.get("intensity_visibility_threshold", 0.015))
+	if visible and prism.mesh == null:
+		return INTENSITY_UNRESOLVED
+	prism.visible = visible
+	if not visible:
+		return INTENSITY_CHANGED
+	_update_prism_material(prism, params.get("beam_color", Color.WHITE), intensity, intensity_max,
+		BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0)))),
+		maxf(float(params.get("gobo_projection_radius", 0.1)), 0.001),
+		clampf(float(params.get("beam_softness", 0.35)), 0.02, 1.0),
+		maxf(float(params.get("beam_radial_falloff", 1.1)), 0.05),
+		maxf(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05),
+		maxf(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01))
+	_last_parameter_write_count = 15
+	return INTENSITY_CHANGED

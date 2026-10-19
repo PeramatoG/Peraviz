@@ -39,3 +39,7 @@ func cleanup_beam(_light: SpotLight3D) -> void:
 # Drops scene-specific resource caches after the owner retires its emitter nodes.
 func reset_scene_state() -> void:
 	pass
+
+# Compatibility backends may reuse their existing implementation for uncommon modes.
+func update_bound_intensity(light: SpotLight3D, _beam: MeshInstance3D, params: Dictionary) -> int:
+	return update_beam_intensity(light, params)

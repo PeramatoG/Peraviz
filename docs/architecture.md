@@ -35,6 +35,19 @@ MVR patch + selected GDTF DMX mode
 
 Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, and color, BeamOptics, wheel, and gobo output is associated with exact Beam targets. Repeated targets therefore do not collapse into one fixture-wide value.
 
+## Native dense presentation state
+
+After sectioned semantic evaluation, `PeravizPresentationState` composes Intensity,
+Color and BeamOptics through setup-only integer routes into a contiguous native
+state per physical output. Scene binding assigns stable dense indices while
+preserving canonical output IDs. Generation checks retire stale indices; native
+pending masks deduplicate a bounded dirty-index vector. One packed delta crosses
+to an indexed adapter with pre-bound light, beam and material handles. Normal
+lighting playback bypasses the old per-output Dictionary commit/state pipeline.
+Godot still mutates the existing presentation objects. This does not implement
+batching, grouping or a new renderer. See [dense presentation state](native-dense-presentation-state.md)
+for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
+
 ## Renderer ownership
 
 Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.

@@ -23,6 +23,8 @@ const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUA
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
+var _dense_adapter: RefCounted
+
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
 	"fixture_apply": {"calls": 0, "total_usec": 0},
@@ -83,6 +85,9 @@ var _performance_trace_enabled: bool = false
 
 # Retires identity/RID caches when a scene or native binding generation is replaced.
 func reset_scene_state() -> void:
+	if _dense_adapter != null:
+		_dense_adapter.clear()
+	_dense_adapter = null
 	_snapshot_commit_active = false
 	_snapshot_output_commits.clear()
 	_target_states.clear()
@@ -106,6 +111,23 @@ func set_performance_trace_enabled(enabled: bool) -> void:
 	if enabled:
 		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
 
+# Installs the normal native presentation path after renderer target setup.
+func install_dense_presentation(loader: Node, registry: RefCounted) -> void:
+	_dense_adapter = preload("res://scripts/runtime/dense_presentation_adapter.gd").new()
+	_dense_adapter.install(loader, self, registry)
+
+# Rebinds resources only at explicit presentation/control boundaries.
+func rebind_dense_light(light: SpotLight3D) -> void:
+	if _dense_adapter != null: _dense_adapter.rebind_light(light)
+
+func refresh_dense_renderer() -> void:
+	if _dense_adapter != null: _dense_adapter.refresh_renderer()
+
+# Returns false only for compatibility callers without a dense binding generation.
+func compose_dense_snapshot(descriptors: PackedInt32Array, integers: PackedInt32Array, values: PackedFloat32Array, semantic_conversion_us: int = 0) -> int:
+	if _dense_adapter == null: return 0
+	return 1 if _dense_adapter.compose(descriptors, integers, values, _performance_trace_enabled, _render_diagnostic_mode, semantic_conversion_us) else -1
+
 # Starts snapshot-local collection of canonical physical-output renderer commits.
 func begin_visual_snapshot() -> void:
 	_snapshot_output_commits.clear()
@@ -113,6 +135,8 @@ func begin_visual_snapshot() -> void:
 
 # Commits each touched canonical physical output once after all logical state is current.
 func end_visual_snapshot() -> void:
+	if _dense_adapter != null:
+		_dense_adapter.apply()
 	if not _snapshot_commit_active:
 		return
 	var commit_start_usec: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
@@ -621,6 +645,10 @@ func _has_projected_beam(profile: Dictionary) -> bool:
 	return beam_type != "none" and beam_type != "glow"
 
 func _light_desired_for(light: SpotLight3D) -> Dictionary:
+	if _dense_adapter != null:
+		var dense_state: Dictionary = _dense_adapter.light_state(light)
+		if not dense_state.is_empty():
+			return dense_state
 	var key: int = light.get_instance_id()
 	if not _light_desired_state.has(key):
 		_light_desired_state[key] = {"energy": light.light_energy, "angle": light.spot_angle, "color": light.light_color, "visible": false}
@@ -1033,6 +1061,7 @@ func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible
 	var last_state: Dictionary = _light_desired_for(light)
 	var previous_realtime_visible: bool = bool(last_state.get("applied_realtime_visible", not real_spot_visible))
 	last_state["applied_realtime_visible"] = real_spot_visible
+	if _dense_adapter != null: _dense_adapter.synchronize_visibility(light, real_spot_visible)
 	var light_id: int = light.get_instance_id()
 	if real_spot_visible:
 		_visible_light_ids[light_id] = true
@@ -1114,6 +1143,8 @@ func get_visual_apply_counters() -> Dictionary:
 	return _visual_apply_counters.duplicate(false)
 
 func get_active_physical_emitter_ids() -> Dictionary:
+	if _dense_adapter != null:
+		return _dense_adapter.active_ids()
 	var result: Dictionary = {}
 	for light_id in _light_desired_state:
 		if bool((_light_desired_state[light_id] as Dictionary).get("visible", false)):

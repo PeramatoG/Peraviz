@@ -140,6 +140,17 @@ Interpret the A/B evidence as follows:
 The hardware run remains outstanding. Grouping and batching are still future
 work; this baseline must establish whether time/counters actually grow first.
 
+## Dense presentation milestone
+
+The normal Intensity/Color/BeamOptics path now uses native contiguous presentation
+state and pre-bound indexed handles. `[peraviz-stability].dense_presentation`
+separates native compose, packed-delta conversion, inclusive compatibility apply,
+and its final object-mutation subset, with physical count, exact dirty high-water
+and buffer sizes. The old snapshot commit collection remains empty on this path.
+Use the [exact baseline/candidate Windows A/B procedure](native-dense-presentation-state.md#exact-canonical-windows-ab)
+with `bd354a5` and the candidate revision. Supplied historical numbers are not
+new measurements; the canonical hardware run remains required.
+
 ## Next-phase batching boundary
 
 If the trace confirms that roughly one thousand distinct physical Beam outputs genuinely change color every visual frame, the retained per-output GDScript and Node mutation path has reached its architectural scaling limit. The next phase should keep semantic resolution in native C++ and publish a compact contiguous renderer batch keyed by stable output ID. Transform, color, intensity, visibility/active state, beam angle/zoom, and presentation custom data can be carried in parallel packed buffers and applied through RenderingServer or MultiMesh-oriented presentation with minimal GDScript dispatch.

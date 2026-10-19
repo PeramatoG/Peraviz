@@ -474,6 +474,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 	)
 	if beam_scalar_changed:
 		_refresh_existing_beam_material_scalars()
+	_fixture_light_apply_service.refresh_dense_renderer()
 	_refresh_day_night_environment_controller()
 
 
@@ -598,6 +599,7 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void
 	_active_beam_renderer.update_beam(light, beam_params)
 	_refresh_native_gobo_presentation(light)
 	_native_target_registry.rebind_beam_resource(light, _active_beam_renderer.get_beam_resource(light))
+	_fixture_light_apply_service.rebind_dense_light(light)
 
 func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
 	if light == null or not is_instance_valid(light) or not light.has_meta("peraviz_beam_last_params"):
@@ -1733,6 +1735,7 @@ func _present_native_gobo(light: SpotLight3D, texture: Texture2D, gobo_rotation_
 	_refresh_native_gobo_presentation(light, texture)
 	if _active_beam_presentation == VolumetricBeamRendererScript.PRESENTATION_SHADER_PROXY and _active_beam_renderer != null:
 		_active_beam_renderer.update_beam(light, light.get_meta("peraviz_beam_last_params", {}))
+	_fixture_light_apply_service.rebind_dense_light(light)
 
 func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null) -> void:
 	if _fixture_gobo_projector == null:
@@ -1770,6 +1773,7 @@ func _register_native_runtime_targets(renderer_manifest: Array) -> void:
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service.reset_scene_state()
 	_native_target_registry.install_manifest(renderer_manifest)
+	_fixture_light_apply_service.install_dense_presentation(self, _native_target_registry)
 
 func _install_native_gobo_assets(asset_rows: Array) -> void:
 	_native_target_registry.install_gobo_assets(asset_rows)
