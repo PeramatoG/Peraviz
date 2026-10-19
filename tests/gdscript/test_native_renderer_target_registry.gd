@@ -141,7 +141,17 @@ func _run() -> void:
 	test.check(refreshed_beam.mesh == selected_mesh, "Renderer manifest refresh must rehydrate the held selected gobo without new DMX")
 	test.check(int(registry.get_gobo_counters().get("renderer_reassertions", 0)) > 0, "Renderer manifest refresh must record a gobo presentation reassertion")
 	DirAccess.remove_absolute(gobo_path)
+	var dense_bindings: Dictionary = registry.get_dense_presentation_bindings()
+	var dense_again: Dictionary = registry.get_dense_presentation_bindings()
+	test.check(dense_bindings["ids"] == dense_again["ids"], "Dense indices remain stable within a renderer generation")
+	var previous_id: int = -1
+	for index in range(dense_bindings["outputs"].size()):
+		var output: Dictionary = dense_bindings["outputs"][index]
+		test.check(int(output["dense_output_index"]) == index and int(output["beam_render_target_id"]) > previous_id, "Each canonical output gets exactly one sorted dense index")
+		previous_id = int(output["beam_render_target_id"])
+	var old_dense_generation: int = registry._renderer_generation
 	registry.clear()
+	test.check(registry._renderer_generation != old_dense_generation and registry.get_dense_presentation_bindings()["ids"].is_empty(), "Registry clear retires all dense bindings")
 	test.check(not registry.has_dimmer_target(201), "Registry contract check failed near source line 127")
 
 	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Missing")]}])

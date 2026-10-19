@@ -97,6 +97,11 @@ func install_manifest(renderer_manifest: Array) -> void:
 					_register_renderer_target(target_item)
 			continue
 		_register_legacy_manifest_row(row)
+	# Bind even canonical physical outputs with no live scalar contributor.
+	for geometry_key in _beam_profiles_by_geometry_key:
+		var emitter: Node3D = _geometry_targets_by_key.get(geometry_key) as Node3D
+		if emitter != null:
+			_resolve_beam_output_record(_fixture_uuid_from_geometry_key(geometry_key), emitter, int(_beam_profiles_by_geometry_key[geometry_key].get("beam_render_target_id", 0)))
 	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
 	_log_summary_once()
 	_log_output_fanout_once()
@@ -845,3 +850,33 @@ func _call_variant(callback_name: String, args: Array) -> Variant:
 	if not callback.is_valid():
 		return null
 	return callback.callv(args)
+
+# Exports immutable scene-generation routes once; physical outputs remain independent.
+func get_dense_presentation_bindings() -> Dictionary:
+	var ids := PackedInt32Array()
+	var scales := PackedFloat32Array()
+	var routes := PackedInt32Array()
+	var outputs: Array = []
+	var canonical_ids: Array = _beam_output_records_by_id.keys()
+	canonical_ids.sort()
+	var indices: Dictionary = {}
+	for canonical_id in canonical_ids:
+		var record: Dictionary = _beam_output_records_by_id[canonical_id]
+		indices[canonical_id] = outputs.size()
+		record["dense_output_index"] = outputs.size()
+		record["dense_output_generation"] = _renderer_generation
+		ids.append(int(canonical_id))
+		scales.append(maxf(float(record.get("projected_lumen_scale", 1.0)), 0.0))
+		outputs.append(record)
+	for section in [2, 3, 4]:
+		var target_map: Dictionary = _dimmer_targets if section == 2 else (_color_targets if section == 3 else _optics_targets)
+		for target_id in target_map:
+			for record in target_map[target_id].get("beam_output_records", []):
+				var canonical_id: int = int(record.get("beam_render_target_id", 0))
+				if indices.has(canonical_id):
+					routes.append_array(PackedInt32Array([section, int(target_id), int(indices[canonical_id])]))
+	return {"ids": ids, "scales": scales, "routes": routes, "outputs": outputs}
+
+# Presentation policy never resets selected gobo assets or their monotonic motion clocks.
+func set_presentation_enabled(enabled: bool) -> void:
+	_gobo_resources.set_presentation_enabled(enabled, _beam_output_records_by_id)

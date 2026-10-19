@@ -10,6 +10,8 @@ static var _shared_mesh: ArrayMesh
 static var _shared_shader: Shader
 static var _shared_material: ShaderMaterial
 static var _topology_creations := 0
+var renderer_visibility_writes: int = 0
+var renderer_shader_parameter_writes: int = 0
 var _creations := 0
 var _parameter_writes := 0
 var _visibility_transitions := 0
@@ -33,6 +35,7 @@ func update_for_light(light: SpotLight3D, params: Dictionary, texture: Texture2D
 	var writes := 0
 	if proxy.visible != visible:
 		proxy.visible = visible
+		renderer_visibility_writes += 1
 		_visibility_transitions += 1
 		writes += 1
 	if not visible:
@@ -58,6 +61,7 @@ func update_for_light(light: SpotLight3D, params: Dictionary, texture: Texture2D
 	writes += _set_param(proxy, state, "use_gobo", texture != null)
 	if state.get("gobo_texture") != texture:
 		proxy.set_instance_shader_parameter("gobo_texture", texture)
+		renderer_shader_parameter_writes += 1
 		state["gobo_texture"] = texture
 		_texture_changes += 1
 		writes += 1
@@ -83,6 +87,7 @@ func hide_for_light(light: SpotLight3D) -> void:
 	var proxy := _get_proxy(light)
 	if proxy != null and proxy.visible:
 		proxy.visible = false
+		renderer_visibility_writes += 1
 		_visibility_transitions += 1
 		_set_visibility_diagnostics(light, false, 0)
 
@@ -100,6 +105,7 @@ func _create_proxy(light: SpotLight3D) -> MeshInstance3D:
 	proxy.set_meta("peraviz_shader_beam_proxy_instance", true)
 	proxy.material_override = _material()
 	proxy.visible = false
+	renderer_visibility_writes += 1
 	light.add_child(proxy)
 	light.set_meta(META_KEY, proxy)
 	_allocated_ids[light.get_instance_id()] = true
@@ -116,6 +122,7 @@ func _set_param(proxy: MeshInstance3D, state: Dictionary, key: String, value: Va
 	if state.get(key) == value:
 		return 0
 	proxy.set_instance_shader_parameter(key, value)
+	renderer_shader_parameter_writes += 1
 	state[key] = value
 	return 1
 

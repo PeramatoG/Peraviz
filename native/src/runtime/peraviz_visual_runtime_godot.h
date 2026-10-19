@@ -32,6 +32,7 @@ public:
 private:
     static Dictionary stats_to_dictionary(const peraviz::runtime::VisualFrameStats &stats);
 
+    bool performance_trace_enabled_ = false;
     peraviz::runtime::PeravizVisualRuntimeCore core_;
 };
 

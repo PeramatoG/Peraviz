@@ -43,15 +43,23 @@ func install_schema(schema: Dictionary) -> void:
 			}
 
 func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, scene_fixture_uuids: Dictionary = {}) -> Dictionary:
-	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
 	light_apply_service.set_performance_trace_enabled(_performance_trace_enabled)
+	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
 	var descriptors: PackedInt32Array = snapshot.get("descriptors", PackedInt32Array())
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
 	_native_now_seconds = float(snapshot.get("runtime_now_seconds", 0.0))
 	if descriptors.is_empty() or descriptors.size() % DESCRIPTOR_STRIDE != 0:
 		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}, "skip_diagnostics": _new_skip_diagnostics()}
+	# Schema generations are independent from renderer binding generations.
+	if snapshot.has("schema_generation") and int(snapshot["schema_generation"]) != int(_schema.get("schema_generation", -1)):
+		return {"updated": 0, "skipped": 1, "fixtures_considered": 0, "skip_diagnostics": {}}
 	light_apply_service.begin_visual_snapshot()
+	var dense_status: int = light_apply_service.compose_dense_snapshot(descriptors, integers, floats, int(snapshot.get("semantic_payload_conversion_us", 0)) if _performance_trace_enabled else 0)
+	if dense_status < 0:
+		light_apply_service.end_visual_snapshot()
+		return {"updated": 0, "skipped": 1, "targets_failed": 1, "fixtures_considered": 0, "skip_diagnostics": {}}
+	var dense: bool = dense_status > 0
 	var counts: Dictionary = _new_counts() if _performance_trace_enabled else {}
 	var skip_diagnostics: Dictionary = _new_skip_diagnostics() if _performance_trace_enabled else {"first_failures": []}
 	var updated_fixtures: Dictionary = {}
@@ -76,12 +84,26 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 			if _performance_trace_enabled:
 				skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1
 				_record_section_row(section_type, skip_diagnostics)
-			if not RenderDiagnosticPolicyScript.applies_section(_render_diagnostic_mode, section_type):
+			if not RenderDiagnosticPolicyScript.applies_section(_render_diagnostic_mode, section_type) and not (dense and _render_diagnostic_mode == "no-beams" and section_type in [SECTION_GOBO_SELECTION, SECTION_GOBO_ROTATION]):
 				if _performance_trace_enabled:
 					skip_diagnostics["rows_diagnostic_suppressed"] = int(skip_diagnostics.get("rows_diagnostic_suppressed", 0)) + 1
 				continue
 			var row_int_base: int = int_offset + (row_index * int_stride)
 			var row_float_base: int = float_offset + (row_index * float_stride)
+			# Lighting fan-out and state composition already ran in one native call.
+			# The production path does not resolve UUIDs or allocate row results here.
+			if dense and section_type in [SECTION_EMITTER_INTENSITY, SECTION_EMITTER_COLOR, SECTION_BEAM_OPTICS]:
+				updated_fixtures[_fixture_id_for_row(row_int_base, integers)] = true
+				applied_rows += 1
+				if _performance_trace_enabled:
+					if section_type == SECTION_EMITTER_INTENSITY:
+						skip_diagnostics["dimmer_requested"] += 1
+						skip_diagnostics["dimmer_resolved"] += 1
+						counts["intensity_rows_generated"] += 1
+					elif section_type == SECTION_BEAM_OPTICS:
+						counts["beam_optics_rows_generated"] += 1
+					_record_changed_mask(_changed_mask_for_row(section_type, row_int_base, integers), counts)
+				continue
 			var fixture_id: int = _fixture_id_for_row(row_int_base, integers)
 			var fixture_uuid: String = str(fixture_uuids_by_id.get(fixture_id, ""))
 			if fixture_uuid.is_empty():
@@ -101,7 +123,7 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 					skipped += 1
 					failed_rows += 1
 					continue
-				updated_fixtures[fixture_uuid] = true
+				updated_fixtures[fixture_id] = true
 				applied_rows += 1
 				continue
 			var row_result: Dictionary = _apply_section_row(section_type, row_int_base, row_float_base, integers, floats, loader, light_apply_service, fixture_uuid, frame_delta_sec, dmx_runtime, counts)
@@ -111,7 +133,7 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 				skipped += 1
 				failed_rows += 1
 				continue
-			updated_fixtures[fixture_uuid] = true
+			updated_fixtures[fixture_id] = true
 			applied_rows += 1
 	# Renderer mutation is deferred past all semantic sections so optics and gobos observe final held state.
 	light_apply_service.end_visual_snapshot()

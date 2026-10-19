@@ -1,5 +1,6 @@
 #include "runtime/peraviz_visual_runtime_godot.h"
 #include "runtime/compiled_runtime_scene_codec.h"
+#include <chrono>
 
 namespace godot {
 
@@ -46,6 +47,7 @@ void PeravizVisualRuntime::submit_universe_frame(int universe_id, const PackedBy
 // Consumes the latest cooked dirty visual frame as one coherent typed snapshot.
 Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
     const peraviz::runtime::SectionedVisualFrame frame = core_.consume_latest_visual_frame();
+    const auto conversion_start = performance_trace_enabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     PackedInt32Array descriptors;
     descriptors.resize(static_cast<int64_t>(frame.descriptors.size()));
     for (int64_t index = 0; index < descriptors.size(); ++index) {
@@ -69,6 +71,9 @@ Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
     out["descriptors"] = descriptors;
     out["integers"] = integers;
     out["floats"] = floats;
+    if (performance_trace_enabled_) {
+        out["semantic_payload_conversion_us"] = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - conversion_start).count();
+    }
     return out;
 }
 
@@ -106,6 +111,7 @@ Dictionary PeravizVisualRuntime::get_state_sizes() const {
 
 // Toggles trace-only native dirty-state aggregation.
 void PeravizVisualRuntime::set_performance_trace_enabled(bool enabled) {
+    performance_trace_enabled_ = enabled;
     core_.set_performance_trace_enabled(enabled);
 }
 

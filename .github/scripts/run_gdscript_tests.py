@@ -21,7 +21,7 @@ def first_unexpected_diagnostic(output: str) -> str | None:
     """Return the first engine or script error that makes otherwise-zero output fail."""
     for line in output.splitlines():
         stripped = line.strip()
-        if "SCRIPT ERROR:" in stripped or stripped.startswith("ERROR:"):
+        if any(marker in stripped for marker in ["SCRIPT ERROR", "Parse Error", "Compile Error", "Failed to load script", "Invalid call."]) or stripped.startswith("ERROR:"):
             return stripped
     return None
 

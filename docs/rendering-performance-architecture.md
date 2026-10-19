@@ -8,6 +8,15 @@
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
 
+## Active milestone ordering
+
+The immediate roadmap now starts with native dense presentation state, then
+batched aperture presentation using about 1,000 independently controlled outputs.
+The [milestone-1 implementation and benchmark procedure](native-dense-presentation-state.md)
+preserve every canonical physical output and retain the existing renderer. The
+historical grouping proposals below describe separate future investigations;
+no grouping, MultiMesh or new beam backend belongs to milestone 1.
+
 ## Core rule: authoritative semantics and presentation
 
 Peraviz must keep the selected GDTF DMXMode, MVR scene data, and live DMX state authoritative. Rendering optimizations may use a coarser representation than the physical GDTF geometry only when they preserve the observable result for the current control topology. These optimizations are Peraviz presentation logic, not part of GDTF or MVR, and must remain clearly separated and documented.

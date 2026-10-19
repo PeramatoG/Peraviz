@@ -93,6 +93,13 @@ require_pattern 'apply_beam_optics\(loader, fixture_uuid, optics_target_id' 'Bea
 reject_pattern 'VisualChangeZoom \| VisualChangeBeamTopology' 'Zoom-only changes must not be marked as topology rebuilds.' native/src/runtime/peraviz_visual_runtime.cpp scripts/runtime/fixture_light_apply_service.gd
 reject_pattern 'var _native_(pan|tilt|dimmer|geometry)_|var _native_target_resolution|var _native_target_registry_summary|func _register_native_axis_target|func _register_native_dimmer_target|func _build_native_geometry_target_map' 'load_scene.gd must delegate native target registry ownership to the focused service.' scripts/load_scene.gd
 
+# Milestone 1 must keep composition out of the indexed compatibility mutation loop.
+require_path "native/src/presentation/dense_presentation_state.cpp" file
+require_pattern 'compose_dense_snapshot' 'Sectioned playback must invoke native dense presentation.' scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd
+require_pattern 'if dense and section_type' 'Dense lighting sections must bypass legacy dictionary row composition.' scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd
+reject_pattern 'fixture_uuid|_target_state|_snapshot_output_commits|_get_native_.*record|find_child|get_children' 'Indexed adapter must not rediscover fixture/output state.' scripts/runtime/dense_presentation_adapter.gd
+
+
 if [[ "$failures" -ne 0 ]]; then
   echo "[runtime-architecture] Found $failures violation(s)." >&2
   exit 1

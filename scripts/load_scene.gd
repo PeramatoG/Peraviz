@@ -474,6 +474,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 	)
 	if beam_scalar_changed:
 		_refresh_existing_beam_material_scalars()
+	_fixture_light_apply_service.refresh_dense_renderer()
 	_refresh_day_night_environment_controller()
 
 
@@ -591,6 +592,10 @@ func _ensure_beam_runtime_for_light(light: SpotLight3D) -> void:
 	_active_beam_renderer.ensure_beam(light)
 
 func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void:
+	if _fixture_light_apply_service._render_diagnostic_mode != "full":
+		light.set_meta("peraviz_beam_last_params", beam_params)
+		_fixture_light_apply_service.rebind_dense_light(light)
+		return
 	if _active_beam_renderer == null:
 		return
 	light.set_meta("peraviz_beam_last_params", beam_params)
@@ -598,6 +603,7 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void
 	_active_beam_renderer.update_beam(light, beam_params)
 	_refresh_native_gobo_presentation(light)
 	_native_target_registry.rebind_beam_resource(light, _active_beam_renderer.get_beam_resource(light))
+	_fixture_light_apply_service.rebind_dense_light(light)
 
 func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
 	if light == null or not is_instance_valid(light) or not light.has_meta("peraviz_beam_last_params"):
@@ -1729,22 +1735,25 @@ func _present_native_gobo(light: SpotLight3D, texture: Texture2D, gobo_rotation_
 		var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
 		params["gobo_rotation_deg"] = gobo_rotation_degrees
 		light.set_meta("peraviz_beam_last_params", params)
-		_fixture_gobo_projector.set_presentation_rotation(light, gobo_rotation_degrees)
 	_refresh_native_gobo_presentation(light, texture)
-	if _active_beam_presentation == VolumetricBeamRendererScript.PRESENTATION_SHADER_PROXY and _active_beam_renderer != null:
+	if _fixture_light_apply_service._render_diagnostic_mode == "full" and _active_beam_presentation == VolumetricBeamRendererScript.PRESENTATION_SHADER_PROXY and _active_beam_renderer != null:
 		_active_beam_renderer.update_beam(light, light.get_meta("peraviz_beam_last_params", {}))
+	_fixture_light_apply_service.rebind_dense_light(light)
 
 func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null) -> void:
 	if _fixture_gobo_projector == null:
 		return
 	var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
-	var active: bool = bool(_fixture_light_apply_service._light_desired_for(light).get("visible", false)) if _fixture_light_apply_service != null else false
+	var active: bool = _fixture_light_apply_service._render_diagnostic_mode == "full" and bool(_fixture_light_apply_service._light_desired_for(light).get("visible", false)) if _fixture_light_apply_service != null else false
 	var resolved_texture: Texture2D = texture
 	if resolved_texture == null and light.has_meta("peraviz_gobo_texture"):
 		resolved_texture = light.get_meta("peraviz_gobo_texture") as Texture2D
-	_fixture_gobo_projector._set_light_projector_texture(light, resolved_texture if active else null)
+	var desired_texture: Texture2D = resolved_texture if active else null
+	if light.light_projector != desired_texture:
+		_fixture_gobo_projector._set_light_projector_texture(light, desired_texture)
 	_fixture_gobo_projector.set_shadow_mask_enabled(light, active and resolved_texture != null and int(_visual_settings.get("beam_presentation", 1)) == 2)
-	_fixture_gobo_projector.set_presentation_rotation(light, float(params.get("gobo_rotation_deg", 0.0)) if resolved_texture != null else 0.0)
+	if _fixture_light_apply_service._render_diagnostic_mode == "full":
+		_fixture_gobo_projector.set_presentation_rotation(light, float(params.get("gobo_rotation_deg", 0.0)) if resolved_texture != null else 0.0)
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service._apply_desired_light_state(self, light)
 
@@ -1766,10 +1775,16 @@ func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 		result.merge(_active_beam_renderer.get_proxy_diagnostics(), true)
 	return result
 
-func _register_native_runtime_targets(renderer_manifest: Array) -> void:
+func _set_native_presentation_enabled(enabled: bool) -> void:
+	_native_target_registry.set_presentation_enabled(enabled)
+
+func _register_native_runtime_targets(renderer_manifest: Array) -> bool:
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service.reset_scene_state()
+	if _dmx_controller != null:
+		_fixture_light_apply_service.set_render_diagnostic_mode(_dmx_controller.get_render_diagnostic_mode())
 	_native_target_registry.install_manifest(renderer_manifest)
+	return _fixture_light_apply_service.install_dense_presentation(self, _native_target_registry)
 
 func _install_native_gobo_assets(asset_rows: Array) -> void:
 	_native_target_registry.install_gobo_assets(asset_rows)
@@ -1827,6 +1842,7 @@ func _get_native_target_registry_summary() -> Dictionary:
 	return _native_target_registry.get_summary()
 
 func _apply_beam_optics_for_light(light: SpotLight3D, beam_params: Dictionary) -> Dictionary:
+	if _fixture_light_apply_service._render_diagnostic_mode != "full": return {"applied": false, "diagnostic_suppressed": true}
 	if _active_beam_renderer != null and _active_beam_renderer.has_method("apply_beam_optics"):
 		return _active_beam_renderer.apply_beam_optics(light, beam_params)
 	return {"applied": false, "failure_reason": "active beam renderer lacks BeamOptics API"}
@@ -2054,17 +2070,8 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 	var lens_radius: float = _estimate_emitter_lens_radius(emitter_node)
 	for child in emitter_node.get_children():
 		if child is SpotLight3D and child.name == "PeravizEmitterLight":
-			if not child.has_meta("peraviz_base_light_energy"):
-				child.light_energy = 0.0
-				child.visible = false
-			if child.rotation_degrees != EMITTER_LIGHT_DIRECTION_FIX:
-				child.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
-			# Projector-active lights retain shadows because Godot 4.7 requires them for surface projection.
-			if child.light_projector == null and not child.has_meta("peraviz_pre_projector_shadow_enabled"):
-				child.shadow_enabled = false
-			child.shadow_bias = 0.05
-			child.shadow_normal_bias = 1.2
-			child.set_meta("peraviz_lens_radius", lens_radius)
+			# Discovery preserves a live dense-bound light, including projector roll.
+			# Initial visibility, energy and optical defaults are assigned at creation.
 			return child
 
 	var light := SpotLight3D.new()

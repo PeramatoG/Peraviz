@@ -16,6 +16,8 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Moved physical-output lighting composition and dirty coalescing into bounded native dense state with generation-safe indices and pre-bound renderer handles. Added independent-output allocation/capacity regressions and opt-in compose/adapter/mutation telemetry; the current visual backends remain in use.
+
 - Added bounded interval and explicit lifetime DMX latency statistics, plus opt-in CPU/GPU renderer timing, memory/message-buffer, mailbox and presentation-state size diagnostics for sustained-playback investigations.
 - Fixed repeated short-payload warning accumulation and stale scene/presentation caches, proxy identities and native helper Object ownership; added deterministic sustained-DMX and fan-out stability regressions.
 
@@ -37,6 +39,10 @@ Changes since the previous Peraviz release.
 - Indexed gobo angle changes now update reusable presentation resources parametrically without image composition, vectorization, mesh generation, or topology rebuilds.
 
 ## Fixes
+
+- Fixed fresh-checkout script loading by replacing the dense beam cache's global class dependency with explicit preloads. Preserved live light visibility during resource discovery, added explicit dense-install failure handling and real-application beam/footprint lifecycle checks from a clean Godot cache. Windows runs with compilation errors are invalid for performance acceptance; full visual review comes first.
+
+- Corrected conflicting SpotLight Node/RID visibility and missing bound-prism unchanged guards in the native dense presentation bridge. Diagnostic no-beams now suppresses light/beam/gobo renderer work after one cleanup while preserving held state and emissive apertures. Added actual mutation counters and a 1,095-output regression; canonical Windows performance validation remains pending.
 
 - Kept Shader Beam Proxy resources under their active renderer's ownership so ordinary DMX updates no longer hide and immediately reshow them, and made Quick Preset retain its selected value with a clear Custom state after manual edits.
 - Enabled directional shadow split blending for smoother cascaded directional-shadow transitions. This isolated option has a moderate cost and does not change spotlight projectors, volumetric fog, or beam rendering.

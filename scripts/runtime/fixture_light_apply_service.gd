@@ -23,6 +23,12 @@ const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUA
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
+const DensePresentationAdapterScript = preload("res://scripts/runtime/dense_presentation_adapter.gd")
+
+var _dense_adapter: RefCounted
+var _dense_required: bool = false
+var _dense_install_error_reported: bool = false
+
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
 	"fixture_apply": {"calls": 0, "total_usec": 0},
@@ -83,6 +89,11 @@ var _performance_trace_enabled: bool = false
 
 # Retires identity/RID caches when a scene or native binding generation is replaced.
 func reset_scene_state() -> void:
+	if _dense_adapter != null:
+		_dense_adapter.clear()
+	_dense_adapter = null
+	_dense_required = false
+	_dense_install_error_reported = false
 	_snapshot_commit_active = false
 	_snapshot_output_commits.clear()
 	_target_states.clear()
@@ -100,11 +111,41 @@ func reset_scene_state() -> void:
 
 func set_render_diagnostic_mode(mode: String) -> void:
 	_render_diagnostic_mode = mode
+	if _dense_adapter != null: _dense_adapter.set_mode(mode)
 
 func set_performance_trace_enabled(enabled: bool) -> void:
 	_performance_trace_enabled = enabled
+	if _dense_adapter != null: _dense_adapter._trace = enabled
 	if enabled:
 		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
+
+# Installs the normal native presentation path after renderer target setup.
+func install_dense_presentation(loader: Node, registry: RefCounted) -> bool:
+	_dense_required = true
+	_dense_adapter = DensePresentationAdapterScript.new()
+	if not _dense_adapter.install(loader, self, registry):
+		_dense_adapter.clear()
+		_dense_adapter = null
+		if not _dense_install_error_reported:
+			_dense_install_error_reported = true
+			push_error("Dense presentation installation failed (native class or bindings unavailable); lighting playback is disabled. Legacy state fallback is forbidden.")
+		return false
+	return true
+
+func is_dense_presentation_active() -> bool:
+	return _dense_adapter != null and _dense_adapter.is_installed()
+
+# Rebinds resources only at explicit presentation/control boundaries.
+func rebind_dense_light(light: SpotLight3D) -> void:
+	if _dense_adapter != null: _dense_adapter.rebind_light(light)
+
+func refresh_dense_renderer() -> void:
+	if _dense_adapter != null: _dense_adapter.refresh_renderer()
+
+# 0 permits explicit compatibility callers; -1 rejects an unavailable required dense path.
+func compose_dense_snapshot(descriptors: PackedInt32Array, integers: PackedInt32Array, values: PackedFloat32Array, semantic_conversion_us: int = 0) -> int:
+	if _dense_adapter == null: return -1 if _dense_required else 0
+	return 1 if _dense_adapter.compose(descriptors, integers, values, _performance_trace_enabled, _render_diagnostic_mode, semantic_conversion_us) else -1
 
 # Starts snapshot-local collection of canonical physical-output renderer commits.
 func begin_visual_snapshot() -> void:
@@ -113,6 +154,8 @@ func begin_visual_snapshot() -> void:
 
 # Commits each touched canonical physical output once after all logical state is current.
 func end_visual_snapshot() -> void:
+	if _dense_adapter != null:
+		_dense_adapter.apply()
 	if not _snapshot_commit_active:
 		return
 	var commit_start_usec: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
@@ -621,6 +664,10 @@ func _has_projected_beam(profile: Dictionary) -> bool:
 	return beam_type != "none" and beam_type != "glow"
 
 func _light_desired_for(light: SpotLight3D) -> Dictionary:
+	if _dense_adapter != null:
+		var dense_state: Dictionary = _dense_adapter.light_state(light)
+		if not dense_state.is_empty():
+			return dense_state
 	var key: int = light.get_instance_id()
 	if not _light_desired_state.has(key):
 		_light_desired_state[key] = {"energy": light.light_energy, "angle": light.spot_angle, "color": light.light_color, "visible": false}
@@ -635,6 +682,9 @@ func _update_desired_light_state(light: SpotLight3D, energy: float, angle: float
 	light.set_meta("peraviz_physical_output_visible", visible)
 
 func _apply_desired_light_state(loader: Node, light: SpotLight3D) -> int:
+	if _dense_adapter != null:
+		var dense_writes: int = _dense_adapter.apply_light_state(light)
+		if dense_writes >= 0: return dense_writes
 	var state: Dictionary = _light_desired_for(light)
 	var requested_visible: bool = bool(state.get("visible", false))
 	var enabled: bool = (_should_enable_realtime_spotlight(loader, requested_visible) or _requires_realtime_spotlight(loader, light, requested_visible)) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
@@ -1022,6 +1072,9 @@ func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible
 
 # Keeps the light node available as a beam parent while independently gating the real SpotLight RID.
 func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> int:
+	if _dense_adapter != null:
+		var dense_writes: int = _dense_adapter.apply_light_state(light)
+		if dense_writes >= 0: return dense_writes
 	if light == null or not is_instance_valid(light):
 		return 0
 	var physical_output_visible: bool = bool(_light_desired_for(light).get("visible", false))
@@ -1033,6 +1086,7 @@ func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible
 	var last_state: Dictionary = _light_desired_for(light)
 	var previous_realtime_visible: bool = bool(last_state.get("applied_realtime_visible", not real_spot_visible))
 	last_state["applied_realtime_visible"] = real_spot_visible
+	if _dense_adapter != null: _dense_adapter.synchronize_visibility(light, real_spot_visible)
 	var light_id: int = light.get_instance_id()
 	if real_spot_visible:
 		_visible_light_ids[light_id] = true
@@ -1114,6 +1168,8 @@ func get_visual_apply_counters() -> Dictionary:
 	return _visual_apply_counters.duplicate(false)
 
 func get_active_physical_emitter_ids() -> Dictionary:
+	if _dense_adapter != null:
+		return _dense_adapter.active_ids()
 	var result: Dictionary = {}
 	for light_id in _light_desired_state:
 		if bool((_light_desired_state[light_id] as Dictionary).get("visible", false)):

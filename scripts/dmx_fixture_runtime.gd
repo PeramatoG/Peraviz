@@ -486,7 +486,11 @@ func _install_renderer_manifest(renderer_manifest: Array) -> bool:
 			push_error("Native DPT renderer target registry is missing required method: %s" % method_name)
 			_native_setup_summary["target_registry_error"] = "missing method %s" % method_name
 			return false
-	_renderer_target_registry._register_native_runtime_targets(renderer_manifest)
+	# Legacy test registries return null; production returns an explicit install result.
+	var installed: Variant = _renderer_target_registry._register_native_runtime_targets(renderer_manifest)
+	if installed is bool and not installed:
+		_native_setup_summary["target_registry_error"] = "dense presentation installation failed"
+		return false
 	_native_setup_summary["target_registry"] = _renderer_target_registry._get_native_target_registry_summary()
 	var registry_summary: Dictionary = _native_setup_summary.get("target_registry", {}).get("registry_summary", {})
 	for semantic in ["pan", "tilt", "dimmer"]:
