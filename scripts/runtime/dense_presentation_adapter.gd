@@ -1,5 +1,7 @@
 extends RefCounted
 
+const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
+
 const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
 
 # Temporary milestone-1 renderer bridge. Native state owns composition; these
@@ -30,7 +32,7 @@ class LightHandle:
 	var projected: bool
 	var color: Color = Color.WHITE
 	var energy: float = 0.0
-	var half_angle: float = 12.5
+	var projection: RefCounted
 	var visible: bool = false
 	var realtime_visible: bool = false
 	var realtime_visibility_known: bool = false
@@ -131,6 +133,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			var handle := LightHandle.new()
 			handle.light = light
 			handle.rid = light.get_instance()
+			handle.projection = OpticalProjectionScript.resolve(light)
 			handle.projected = service._has_projected_beam(record.get("beam_optical_profile", {}))
 			# Resolve static defaults, params and resources once, before live snapshots.
 			if handle.projected and not light.has_meta("peraviz_beam_last_params"):
@@ -239,7 +242,9 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 		if not is_instance_valid(handle.light): continue
 		handle.color = color
 		handle.energy = v[b+5] if v[b+5] > 0.0 else v[b+4]
-		handle.half_angle = v[b+8]
+		if mask & (ZOOM | TOPOLOGY):
+			handle.params["beam_angle"] = v[b+9]
+			handle.projection.configure(handle.params, handle.light.get_meta("peraviz_gobo_texture") as Texture2D if handle.light.has_meta("peraviz_gobo_texture") else null)
 		var was_active: bool = handle.visible
 		handle.visible = v[b+11] > 0.0 and handle.energy > 0.0 and handle.projected
 		# Suppressed snapshots only update held scalar state and emissive materials.
@@ -306,8 +311,8 @@ func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
 		if handle.properties_dirty or not is_equal_approx(handle.light.light_energy, handle.energy):
 			handle.light.light_energy = handle.energy
 			_record_mutation(&"spot_property_writes")
-		if handle.properties_dirty or not is_equal_approx(handle.light.spot_angle, handle.half_angle):
-			handle.light.spot_angle = handle.half_angle
+		if handle.properties_dirty or not is_equal_approx(handle.light.spot_angle, handle.projection.half_angle_deg):
+			handle.light.spot_angle = handle.projection.half_angle_deg
 			_record_mutation(&"spot_property_writes")
 		if handle.properties_dirty or handle.light.light_color != handle.color:
 			handle.light.light_color = handle.color
@@ -425,7 +430,7 @@ func light_state(light: SpotLight3D) -> Dictionary:
 	if handle == null:
 		return {}
 	handle.compatibility_state["energy"] = handle.energy
-	handle.compatibility_state["angle"] = handle.half_angle
+	handle.compatibility_state["angle"] = handle.projection.half_angle_deg
 	handle.compatibility_state["color"] = handle.color
 	handle.compatibility_state["visible"] = handle.visible
 	handle.compatibility_state["applied_realtime_visible"] = handle.realtime_visible

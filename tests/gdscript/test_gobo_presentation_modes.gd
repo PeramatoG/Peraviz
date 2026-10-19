@@ -97,7 +97,6 @@ func _run() -> void:
 	var texture_identity: Texture2D = light.light_projector
 	for pan_tilt in [Vector3(0.35, -0.6, 0.2), Vector3(-0.45, 0.8, -0.1)]:
 		light.transform = Transform3D(Basis.from_euler(pan_tilt), Vector3(1.0, 2.0, 3.0))
-		light.remove_meta("peraviz_projector_base_basis")
 		var optical_origin := light.transform.origin
 		var optical_direction := -light.transform.basis.z.normalized()
 		for angle in [0.0, 90.0, 180.0, 270.0]:

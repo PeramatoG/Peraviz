@@ -1,13 +1,10 @@
 extends VolumetricBeamShapeProvider
 class_name VolumetricGoboPrismShapeProvider
 
-const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
-const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
+const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
 
 
 const GOBO_TEXTURE_META_KEY: String = "peraviz_gobo_texture"
-const DEFAULT_MIRROR_BEAM_SHAPE_X: bool = false
-const DEFAULT_MIRROR_BEAM_SHAPE_Z: bool = false
 
 var _mesh_builder: GoboPrismMeshBuilder = GoboPrismMeshBuilder.new()
 
@@ -15,39 +12,33 @@ func shape_mode() -> String:
 	return "gobo_prism"
 
 func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -> Dictionary:
-	var beam_range: float = BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
-	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
-	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
-	var geometry: Dictionary = BeamGeometryCalculatorScript.far_radius_for_full_angle(lens_radius, beam_angle, beam_range)
-	var bottom_radius: float = float(geometry.get("far_radius_m", lens_radius))
-	var gobo_texture: Texture2D = null
-	if light.has_meta(GOBO_TEXTURE_META_KEY):
-		gobo_texture = light.get_meta(GOBO_TEXTURE_META_KEY) as Texture2D
-	var gobo_scale: float = max(float(params.get("gobo_scale", 1.0)), 0.05)
-	var alignment_rotation_deg: float = float(params.get("beam_gobo_alignment_rotation_deg", 0.0))
-	# The light node already carries gobo wheel/index rotation via FixtureGoboProjector.
-	# Keep only local alignment on the prism node to avoid double-rotating versus the footprint.
-	var beam_rotation_deg: float = wrapf(alignment_rotation_deg, 0.0, 360.0)
-	var mirror_x: bool = bool(params.get("beam_gobo_mirror_x", DEFAULT_MIRROR_BEAM_SHAPE_X))
-	var mirror_z: bool = bool(params.get("beam_gobo_mirror_z", DEFAULT_MIRROR_BEAM_SHAPE_Z))
-	var prism_mesh: ArrayMesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
-	light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
-	light.set_meta("peraviz_last_beam_renderer_mode", shape_mode())
-	if prism_mesh != null:
-		beam.mesh = prism_mesh
-	var lens_offset_m: float = max(float(params.get("lens_offset_m", params.get("near_offset", 0.0))), 0.0)
-	var lens_shift_x: float = float(params.get("lens_shift_x", 0.0))
-	var lens_shift_y: float = float(params.get("lens_shift_y", 0.0))
-	beam.position = Vector3(lens_shift_x, lens_shift_y, -(beam_range * 0.5 + lens_offset_m))
-	var scaled_near: float = max(lens_radius * gobo_scale, 0.001)
-	var scaled_far: float = max(bottom_radius * gobo_scale, 0.001)
-	beam.scale = Vector3(-1.0 if mirror_x else 1.0, beam_range, -1.0 if mirror_z else 1.0)
-	beam.set_instance_shader_parameter("use_normalized_gobo_topology", true)
-	beam.set_instance_shader_parameter("topology_near_radius", scaled_near)
-	beam.set_instance_shader_parameter("topology_far_radius", scaled_far)
-	beam.set_meta("peraviz_gobo_normalized_near_ratio", scaled_near / scaled_far)
-	_apply_beam_axis_rotation(beam, beam_rotation_deg)
-	GoboRotationPresentationScript.reapply_after_base_alignment(beam)
+	var projection = OpticalProjectionScript.resolve(light)
+	var gobo_texture: Texture2D = light.get_meta(GOBO_TEXTURE_META_KEY) as Texture2D if light.has_meta(GOBO_TEXTURE_META_KEY) else null
+	if not projection.configured:
+		projection.set_roll(float(beam.get_meta("peraviz_gobo_indexed_rotation_deg", params.get("gobo_rotation_deg", 0.0))))
+	projection.configure(params, gobo_texture)
+	projection.apply_footprint(light)
+	var beam_range: float = projection.visual_range
+	var lens_radius: float = projection.lens_radius
+	var bottom_radius: float = projection.far_radius
+	var gobo_scale: float = projection.gobo_scale
+	var beam_rotation_deg: float = projection.alignment_roll_deg
+	var mirror_x: bool = projection.mirror_x
+	var mirror_z: bool = projection.mirror_z
+	if int(beam.get_meta("peraviz_projection_geometry_revision", -1)) != projection.geometry_revision:
+		var prism_mesh: ArrayMesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
+		light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
+		light.set_meta("peraviz_last_beam_renderer_mode", shape_mode())
+		if prism_mesh != null:
+			beam.mesh = prism_mesh
+		var scaled_near: float = max(lens_radius * gobo_scale, 0.001)
+		var scaled_far: float = max(bottom_radius, 0.001)
+		beam.set_instance_shader_parameter("use_normalized_gobo_topology", true)
+		beam.set_instance_shader_parameter("topology_near_radius", scaled_near)
+		beam.set_instance_shader_parameter("topology_far_radius", scaled_far)
+		beam.set_meta("peraviz_gobo_normalized_near_ratio", scaled_near / scaled_far)
+		beam.set_meta("peraviz_projection_geometry_revision", projection.geometry_revision)
+	projection.apply_shaft(beam)
 	return {
 		"gobo_projection_radius": max(bottom_radius, 0.001),
 		"beam_rotation_deg": beam_rotation_deg,
@@ -57,9 +48,3 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 
 func clear_cache() -> void:
 	_mesh_builder.clear_cache()
-
-func _apply_beam_axis_rotation(node: Node3D, beam_rotation_deg: float) -> void:
-	if node == null:
-		return
-	node.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
-	node.rotate_object_local(Vector3.UP, deg_to_rad(beam_rotation_deg))

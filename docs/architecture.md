@@ -55,6 +55,13 @@ for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
 ## Renderer ownership
 
+GDTF/native semantic state determines physical optical values. Peraviz resolves
+shared presentation geometry into one [Optical Projection State](optical-projection-state.md)
+per emitter. Vector shaft and surface footprint independently consume its aperture,
+base optical transform, native gobo roll, visual alignment and parity. They may not
+maintain competing authoritative optical transforms. Color/intensity remain in the
+native dense photometric state; camera movement cannot dirty projection geometry.
+
 Dense playback assigns SpotLight RID visibility to the adapter, including gobo
 callbacks. Its structural Node stays visible during full playback and changes
 only at binding/diagnostic boundaries; suppressed modes hide it once to stop

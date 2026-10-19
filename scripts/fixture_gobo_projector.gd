@@ -25,7 +25,7 @@ const GOBO_WHEEL_SHAKE_PHASE_META_KEY: String = "peraviz_gobo_wheel_shake_phase"
 const GOBO_WHEEL_SHAKE_RANGE_META_KEY: String = "peraviz_gobo_wheel_shake_range"
 const GOBO_LAST_UPDATE_MSEC_META_KEY: String = "peraviz_gobo_last_update_msec"
 const GOBO_APPLIED_ROTATION_DEG_META_KEY: String = "peraviz_gobo_applied_rotation_deg"
-const PROJECTOR_BASE_BASIS_META_KEY: String = "peraviz_projector_base_basis"
+const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
 const GOBO_APPLIED_SHAKE_TILT_DEG_META_KEY: String = "peraviz_gobo_applied_shake_tilt_deg"
 const GOBO_WHEEL_MODE_META_KEY: String = "peraviz_gobo_wheel_mode"
 const GOBO_APPLIED_STATE_META_KEY: String = "peraviz_gobo_applied_state"
@@ -53,7 +53,6 @@ const GOBO_BEHAVIOR_SHAKE: int = 3
 
 const DmxGoboRangeResolverScript = preload("res://scripts/dmx_gobo_range_resolver.gd")
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
-const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
 var _texture_cache: Dictionary = {}
 var _texture_composition_count: int = 0
@@ -83,15 +82,13 @@ func set_shadow_mask_enabled(light: SpotLight3D, enabled: bool) -> void:
 func set_presentation_rotation(light: SpotLight3D, gobo_rotation_degrees: float) -> void:
 	if light == null or not is_instance_valid(light):
 		return
-	if not light.has_meta(PROJECTOR_BASE_BASIS_META_KEY):
-		light.set_meta(PROJECTOR_BASE_BASIS_META_KEY, light.transform.basis.orthonormalized())
-	var base_basis: Basis = light.get_meta(PROJECTOR_BASE_BASIS_META_KEY) as Basis
-	var local_roll := Basis(Vector3(0.0, 0.0, -1.0), deg_to_rad(gobo_rotation_degrees))
-	var current_transform := light.transform
-	current_transform.basis = base_basis * local_roll
-	light.transform = current_transform
-	if light.has_meta("peraviz_volumetric_beam"):
-		GoboRotationPresentationScript.apply_parent_roll_compensation(light.get_meta("peraviz_volumetric_beam") as MeshInstance3D, gobo_rotation_degrees)
+	var projection = OpticalProjectionScript.resolve(light)
+	projection.set_roll(gobo_rotation_degrees)
+	if projection.footprint_revision == projection.revision and projection.shaft_revision == projection.revision and light.transform.is_equal_approx(projection.last_projector_transform):
+		return
+	projection.apply_footprint(light)
+	if light.has_meta("peraviz_volumetric_beam") and projection.configured:
+		projection.apply_shaft(light.get_meta("peraviz_volumetric_beam") as MeshInstance3D)
 	if light.has_meta(GOBO_PLANE_META_KEY):
 		var mask: MeshInstance3D = light.get_meta(GOBO_PLANE_META_KEY) as MeshInstance3D
 		if mask != null:
