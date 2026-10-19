@@ -1,6 +1,6 @@
 # Rendering and performance architecture decisions
 
-**Status:** Working technical reference
+**Status:** Stable foundation; future scalability proposals remain deferred
 
 **Date:** 2026-09-03
 
@@ -8,14 +8,20 @@
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
 
-## Active milestone ordering
+## Current roadmap and evidence
 
-The immediate roadmap now starts with native dense presentation state, then
-batched aperture presentation using about 1,000 independently controlled outputs.
-The [milestone-1 implementation and benchmark procedure](native-dense-presentation-state.md)
-preserve every canonical physical output and retain the existing renderer. The
-historical grouping proposals below describe separate future investigations;
-no grouping, MultiMesh or new beam backend belongs to milestone 1.
+[Performance foundation](performance-foundation.md) is the single current roadmap:
+**PERFORMANCE FOUNDATION STABLE**, not scalability solved. The owner reports a
+stable 24–25 FPS / 40–42 ms full run after warmup on the canonical RTX 3070 scene.
+That is the current reference, not the final target. Native dense state and
+progressive-collapse correction are complete; batching/instancing/grouping remain
+deferred. Prove about 1,000 genuinely independent outputs with batched apertures
+before batched beams or later topology-based grouping. The next active branch is
+Vector Gobo Prism visual correctness; closure implements none of it.
+
+The detailed proposals below retain investigation history and do not implement or
+reorder future milestones. Use application flags only after Godot's `--`, and
+verify the explicit startup diagnostic before comparing modes.
 
 ## Core rule: authoritative semantics and presentation
 
@@ -25,7 +31,7 @@ Peraviz must keep the selected GDTF DMXMode, MVR scene data, and live DMX state 
 
 Peraviz must never delete or reinterpret independently controllable GDTF emitters merely to improve performance.
 
-## Current performance evidence
+## Historical evidence before foundation stabilization
 
 The canonical Windows test uses:
 
@@ -52,7 +58,7 @@ The investigation has found approximately:
 - fan-out with a minimum of 1, median of 1, and maximum of 51; and
 - 1,032 `EmitterColor` rows per applied visual frame in the canonical live test.
 
-The immediate task is to prove whether the approximately 1,032 color updates genuinely result from shared controls fanning out to many physical Beam geometries or from an over-dirty, identity, or indexing defect.
+The investigation at that point aimed to prove whether the approximately 1,032 color updates genuinely result from shared controls fanning out to many physical Beam geometries or from an over-dirty, identity, or indexing defect.
 
 ## MAC Quantum Wash: why 51 outputs appear
 
@@ -279,11 +285,17 @@ If the fan-out is legitimate, physical GDTF targets must not be collapsed semant
 
 Tracing must never participate in renderer correctness. Diagnostic counters, SceneTree scans, temporary Dictionaries, and per-row clocks do not belong in the production hot path unless required. See [Live render latency diagnostics](live-render-latency-diagnostics.md) for the current trace contract and reproduction procedure.
 
-## Short-term roadmap
+## Historical phase labels and deferred proposals
 
-### Phase 1: finish the live apply and dirty investigation
+These original phase labels are retained as investigation history, not the current
+execution order. The consolidated roadmap above supersedes their numbering:
+independent-output aperture batching must be proven before beam batching and
+later grouping. The next active workstream is visual correctness.
 
-The `codex/optimize-live-dmx-render-apply-path` performance work must reach these conditions before merge:
+
+### Historical Phase 1: live apply and dirty investigation
+
+The earlier `codex/optimize-live-dmx-render-apply-path` investigation used these merge conditions:
 
 - CI is green.
 - Godot is warning-clean.
@@ -293,17 +305,18 @@ The `codex/optimize-live-dmx-render-apply-path` performance work must reach thes
 - Whether 95 controls fanning out to 1,095 physical outputs is legitimate is established.
 - GDTF and MVR semantics remain intact.
 
-### Phase A2: sustained-playback stability baseline
+### Historical Phase A2: sustained-playback stability baseline
 
 Before implementing grouping, audit progressive growth, retire stale lifecycle
 state, and compare bounded interval latency with CPU/GPU render times on the
 canonical machine. The [Phase A2 audit](phase-a2-stability-audit.md) records the
 bounded structures, concrete diagnostic/lifecycle fixes and deterministic soak
 regressions. The [latency diagnostics](live-render-latency-diagnostics.md) define
-the trace and exact production/diagnostic A/B commands. Fixed-scene Windows
-slowdown is not yet attributed to a proven cause.
+the trace and exact production/diagnostic A/B commands. That investigation did not attribute the slowdown to a proven cause. The later
+dense foundation eliminates the progressive collapse in the current owner-run
+baseline; it does not solve renderer scalability.
 
-### Phase 2: native mode-aware RenderEmitterGrouping
+### Deferred historical Phase 2 proposal: RenderEmitterGrouping
 
 If the high fan-out is legitimate:
 
@@ -315,7 +328,7 @@ If the high fan-out is legitimate:
 - do not hard-code fixture names; and
 - repeat the canonical Quantum Wash benchmark immediately.
 
-### Phase 3: batch remaining instances
+### Deferred historical Phase 3 proposal: batch instances
 
 For `INSTANCED` groups and truly independent outputs:
 
@@ -325,11 +338,11 @@ For `INSTANCED` groups and truly independent outputs:
 - batch open beams aggressively; and
 - group gobo beams by a compatible texture and resource strategy.
 
-### Phase 4: true Shader Beam Proxy
+### Deferred historical Phase 4 proposal: Shader Beam Proxy
 
 Replace the slice or disk proxy with the intended Unreal-style volume integration.
 
-### Phase 5: LOD and final quality
+### Deferred historical Phase 5 proposal: LOD and quality
 
 - screen-size and distance LOD;
 - a cheap open-beam shell at distance;
@@ -366,7 +379,7 @@ A reasonable merge checkpoint does not require solving every renderer issue. The
 5. Prefer Control Group to Render Group over instantaneous-value grouping.
 6. Require spatial and optical compatibility before reducing several emitters to one optical source.
 7. Keep physical lens appearance independent from expensive shaft count.
-8. Apply grouping before MultiMesh.
+8. Prove batching with about 1,000 genuinely independent outputs before using grouping as an additional optimization.
 9. Prefer MultiMesh or RenderingServer for remaining high-count instances.
 10. Keep high-volume computation in C++ and presentation in Godot.
 11. Keep Vector Prism as the reference until a replacement proves better.

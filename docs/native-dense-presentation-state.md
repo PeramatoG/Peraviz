@@ -1,10 +1,11 @@
 # Native dense presentation state (milestone 1)
 
-**Runtime acceptance takes priority:** the latest Windows run at `832882d` is
-invalid for performance because required scripts did not compile. See
-[runtime recovery and clean-cache validation](native-dense-runtime-recovery.md).
-The next canonical run must validate `full` visually before performance work
-resumes; the earlier performance commands below remain a deferred plan.
+**Milestone 1 / performance foundation is stable.** The current roadmap, owner-reported
+24–25 FPS reference and deferred scalability work are consolidated in
+[performance foundation](performance-foundation.md). The native ownership details
+below remain current; regression measurements and acceptance plans are historical.
+Earlier mode runs were all full because user arguments were not consumed. They
+do not establish a no-beams/transforms-only A/B. Batching/grouping remain open.
 
 The main-thread presentation service in `native/src/presentation/` stores one
 independent state per canonical physical renderer output. This is internal
@@ -209,7 +210,7 @@ suppressed motion leaves transform/uniform state untouched and resumes at the
 current phase. Headless notification and instrumented-setter tests cannot query
 actual GPU culling state or establish visual/performance equivalence on Windows.
 
-## Exact canonical Windows A/B
+## Historical canonical Windows A/B plan
 
 Use the same `testSENTIDOS(2).pvz` MVR/reference scene, grandMA3 chase, camera,
 window/resolution, Forward+, RTX 3070, Vector Gobo Prism, visual settings,
@@ -250,37 +251,34 @@ settle and independently controlled outputs remain independent.
 
 | Metric | Supplied baseline observation | Candidate measurement |
 | --- | --- | --- |
-| FPS, no-beams | about 12 | Hardware run pending |
-| apply CPU, no-beams | about 75–90 ms | Hardware run pending |
-| emitter commit time, no-beams | 400,000+ us/second | Hardware run pending |
-| outputs/snapshot | about 1,000–1,095 | Hardware run pending |
-| FPS / pump Hz, transforms-only | 58–66 / about 60–65 | Hardware run pending |
-| process_ms; pump_hz, no-beams/full; coalesced states | Record from matched baseline logs | Hardware run pending |
-| native compose; payload conversion; adapter; mutation | Dense-stage fields unavailable on baseline | Hardware run pending |
-| RX-to-apply p50/p95/max; GPU/viewport CPU; render setup | Record from matched baseline logs | Hardware run pending |
+| FPS, no-beams | about 12 | Not established in that investigation |
+| apply CPU, no-beams | about 75–90 ms | Not established in that investigation |
+| emitter commit time, no-beams | 400,000+ us/second | Not established in that investigation |
+| outputs/snapshot | about 1,000–1,095 | Not established in that investigation |
+| FPS / pump Hz, transforms-only | 58–66 / about 60–65 | Not established in that investigation |
+| process_ms; pump_hz, no-beams/full; coalesced states | Record from matched baseline logs | Not established in that investigation |
+| native compose; payload conversion; adapter; mutation | Dense-stage fields unavailable on baseline | Not established in that investigation |
+| RX-to-apply p50/p95/max; GPU/viewport CPU; render setup | Record from matched baseline logs | Not established in that investigation |
 
-This environment can run native/headless correctness tests but cannot reproduce
-the canonical Windows GPU/Art-Net workload. No before/after FPS or millisecond
-improvement is claimed. The corrective candidate has no canonical hardware measurements yet. Keep PR #100
-as draft until the following rerun succeeds. It is unacceptable if no-beams
-remains materially worse than baseline main; seek a material improvement and
-record the actual numbers. If setup CPU remains high with near-zero explicit
-mutation counts, trace remaining Godot operations before attributing a cause.
-If native composition is small but the compatibility adapter dominates, record
-that result explicitly with these fields. It supports the next planned milestone:
-batched aperture presentation with approximately 1,000 independently controlled
-color/intensity outputs. Beam batching, new renderers and grouping remain separate
-work. Rendering scalability is not established by this milestone.
+This archived plan predates foundation closure. PR #100 has merged; the current
+owner-reported full result is stable at 24–25 FPS. The corrected application
+argument boundary still needs new mode-specific hardware measurements. Use the
+[current acceptance sequence](performance-foundation.md#exact-windows-acceptance-commands)
+and its explicit startup diagnostics rather than treating historical rows as a
+valid A/B. Native/headless results do not establish Windows GPU performance.
+Batched apertures with about 1,000 independent outputs remain the next deferred
+scalability milestone; beam batching and grouping are later work.
 
-### Deferred performance acceptance commands
+### Deferred performance acceptance commands (corrected argument syntax)
 
-Run each mode with the same reference scene and chase, prioritizing no-beams:
+Historical command set, with syntax corrected. The current acceptance order is
+maintained in performance-foundation.md:
 
 ```powershell
 $godot = "C:\Users\Peramato\Desktop\Programas\Godot_v4.7.1-stable_win64.exe\Godot_v4.7.1-stable_win64.exe"
-& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=no-beams
-& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=transforms-only
-& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=full
+& $godot --path C:\codigoscpp\peraviz --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=no-beams
+& $godot --path C:\codigoscpp\peraviz --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=transforms-only
+& $godot --path C:\codigoscpp\peraviz --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=full
 ```
 
 Record FPS, process/setup CPU, GPU, pump rate, native composition, actual mutation

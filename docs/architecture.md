@@ -37,6 +37,11 @@ Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, an
 
 ## Native dense presentation state
 
+The [performance foundation is stable](performance-foundation.md); renderer
+scalability remains open. The current canonical full result is about 24–25 FPS,
+not the final target. User arguments after Godot's `--` select diagnostic policy;
+actual mode/resource integration tests guard that boundary.
+
 After sectioned semantic evaluation, `PeravizPresentationState` composes Intensity,
 Color and BeamOptics through setup-only integer routes into a contiguous native
 state per physical output. Scene binding assigns stable dense indices while

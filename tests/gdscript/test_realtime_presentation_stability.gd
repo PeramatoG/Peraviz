@@ -50,6 +50,8 @@ func _run() -> void:
 		binding_owner._register_native_runtime_targets([])
 		for count in _sizes(service).values():
 			test.check(int(count) == 0, "New native bindings must retire old presentation identities")
+		# This phase deliberately tests explicit unbound compatibility calls.
+		service.reset_scene_state()
 		var loader = LoaderScript.new()
 		loader.output_count = 51
 		get_root().add_child(loader)
@@ -79,7 +81,7 @@ func _run() -> void:
 			if frame_index % 64 == 0:
 				var sample: Dictionary = trace.collect(diagnostic_owner, native_runtime)
 				test.check(float(sample["viewport_cpu_ms"]) >= 0.0 and float(sample["viewport_gpu_ms"]) >= 0.0, "Headless renderer timings may be zero")
-				test.check((sample["sizes"] as Dictionary).get("apply_snapshot_output_commits", -1) == 0, "Report must observe drained commits")
+				test.check((sample["legacy_compatibility"]["sizes"] as Dictionary).get("apply_snapshot_output_commits", -1) == 0, "Report must observe drained commits")
 		var params: Dictionary = loader.anchors[0].get_meta("peraviz_beam_last_params", {})
 		test.check(params.get("beam_color", Color.BLACK) == Color(float((511 % 251) + 1) / 255.0, 1.0 - float((511 % 251) + 1) / 255.0, 0.4), "Latest held color must survive fan-out")
 		for anchor in loader.anchors:

@@ -107,6 +107,10 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	# Weak ownership avoids a service -> adapter -> service reference cycle.
 	_service = weakref(service)
 	_renderer = loader.get("_active_beam_renderer") as BeamRendererBase
+	# Renderer counters may outlive a scene. Start this generation at its own boundary.
+	_renderer_visibility_seen = _renderer.renderer_visibility_writes if _renderer != null else 0
+	_renderer_shader_seen = _renderer.renderer_shader_parameter_writes if _renderer != null else 0
+	_renderer_debug_seen = _renderer.renderer_debug_visibility_writes if _renderer != null else 0
 	_native = ClassDB.instantiate("PeravizPresentationState")
 	var bindings: Dictionary = registry.get_dense_presentation_bindings()
 	for record in bindings["outputs"]:
@@ -246,14 +250,14 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 				handle.suppressed = true
 				if handle.has_gobo and handle.refresh_gobo.is_valid():
 					handle.refresh_gobo.call()
-					_record_mutation(&"projector_refresh_calls")
+					_record_event(&"projector_refresh_calls")
 			_apply_spot(handle, realtime, presentation)
 			continue
 		var resuming: bool = handle.suppressed
 		handle.suppressed = false
 		if handle.has_gobo and (was_active != handle.visible or resuming) and handle.refresh_gobo.is_valid():
 			handle.refresh_gobo.call()
-			_record_mutation(&"projector_refresh_calls")
+			_record_event(&"projector_refresh_calls")
 		_apply_spot(handle, realtime, presentation)
 		if resuming: _set_structural_visibility(handle, true)
 		handle.params["normalized_dimmer"] = clampf(v[b], 0.0, 1.0)
@@ -271,14 +275,14 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 			_renderer.apply_beam_optics(handle.light, handle.params)
 			_bind_beam_resource(handle, _renderer.get_beam_resource(handle.light))
 			if is_instance_valid(handle.beam) and handle.beam.mesh != previous_mesh: _record_mutation(&"beam_topology_rebuilt")
-			_record_mutation(&"optics_apply_calls")
+			_record_event(&"optics_apply_calls")
 		var result: int = _renderer.update_bound_intensity(handle.light, handle.beam, handle.params, handle.bound_state)
 		if result == BeamRendererBase.INTENSITY_UNRESOLVED and not handle.initialization_failed:
-			_record_mutation(&"beam_initializations")
+			_record_event(&"beam_initializations")
 			_renderer.update_beam(handle.light, handle.params)
 			_bind_beam_resource(handle, _renderer.get_beam_resource(handle.light))
 			var ready: bool = is_instance_valid(handle.beam) and _renderer.is_beam_dynamic_ready(handle.light)
-			_record_mutation(&"beam_initialization_succeeded" if ready else &"beam_initialization_failed")
+			_record_event(&"beam_initialization_succeeded" if ready else &"beam_initialization_failed")
 			handle.initialization_failed = not ready
 			if not ready and not _warned_beam_initialization:
 				_warned_beam_initialization = true
@@ -287,7 +291,10 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 		if _trace:
 			var counters: Dictionary = _service.get_ref()._visual_apply_counters
 			counters["beams_considered"] += 1
-			counters["beam_dynamic_changed" if result == BeamRendererBase.INTENSITY_CHANGED else "beam_dynamic_unchanged"] += 1
+			match result:
+				BeamRendererBase.INTENSITY_CHANGED: counters["beam_dynamic_changed"] += 1
+				BeamRendererBase.INTENSITY_UNCHANGED: counters["beam_dynamic_unchanged"] += 1
+				BeamRendererBase.INTENSITY_UNRESOLVED: counters["beam_dynamic_unresolved"] += 1
 
 # During full playback the Node supports beam children; only the RID follows DMX.
 func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
@@ -333,6 +340,12 @@ func _set_structural_visibility(handle: LightHandle, visible: bool) -> void:
 
 func _suppress_presentation_handles() -> void:
 	for output in _outputs:
+		if _mode == "transforms-only":
+			for material in output.materials:
+				if material.energy != 0.0:
+					RenderingServer.material_set_param(material.rid, "emission_energy_multiplier", 0.0)
+					material.energy = 0.0
+					_record_mutation(&"material_parameter_writes")
 		for handle in output.lights:
 			handle.realtime_requested = false
 			_set_spot_rid(handle, false)
@@ -342,7 +355,7 @@ func _suppress_presentation_handles() -> void:
 			handle.suppressed = true
 			if handle.has_gobo and handle.refresh_gobo.is_valid():
 				handle.refresh_gobo.call()
-				_record_mutation(&"projector_refresh_calls")
+				_record_event(&"projector_refresh_calls")
 
 func _hide_bound_node(node: Node3D, counter: StringName) -> void:
 	if is_instance_valid(node) and node.visible:
@@ -352,7 +365,7 @@ func _hide_bound_node(node: Node3D, counter: StringName) -> void:
 func _bind_beam_resource(handle: LightHandle, beam: MeshInstance3D) -> void:
 	if handle.beam != beam:
 		handle.initialization_failed = false
-		_record_mutation(&"beam_resource_rebounds")
+		_record_event(&"beam_resource_rebounds")
 	handle.beam = beam
 	if is_instance_valid(beam): handle.bound_state = BoundBeamStateScript.resolve(beam)
 
@@ -364,6 +377,10 @@ func _capture_renderer_mutations() -> void:
 	_renderer_visibility_seen = _renderer.renderer_visibility_writes
 	_renderer_shader_seen = _renderer.renderer_shader_parameter_writes
 	_renderer_debug_seen = _renderer.renderer_debug_visibility_writes
+
+# Boundary/cache events are diagnostics, not renderer-visible mutations.
+func _record_event(counter: StringName) -> void:
+	if _trace: _totals[counter] = int(_totals.get(counter,0)) + 1
 
 func _record_mutation(counter: StringName, count: int = 1) -> void:
 	if count <= 0: return
@@ -424,6 +441,7 @@ func active_ids() -> Dictionary:
 func diagnostics() -> Dictionary:
 	_capture_renderer_mutations()
 	var result: Dictionary = _totals.duplicate()
+	result["render_diagnostic_mode"] = _mode
 	if _native != null: result.merge(_native.get_sizes())
 	return result
 
@@ -478,10 +496,3 @@ func refresh_renderer() -> void:
 	_native.invalidate_renderer()
 	compose(PackedInt32Array(), PackedInt32Array(), PackedFloat32Array(), _trace, _mode)
 	apply()
-
-# Cold renderer callbacks report RID visibility back to the pre-bound compatibility handle.
-func synchronize_visibility(light: SpotLight3D, visible: bool) -> void:
-	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
-	if handle != null:
-		handle.realtime_visible = visible
-		handle.realtime_visibility_known = true

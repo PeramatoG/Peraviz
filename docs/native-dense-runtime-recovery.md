@@ -1,5 +1,10 @@
 # Dense presentation runtime recovery after 832882d
 
+**Historical recovery record; correctness work described here is implemented.**
+The current owner-reported stable full run is 24–25 FPS; see
+[performance foundation](performance-foundation.md) for closure status, corrected
+application-argument contract and the remaining visual/scalability roadmap.
+
 The latest Windows logs at `832882d` are **INVALID performance measurements**:
 required beam/runtime scripts failed to compile. The missing `dense_presentation`
 block and 1,095-entry legacy state dictionaries show that the intended production
@@ -100,16 +105,19 @@ cannot retry initialization every snapshot. Unexpected diagnostics still fail.
 These intentional errors are isolated from the clean import/startup/lifecycle logs.
 
 Headless tests establish resource and mutation correctness, not GPU culling,
-rendered-pixel parity or Windows performance. The remaining visual acceptance is
-explicitly reserved for the canonical machine.
+rendered-pixel parity or Windows performance. Rendered-pixel acceptance remains
+a canonical-machine responsibility. The later stable full observation is recorded
+in the current foundation roadmap.
 
-## Next Windows review: full visual correctness first
+## Historical Windows recovery acceptance
 
-Keep PR #100 draft. Run:
+At the recovery stage PR #100 remained draft for this check; it has since merged.
+The current foundation status and acceptance commands are maintained in
+[performance foundation](performance-foundation.md). The corrected command is:
 
 ```powershell
 $godot = "C:\Users\Peramato\Desktop\Programas\Godot_v4.7.1-stable_win64.exe\Godot_v4.7.1-stable_win64.exe"
-& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=full
+& $godot --path C:\codigoscpp\peraviz --print-fps -- --peraviz-perf-trace --peraviz-render-diagnostic=full
 ```
 
 Require zero `SCRIPT ERROR`, normal scene load, an active dense block, visibly
