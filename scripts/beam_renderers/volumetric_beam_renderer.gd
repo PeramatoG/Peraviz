@@ -81,7 +81,9 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam_range: float = max(float(params.get("beam_range", 0.1)), 0.01)
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 
-	if intensity <= threshold:
+	# Keep cold dark emitters lazy; an already-initialized shaft must still
+	# consume optical changes while black so intensity-only reactivation is safe.
+	if intensity <= threshold and beam.mesh == null:
 		_set_bound_visibility(beam, false)
 		_store_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
 		beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
@@ -98,14 +100,17 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if bool(params.get("beam_debug_optics", false)):
 		print("[PeravizBeamOptics] mode=", _active_shape_provider.shape_mode(), " angle_deg=", beam_angle, " range_m=", beam_range, " radius_end_m=", gobo_projection_radius)
 
-	_set_bound_visibility(beam, true)
+	_set_bound_visibility(beam, intensity > threshold)
+	if intensity <= threshold: _sync_debug_axis(light, false)
 
 	_apply_intensity_max(beam, intensity_max)
+	_store_dynamic_state(beam, beam_color, intensity)
 	_apply_dynamic_state(beam, beam_color, intensity)
 	_apply_static_beam_params(beam, params)
 	_set_bound_shader_parameter(beam, "gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
 	_set_bound_shader_parameter(beam, "gobo_rotation_deg", beam_rotation_deg)
-	GoboRotationPresentationScript.reapply_after_base_alignment(beam, beam_rotation_deg)
+	if not beam.has_meta(&"peraviz_optical_projection_state"):
+		GoboRotationPresentationScript.reapply_after_base_alignment(beam, beam_rotation_deg)
 	_set_bound_shader_parameter(beam, "cone_height", max(beam_range, 0.001))
 	_set_bound_shader_parameter(beam, "gobo_projection_radius", gobo_projection_radius)
 	_apply_beam_material_params(beam, beam_range, shape_result)

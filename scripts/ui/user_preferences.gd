@@ -35,6 +35,7 @@ const DEFAULT_MVR_XCHANGE_GROUP: String = "Default"
 const DEFAULT_MVR_XCHANGE_BIND_IP: String = ""
 const DEFAULT_MVR_XCHANGE_AUTO_UPDATE: bool = false
 
+var show_fps: bool = true
 var sidebar_open: bool = DEFAULT_SIDEBAR_OPEN
 var advanced_mode: bool = DEFAULT_ADVANCED_MODE
 var last_settings_tab: int = DEFAULT_LAST_SETTINGS_TAB
@@ -53,6 +54,7 @@ func load_from_disk() -> void:
 		_apply_defaults()
 		return
 
+	show_fps = bool(config.get_value(SETTINGS_SECTION, "show_fps", true))
 	sidebar_open = bool(config.get_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, DEFAULT_SIDEBAR_OPEN))
 	advanced_mode = bool(config.get_value(SETTINGS_SECTION, KEY_ADVANCED_MODE, DEFAULT_ADVANCED_MODE))
 	last_settings_tab = max(0, int(config.get_value(SETTINGS_SECTION, KEY_LAST_SETTINGS_TAB, DEFAULT_LAST_SETTINGS_TAB)))
@@ -72,6 +74,7 @@ func load_from_disk() -> void:
 
 func save_to_disk() -> void:
 	var config := ConfigFile.new()
+	config.set_value(SETTINGS_SECTION, "show_fps", show_fps)
 	config.set_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, sidebar_open)
 	config.set_value(SETTINGS_SECTION, KEY_ADVANCED_MODE, advanced_mode)
 	config.set_value(SETTINGS_SECTION, KEY_LAST_SETTINGS_TAB, max(0, last_settings_tab))
@@ -97,6 +100,7 @@ func set_module_visible(module_name: StringName, visible: bool) -> void:
 	module_visibility[str(module_name)] = visible
 
 func _apply_defaults() -> void:
+	show_fps = true
 	sidebar_open = DEFAULT_SIDEBAR_OPEN
 	advanced_mode = DEFAULT_ADVANCED_MODE
 	last_settings_tab = DEFAULT_LAST_SETTINGS_TAB

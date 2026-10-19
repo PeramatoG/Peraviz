@@ -10,11 +10,17 @@ Changes since the previous Peraviz release.
 
 ## New features
 
+- Added a discreet viewer FPS overlay, enabled by default and sampled four times per second, with a persistent View → Show FPS preference.
+
 - Added continuous selected-gobo rotation for exact GDTF `Gobo(n)PosRotate` controls, preserving signed physical speed, indexed-angle handoff, and smooth renderer-local motion without rebuilding gobo resources.
 - Added live comparison of Vector Prism, one auto-sized Shared Haze volume, and Shared Haze with physical gobo shadows without changing resolved GDTF or DMX behavior.
 - Added an experimental shader beam proxy with shared low-poly topology, texture-driven gobos, bounded adaptive slice tiers, and screen-depth clipping.
 
 ## Improvements
+
+- Corrected the Vector Gobo Prism artwork X conversion to match the surface projector without mirroring the gobo, while retaining shared optical state and synchronized Zoom/rotation.
+
+- Unified Vector Gobo Prism and surface-projector optical geometry in a shared presentation state. Repeated Zoom and gobo motion now derive absolute bases without cumulative compensation drift; hidden Zoom changes remain synchronized through blackout and held-state restoration.
 
 - Consolidated the stable performance foundation and its current 24–25 FPS reference, while keeping batching, instancing, grouping and further scalability work explicitly deferred. Recorded Vector Gobo Prism visual follow-ups without implementing them.
 

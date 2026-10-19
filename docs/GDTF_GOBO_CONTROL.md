@@ -24,7 +24,7 @@ Selection and rotation dirty state are owned by Beam render target plus one-base
 
 The indexed angle is retained per Beam target and one-based wheel instance across open-slot and selection changes. Exactly one visible seated layer can move. When multiple visible layers form a static composition, Peraviz retains each requested angle but leaves the cached composition unrotated and records the deferred moving-composition condition.
 
-Volumetric shader-mask presentation combines renderer alignment with Pos in its per-instance transverse-UV rotation. Reusable vector-prism presentation spins around the topology's raw mesh-local Y longitudinal axis, which the renderer maps onto the light-local optical axis. Both paths reapply retained Pos after optics or shape refresh without rotating the `SpotLight3D`, Pan/Tilt geometry, or replacing the mesh resource.
+Volumetric shader-mask presentation combines renderer alignment with Pos in its per-instance transverse-UV rotation. Reusable vector-prism presentation spins around the topology's raw mesh-local Y longitudinal axis, which the renderer maps onto the light-local optical axis. Vector Prism and the surface projector consume one [Optical Projection State](optical-projection-state.md). The projector derives an absolute local roll from the immutable base optical basis; the prism converts its resolved artwork basis into that parent frame without incremental compensation. Optics refresh retains native phase and topology identity. Pan/Tilt geometry remains untouched. The compatibility shader path retains its UV rotation conversion.
 
 ## Unsupported motion
 

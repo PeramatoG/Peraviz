@@ -137,6 +137,29 @@ func _run() -> void:
 	var vector_beam: MeshInstance3D = vector_loader.renderer.get_beam_resource(vector_loader.anchors[0])
 	var dynamic: Color = vector_beam.get_instance_shader_parameter("beam_dynamic_state")
 	test.check(vector_beam.visible and is_equal_approx(dynamic.a,10.0) and is_equal_approx(dynamic.r,1.0), "Vector Gobo Prism retains independent render-ready color/intensity")
+	# Optical state is shared through actual packed dense Zoom/mode replay.
+	var projection = vector_loader.anchors[0].get_meta(&"peraviz_optical_projection_state")
+	var vector_mesh: Mesh = vector_beam.mesh
+	for zoom in [8.0, 55.0, 20.0]:
+		var before_revision: int = projection.revision
+		frame["floats"][9] = zoom * 0.5
+		frame["floats"][10] = zoom
+		applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})
+		test.check(projection.revision == before_revision + 1, "Dense Zoom resolves one shared revision")
+		test.check(projection.shaft_revision == projection.revision and projection.footprint_revision == projection.revision, "Packed dense Zoom synchronizes both consumers")
+		test.check(is_equal_approx(vector_loader.anchors[0].spot_angle, zoom * 0.5) and vector_beam.mesh == vector_mesh, "Dense Zoom shares aperture without replacing topology")
+	var optical_revision: int = projection.revision
+	frame["floats"][5] = 0.37
+	applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})
+	test.check(projection.revision == optical_revision, "Dense color-only update leaves optical revision unchanged")
+	vector_service.set_render_diagnostic_mode("no-beams")
+	frame["floats"][9] = 17.0
+	frame["floats"][10] = 34.0
+	applier.set_render_diagnostic_mode("no-beams")
+	applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})
+	test.check(not vector_beam.visible, "Suppressed optical updates retain hidden shaft")
+	vector_service.set_render_diagnostic_mode("full")
+	test.check(vector_beam.visible and projection.shaft_revision == projection.revision and projection.footprint_revision == projection.revision and is_equal_approx(vector_loader.anchors[0].spot_angle, 17.0), "Full resumes latest shared Zoom without a fresh DMX packet")
 	vector_service.reset_scene_state()
 	for anchor in vector_loader.anchors: vector_loader.renderer.cleanup_beam(anchor)
 	vector_loader.free()
