@@ -40,6 +40,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Corrected conflicting SpotLight Node/RID visibility and missing bound-prism unchanged guards in the native dense presentation bridge. Diagnostic no-beams now suppresses light/beam/gobo renderer work after one cleanup while preserving held state and emissive apertures. Added actual mutation counters and a 1,095-output regression; canonical Windows performance validation remains pending.
+
 - Kept Shader Beam Proxy resources under their active renderer's ownership so ordinary DMX updates no longer hide and immediately reshow them, and made Quick Preset retain its selected value with a clear Custom state after manual edits.
 - Enabled directional shadow split blending for smoother cascaded directional-shadow transitions. This isolated option has a moderate cost and does not change spotlight projectors, volumetric fog, or beam rendering.
 - Restored crisp surface gobo projection on Godot 4.7 by managing the projector's required shadow state, and prevented Visual Settings refreshes from replacing held beam intensity with zero when optional metadata is absent.

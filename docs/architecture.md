@@ -50,6 +50,15 @@ for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
 ## Renderer ownership
 
+Dense playback assigns SpotLight RID visibility to the adapter, including gobo
+callbacks. Its structural Node stays visible during full playback and changes
+only at binding/diagnostic boundaries; suppressed modes hide it once to stop
+hidden transform forwarding. Node visibility/tree notifications repair Godot's
+own RID write. Beam/debug Nodes and aperture values have effective-value guards.
+No-beams retains native lighting and gobo control state while suppressing beam,
+light and local gobo renderer work after one cleanup; full resumes held state.
+Typed bound prism signatures are renderer caches, not composition authorities.
+
 Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.
 
 Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Indexed selected-gobo angles and continuous selected-gobo AngularSpeed use protocol 2.3 `GoboRotation` motion-state rows transported through compiled setup contract 7. C++ owns authoritative phase, signed velocity, ModeMaster arbitration, and dirty transitions; Godot advances active layers locally and mutates presentation parameters without topology regeneration. Gobo selection and rotation ownership is keyed by Beam render target plus one-based wheel instance; binding IDs remain diagnostic identities and never arbitrate Pos against PosRotate. Logical gobo control and temporal state outlive renderer target generations; target rebuilds explicitly rehydrate current resources and phase, while true runtime rebuilds seed the new native generation once from the latest held snapshots for used universes. Godot may compose and cache a bounded static multi-wheel mask, but independently moving compositions remain deferred. See [Gobo control](GDTF_GOBO_CONTROL.md).

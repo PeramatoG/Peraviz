@@ -55,6 +55,14 @@ func _test_rotation_lifecycle(failures: PackedStringArray) -> void:
 	var mesh_before: Mesh = beam.mesh
 	registry.advance_motion_at_usec(3000000, targets)
 	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam), 105.0), "Continuous presentation should use its local monotonic reference.", failures)
+	registry.set_presentation_enabled(false, targets, 3000000)
+	var suppressed_transform: Transform3D = beam.transform
+	var suppressed_uniform: Variant = beam.get_instance_shader_parameter("gobo_rotation_deg")
+	registry.advance_motion_at_usec(4000000, targets)
+	_check(beam.transform == suppressed_transform and beam.get_instance_shader_parameter("gobo_rotation_deg") == suppressed_uniform, "Suppressed gobo motion never mutates beam transforms or uniforms.", failures)
+	_check(is_equal_approx(registry.current_phase_degrees(77,1,4000000),135.0), "Suppressing presentation preserves the monotonic logical phase.", failures)
+	registry.set_presentation_enabled(true, targets, 4000000)
+	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam),135.0), "Resuming presentation restores current phase without new DMX.", failures)
 	registry.clear_renderer_targets()
 	registry.rehydrate_renderer_state(targets, 4000000)
 	_check(beam.mesh == mesh_before, "Renderer rehydration must reuse the selected gobo mesh.", failures)

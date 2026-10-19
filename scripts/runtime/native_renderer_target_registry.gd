@@ -876,3 +876,7 @@ func get_dense_presentation_bindings() -> Dictionary:
 				if indices.has(canonical_id):
 					routes.append_array(PackedInt32Array([section, int(target_id), int(indices[canonical_id])]))
 	return {"ids": ids, "scales": scales, "routes": routes, "outputs": outputs}
+
+# Presentation policy never resets selected gobo assets or their monotonic motion clocks.
+func set_presentation_enabled(enabled: bool) -> void:
+	_gobo_resources.set_presentation_enabled(enabled, _beam_output_records_by_id)

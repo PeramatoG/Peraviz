@@ -105,9 +105,11 @@ func reset_scene_state() -> void:
 
 func set_render_diagnostic_mode(mode: String) -> void:
 	_render_diagnostic_mode = mode
+	if _dense_adapter != null: _dense_adapter.set_mode(mode)
 
 func set_performance_trace_enabled(enabled: bool) -> void:
 	_performance_trace_enabled = enabled
+	if _dense_adapter != null: _dense_adapter._trace = enabled
 	if enabled:
 		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
 
@@ -663,6 +665,9 @@ func _update_desired_light_state(light: SpotLight3D, energy: float, angle: float
 	light.set_meta("peraviz_physical_output_visible", visible)
 
 func _apply_desired_light_state(loader: Node, light: SpotLight3D) -> int:
+	if _dense_adapter != null:
+		var dense_writes: int = _dense_adapter.apply_light_state(light)
+		if dense_writes >= 0: return dense_writes
 	var state: Dictionary = _light_desired_for(light)
 	var requested_visible: bool = bool(state.get("visible", false))
 	var enabled: bool = (_should_enable_realtime_spotlight(loader, requested_visible) or _requires_realtime_spotlight(loader, light, requested_visible)) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
@@ -1050,6 +1055,9 @@ func _apply_visual_frame_beam_topology(loader: Node, light: SpotLight3D, visible
 
 # Keeps the light node available as a beam parent while independently gating the real SpotLight RID.
 func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible: bool, real_spot_visible: bool) -> int:
+	if _dense_adapter != null:
+		var dense_writes: int = _dense_adapter.apply_light_state(light)
+		if dense_writes >= 0: return dense_writes
 	if light == null or not is_instance_valid(light):
 		return 0
 	var physical_output_visible: bool = bool(_light_desired_for(light).get("visible", false))

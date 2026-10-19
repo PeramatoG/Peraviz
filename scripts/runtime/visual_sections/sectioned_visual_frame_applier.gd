@@ -43,8 +43,8 @@ func install_schema(schema: Dictionary) -> void:
 			}
 
 func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, scene_fixture_uuids: Dictionary = {}) -> Dictionary:
-	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
 	light_apply_service.set_performance_trace_enabled(_performance_trace_enabled)
+	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
 	var descriptors: PackedInt32Array = snapshot.get("descriptors", PackedInt32Array())
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
@@ -84,7 +84,7 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 			if _performance_trace_enabled:
 				skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1
 				_record_section_row(section_type, skip_diagnostics)
-			if not RenderDiagnosticPolicyScript.applies_section(_render_diagnostic_mode, section_type):
+			if not RenderDiagnosticPolicyScript.applies_section(_render_diagnostic_mode, section_type) and not (dense and _render_diagnostic_mode == "no-beams" and section_type in [SECTION_GOBO_SELECTION, SECTION_GOBO_ROTATION]):
 				if _performance_trace_enabled:
 					skip_diagnostics["rows_diagnostic_suppressed"] = int(skip_diagnostics.get("rows_diagnostic_suppressed", 0)) + 1
 				continue

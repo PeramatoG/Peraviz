@@ -18,7 +18,14 @@ var _renderer_generation: int = 0
 var _mesh_builder: RefCounted = GoboPrismMeshBuilderScript.new()
 var _vectorizer: Object = null
 var _counters: Dictionary = {}
+var _presentation_enabled: bool = true
 var _presentation_callback: Callable
+
+# Retain logical selection/clock state while diagnostic modes suppress renderer work.
+func set_presentation_enabled(enabled: bool, target_records: Dictionary, now_usec: int = -1) -> void:
+	if enabled == _presentation_enabled: return
+	_presentation_enabled = enabled
+	if enabled: rehydrate_renderer_state(target_records, now_usec)
 
 func set_presentation_callback(callback: Callable) -> void:
 	_presentation_callback = callback
@@ -155,6 +162,7 @@ func advance_motion(_delta_seconds: float, target_records: Dictionary) -> void:
 	advance_motion_at_usec(Time.get_ticks_usec(), target_records)
 
 func advance_motion_at_usec(now_usec: int, target_records: Dictionary) -> void:
+	if not _presentation_enabled: return
 	for key in _active_continuous_layers:
 		var motion: Dictionary = _rotation_states.get(key, {})
 		var target_record: Dictionary = target_records.get(int(motion.get("beam_target_id", 0)), {})
@@ -169,6 +177,7 @@ func current_phase_degrees(beam_target_id: int, wheel_instance_index: int, now_u
 	return float(motion.get("phase_at_local_reference", 0.0)) + float(motion.get("angular_velocity_dps", 0.0)) * elapsed
 
 func _present_layer_motion(key: String, target_record: Dictionary, now_usec: int) -> Dictionary:
+	if not _presentation_enabled: return {"applied": true, "presentation_suppressed": true, "topology_updates": 0}
 	var motion: Dictionary = _rotation_states.get(key, {})
 	var beam_target_id: int = int(motion.get("beam_target_id", 0))
 	var wheel_instance_index: int = int(motion.get("wheel_instance_index", 0))
@@ -293,14 +302,16 @@ func _apply_resource_to_target(target_record: Dictionary, resource: Dictionary) 
 				light.set_meta("peraviz_gobo_texture", texture)
 			else:
 				light.remove_meta("peraviz_gobo_texture")
-			if _presentation_callback.is_valid():
+			if _presentation_enabled and _presentation_callback.is_valid():
 				_presentation_callback.call(light, texture, NAN)
+	if not _presentation_enabled: return
 	for beam_item in target_record.get("beam_instances", []):
 		var beam: MeshInstance3D = beam_item as MeshInstance3D
 		if beam != null and not bool(beam.get_meta("peraviz_shader_beam_proxy_instance", false)):
 			beam.mesh = mesh
 
 func _apply_rotation_to_target(target_record: Dictionary, physical_angle_degrees: float) -> void:
+	if not _presentation_enabled: return
 	var backend: String = _presentation_backend(target_record)
 	for beam_item in target_record.get("beam_instances", []):
 		var beam: MeshInstance3D = beam_item as MeshInstance3D

@@ -53,7 +53,7 @@ func ensure_beam(light: SpotLight3D) -> void:
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	beam.material_override = _beam_material_template.duplicate(true)
 	beam.rotation_degrees.x = 90.0
-	beam.visible = false
+	_set_bound_visibility(beam, false)
 	light.add_child(beam)
 	light.set_meta(BEAM_META_KEY, beam)
 	_apply_static_beam_params(beam, {})
@@ -66,9 +66,10 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 	if beam == null:
 		return
+	BoundBeamState.invalidate_resource(beam)
 	var beam_type: String = str(params.get("beam_type", "Wash")).to_lower()
 	if beam_type == "none" or beam_type == "glow":
-		beam.visible = false
+		_set_bound_visibility(beam, false)
 		_sync_debug_axis(light, false)
 		return
 
@@ -79,7 +80,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam_angle: float = max(float(params.get("beam_angle", 1.0)), 0.1)
 
 	if intensity <= threshold:
-		beam.visible = false
+		_set_bound_visibility(beam, false)
 		_store_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
 		beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
 		_sync_debug_axis(light, false)
@@ -95,16 +96,16 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if bool(params.get("beam_debug_optics", false)):
 		print("[PeravizBeamOptics] mode=", _active_shape_provider.shape_mode(), " angle_deg=", beam_angle, " range_m=", beam_range, " radius_end_m=", gobo_projection_radius)
 
-	beam.visible = true
+	_set_bound_visibility(beam, true)
 
 	_apply_intensity_max(beam, intensity_max)
 	_apply_dynamic_state(beam, beam_color, intensity)
 	_apply_static_beam_params(beam, params)
-	beam.set_instance_shader_parameter("gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
-	beam.set_instance_shader_parameter("gobo_rotation_deg", beam_rotation_deg)
+	_set_bound_shader_parameter(beam, "gobo_scale", max(float(params.get("gobo_scale", 1.0)), 0.05))
+	_set_bound_shader_parameter(beam, "gobo_rotation_deg", beam_rotation_deg)
 	GoboRotationPresentationScript.reapply_after_base_alignment(beam, beam_rotation_deg)
-	beam.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
-	beam.set_instance_shader_parameter("gobo_projection_radius", gobo_projection_radius)
+	_set_bound_shader_parameter(beam, "cone_height", max(beam_range, 0.001))
+	_set_bound_shader_parameter(beam, "gobo_projection_radius", gobo_projection_radius)
 	_apply_beam_material_params(beam, beam_range, shape_result)
 
 func _compute_beam_settings_hash() -> int:
@@ -123,10 +124,10 @@ func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void
 	if int(beam.get_meta("peraviz_static_beam_hash", 0)) == static_hash:
 		return
 	beam.set_meta("peraviz_static_beam_hash", static_hash)
-	beam.set_instance_shader_parameter("haze_density", max(haze_density, 0.2))
-	beam.set_instance_shader_parameter("radial_falloff", max(float(params.get("beam_radial_falloff", 1.1)), 0.05))
-	beam.set_instance_shader_parameter("longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05))
-	beam.set_instance_shader_parameter("beam_softness", clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0))
+	_set_bound_shader_parameter(beam, "haze_density", max(haze_density, 0.2))
+	_set_bound_shader_parameter(beam, "radial_falloff", max(float(params.get("beam_radial_falloff", 1.1)), 0.05))
+	_set_bound_shader_parameter(beam, "longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05))
+	_set_bound_shader_parameter(beam, "beam_softness", clamp(float(params.get("beam_softness", 0.35)), 0.02, 1.0))
 
 func _apply_beam_material_params(beam: MeshInstance3D, beam_range: float, shape_result: Dictionary) -> void:
 	var far_fade_end: float = max(400.0, beam_range * 12.0)
@@ -157,13 +158,15 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 	if beam == null or not is_instance_valid(beam):
 		return INTENSITY_UNRESOLVED
+	if beam.has_meta(BoundBeamState.META_KEY):
+		return update_bound_intensity(light, beam, params, BoundBeamState.resolve(beam))
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
 	var beam_type: String = str(params.get("beam_type", "Wash")).to_lower()
 	if beam_type == "none" or beam_type == "glow":
-		beam.visible = false
+		_set_bound_visibility(beam, false)
 		_sync_debug_axis(light, false)
 		return INTENSITY_UNCHANGED
 	if intensity > threshold and not is_beam_dynamic_ready(light):
@@ -177,12 +180,12 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	_store_dynamic_state(beam, beam_color, intensity)
 	beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
 	if intensity <= threshold:
-		beam.visible = false
+		_set_bound_visibility(beam, false)
 		_sync_debug_axis(light, false)
 		return INTENSITY_CHANGED
 
 	_apply_intensity_max(beam, intensity_max)
-	beam.visible = true
+	_set_bound_visibility(beam, true)
 	_apply_dynamic_state(beam, beam_color, intensity)
 	return INTENSITY_CHANGED
 
@@ -191,17 +194,25 @@ func _store_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) 
 
 func _apply_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) -> void:
 	var dynamic_state := Color(color.r, color.g, color.b, intensity)
-	if beam.get_meta(DYNAMIC_STATE_APPLIED_META_KEY, Color(-1.0, -1.0, -1.0, -1.0)) == dynamic_state:
-		return
-	beam.set_meta(DYNAMIC_STATE_APPLIED_META_KEY, dynamic_state)
-	beam.set_instance_shader_parameter("beam_dynamic_state", dynamic_state)
+	if beam.has_meta(BoundBeamState.META_KEY):
+		var bound := BoundBeamState.resolve(beam)
+		if bound.applied_dynamic == dynamic_state: return
+		bound.applied_dynamic = dynamic_state
+	else:
+		if beam.get_meta(DYNAMIC_STATE_APPLIED_META_KEY, Color(-1.0, -1.0, -1.0, -1.0)) == dynamic_state: return
+		beam.set_meta(DYNAMIC_STATE_APPLIED_META_KEY, dynamic_state)
+	_set_bound_shader_parameter(beam, "beam_dynamic_state", dynamic_state)
 	_last_parameter_write_count += 1
 
 func _apply_intensity_max(beam: MeshInstance3D, intensity_max: float) -> void:
-	if is_equal_approx(float(beam.get_meta(INTENSITY_MAX_META_KEY, -1.0)), intensity_max):
-		return
-	beam.set_meta(INTENSITY_MAX_META_KEY, intensity_max)
-	beam.set_instance_shader_parameter("intensity_max", intensity_max)
+	if beam.has_meta(BoundBeamState.META_KEY):
+		var bound := BoundBeamState.resolve(beam)
+		if is_equal_approx(bound.applied_max, intensity_max): return
+		bound.applied_max = intensity_max
+	else:
+		if is_equal_approx(float(beam.get_meta(INTENSITY_MAX_META_KEY, -1.0)), intensity_max): return
+		beam.set_meta(INTENSITY_MAX_META_KEY, intensity_max)
+	_set_bound_shader_parameter(beam, "intensity_max", intensity_max)
 	_last_parameter_write_count += 1
 
 func get_last_parameter_write_count() -> int:
@@ -239,11 +250,13 @@ func cleanup_beam(light: SpotLight3D) -> void:
 	_cleanup_debug_axis(light)
 
 func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> Dictionary:
+	var visibility_before: int = _proxy_controller.renderer_visibility_writes
+	var shader_before: int = _proxy_controller.renderer_shader_parameter_writes
 	var result := {"changed": false, "resource_created": false, "visibility_changed": false, "parameter_write_count": 0}
 	var existing: MeshInstance3D = get_beam_resource(light)
 	# Only hide the vector resource when an experimental renderer owns the current update.
 	if _presentation_mode != PRESENTATION_SHADER_PROXY and existing != null and existing.visible:
-		existing.visible = false
+		_set_bound_visibility(existing, false)
 		result["changed"] = true
 		result["visibility_changed"] = true
 	_fog_controller.clear_for_light(light)
@@ -254,6 +267,8 @@ func _update_experimental_beam(light: SpotLight3D, params: Dictionary) -> Dictio
 		_proxy_controller.hide_for_light(light)
 	light.set_meta("peraviz_beam_last_params", params)
 	_last_parameter_write_count = int(result.get("parameter_write_count", 0))
+	renderer_visibility_writes += _proxy_controller.renderer_visibility_writes - visibility_before
+	renderer_shader_parameter_writes += _proxy_controller.renderer_shader_parameter_writes - shader_before
 	return result
 
 func get_proxy_diagnostics() -> Dictionary:
@@ -282,7 +297,7 @@ func _ensure_debug_axis(light: SpotLight3D) -> MeshInstance3D:
 	material.emission = Color(1.0, 0.0, 0.0, 1.0)
 	axis.material_override = material
 	axis.position = Vector3(0.0, 0.0, -1.0)
-	axis.visible = false
+	_set_debug_visibility(axis, false)
 	light.add_child(axis)
 	light.set_meta(DEBUG_AXIS_KEY, axis)
 	return axis
@@ -294,7 +309,7 @@ func _sync_debug_axis(light: SpotLight3D, enabled: bool) -> void:
 	elif light.has_meta(DEBUG_AXIS_KEY):
 		axis = light.get_meta(DEBUG_AXIS_KEY) as MeshInstance3D
 	if axis != null and is_instance_valid(axis):
-		axis.visible = enabled
+		_set_debug_visibility(axis, enabled)
 
 func _cleanup_debug_axis(light: SpotLight3D) -> void:
 	if not light.has_meta(DEBUG_AXIS_KEY):
@@ -310,21 +325,36 @@ func reset_scene_state() -> void:
 	_proxy_controller.reset_scene_state()
 
 # Retains Vector Gobo Prism shading with directly bound beam resources.
-func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Dictionary) -> int:
+func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Dictionary, bound: BoundBeamState = null) -> int:
+	_last_visibility_write_count = 0
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
-		return update_beam_intensity(light, params)
+		var before: bool = is_instance_valid(beam) and beam.visible
+		var result: int = update_beam_intensity(light, params)
+		var current: MeshInstance3D = get_beam_resource(light)
+		_last_visibility_write_count = 1 if is_instance_valid(current) and current.visible != before else 0
+		return result
 	_last_parameter_write_count = 0
 	if not is_instance_valid(beam):
 		return INTENSITY_UNRESOLVED
 	var intensity_max: float = maxf(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clampf(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
-	if intensity > float(params.get("intensity_visibility_threshold", 0.015)) and beam.mesh == null:
+	var visible: bool = intensity > float(params.get("intensity_visibility_threshold", 0.015))
+	if visible and beam.mesh == null:
 		return INTENSITY_UNRESOLVED
-	_store_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
-	beam.set_meta(INTENSITY_MAX_DESIRED_META_KEY, intensity_max)
-	beam.visible = intensity > float(params.get("intensity_visibility_threshold", 0.015))
-	if not beam.visible:
-		return INTENSITY_CHANGED
-	_apply_intensity_max(beam, intensity_max)
-	_apply_dynamic_state(beam, params.get("beam_color", Color.WHITE), intensity)
-	return INTENSITY_CHANGED
+	var state: BoundBeamState = BoundBeamState.resolve(beam, bound)
+	if beam.visible != visible:
+		_set_bound_visibility(beam, visible)
+		_last_visibility_write_count = 1
+	if not visible:
+		return INTENSITY_CHANGED if _last_visibility_write_count > 0 else INTENSITY_UNCHANGED
+	var color: Color = params.get("beam_color", Color.WHITE)
+	var dynamic := Color(color.r, color.g, color.b, intensity)
+	if state.applied_max != intensity_max:
+		_set_bound_shader_parameter(beam, "intensity_max", intensity_max)
+		state.applied_max = intensity_max
+		_last_parameter_write_count += 1
+	if state.applied_dynamic != dynamic:
+		_set_bound_shader_parameter(beam, "beam_dynamic_state", dynamic)
+		state.applied_dynamic = dynamic
+		_last_parameter_write_count += 1
+	return INTENSITY_CHANGED if _last_visibility_write_count + _last_parameter_write_count > 0 else INTENSITY_UNCHANGED

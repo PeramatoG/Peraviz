@@ -57,6 +57,9 @@ func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_cont
 		_perf_snapshot.configure(owner.get_viewport())
 		_perf_trace_last_msec = Time.get_ticks_msec()
 
+func get_render_diagnostic_mode() -> String:
+	return _render_diagnostic_mode
+
 func set_status_callbacks(dmx_status_changed_callback: Callable, dmx_start_failed_callback: Callable) -> void:
 	_dmx_status_changed_callback = dmx_status_changed_callback
 	_dmx_start_failed_callback = dmx_start_failed_callback

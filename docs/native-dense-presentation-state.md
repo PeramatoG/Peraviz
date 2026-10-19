@@ -80,7 +80,7 @@ Existing renderer parameter Dictionaries are retained as static binding objects
 because the renderer API and gobo code still use them. Their scalar fields are
 updated in place; they are not authoritative composition state or rebuilt for
 each output. Cold gobo projector callbacks use a cached compatibility Dictionary
-and synchronize visibility. Renderer optics/topology initialization, gobo
+and delegate visibility to the same RID authority. Renderer optics/topology initialization, gobo
 resource changes, and optional fog/shadow/proxy backends retain their existing
 resource/metadata and diagnostic-result behavior. These operations are part of
 the temporarily retained renderer, not a new beam implementation. Setup/rebind,
@@ -96,9 +96,61 @@ parameter objects and the obsolete dictionary commit helpers when milestone 2
 replaces their corresponding presentation backend. Do not expand the legacy
 helpers to support the dense path.
 
+## Corrective renderer audit after 06a13f5
+
+The supplied canonical Windows measurements exposed a severe regression, despite
+bounded native composition: no-beams fell progressively from baseline ~12 FPS /
+75–90 ms to ~2 FPS / 450–490 ms process time and >400 ms renderer setup CPU.
+Full fell from the historically observed ~2–5 FPS to ~1–2 FPS / 700–800 ms
+process time and ~700+ ms renderer setup. Transforms-only stayed around 54–58 FPS
+(baseline 58–66 FPS / 60–65 pump Hz). GPU time remained tens of milliseconds.
+These are user-supplied observations for 82 MVR fixtures, 71 live fixtures,
+95 dimmer targets and 1,095 outputs on Godot 4.7.1 Forward+ / RTX 3070.
+They are not measurements of this corrective candidate.
+
+The [Godot 4.7.1 Node3D setter](https://github.com/godotengine/godot/blob/4.7.1-stable/scene/3d/node_3d.cpp#L1120)
+returns immediately for equal values: merely repeating `visible = true` does not
+prove renderer invalidation. A real transition does propagate visibility
+notifications. [VisualInstance3D](https://github.com/godotengine/godot/blob/4.7.1-stable/scene/3d/visual_instance_3d.cpp#L48)
+then writes instance visibility before emitting the Node signal. Thus the old
+blackout/active Node transition could reactivate a light whose separate RID cache
+still said false, suppressing the correcting RID write. The old projector-required
+policy could also enable lights in no-beams. This establishes concrete correctness
+bugs, not a quantitative attribution of all the measured renderer setup cost.
+
+The dense adapter now owns SpotLight RID visibility, including cold gobo helpers.
+During full playback, the light Node stays structurally visible for its beam
+children; DMX blackout/color/intensity never changes that Node property. Entering
+no-beams or transforms-only hides beam/debug children and the light Node once,
+then disables its RID. Hiding the structural Node also prevents Godot's
+`NOTIFICATION_TRANSFORM_CHANGED` handler from forwarding ancestor transforms to
+suppressed light instances (`_is_vi_visible()` in VisualInstance3D). Returning
+full restores held native state without a new DMX packet. Node visibility/tree
+signals repair a conflicting Godot RID write immediately; ordinary playback uses
+only the guarded RID setter. Binding and explicit renderer refresh are replay
+boundaries. Scene clear disconnects callbacks and breaks their handle references.
+
+MeshInstance beams and debug axes use their own guarded Node visibility setters.
+Both prism bound paths cache only effective applied dynamic values in one typed,
+resource-bound presentation signature; equal values return `INTENSITY_UNCHANGED`.
+Hidden beams do not receive color/intensity shader writes. Legacy response uniforms
+are updated only when their effective response changes; vector color/intensity
+remains packed. Cold intensity entry points share the same applied cache. Optics
+and resource replacement invalidate it explicitly and remain separate operations.
+
+After no-beams transition cleanup, changing DMX snapshots compose native state and
+update changed emissive aperture values only. They do not update light properties,
+visibility, beam uniforms, optics, or projector callbacks. Gobo selection and motion
+references are retained while renderer application/local motion are suppressed;
+returning full rehydrates the latest selection and current phase. Diagnostic mode
+is applied before dense binding, including a transforms-only launch. Material color
+and emission energy have independent effective-value guards, including replay.
+
 ## Trace contract
 
 Trace OFF reads no presentation clocks or diagnostic size/counter payloads.
+Actual renderer API calls update only constant-size aggregate bookkeeping;
+trace dictionaries and interval reporting are enabled only by the trace flag.
 Trace ON adds `dense_presentation` to `[peraviz-stability]`:
 
 | Field | Boundary / unit |
@@ -107,8 +159,15 @@ Trace ON adds `dense_presentation` to `[peraviz-stability]`:
 | `semantic_payload_conversion_us` | Interval total for the preceding native semantic section-to-packed conversion |
 | `payload_conversion_us` | Interval total for copying prepared native deltas into reused packed buffers, including any buffer detachment |
 | `compatibility_adapter_us` | Interval inclusive adapter/apply time, including final object mutation |
-| `renderer_mutation_us` | Interval subset spent applying each output's existing Godot objects/renderer methods; not GPU submission completion |
+| `renderer_mutation_us` | Interval duration of the complete mutation loop, using one clock pair for all outputs; not GPU submission completion |
 | `native_dirty_outputs` | Interval sum of unique dirty physical outputs per snapshot, before signature filtering |
+| `spot_node_visibility_writes`, `spot_rid_visibility_writes` | Interval actual adapter Node/RID visibility setter calls, separately counted; Godot-internal inherited notifications are not API calls by the adapter |
+| `beam_visibility_writes`, `debug_axis_visibility_writes` | Interval actual beam/debug Node visibility setter calls |
+| `beam_shader_parameter_writes` | Interval actual beam instance/material shader setters through retained renderer/proxy helpers, including optics and initialization |
+| `material_parameter_writes` | Interval actual aperture emission color/energy RenderingServer setter calls |
+| `renderer_outputs_processed`, `renderer_outputs_changed`, `renderer_outputs_unchanged` | Dirty output visits versus outputs causing actual mutations; native signature skips count as unchanged, suppressed scalar holding alone does not count as mutation |
+| `forced_replays`, `mode_transition_replays` | Explicit renderer/settings and diagnostic-mode replay counts |
+| `visibility_resyncs`, `projector_refresh_calls`, `optics_apply_calls`, `beam_initializations`, `spot_property_writes` | Auxiliary interval boundary and mutation counts |
 | `last_dirty_outputs` | Unique dirty physical outputs in the latest traced snapshot |
 | `physical_outputs`, `state_capacity`, `dirty_capacity` | Current generation counts/capacities |
 | `dirty_high_water` | Exact generation dirty-list peak |
@@ -134,7 +193,15 @@ to reject any warmed native snapshot allocation. It has no timing threshold.
 The headless adapter test exercises the section applier with empty UUID maps,
 checks legacy dictionary state remains empty, verifies light/beam/zoom behavior,
 replays renderer state, rejects stale schemas, and checks fixed bridge capacities.
-These tests do not establish GPU visual equivalence on the canonical machine.
+`test_dense_renderer_mutations.gd` separately installs 1,095 independent outputs,
+checks identical replay has zero visibility/shader/material writes, changes one
+output independently, runs 30 changing no-beams snapshots, restores full without
+fresh DMX, checks transforms-only suppression and a real Node notification repair,
+and verifies both bound prism implementations return UNCHANGED. It also checks
+cold/bound cache agreement and fixed capacities. The gobo lifecycle test checks
+suppressed motion leaves transform/uniform state untouched and resumes at the
+current phase. Headless notification and instrumented-setter tests cannot query
+actual GPU culling state or establish visual/performance equivalence on Windows.
 
 ## Exact canonical Windows A/B
 
@@ -188,9 +255,30 @@ settle and independently controlled outputs remain independent.
 
 This environment can run native/headless correctness tests but cannot reproduce
 the canonical Windows GPU/Art-Net workload. No before/after FPS or millisecond
-improvement is claimed. No new measured remaining bottleneck is available yet.
+improvement is claimed. The corrective candidate has no canonical hardware measurements yet. Keep PR #100
+as draft until the following rerun succeeds. It is unacceptable if no-beams
+remains materially worse than baseline main; seek a material improvement and
+record the actual numbers. If setup CPU remains high with near-zero explicit
+mutation counts, trace remaining Godot operations before attributing a cause.
 If native composition is small but the compatibility adapter dominates, record
 that result explicitly with these fields. It supports the next planned milestone:
 batched aperture presentation with approximately 1,000 independently controlled
 color/intensity outputs. Beam batching, new renderers and grouping remain separate
 work. Rendering scalability is not established by this milestone.
+
+### Corrective candidate acceptance commands
+
+Run each mode with the same reference scene and chase, prioritizing no-beams:
+
+```powershell
+$godot = "C:\Users\Peramato\Desktop\Programas\Godot_v4.7.1-stable_win64.exe\Godot_v4.7.1-stable_win64.exe"
+& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=no-beams
+& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=transforms-only
+& $godot --path C:\codigoscpp\peraviz --print-fps --peraviz-perf-trace --peraviz-render-diagnostic=full
+```
+
+Record FPS, process/setup CPU, GPU, pump rate, native composition, actual mutation
+counts and stable capacities over sustained playback, plus trace-off comparison.
+Repeat full -> no-beams -> full without new DMX and renderer/settings refresh.
+No wall-clock CI threshold substitutes for this test. Milestone 2 is outside this
+corrective pass.

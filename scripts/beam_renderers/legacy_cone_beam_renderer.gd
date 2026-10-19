@@ -42,6 +42,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if prism == null:
 		return
 	_attach_if_needed(light, prism)
+	BoundBeamState.invalidate_resource(prism)
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -52,7 +53,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var lens_radius: float = max(float(params.get("lens_radius", 0.03)), 0.005)
 	var beam_visible: bool = scaled_intensity > threshold
 
-	prism.visible = beam_visible
+	_set_bound_visibility(prism, beam_visible)
 	if not beam_visible:
 		_sync_debug_axis(light, false)
 		return
@@ -78,7 +79,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var mirror_z: bool = bool(params.get("beam_gobo_mirror_z", DEFAULT_MIRROR_BEAM_SHAPE_Z))
 	var aperture_profile: Dictionary = _aperture_profile_from_params(params)
 	if str(aperture_profile.get("shape", "")) == "no_projected_beam":
-		prism.visible = false
+		_set_bound_visibility(prism, false)
 		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, 0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
 		return
 	var prism_mesh: ArrayMesh = _mesh_builder.build_aperture_beam_mesh(aperture_profile, beam_range)
@@ -115,6 +116,8 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
 	if prism == null or not is_instance_valid(prism):
 		return INTENSITY_UNRESOLVED
+	if prism.has_meta(BoundBeamState.META_KEY):
+		return update_bound_intensity(light, prism, params, BoundBeamState.resolve(prism))
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -126,7 +129,7 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	if prism.get_meta("peraviz_intensity_signature", []) == signature:
 		return INTENSITY_UNCHANGED
 	prism.set_meta("peraviz_intensity_signature", signature)
-	prism.visible = beam_visible
+	_set_bound_visibility(prism, beam_visible)
 	if not beam_visible:
 		_sync_debug_axis(light, false)
 		return INTENSITY_CHANGED
@@ -163,7 +166,7 @@ func apply_beam_optics(light: SpotLight3D, params: Dictionary) -> Dictionary:
 	var far_radius: float = _far_radius_for_angle(near_radius, beam_angle, beam_range)
 	var aperture_profile: Dictionary = _aperture_profile_from_params(params)
 	if str(aperture_profile.get("shape", "")) == "no_projected_beam":
-		prism.visible = false
+		_set_bound_visibility(prism, false)
 		light.set_meta("peraviz_beam_optics_state", _beam_optics_state(prism, 0.0, 0.0, beam_range, beam_angle, aperture_profile, false, false))
 		return {"applied": true, "beam_instance_resolved": true, "optics_state_changed": true, "parametric_update_performed": false, "topology_rebuilt": false}
 	var needs_topology: bool = prism.mesh == null or str((light.get_meta("peraviz_beam_optics_state", {}) as Dictionary).get("shape", "")) != str(aperture_profile.get("shape", "circle"))
@@ -203,7 +206,7 @@ func _far_radius_for_angle(near_radius: float, beam_angle: float, beam_range: fl
 	return float(BeamGeometryCalculatorScript.far_radius_for_full_angle(near_radius, beam_angle, beam_range).get("far_radius_m", near_radius))
 
 func _apply_prism_optics_parameters(prism: MeshInstance3D, near_radius: float, far_radius: float) -> void:
-	prism.set_instance_shader_parameter("beam_radius_params", Vector2(max(near_radius, 0.001), max(far_radius, 0.001)))
+	_set_bound_shader_parameter(prism, "beam_radius_params", Vector2(max(near_radius, 0.001), max(far_radius, 0.001)))
 
 func _beam_optics_state(prism: MeshInstance3D, near_radius: float, far_radius: float, beam_range: float, beam_angle: float, aperture_profile: Dictionary, topology_rebuilt: bool, parametric_update: bool) -> Dictionary:
 	var half_height: float = beam_range * 0.5
@@ -260,7 +263,7 @@ func _create_prism(prism_name: String) -> MeshInstance3D:
 	prism.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	prism.material_override = _material_template.duplicate(true)
 	prism.rotation_degrees.x = 90.0
-	prism.visible = false
+	_set_bound_visibility(prism, false)
 	return prism
 
 func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_intensity: float, intensity_max: float, beam_range: float, gobo_projection_radius: float, lateral_softness: float, radial_falloff: float, longitudinal_falloff: float, haze_density: float) -> void:
@@ -273,24 +276,24 @@ func _update_prism_material(prism: MeshInstance3D, beam_color: Color, scaled_int
 	if intensity_max > reference_max:
 		overdrive_norm = clamp((scaled_intensity - reference_max) / (intensity_max - reference_max), 0.0, 1.0)
 	var overdrive_gain: float = lerp(1.0, LEGACY_OVERDRIVE_GAIN_MAX, overdrive_norm)
-	prism.set_instance_shader_parameter("beam_color", beam_color)
-	prism.set_instance_shader_parameter("near_alpha", lerp(0.0, EMITTER_CONE_NEAR_ALPHA, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("far_alpha", lerp(0.0, EMITTER_CONE_FAR_ALPHA, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("near_emission", lerp(0.0, EMITTER_CONE_NEAR_EMISSION, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("far_emission", lerp(0.0, EMITTER_CONE_FAR_EMISSION, perceptual_intensity) * overdrive_gain)
-	prism.set_instance_shader_parameter("cone_height", max(beam_range, 0.001))
-	prism.set_instance_shader_parameter("gobo_projection_radius", max(gobo_projection_radius, 0.001))
-	prism.set_instance_shader_parameter("fade_end_ratio", EMITTER_CONE_FADE_END_RATIO)
-	prism.set_instance_shader_parameter("lateral_softness", clamp(lateral_softness, 0.02, 1.0))
-	prism.set_instance_shader_parameter("lateral_emission_boost", 0.22)
-	prism.set_instance_shader_parameter("volumetric_noise_strength", 0.06)
-	prism.set_instance_shader_parameter("radial_falloff", radial_falloff)
-	prism.set_instance_shader_parameter("longitudinal_falloff", longitudinal_falloff)
-	prism.set_instance_shader_parameter("haze_density", haze_density)
+	_set_bound_shader_parameter(prism, "beam_color", beam_color)
+	_set_bound_shader_parameter(prism, "near_alpha", lerp(0.0, EMITTER_CONE_NEAR_ALPHA, perceptual_intensity) * overdrive_gain)
+	_set_bound_shader_parameter(prism, "far_alpha", lerp(0.0, EMITTER_CONE_FAR_ALPHA, perceptual_intensity) * overdrive_gain)
+	_set_bound_shader_parameter(prism, "near_emission", lerp(0.0, EMITTER_CONE_NEAR_EMISSION, perceptual_intensity) * overdrive_gain)
+	_set_bound_shader_parameter(prism, "far_emission", lerp(0.0, EMITTER_CONE_FAR_EMISSION, perceptual_intensity) * overdrive_gain)
+	_set_bound_shader_parameter(prism, "cone_height", max(beam_range, 0.001))
+	_set_bound_shader_parameter(prism, "gobo_projection_radius", max(gobo_projection_radius, 0.001))
+	_set_bound_shader_parameter(prism, "fade_end_ratio", EMITTER_CONE_FADE_END_RATIO)
+	_set_bound_shader_parameter(prism, "lateral_softness", clamp(lateral_softness, 0.02, 1.0))
+	_set_bound_shader_parameter(prism, "lateral_emission_boost", 0.22)
+	_set_bound_shader_parameter(prism, "volumetric_noise_strength", 0.06)
+	_set_bound_shader_parameter(prism, "radial_falloff", radial_falloff)
+	_set_bound_shader_parameter(prism, "longitudinal_falloff", longitudinal_falloff)
+	_set_bound_shader_parameter(prism, "haze_density", haze_density)
 	var prism_material: ShaderMaterial = prism.material_override as ShaderMaterial
 	if prism_material != null:
-		prism_material.set_shader_parameter("use_gobo", false)
-		prism_material.set_shader_parameter("gobo_invert", false)
+		_set_bound_material_parameter(prism_material, "use_gobo", false)
+		_set_bound_material_parameter(prism_material, "gobo_invert", false)
 
 func _ensure_debug_axis(light: SpotLight3D) -> MeshInstance3D:
 	if light.has_meta(DEBUG_AXIS_KEY):
@@ -309,7 +312,7 @@ func _ensure_debug_axis(light: SpotLight3D) -> MeshInstance3D:
 	material.emission = Color(1.0, 0.0, 0.0, 1.0)
 	axis.material_override = material
 	axis.position = Vector3(0.0, 0.0, -1.0)
-	axis.visible = false
+	_set_debug_visibility(axis, false)
 	light.add_child(axis)
 	light.set_meta(DEBUG_AXIS_KEY, axis)
 	return axis
@@ -321,7 +324,7 @@ func _sync_debug_axis(light: SpotLight3D, enabled: bool) -> void:
 	elif light.has_meta(DEBUG_AXIS_KEY):
 		axis = light.get_meta(DEBUG_AXIS_KEY) as MeshInstance3D
 	if axis != null and is_instance_valid(axis):
-		axis.visible = enabled
+		_set_debug_visibility(axis, enabled)
 
 func _cleanup_debug_axis(light: SpotLight3D) -> void:
 	if not light.has_meta(DEBUG_AXIS_KEY):
@@ -335,8 +338,9 @@ func reset_scene_state() -> void:
 	_mesh_builder.clear_cache()
 
 # Uses the existing prism material implementation with setup-bound resources.
-func update_bound_intensity(light: SpotLight3D, prism: MeshInstance3D, params: Dictionary) -> int:
+func update_bound_intensity(_light: SpotLight3D, prism: MeshInstance3D, params: Dictionary, bound: BoundBeamState = null) -> int:
 	_last_parameter_write_count = 0
+	_last_visibility_write_count = 0
 	if not is_instance_valid(prism):
 		return INTENSITY_UNRESOLVED
 	var intensity_max: float = maxf(float(params.get("intensity_max", 100.0)), 0.01)
@@ -344,15 +348,41 @@ func update_bound_intensity(light: SpotLight3D, prism: MeshInstance3D, params: D
 	var visible: bool = intensity > float(params.get("intensity_visibility_threshold", 0.015))
 	if visible and prism.mesh == null:
 		return INTENSITY_UNRESOLVED
-	prism.visible = visible
+	var state: BoundBeamState = BoundBeamState.resolve(prism, bound)
+	if prism.visible != visible:
+		_set_bound_visibility(prism, visible)
+		_last_visibility_write_count = 1
 	if not visible:
-		return INTENSITY_CHANGED
-	_update_prism_material(prism, params.get("beam_color", Color.WHITE), intensity, intensity_max,
-		BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0)))),
-		maxf(float(params.get("gobo_projection_radius", 0.1)), 0.001),
-		clampf(float(params.get("beam_softness", 0.35)), 0.02, 1.0),
-		maxf(float(params.get("beam_radial_falloff", 1.1)), 0.05),
-		maxf(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05),
-		maxf(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01))
-	_last_parameter_write_count = 15
-	return INTENSITY_CHANGED
+		return INTENSITY_CHANGED if _last_visibility_write_count > 0 else INTENSITY_UNCHANGED
+	var color: Color = params.get("beam_color", Color.WHITE)
+	var dynamic := Color(color.r, color.g, color.b, intensity)
+	var shader_before: int = renderer_shader_parameter_writes
+	var response: Color = _bound_intensity_response(intensity, intensity_max)
+	if state.applied_max < 0.0:
+		_update_prism_material(prism, color, intensity, intensity_max,
+			BeamGeometryCalculatorScript.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0)))),
+			maxf(float(params.get("gobo_projection_radius", 0.1)), 0.001),
+			clampf(float(params.get("beam_softness", 0.35)), 0.02, 1.0),
+			maxf(float(params.get("beam_radial_falloff", 1.1)), 0.05),
+			maxf(float(params.get("beam_longitudinal_falloff", 1.0)), 0.05),
+			maxf(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.01))
+	else:
+		if Color(state.applied_dynamic.r,state.applied_dynamic.g,state.applied_dynamic.b) != Color(color.r,color.g,color.b):
+			_set_bound_shader_parameter(prism, "beam_color", color)
+		if state.applied_response.r != response.r: _set_bound_shader_parameter(prism,"near_alpha",response.r)
+		if state.applied_response.g != response.g: _set_bound_shader_parameter(prism,"far_alpha",response.g)
+		if state.applied_response.b != response.b: _set_bound_shader_parameter(prism,"near_emission",response.b)
+		if state.applied_response.a != response.a: _set_bound_shader_parameter(prism,"far_emission",response.a)
+	state.applied_dynamic = dynamic
+	state.applied_max = intensity_max
+	state.applied_response = response
+	_last_parameter_write_count = renderer_shader_parameter_writes - shader_before
+	return INTENSITY_CHANGED if _last_visibility_write_count + _last_parameter_write_count > 0 else INTENSITY_UNCHANGED
+
+# Same established prism response, cached at the effective float shader boundary.
+func _bound_intensity_response(intensity: float, intensity_max: float) -> Color:
+	var reference_max: float = maxf(INTENSITY_REFERENCE_MAX, 0.01)
+	var perceptual: float = pow(clampf(intensity/reference_max,0.0,1.0),LEGACY_INTENSITY_RESPONSE_EXPONENT)
+	var overdrive: float = clampf((intensity-reference_max)/(intensity_max-reference_max),0.0,1.0) if intensity_max > reference_max else 0.0
+	var gain: float = lerpf(1.0,LEGACY_OVERDRIVE_GAIN_MAX,overdrive)
+	return Color(lerpf(0.0,EMITTER_CONE_NEAR_ALPHA,perceptual)*gain,lerpf(0.0,EMITTER_CONE_FAR_ALPHA,perceptual)*gain,lerpf(0.0,EMITTER_CONE_NEAR_EMISSION,perceptual)*gain,lerpf(0.0,EMITTER_CONE_FAR_EMISSION,perceptual)*gain)
