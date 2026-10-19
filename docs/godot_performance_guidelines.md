@@ -112,7 +112,7 @@ Normal playback must configure the receiver from the native compiled visual runt
 
 ## Live DMX latency tracing
 
-Start Peraviz with `--peraviz-perf-trace` after Godot's `--` application-argument separator. The compact once-per-second line reports transport and CPU RX-to-apply histograms beside FPS, process time, objects, primitives, draw calls, node/resource counts, production pump cadence, row outcomes, and renderer mutation counters. The trace is disabled by default and its histogram values are bounded approximations, not GPU-presentation measurements.
+Start Peraviz with `--peraviz-perf-trace` after Godot's `--` application-argument separator. The once-per-second reports separate compact FPS/transport/visibility data from stability JSON containing CPU RX-to-apply intervals, dense mutation counts and CPU/GPU timings. See [the current foundation roadmap](performance-foundation.md). The trace is disabled by default and its histogram values are bounded approximations, not GPU-presentation measurements.
 
 On a Windows GPU, compare the normal run with Godot's `--disable-vsync`, a controlled `--max-fps`, `--print-fps`, and `--gpu-profile` options. Do not infer a GPU bottleneck from fan speed alone; compare CPU RX-to-apply age, FPS, draw calls, and the GPU profile.
 

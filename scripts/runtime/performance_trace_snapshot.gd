@@ -57,12 +57,14 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 	var sizes: Dictionary = {}
 	if owner != null:
 		var service: Object = owner.get("_fixture_light_apply_service")
-		_sample_collections(sizes, service, APPLY_COLLECTIONS, "apply")
 		if service != null:
 			result["dense_presentation_active"] = service.is_dense_presentation_active()
+			result["render_diagnostic_mode"] = service._render_diagnostic_mode
+			var legacy_sizes: Dictionary = {}
+			_sample_collections(legacy_sizes, service, APPLY_COLLECTIONS, "apply")
+			result["legacy_compatibility"] = {"active": not service.is_dense_presentation_active(), "sizes": legacy_sizes, "snapshot_commit_high_water": int(service.get("_snapshot_commit_high_water"))}
 			var dense: RefCounted = service.get("_dense_adapter")
 			if dense != null: result["dense_presentation"] = dense.consume_diagnostics()
-			sizes["snapshot_commit_high_water"] = int(service.get("_snapshot_commit_high_water"))
 		var registry: Object = owner.get("_native_target_registry")
 		_sample_collections(sizes, registry, REGISTRY_COLLECTIONS, "registry")
 		if registry != null:

@@ -16,6 +16,8 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Consolidated the stable performance foundation and its current 24–25 FPS reference, while keeping batching, instancing, grouping and further scalability work explicitly deferred. Recorded Vector Gobo Prism visual follow-ups without implementing them.
+
 - Moved physical-output lighting composition and dirty coalescing into bounded native dense state with generation-safe indices and pre-bound renderer handles. Added independent-output allocation/capacity regressions and opt-in compose/adapter/mutation telemetry; the current visual backends remain in use.
 
 - Added bounded interval and explicit lifetime DMX latency statistics, plus opt-in CPU/GPU renderer timing, memory/message-buffer, mailbox and presentation-state size diagnostics for sustained-playback investigations.
@@ -39,6 +41,9 @@ Changes since the previous Peraviz release.
 - Indexed gobo angle changes now update reusable presentation resources parametrically without image composition, vectorization, mesh generation, or topology rebuilds.
 
 ## Fixes
+
+- Made Peraviz arguments after Godot's `--` authoritative, added explicit startup diagnostic configuration and real resource tests for distinct full/no-beams/transforms-only behavior. Corrected current dense visibility reporting and isolated legacy compatibility telemetry.
+- Fixed a dense handle/Callable shutdown cycle reproducing 2,193 leaked ObjectDB instances for 1,095 outputs. Added load/unload/reload and loaded-scene shutdown checks, and removed proven unreachable fixed-row presentation helpers.
 
 - Fixed fresh-checkout script loading by replacing the dense beam cache's global class dependency with explicit preloads. Preserved live light visibility during resource discovery, added explicit dense-install failure handling and real-application beam/footprint lifecycle checks from a clean Godot cache. Windows runs with compilation errors are invalid for performance acceptance; full visual review comes first.
 

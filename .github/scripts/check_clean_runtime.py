@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from run_gdscript_tests import classify_result
+from check_application_diagnostics import check_modes
 
 
 def run_stage(command: list[str], log: Path, timeout: int, environment: dict[str, str]) -> str:
@@ -86,17 +87,18 @@ def main() -> int:
     registry = re.sub(r'\{[^{}]*"class": &"BoundBeamState"[^{}]*\},?\s*', '', registry)
     registry = re.sub(r',\s*\]', '\n]', registry)
     class_cache.write_text(registry, encoding='utf-8')
-    run_stage(base + ['--quit-after','5','--peraviz-perf-trace'], output / 'normal-startup.log', 60, environment)
+    run_stage(base + ['--quit-after','5','--','--peraviz-perf-trace'], output / 'normal-startup.log', 60, environment)
     fixture = output / 'lifecycle.mvr'
     run_stage([sys.executable, str(project / 'tests/integration/generate_presentation_lifecycle_fixture.py'), str(fixture)], output / 'fixture.log', 15, environment)
     lifecycle = run_stage(base + ['--script','res://tests/integration/test_application_presentation_lifecycle.gd',
-                                  '--peraviz-perf-trace','--','--mvr',str(fixture)], output / 'application-lifecycle.log', 60, environment)
+                                  '--','--peraviz-perf-trace','--mvr',str(fixture)], output / 'application-lifecycle.log', 60, environment)
     if not re.search(r'"dense_presentation_active": true', lifecycle) or '"dense_presentation":' not in lifecycle:
         raise RuntimeError('Application lifecycle did not confirm active dense presentation in stability telemetry')
     if 'Application presentation lifecycle passed' not in lifecycle:
         raise RuntimeError('Application lifecycle completion marker missing')
     run_stage(base + ['--script','res://tests/integration/test_application_presentation_lifecycle.gd',
-                      '--peraviz-perf-trace','--','--mvr',str(fixture),'--legacy'], output / 'application-lifecycle-legacy.log', 60, environment)
+                      '--','--peraviz-perf-trace','--mvr',str(fixture),'--legacy'], output / 'application-lifecycle-legacy.log', 60, environment)
+    check_modes(base, fixture, output, environment, run_stage)
     check_failure_contract(base, output, environment)
     print('Clean-cache application startup and presentation lifecycle passed.', flush=True)
     return 0

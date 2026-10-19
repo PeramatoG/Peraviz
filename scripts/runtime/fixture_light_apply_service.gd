@@ -1,6 +1,9 @@
 extends RefCounted
 class_name FixtureLightApplyService
 
+# Production snapshots use required native dense composition. Dictionary helpers
+# below remain only for manual fixture controls and explicit unbound API callers.
+
 const VISUAL_CHANGE_TRANSFORM: int = 1 << 0
 const VISUAL_CHANGE_DIMMER: int = 1 << 1
 const VISUAL_CHANGE_COLOR: int = 1 << 2
@@ -9,16 +12,6 @@ const VISUAL_CHANGE_GOBO: int = 1 << 4
 const VISUAL_CHANGE_GOBO_ROTATION: int = 1 << 5
 const VISUAL_CHANGE_MATERIAL: int = 1 << 8
 const VISUAL_CHANGE_BEAM_TOPOLOGY: int = 1 << 9
-
-# Mirrors the native visual-frame row: fixture id, channel mask, visual mask, 13 compact controls, then 9 render-ready values.
-const VISUAL_FRAME_HEADER_COUNT: int = 3
-const VISUAL_FRAME_CHANNEL_COUNT: int = 13
-const VISUAL_FRAME_RENDER_VALUE_COUNT: int = 9
-const VISUAL_FRAME_STRIDE: int = VISUAL_FRAME_HEADER_COUNT + VISUAL_FRAME_CHANNEL_COUNT + VISUAL_FRAME_RENDER_VALUE_COUNT
-const VISUAL_FRAME_CHANNEL_MASK_OFFSET: int = 1
-const VISUAL_FRAME_VISUAL_MASK_OFFSET: int = 2
-const VISUAL_FRAME_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT
-const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUAL_FRAME_CHANNEL_COUNT
 
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
@@ -149,6 +142,9 @@ func compose_dense_snapshot(descriptors: PackedInt32Array, integers: PackedInt32
 
 # Starts snapshot-local collection of canonical physical-output renderer commits.
 func begin_visual_snapshot() -> void:
+	if _dense_adapter != null or _dense_required:
+		_snapshot_commit_active = false
+		return
 	_snapshot_output_commits.clear()
 	_snapshot_commit_active = true
 
@@ -156,6 +152,8 @@ func begin_visual_snapshot() -> void:
 func end_visual_snapshot() -> void:
 	if _dense_adapter != null:
 		_dense_adapter.apply()
+		_snapshot_commit_active = false
+		return # Native playback never enters Dictionary coalescing or visibility accounting.
 	if not _snapshot_commit_active:
 		return
 	var commit_start_usec: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
@@ -243,33 +241,6 @@ func apply_dmx_controls_to_fixture(loader: Node, fixture_uuid: String, controls:
 			dimmer_percent = clamp(float(dimmer_controls.get("dimmer_norm", 0.0)), 0.0, 1.0) * 100.0
 		apply_dimmer_feedback_to_fixture(loader, fixture_uuid, dimmer_percent, controls)
 	_track_phase("fixture_apply", phase_start)
-
-func apply_visual_frame_to_fixture(loader: Node, fixture_uuid: String, visual_frame: PackedFloat32Array, base: int, frame_delta_sec: float, dmx_runtime: Object = null) -> void:
-	var phase_start: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
-	var visual_mask: int = int(visual_frame[base + VISUAL_FRAME_VISUAL_MASK_OFFSET])
-	var dimmer_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET], 0.0, 1.0)
-	var pan_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 1], 0.0, 1.0)
-	var tilt_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 2], 0.0, 1.0)
-	var beam_energy: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET], 0.0)
-	var spot_energy: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 1], 0.0)
-	var beam_half_angle: float = clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 2], 0.1, 90.0)
-	var beam_angle: float = clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 3], 0.1, 90.0)
-	var beam_color := Color(clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 4], 0.0, 1.0), clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 5], 0.0, 1.0), clamp(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 6], 0.0, 1.0), 1.0)
-	var beam_intensity: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 7], 0.0)
-	var gobo_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 7], 0.0, 1.0)
-	var gobo_index_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 8], 0.0, 1.0)
-	var gobo_rotation_norm: float = clamp(visual_frame[base + VISUAL_FRAME_VALUES_OFFSET + 9], 0.0, 1.0)
-	var material_energy: float = max(visual_frame[base + VISUAL_FRAME_RENDER_VALUES_OFFSET + 8], 0.0)
-	if _performance_trace_enabled:
-		_visual_apply_counters["fixtures_applied"] += 1
-	if (visual_mask & VISUAL_CHANGE_TRANSFORM) != 0:
-		_apply_visual_frame_pan_tilt(loader, fixture_uuid, pan_norm, tilt_norm)
-	if (visual_mask & (VISUAL_CHANGE_DIMMER | VISUAL_CHANGE_COLOR | VISUAL_CHANGE_ZOOM | VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION | VISUAL_CHANGE_MATERIAL | VISUAL_CHANGE_BEAM_TOPOLOGY)) != 0:
-		_apply_visual_frame_lighting(loader, fixture_uuid, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
-	_track_phase("fixture_apply", phase_start)
-
-func _apply_visual_frame_pan_tilt(loader: Node, fixture_uuid: String, pan_degrees: float, tilt_degrees: float) -> void:
-	loader._apply_pan_tilt_components_to_fixture(fixture_uuid, true, pan_degrees, true, tilt_degrees)
 
 func apply_transform_targets(loader: Node, pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	if loader.has_method("_apply_native_transform_targets"):
@@ -530,22 +501,6 @@ func apply_gobo_rotation_state(loader: Node, _fixture_uuid: String, beam_target_
 		return {"applied": false, "failure_reason": "native gobo registry unavailable"}
 	return loader._apply_native_gobo_rotation_state(beam_target_id, wheel_id, wheel_instance_index, rotation_mode, revision, phase_degrees, angular_velocity_dps, reference_seconds, native_now_seconds)
 
-func apply_wheel_selection(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_norm: float, dmx_runtime: Object = null) -> void:
-	if _performance_trace_enabled:
-		_visual_apply_counters["fixtures_applied"] += 1
-	_set_fixture_gobo_selection(fixture_uuid, gobo_norm)
-	for light in _fixture_lights(loader, fixture_uuid):
-		var topology_changed: bool = _apply_visual_frame_gobo(loader, fixture_uuid, light, changed_mask, frame_delta_sec, gobo_norm, _fixture_gobo_index(fixture_uuid), _fixture_gobo_rotation(fixture_uuid), dmx_runtime)
-		if topology_changed:
-			_apply_visual_frame_beam(loader, light, VISUAL_CHANGE_BEAM_TOPOLOGY, _fixture_dimmer(fixture_uuid) > 0.0001, _fixture_dimmer(fixture_uuid), _fixture_beam_angle(fixture_uuid), _fixture_render_color(fixture_uuid), _fixture_beam_intensity(fixture_uuid))
-
-func apply_wheel_motion(loader: Node, fixture_uuid: String, changed_mask: int, frame_delta_sec: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> void:
-	if _performance_trace_enabled:
-		_visual_apply_counters["fixtures_applied"] += 1
-	_set_fixture_gobo_motion(fixture_uuid, gobo_index_norm, gobo_rotation_norm)
-	for light in _fixture_lights(loader, fixture_uuid):
-		_apply_visual_frame_gobo(loader, fixture_uuid, light, changed_mask, frame_delta_sec, _fixture_gobo_selection(fixture_uuid), gobo_index_norm, gobo_rotation_norm, dmx_runtime)
-
 func apply_temporal_output(_loader: Node, fixture_uuid: String, strobe_norm: float, output_norm: float) -> void:
 	var key: String = _fixture_state_key(fixture_uuid)
 	if _performance_trace_enabled:
@@ -781,62 +736,20 @@ func _target_color_gain(target_id: int, fixture_uuid: String) -> float:
 func _target_dimmer(target_id: int, fixture_uuid: String) -> float:
 	return float(_target_state(target_id, fixture_uuid).get("dimmer", 0.0))
 
-func _fixture_lights(loader: Node, fixture_uuid: String) -> Array:
-	return loader._collect_fixture_emitter_lights(fixture_uuid, loader._get_fixture_emitter_nodes(fixture_uuid))
-
 func _fixture_state_key(fixture_uuid: String) -> String:
 	return "section_state:" + fixture_uuid
 
 func _fixture_state(fixture_uuid: String) -> Dictionary:
 	var key: String = _fixture_state_key(fixture_uuid)
 	if not _diagnostic_info_keys.has(key):
-		_diagnostic_info_keys[key] = {
-			"dimmer": 0.0,
-			"beam_energy": 0.0,
-			"spot_energy": 0.0,
-			"beam_intensity": 0.0,
-			"material_energy": 0.0,
-			"beam_half_angle": 12.5,
-			"beam_angle": 25.0,
-			"beam_color": Color.WHITE,
-			"gobo": 0.0,
-			"gobo_index": 0.0,
-			"gobo_rotation": 0.0,
-		}
+		# The retired fixed row no longer supplies fixture-wide lighting/gobo state.
+		_diagnostic_info_keys[key] = {"beam_half_angle":12.5,"beam_angle":25.0}
 	return _diagnostic_info_keys[key]
-
-func _set_fixture_intensity_state(fixture_uuid: String, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_intensity: float, material_energy: float) -> void:
-	var state: Dictionary = _fixture_state(fixture_uuid)
-	state["dimmer"] = dimmer_norm
-	state["beam_energy"] = beam_energy
-	state["spot_energy"] = spot_energy
-	state["beam_intensity"] = beam_intensity
-	state["material_energy"] = material_energy
-
-func _set_fixture_render_color(fixture_uuid: String, beam_color: Color) -> void:
-	_fixture_state(fixture_uuid)["beam_color"] = beam_color
 
 func _set_fixture_beam_angles(fixture_uuid: String, beam_half_angle: float, beam_angle: float) -> void:
 	var state: Dictionary = _fixture_state(fixture_uuid)
 	state["beam_half_angle"] = beam_half_angle
 	state["beam_angle"] = beam_angle
-
-func _set_fixture_gobo_selection(fixture_uuid: String, gobo_norm: float) -> void:
-	_fixture_state(fixture_uuid)["gobo"] = gobo_norm
-
-func _set_fixture_gobo_motion(fixture_uuid: String, gobo_index_norm: float, gobo_rotation_norm: float) -> void:
-	var state: Dictionary = _fixture_state(fixture_uuid)
-	state["gobo_index"] = gobo_index_norm
-	state["gobo_rotation"] = gobo_rotation_norm
-
-func _fixture_dimmer(fixture_uuid: String) -> float:
-	return float(_fixture_state(fixture_uuid).get("dimmer", 0.0))
-
-func _fixture_material_energy(fixture_uuid: String) -> float:
-	return float(_fixture_state(fixture_uuid).get("material_energy", 0.0))
-
-func _fixture_beam_intensity(fixture_uuid: String) -> float:
-	return float(_fixture_state(fixture_uuid).get("beam_intensity", 0.0))
 
 func _fixture_beam_half_angle(fixture_uuid: String) -> float:
 	return float(_fixture_state(fixture_uuid).get("beam_half_angle", 12.5))
@@ -844,81 +757,11 @@ func _fixture_beam_half_angle(fixture_uuid: String) -> float:
 func _fixture_beam_angle(fixture_uuid: String) -> float:
 	return float(_fixture_state(fixture_uuid).get("beam_angle", 25.0))
 
-func _fixture_render_color(fixture_uuid: String) -> Color:
-	return _fixture_state(fixture_uuid).get("beam_color", Color.WHITE)
-
-func _fixture_gobo_selection(fixture_uuid: String) -> float:
-	return float(_fixture_state(fixture_uuid).get("gobo", 0.0))
-
-func _fixture_gobo_index(fixture_uuid: String) -> float:
-	return float(_fixture_state(fixture_uuid).get("gobo_index", 0.0))
-
-func _fixture_gobo_rotation(fixture_uuid: String) -> float:
-	return float(_fixture_state(fixture_uuid).get("gobo_rotation", 0.0))
-
 func _beam_is_visible(light: SpotLight3D, fallback_intensity: float) -> bool:
 	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
 	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
 	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", fallback_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
 	return scaled_intensity > threshold
-
-func _apply_visual_frame_lighting(loader: Node, fixture_uuid: String, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> void:
-	var geometry_nodes: Array = loader._get_fixture_geometry_nodes(fixture_uuid)
-	var emitter_nodes: Array = loader._get_fixture_emitter_nodes(fixture_uuid)
-	if geometry_nodes.is_empty() and emitter_nodes.is_empty():
-		_warn_visual_once(fixture_uuid + ":no_visual_nodes", "Fixture %s has dimmer %.3f but no geometry or emitter nodes." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001)
-		return
-	_warn_visual_once(fixture_uuid + ":no_emitters", "Fixture %s has dimmer %.3f but no emitter nodes." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001 and emitter_nodes.is_empty())
-	if (visual_mask & (VISUAL_CHANGE_DIMMER | VISUAL_CHANGE_COLOR | VISUAL_CHANGE_MATERIAL)) != 0:
-		_apply_visual_frame_materials(loader, fixture_uuid, geometry_nodes, beam_color, material_energy)
-	var emitter_photometrics: Array = loader._get_fixture_emitter_photometrics(fixture_uuid)
-	var emitter_lights: Array = loader._collect_fixture_emitter_lights(fixture_uuid, emitter_nodes)
-	_warn_visual_once(fixture_uuid + ":no_runtime_lights", "Fixture %s has dimmer %.3f but no SpotLight3D runtime lights." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001 and emitter_lights.is_empty())
-	var visible_beams: int = 0
-	var visible_lights: int = 0
-	for index in range(emitter_lights.size()):
-		var light: SpotLight3D = emitter_lights[index]
-		if light == null or not is_instance_valid(light):
-			continue
-		var photometric: Dictionary = _resolve_emitter_photometric(loader, emitter_photometrics, index)
-		var applied_state: Dictionary = _apply_visual_frame_light(loader, fixture_uuid, light, photometric, visual_mask, dimmer_norm, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_color, beam_intensity, material_energy, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
-		if bool(applied_state.get("light_visible", false)):
-			visible_lights += 1
-		if bool(applied_state.get("beam_visible", false)):
-			visible_beams += 1
-	_warn_visual_once(fixture_uuid + ":no_visible_beams", "Fixture %s has dimmer %.3f but no visible beam/cone after apply." % [fixture_uuid, dimmer_norm], dimmer_norm > 0.0001 and not emitter_lights.is_empty() and visible_beams == 0)
-	if _performance_trace_enabled:
-		_visual_apply_counters["beam_visible_count"] += visible_beams
-		_visual_apply_counters["spotlight_visible_count"] += visible_lights
-
-func _apply_visual_frame_gobo(loader: Node, fixture_uuid: String, light: SpotLight3D, visual_mask: int, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> bool:
-	if (visual_mask & (VISUAL_CHANGE_GOBO | VISUAL_CHANGE_GOBO_ROTATION)) == 0:
-		return false
-	if not loader.has_method("_apply_live_visual_gobo_to_light"):
-		return false
-	var gobo_phase_start: int = Time.get_ticks_usec() if _performance_trace_enabled else 0
-	var live_controls: Dictionary = {}
-	var diagnostics: Dictionary = {}
-	if dmx_runtime != null and dmx_runtime.has_method("get_live_gobo_diagnostics_for_fixture"):
-		diagnostics = dmx_runtime.get_live_gobo_diagnostics_for_fixture(fixture_uuid)
-	var result: Dictionary = loader._apply_live_visual_gobo_to_light(fixture_uuid, light, {
-		"frame_delta_sec": frame_delta_sec,
-		"gobo_norm": gobo_norm,
-		"gobo_index_norm": gobo_index_norm,
-		"gobo_rotation_norm": gobo_rotation_norm,
-		"topology_changed": (visual_mask & VISUAL_CHANGE_GOBO) != 0,
-		"parametric_changed": (visual_mask & VISUAL_CHANGE_GOBO_ROTATION) != 0,
-		"diagnostics": diagnostics,
-	}, live_controls)
-	_track_phase("gobo_update", gobo_phase_start)
-	if _performance_trace_enabled and bool(result.get("applied", false)):
-		_visual_apply_counters["gobo_parametric_updates"] += 1
-		if bool(result.get("topology_changed", false)):
-			_visual_apply_counters["gobo_topology_updates"] += 1
-		if bool(result.get("motion_state_updated", false)):
-			_visual_apply_counters["gobo_motion_render_state_updates"] += 1
-		_visual_apply_counters["gobo_texture_compositions"] = int(result.get("texture_compositions", _visual_apply_counters.get("gobo_texture_compositions", 0)))
-	return bool(result.get("topology_changed", false))
 
 func _scaled_projected_value(value: float, photometric: Dictionary) -> float:
 	return value * max(float(photometric.get("projected_lumen_scale", 1.0)), 0.0)
@@ -952,32 +795,6 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 				materials_mutated += _apply_cached_material_state(material_rid, beam_color, material_energy * emission_scale)
 	_track_phase("material_apply", material_phase_start)
 	return materials_mutated
-
-func _apply_visual_frame_light(loader: Node, fixture_uuid: String, light: SpotLight3D, photometric: Dictionary, visual_mask: int, dimmer_norm: float, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_color: Color, beam_intensity: float, material_energy: float, frame_delta_sec: float, gobo_norm: float, gobo_index_norm: float, gobo_rotation_norm: float, dmx_runtime: Object = null) -> Dictionary:
-	var light_phase_start: int = Time.get_ticks_usec()
-	var visible: bool = dimmer_norm > 0.0001
-	var light_energy: float = spot_energy if spot_energy > 0.0 else beam_energy
-	_update_desired_light_state(light, light_energy, beam_half_angle, beam_color, visible and light_energy > 0.0)
-	_apply_desired_light_state(loader, light)
-	_track_phase("light_apply", light_phase_start)
-	var gobo_topology_changed: bool = _apply_visual_frame_gobo(loader, fixture_uuid, light, visual_mask, frame_delta_sec, gobo_norm, gobo_index_norm, gobo_rotation_norm, dmx_runtime)
-	if gobo_topology_changed:
-		visual_mask |= VISUAL_CHANGE_BEAM_TOPOLOGY
-	if not light.has_meta("peraviz_beam_last_params"):
-		_apply_visual_frame_initial_light_state(loader, light, photometric, dimmer_norm, beam_color, beam_energy, spot_energy, beam_half_angle, beam_angle, beam_intensity, material_energy)
-	else:
-		_apply_visual_frame_beam(loader, light, visual_mask, visible, dimmer_norm, beam_angle, beam_color, beam_intensity)
-	if gobo_topology_changed and loader.has_method("_record_live_visual_gobo_beam_result"):
-		loader._record_live_visual_gobo_beam_result(fixture_uuid, light)
-	var beam_params: Dictionary = light.get_meta("peraviz_beam_last_params", {}) if light.has_meta("peraviz_beam_last_params") else {}
-	var threshold: float = float(beam_params.get("intensity_visibility_threshold", 0.015))
-	var scaled_intensity: float = clamp(float(beam_params.get("scaled_intensity", beam_intensity)), 0.0, max(float(beam_params.get("intensity_max", 100.0)), 0.01))
-	var beam_visible: bool = scaled_intensity > threshold
-	var real_spot_visible: bool = bool(_light_desired_for(light).get("applied_realtime_visible", false))
-	_log_visual_once("beam_parent_visible_spot_rid_hidden", "[PeravizVisualRuntime] Beam intensity is visible while realtime SpotLight rendering is disabled; the SpotLight node stays visible as the beam parent and its RenderingServer instance remains hidden.", dimmer_norm > 0.0001 and beam_visible and not real_spot_visible and _is_visual_debug_logging_enabled(loader))
-	_warn_visual_once(str(light.get_instance_id()) + ":beam_params_not_visible", "Light %s has dimmer %.3f but beam params are not visible." % [str(light.get_instance_id()), dimmer_norm], dimmer_norm > 0.0001 and not beam_visible)
-	return {"light_visible": real_spot_visible, "beam_visible": beam_visible}
-
 
 func _apply_visual_frame_initial_light_state(loader: Node, light: SpotLight3D, photometric: Dictionary, dimmer_norm: float, beam_color: Color, beam_energy: float, spot_energy: float, beam_half_angle: float, beam_angle: float, beam_intensity: float, material_energy: float) -> int:
 	if _performance_trace_enabled:
@@ -1086,7 +903,6 @@ func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible
 	var last_state: Dictionary = _light_desired_for(light)
 	var previous_realtime_visible: bool = bool(last_state.get("applied_realtime_visible", not real_spot_visible))
 	last_state["applied_realtime_visible"] = real_spot_visible
-	if _dense_adapter != null: _dense_adapter.synchronize_visibility(light, real_spot_visible)
 	var light_id: int = light.get_instance_id()
 	if real_spot_visible:
 		_visible_light_ids[light_id] = true
@@ -1145,19 +961,7 @@ func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: boo
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
 	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) in [0, 2]
 
-# Emits a one-time diagnostic message for live visual-frame state transitions.
-func _is_visual_debug_logging_enabled(loader: Node) -> bool:
-	var settings: Variant = loader.get("_visual_settings") if loader != null else null
-	if settings is Dictionary:
-		return bool((settings as Dictionary).get("beam_debug_optics", false))
-	return false
-
-func _log_visual_once(key: String, message: String, condition: bool = true) -> void:
-	if not condition or _diagnostic_info_keys.has(key):
-		return
-	_diagnostic_info_keys[key] = true
-	print(message)
-
+# Emits a bounded one-time warning for compatibility presentation failures.
 func _warn_visual_once(key: String, message: String, condition: bool = true) -> void:
 	if not condition or _diagnostic_warning_keys.has(key):
 		return
@@ -1391,12 +1195,6 @@ func _only_dimmer_capability_changed(changed_capability_types: Dictionary) -> bo
 		if bool(changed_capability_types.get(capability_type, false)):
 			return false
 	return true
-
-func record_beam_update() -> void:
-	_track_phase("beam_update", Time.get_ticks_usec())
-
-func record_gobo_update() -> void:
-	_track_phase("gobo_update", Time.get_ticks_usec())
 
 func get_phase_metrics() -> Dictionary:
 	return _phase_metrics.duplicate(true)

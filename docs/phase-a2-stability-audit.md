@@ -1,5 +1,12 @@
 # Phase A2: sustained live DMX stability baseline
 
+**Historical investigation.** The current status and milestone order live in
+[performance foundation](performance-foundation.md): stable 24–25 FPS full
+presentation, progressive collapse eliminated, scalability still open. The maps
+in this historical audit now describe explicit unbound compatibility paths;
+native dense state owns production lighting. See the [closure ownership audit](performance-foundation-ownership.md)
+for the subsequently reproduced/fixed 2,193-object shutdown cycle.
+
 Audited from `main` revision `1917f42448dc5897853f5f557bfc8c61c44cd49d`.
 This revision already reports `color_rows`, `color_dirty`, and
 `[peraviz-color-dirty]`. The older supplied trace predates that contract.

@@ -41,6 +41,7 @@ These are the authoritative starting points:
 - [Uniform physical color pipeline](docs/uniform-physical-color-pipeline.md): color evaluation and renderer approximation contracts.
 - [MVR-xchange](docs/MVR_XCHANGE.md): supported exchange behavior.
 - [Project data ownership](docs/peraviz-project-architecture.md) and [PVZ format](docs/pvz-project-format.md): project-storage boundaries.
+- [Performance foundation and current roadmap](docs/performance-foundation.md): stable foundation, current 24–25 FPS reference and deferred scalability work.
 - [Coordinate system](docs/COORDINATE_SYSTEM.md), [beam rendering modes](docs/BEAM_RENDERING_MODES.md), and [performance guidelines](docs/godot_performance_guidelines.md): specialized renderer guidance.
 
 Contributor rules are in [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).

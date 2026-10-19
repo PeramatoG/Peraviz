@@ -2,15 +2,40 @@
 
 ## Measurement boundary
 
-`--peraviz-perf-trace` emits one compact `[peraviz-perf]` line approximately once per second. `rx_apply_us` measures relevant ArtDmx receipt through completion of Godot scene/resource mutation on the CPU. It does not include render submission, GPU execution, frame queueing, or display presentation. `pump_hz` counts production pumps from the render `_process` path; the 125 ms status refresh only updates UI.
+Use `godot [engine arguments] -- [Peraviz arguments]`. Peraviz reads only user
+arguments after `--`; legacy placement warns and is ignored. Explicit trace or
+mode flags print one `[peraviz-diagnostic] perf_trace=... render_mode=...` line.
+Repeated user mode flags choose the last value with a warning. Defaults are full,
+trace off. The exact Windows commands and current **24–25 FPS full reference**
+are in [performance foundation](performance-foundation.md); this is a stable
+foundation, not the final performance target.
 
-Tracing is explicitly opt-in. Use `godot --path .` for the production baseline and `godot --path . -- --peraviz-perf-trace` for a diagnostic benchmark. Trace-off avoids rich row categorization, per-row clocks, native stats payloads, and presentation SceneTree sampling. Compare settled runs because trace-on accounting still has measurable cost.
+Tracing is opt-in. Trace OFF skips rich diagnostic payloads, clocks/formatting and
+scene sampling; actual setter helpers retain only trivial aggregate bookkeeping.
+Trace ON samples approximately once per second. RX-to-apply latency ends at CPU
+resource mutation, not GPU submission or display presentation. Intervals can span
+more than a second at low FPS; stage timings overlap and must not be added.
 
-With tracing disabled, playback performs no `Performance` monitor reads, trace formatting, interval diagnostic retention, per-row result dictionaries for Transform/Intensity/Color, renderer-counter mutation, or per-frame deep diagnostic copy. The one-time bootstrap diagnostic remains. Enabling tracing retains interval row/timing summaries, snapshots cumulative counters once per applied frame, reads Godot monitors, and formats only at the one-second report boundary. Viewport render-time measurement is enabled only for tracing and disabled when its trace owner is released.
+## Current trace fields
 
-## Trace fields
+- `[peraviz-perf]`: selected mode, dense-active state, FPS/process time, draw/object/
+  primitive counts, packets/relevance/overwrites, pump cadence, state/row outcomes,
+  interval `output_visits`, and current visible beam/light counts.
+- `[peraviz-color-dirty]`: source offsets, fan-out, dirty candidates, actual emitted
+  color rows, composition no-ops and bounded delta bands.
+- `[peraviz-presentation]`: renderer selection (distinct from diagnostic mode),
+  native output inventory and actual visible beam/light gauges.
+- `[peraviz-stability]`: mode/dense-active state, native dense counts/capacities,
+  compose/payload/adapter/mutation costs, actual setter counts, initialization and
+  real mesh-replacement counts, CPU/GPU timings, sizes and mailbox/coalescing.
+  Explicit latency interval/lifetime triples live here. The old compact-line
+  latency duplicates and legacy broad-helper `beam_full*`/topology counts were
+  removed. Compatibility map sizes are explicitly nested under
+  `legacy_compatibility`, marked inactive during production dense playback.
 
-The line reports mode; FPS/process time/draw calls/rendered objects/primitives/node and resource counts; accepted, relevant, irrelevant, rejected, and coalesced packets; pump calls and submitted native states; interval RX-to-native, native-to-apply, and RX-to-apply p50/p95/max; visual frames and generated/applied/no-op/failed rows; per-section row and CPU-time maps; physical outputs and beams considered; actual Light3D property writes, light visibility RID calls, beam parameter writes, beam visibility transitions, topology rebuilds, material parameter writes, gobo topology/parametric updates; current visible beam/realtime-light counts; and `emitter_commits=candidates/executed/signature_skipped/coalesced` plus total commit time (`emitter_commit_us`). The paired `[peraviz-color-dirty]` line separates changed color source offsets, offset-to-target fan-out candidates, unique dirty physical targets, final emitted rows, composition no-ops, and bounded useful-delta bands. `beam_topology` remains the compatibility count of calls to the broad topology helper; it does not prove that a mesh was built. `beam_full`, `beam_full_init`, and `beam_full_mask` identify all broad state applications and whether initialization or an explicit topology mask caused them. `beam_dynamic=changed/unchanged/unresolved` classifies fast-path results. Deferred semantic rows are counted as applied rather than renderer no-ops; final physical mutations remain represented by the emitter commit counters. Section IDs follow the visual protocol: Transform 1, Intensity 2, Color 3, BeamOptics 4, WheelSelection 5, WheelMotion 6, Temporal 8, GoboSelection 14, and GoboRotation 15.
+Visibility is sampled from bound resources before printing the same report;
+empty legacy visibility sets cannot overwrite dense counts. `output_visits` is
+not scene physical-output count; use `dense_presentation.physical_outputs`.
 
 `rows=2348` in the bootstrap diagnostic is a section-row count, not a fixture count. The canonical project has 71 live renderer fixtures, 95 independent Dimmer control targets, and approximately 1,095 physical Beam geometries. One inherited control can legitimately consider many physical outputs. The trace distinguishes that fan-out from actual renderer writes.
 
@@ -19,19 +44,15 @@ The line reports mode; FPS/process time/draw calls/rendered objects/primitives/n
 The modes are command-line-only and never modify saved visual settings:
 
 - `full` applies normal production output.
-- `transforms-only` retains the complete network/native pipeline but applies only Transform rows; lighting sections remain represented and are counted as diagnostically suppressed.
-- `no-beams` applies normal transforms, lighting state, and emissive geometry while hiding existing beam instances and suppressing beam shader/topology work. Returning to `full` reapplies held state without rebuilding the scene.
+- `transforms-only` retains network/native composition and applies only Transform rows. Aperture emission is zeroed once at the mode boundary; shafts, real lights and local gobo presentation are suppressed.
+- `no-beams` applies transforms and changed emissive geometry while suppressing shafts, real/projector lights and beam shader/topology/local-gobo work. Returning to `full` reapplies held state without rebuilding the scene.
 
 ## Interval latency and stability schema
 
-`[peraviz-perf]` now names the three latency triples `rx_native_interval_us`,
-`native_apply_interval_us`, and `rx_apply_interval_us` (p50/p95/max). These replace
-that line's ambiguous `rx_native_us`, `native_apply_us`, and `rx_apply_us` labels.
-They describe samples completed since the last report, approximately one second;
-at low FPS the interval can be longer. The paired `[peraviz-stability]` JSON
-object reports the actual `interval_ms`, explicit `*_interval_p50_us`,
-`*_interval_p95_us`, `*_interval_max_us`, and `*_interval_samples` for
-`rx_to_native`, `native_to_apply`, and `rx_to_apply`.
+`[peraviz-stability]` JSON reports actual `interval_ms` and explicit
+`*_interval_p50_us`, `*_interval_p95_us`, `*_interval_max_us` and
+`*_interval_samples` for `rx_to_native`, `native_to_apply` and `rx_to_apply`.
+These are no longer duplicated in the compact perf line.
 
 Three fixed pairs of 32-bucket power-of-two histograms retain no individual
 samples. Percentiles approximate bucket upper edges, clamped to the observed
@@ -63,11 +84,11 @@ The stability JSON also reports:
 | `mailbox_coalesced_states`, `mailbox_overwrites` | Identical **interval deltas**: changed state replaced another pending state for the same universe. This is not an expanding packet queue. Compact-line `overwrites` remains compatible. |
 | `scene_dirty_states_consumed`, `relevant_state_updates` | Interval dirty states consumed and relevant changed publications. Rehydration is represented separately by existing submitted-state counters. |
 | `active_universes`, `active_slot_count`, `approx_cache_bytes` | Active network universes in the last two seconds; lifetime metadata slots; approximate existing metadata/monitor-payload cache bytes. Mailbox storage is reported separately. |
-| `sizes`, `sampled_high_water` | Current and reporting-boundary peak counts for apply state, warnings/info, registry/lens/gobo resources, renderer mesh/proxy caches and native state/payload capacity. Fixed keys, no history. `snapshot_commit_high_water` is sampled exactly once before each traced snapshot drains; `apply_snapshot_output_commits` should be zero at the report boundary. |
+| `sizes`, `sampled_high_water` | Current and reporting-boundary peak counts for registry/lens/gobo resources, renderer mesh/proxy caches and native state/payload capacity. Fixed keys, no history. Compatibility apply-map sizes and the legacy snapshot peak are under `legacy_compatibility`; native dirty/processed counts are in `dense_presentation`. |
 
 All Godot monitor/renderer queries, collection-size reporting, high-water maps,
-and JSON payloads run only in the trace reporting path. The snapshot-commit peak
-adds one trace-guarded size check per snapshot, never per row. Existing native
+and JSON payloads run only in the trace reporting path. The legacy snapshot peak
+is sampled only for explicit unbound compatibility snapshots, never native playback. Existing native
 stats and renderer mutation diagnostics remain opt-in. The helper retains one
 high-water scalar per fixed collection name, never one record per report. See
 the [Phase A2 audit](phase-a2-stability-audit.md) for ownership, fixes and tests.

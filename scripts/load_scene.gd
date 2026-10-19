@@ -1637,7 +1637,7 @@ func _read_manual_fixture_test_setting() -> bool:
 	var setting_enabled: bool = bool(ProjectSettings.get_setting("peraviz_manual_fixture_test", false))
 	if setting_enabled:
 		return true
-	return OS.get_cmdline_args().has(MANUAL_TEST_FLAG)
+	return preload("res://scripts/runtime/application_arguments.gd").has_flag(MANUAL_TEST_FLAG)
 
 func _populate_fixture_list() -> void:
 	_fixture_debug_controller.populate_fixture_list()
@@ -1723,7 +1723,6 @@ func _configure_native_target_registry() -> void:
 			"ensure_beam_runtime": Callable(self, "_ensure_beam_runtime_for_light"),
 			"get_beam_resource": Callable(self, "_get_beam_resource_for_light"),
 			"apply_beam_optics": Callable(self, "_apply_beam_optics_for_light"),
-			"is_emitter_lens_mesh": Callable(self, "_is_emitter_lens_mesh"),
 			"present_native_gobo": Callable(self, "_present_native_gobo"),
 		},
 	})
@@ -1759,6 +1758,7 @@ func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = 
 
 func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 	var result: Dictionary = base_counters.duplicate(false)
+	result["beam_renderer_mode"] = _active_beam_mode
 	result["beam_presentation"] = _active_beam_presentation
 	var active_ids: Dictionary = _fixture_light_apply_service.get_active_physical_emitter_ids() if _fixture_light_apply_service != null else {}
 	result.merge(_native_target_registry.get_presentation_ownership_diagnostics(active_ids), true)
@@ -2947,6 +2947,10 @@ func _exit_tree() -> void:
 	_save_user_preferences()
 	if _dmx_controller != null:
 		_dmx_controller.exit_tree()
+	# Dense signal Callables contain RefCounted handles. Break their self-reference
+	# before Godot destroys the light Nodes, just as explicit scene unload does.
+	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service.reset_scene_state()
 
 func _sync_selected_fixture_badge() -> void:
 	if _status_presenter == null or _fixture_debug_controller == null:

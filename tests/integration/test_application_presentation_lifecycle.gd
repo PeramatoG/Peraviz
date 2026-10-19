@@ -110,7 +110,7 @@ func run() -> void:
 	var sample: Dictionary = trace.collect(app,runtime._native_visual_runtime)
 	test.check(sample.get("dense_presentation_active",false) and sample.has("dense_presentation"), "Stability trace explicitly confirms active dense installation")
 	for key in ["apply_target_states", "apply_committed_output_states"]:
-		test.check(int(sample["sizes"].get(key,-1)) == 0, "Legacy state owner remains empty: "+key)
+		test.check(int(sample["legacy_compatibility"]["sizes"].get(key,-1)) == 0, "Legacy state owner remains empty: "+key)
 	print("[peraviz-stability] ", sample)
 	if test.failures.is_empty(): print("Application presentation lifecycle passed: actual beams, footprints, gobos, blackout and held restoration checked.")
 	app._clear_scene()

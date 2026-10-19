@@ -40,6 +40,9 @@ class ResultClassificationTests(unittest.TestCase):
     def test_ordinary_warning_only_passes(self) -> None:
         self.assertFalse(RUNNER.classify_result(0, "WARNING: fallback renderer active\n").failed)
 
+    def test_objectdb_warning_fails(self) -> None:
+        self.assertTrue(RUNNER.classify_result(0, "WARNING: 2193 ObjectDB instances were leaked at exit").failed)
+
     def test_leak_error_fails(self) -> None:
         self.assertTrue(RUNNER.classify_result(0, "ERROR: 3 RID allocations were leaked at exit.\n").failed)
 
