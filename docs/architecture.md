@@ -58,6 +58,12 @@ own RID write. Beam/debug Nodes and aperture values have effective-value guards.
 No-beams retains native lighting and gobo control state while suppressing beam,
 light and local gobo renderer work after one cleanup; full resumes held state.
 Typed bound prism signatures are renderer caches, not composition authorities.
+The internal cache helper is explicitly preloaded and has no global class-cache
+requirement; the base API accepts RefCounted. Required dense installation failures
+reject playback instead of silently using legacy state. Stability trace reports
+whether dense presentation is active. Existing-light discovery preserves its
+live state. See [runtime recovery](native-dense-runtime-recovery.md) for cold-cache
+startup validation and beam/footprint lifecycle coverage.
 
 Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.
 

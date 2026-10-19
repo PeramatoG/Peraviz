@@ -1,5 +1,7 @@
 extends RefCounted
 
+const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+
 # Temporary milestone-1 renderer bridge. Native state owns composition; these
 # handles only bind existing renderer objects. Delete with the batched backend.
 const STRIDE: int = 12
@@ -35,8 +37,9 @@ class LightHandle:
 	var realtime_requested: bool = false
 	var properties_dirty: bool = true
 	var suppressed: bool = false
+	var initialization_failed: bool = false
 	var visibility_callback: Callable
-	var bound_state: BoundBeamState = BoundBeamState.new()
+	var bound_state: RefCounted = BoundBeamStateScript.Cache.new()
 	var compatibility_state: Dictionary = {}
 
 class OutputHandle:
@@ -53,6 +56,7 @@ var _loader: Node
 var _service: WeakRef
 var _renderer: BeamRendererBase
 var _warned_unresolved: bool = false
+var _warned_beam_initialization: bool = false
 var _trace: bool = false
 var _mode: String = "full"
 var _mutation_serial: int = 0
@@ -62,6 +66,7 @@ var _renderer_debug_seen: int = 0
 const MUTATION_COUNTERS: PackedStringArray = [
 	"spot_node_visibility_writes", "spot_rid_visibility_writes", "beam_visibility_writes",
 	"debug_axis_visibility_writes", "beam_shader_parameter_writes", "material_parameter_writes",
+	"beam_initialization_succeeded", "beam_initialization_failed", "beam_resource_rebounds", "beam_topology_rebuilt",
 	"spot_property_writes", "renderer_outputs_changed", "renderer_outputs_unchanged",
 	"renderer_outputs_processed", "forced_replays", "mode_transition_replays",
 	"visibility_resyncs", "projector_refresh_calls", "optics_apply_calls", "beam_initializations",
@@ -91,11 +96,10 @@ func clear() -> void:
 	_service = null
 	_renderer = null
 
-func install(loader: Node, service: RefCounted, registry: RefCounted) -> void:
+func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	clear()
 	if not ClassDB.class_exists("PeravizPresentationState"):
-		push_error("Native dense presentation service is required for playback.")
-		return
+		return false
 	_loader = loader
 	_trace = service._performance_trace_enabled
 	_mode = service._render_diagnostic_mode
@@ -138,7 +142,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> void:
 			# Node also stops Godot forwarding ancestor transforms to a suppressed RID.
 			_set_structural_visibility(handle, _mode == "full")
 			_set_spot_rid(handle, false)
-			if is_instance_valid(handle.beam): handle.bound_state = BoundBeamState.resolve(handle.beam)
+			if is_instance_valid(handle.beam): handle.bound_state = BoundBeamStateScript.resolve(handle.beam)
 			handle.visibility_callback = Callable(self, "_restore_spot_visibility").bind(handle)
 			light.visibility_changed.connect(handle.visibility_callback)
 			light.tree_entered.connect(handle.visibility_callback)
@@ -148,8 +152,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> void:
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
-	if _generation < 0:
-		push_error("Dense presentation bindings were rejected.")
+	return _generation >= 0
 
 func is_installed() -> bool:
 	return _native != null and _generation >= 0
@@ -263,16 +266,23 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 			_hide_bound_node(handle.debug_axis, &"debug_axis_visibility_writes")
 		if _renderer == null: continue
 		if mask & (ZOOM | TOPOLOGY):
+			handle.initialization_failed = false
+			var previous_mesh: Mesh = handle.beam.mesh if is_instance_valid(handle.beam) else null
 			_renderer.apply_beam_optics(handle.light, handle.params)
-			handle.beam = _renderer.get_beam_resource(handle.light)
-			handle.bound_state.bind_resource(handle.beam)
+			_bind_beam_resource(handle, _renderer.get_beam_resource(handle.light))
+			if is_instance_valid(handle.beam) and handle.beam.mesh != previous_mesh: _record_mutation(&"beam_topology_rebuilt")
 			_record_mutation(&"optics_apply_calls")
 		var result: int = _renderer.update_bound_intensity(handle.light, handle.beam, handle.params, handle.bound_state)
-		if result == BeamRendererBase.INTENSITY_UNRESOLVED:
-			_renderer.update_beam(handle.light, handle.params)
-			handle.beam = _renderer.get_beam_resource(handle.light)
-			handle.bound_state.bind_resource(handle.beam)
+		if result == BeamRendererBase.INTENSITY_UNRESOLVED and not handle.initialization_failed:
 			_record_mutation(&"beam_initializations")
+			_renderer.update_beam(handle.light, handle.params)
+			_bind_beam_resource(handle, _renderer.get_beam_resource(handle.light))
+			var ready: bool = is_instance_valid(handle.beam) and _renderer.is_beam_dynamic_ready(handle.light)
+			_record_mutation(&"beam_initialization_succeeded" if ready else &"beam_initialization_failed")
+			handle.initialization_failed = not ready
+			if not ready and not _warned_beam_initialization:
+				_warned_beam_initialization = true
+				push_error("Dense presentation beam initialization failed; renderer resource is not ready.")
 		_capture_renderer_mutations()
 		if _trace:
 			var counters: Dictionary = _service.get_ref()._visual_apply_counters
@@ -338,6 +348,13 @@ func _hide_bound_node(node: Node3D, counter: StringName) -> void:
 	if is_instance_valid(node) and node.visible:
 		node.visible = false
 		_record_mutation(counter)
+
+func _bind_beam_resource(handle: LightHandle, beam: MeshInstance3D) -> void:
+	if handle.beam != beam:
+		handle.initialization_failed = false
+		_record_mutation(&"beam_resource_rebounds")
+	handle.beam = beam
+	if is_instance_valid(beam): handle.bound_state = BoundBeamStateScript.resolve(beam)
 
 func _capture_renderer_mutations() -> void:
 	if _renderer == null: return
@@ -422,8 +439,8 @@ func consume_diagnostics() -> Dictionary:
 		var spots: int = 0
 		for output in _outputs:
 			for handle in output.lights:
-				beams += 1 if is_instance_valid(handle.beam) and handle.beam.visible else 0
-				spots += 1 if handle.realtime_visible else 0
+				beams += 1 if is_instance_valid(handle.beam) and handle.beam.is_visible_in_tree() else 0
+				spots += 1 if handle.realtime_visible and handle.light.is_visible_in_tree() else 0
 		service._visual_apply_counters["beam_visible_count"] = beams
 		service._visual_apply_counters["spotlight_visible_count"] = spots
 	return result
@@ -435,10 +452,9 @@ func rebind_light(light: SpotLight3D) -> void:
 		handle.params = light.get_meta("peraviz_beam_last_params", {})
 		var beam: MeshInstance3D = _loader._get_beam_resource_for_light(light)
 		if beam != handle.beam: handle.suppressed = false
-		handle.beam = beam
+		_bind_beam_resource(handle, beam)
 		handle.debug_axis = light.get_meta("peraviz_beam_debug_axis") as MeshInstance3D if light.has_meta("peraviz_beam_debug_axis") else null
 		handle.has_gobo = light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
-		if is_instance_valid(handle.beam): handle.bound_state = BoundBeamState.resolve(handle.beam)
 	_capture_renderer_mutations()
 
 func refresh_renderer() -> void:
@@ -457,6 +473,7 @@ func refresh_renderer() -> void:
 				handle.realtime_visibility_known = false
 				handle.properties_dirty = true
 				handle.bound_state.invalidate()
+			handle.initialization_failed = false
 	if _trace: _totals["forced_replays"] += 1
 	_native.invalidate_renderer()
 	compose(PackedInt32Array(), PackedInt32Array(), PackedFloat32Array(), _trace, _mode)

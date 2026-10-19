@@ -23,7 +23,11 @@ const VISUAL_FRAME_RENDER_VALUES_OFFSET: int = VISUAL_FRAME_HEADER_COUNT + VISUA
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
+const DensePresentationAdapterScript = preload("res://scripts/runtime/dense_presentation_adapter.gd")
+
 var _dense_adapter: RefCounted
+var _dense_required: bool = false
+var _dense_install_error_reported: bool = false
 
 var _phase_metrics: Dictionary = {
 	"dmx_decode": {"calls": 0, "total_usec": 0},
@@ -88,6 +92,8 @@ func reset_scene_state() -> void:
 	if _dense_adapter != null:
 		_dense_adapter.clear()
 	_dense_adapter = null
+	_dense_required = false
+	_dense_install_error_reported = false
 	_snapshot_commit_active = false
 	_snapshot_output_commits.clear()
 	_target_states.clear()
@@ -114,9 +120,20 @@ func set_performance_trace_enabled(enabled: bool) -> void:
 		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
 
 # Installs the normal native presentation path after renderer target setup.
-func install_dense_presentation(loader: Node, registry: RefCounted) -> void:
-	_dense_adapter = preload("res://scripts/runtime/dense_presentation_adapter.gd").new()
-	_dense_adapter.install(loader, self, registry)
+func install_dense_presentation(loader: Node, registry: RefCounted) -> bool:
+	_dense_required = true
+	_dense_adapter = DensePresentationAdapterScript.new()
+	if not _dense_adapter.install(loader, self, registry):
+		_dense_adapter.clear()
+		_dense_adapter = null
+		if not _dense_install_error_reported:
+			_dense_install_error_reported = true
+			push_error("Dense presentation installation failed (native class or bindings unavailable); lighting playback is disabled. Legacy state fallback is forbidden.")
+		return false
+	return true
+
+func is_dense_presentation_active() -> bool:
+	return _dense_adapter != null and _dense_adapter.is_installed()
 
 # Rebinds resources only at explicit presentation/control boundaries.
 func rebind_dense_light(light: SpotLight3D) -> void:
@@ -125,9 +142,9 @@ func rebind_dense_light(light: SpotLight3D) -> void:
 func refresh_dense_renderer() -> void:
 	if _dense_adapter != null: _dense_adapter.refresh_renderer()
 
-# Returns false only for compatibility callers without a dense binding generation.
+# 0 permits explicit compatibility callers; -1 rejects an unavailable required dense path.
 func compose_dense_snapshot(descriptors: PackedInt32Array, integers: PackedInt32Array, values: PackedFloat32Array, semantic_conversion_us: int = 0) -> int:
-	if _dense_adapter == null: return 0
+	if _dense_adapter == null: return -1 if _dense_required else 0
 	return 1 if _dense_adapter.compose(descriptors, integers, values, _performance_trace_enabled, _render_diagnostic_mode, semantic_conversion_us) else -1
 
 # Starts snapshot-local collection of canonical physical-output renderer commits.

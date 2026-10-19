@@ -1778,13 +1778,13 @@ func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 func _set_native_presentation_enabled(enabled: bool) -> void:
 	_native_target_registry.set_presentation_enabled(enabled)
 
-func _register_native_runtime_targets(renderer_manifest: Array) -> void:
+func _register_native_runtime_targets(renderer_manifest: Array) -> bool:
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service.reset_scene_state()
 	if _dmx_controller != null:
 		_fixture_light_apply_service.set_render_diagnostic_mode(_dmx_controller.get_render_diagnostic_mode())
 	_native_target_registry.install_manifest(renderer_manifest)
-	_fixture_light_apply_service.install_dense_presentation(self, _native_target_registry)
+	return _fixture_light_apply_service.install_dense_presentation(self, _native_target_registry)
 
 func _install_native_gobo_assets(asset_rows: Array) -> void:
 	_native_target_registry.install_gobo_assets(asset_rows)
@@ -2070,17 +2070,8 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 	var lens_radius: float = _estimate_emitter_lens_radius(emitter_node)
 	for child in emitter_node.get_children():
 		if child is SpotLight3D and child.name == "PeravizEmitterLight":
-			if not child.has_meta("peraviz_base_light_energy"):
-				child.light_energy = 0.0
-				child.visible = false
-			if child.rotation_degrees != EMITTER_LIGHT_DIRECTION_FIX:
-				child.rotation_degrees = EMITTER_LIGHT_DIRECTION_FIX
-			# Projector-active lights retain shadows because Godot 4.7 requires them for surface projection.
-			if child.light_projector == null and not child.has_meta("peraviz_pre_projector_shadow_enabled"):
-				child.shadow_enabled = false
-			child.shadow_bias = 0.05
-			child.shadow_normal_bias = 1.2
-			child.set_meta("peraviz_lens_radius", lens_radius)
+			# Discovery preserves a live dense-bound light, including projector roll.
+			# Initial visibility, energy and optical defaults are assigned at creation.
 			return child
 
 	var light := SpotLight3D.new()

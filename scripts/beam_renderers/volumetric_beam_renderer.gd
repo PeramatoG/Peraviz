@@ -2,6 +2,8 @@ extends BeamRendererBase
 
 class_name VolumetricBeamRenderer
 
+const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+
 const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 const BEAM_META_KEY: String = "peraviz_volumetric_beam"
 const DEBUG_AXIS_KEY: String = "peraviz_beam_debug_axis"
@@ -66,7 +68,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 	if beam == null:
 		return
-	BoundBeamState.invalidate_resource(beam)
+	BoundBeamStateScript.invalidate_resource(beam)
 	var beam_type: String = str(params.get("beam_type", "Wash")).to_lower()
 	if beam_type == "none" or beam_type == "glow":
 		_set_bound_visibility(beam, false)
@@ -158,8 +160,8 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
 	if beam == null or not is_instance_valid(beam):
 		return INTENSITY_UNRESOLVED
-	if beam.has_meta(BoundBeamState.META_KEY):
-		return update_bound_intensity(light, beam, params, BoundBeamState.resolve(beam))
+	if beam.has_meta(BoundBeamStateScript.META_KEY):
+		return update_bound_intensity(light, beam, params, BoundBeamStateScript.resolve(beam))
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -194,8 +196,8 @@ func _store_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) 
 
 func _apply_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) -> void:
 	var dynamic_state := Color(color.r, color.g, color.b, intensity)
-	if beam.has_meta(BoundBeamState.META_KEY):
-		var bound := BoundBeamState.resolve(beam)
+	if beam.has_meta(BoundBeamStateScript.META_KEY):
+		var bound := BoundBeamStateScript.resolve(beam)
 		if bound.applied_dynamic == dynamic_state: return
 		bound.applied_dynamic = dynamic_state
 	else:
@@ -205,8 +207,8 @@ func _apply_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) 
 	_last_parameter_write_count += 1
 
 func _apply_intensity_max(beam: MeshInstance3D, intensity_max: float) -> void:
-	if beam.has_meta(BoundBeamState.META_KEY):
-		var bound := BoundBeamState.resolve(beam)
+	if beam.has_meta(BoundBeamStateScript.META_KEY):
+		var bound := BoundBeamStateScript.resolve(beam)
 		if is_equal_approx(bound.applied_max, intensity_max): return
 		bound.applied_max = intensity_max
 	else:
@@ -325,7 +327,7 @@ func reset_scene_state() -> void:
 	_proxy_controller.reset_scene_state()
 
 # Retains Vector Gobo Prism shading with directly bound beam resources.
-func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Dictionary, bound: BoundBeamState = null) -> int:
+func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Dictionary, bound: RefCounted = null) -> int:
 	_last_visibility_write_count = 0
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
 		var before: bool = is_instance_valid(beam) and beam.visible
@@ -341,7 +343,7 @@ func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Di
 	var visible: bool = intensity > float(params.get("intensity_visibility_threshold", 0.015))
 	if visible and beam.mesh == null:
 		return INTENSITY_UNRESOLVED
-	var state: BoundBeamState = BoundBeamState.resolve(beam, bound)
+	var state: RefCounted = BoundBeamStateScript.resolve(beam, bound)
 	if beam.visible != visible:
 		_set_bound_visibility(beam, visible)
 		_last_visibility_write_count = 1

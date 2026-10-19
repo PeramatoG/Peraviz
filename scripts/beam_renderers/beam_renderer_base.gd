@@ -47,7 +47,7 @@ func reset_scene_state() -> void:
 	pass
 
 # Compatibility backends may reuse their existing implementation for uncommon modes.
-func update_bound_intensity(light: SpotLight3D, _beam: MeshInstance3D, params: Dictionary, _bound: BoundBeamState = null) -> int:
+func update_bound_intensity(light: SpotLight3D, _beam: MeshInstance3D, params: Dictionary, _bound: RefCounted = null) -> int:
 	_last_visibility_write_count = 0
 	return update_beam_intensity(light, params)
 

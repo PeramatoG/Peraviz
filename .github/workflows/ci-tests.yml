@@ -216,10 +216,11 @@ jobs:
           tests/check_no_large_files_test.sh
           tests/check_runtime_architecture.sh
 
-      - name: Import project and register native classes
+      - name: Validate clean-cache import and normal application lifecycle
         if: env.CACHE_WARMING != 'true'
         run: |
-          timeout 120 "$GODOT_BIN" --headless --audio-driver Dummy --rendering-method gl_compatibility --editor --path "${{ github.workspace }}" --quit 2>&1 | tee "$LOG_DIR/godot-import.log"
+          python3 -m unittest discover -s .github/scripts/tests -v
+          python3 .github/scripts/check_clean_runtime.py --godot "$GODOT_BIN" --project "${{ github.workspace }}" --output "$LOG_DIR/clean-runtime"
 
       - name: Verify native extension class registration
         if: env.CACHE_WARMING != 'true'

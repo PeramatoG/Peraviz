@@ -1,5 +1,7 @@
 extends SceneTree
 
+const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+
 const Harness = preload("res://tests/gdscript/helpers/dense_mutation_loader.gd")
 const Service = preload("res://scripts/runtime/fixture_light_apply_service.gd")
 const TestCase = preload("res://tests/gdscript/headless_test_case.gd")
@@ -33,7 +35,8 @@ func run() -> void:
 	service.set_performance_trace_enabled(true)
 	var bindings := Bindings.new()
 	bindings.loader = loader
-	service.install_dense_presentation(loader,bindings)
+	test.check(service.install_dense_presentation(loader,bindings), "Dense installation succeeds")
+	test.check(service.is_dense_presentation_active(), "Dense installation is explicitly active")
 	var adapter: RefCounted = service._dense_adapter
 	var first: Dictionary = loader.frame(0.7,0.2)
 	apply(service,first)
@@ -123,6 +126,10 @@ func run() -> void:
 	await check_initial_suppression("transforms-only")
 	await check_bound_renderer(false)
 	await check_bound_renderer(true)
+	var failed_service = Service.new()
+	failed_service._dense_required = true # Model a required installation that failed.
+	test.check(failed_service.compose_dense_snapshot(PackedInt32Array(),PackedInt32Array(),PackedFloat32Array()) < 0, "Required missing dense adapter cannot silently use legacy state")
+	test.check(not failed_service.is_dense_presentation_active() and failed_service._target_states.is_empty(), "Failed dense installation remains inactive with no legacy state owner")
 	test.finish(self)
 
 func check_bound_renderer(vector: bool) -> void:
@@ -135,7 +142,7 @@ func check_bound_renderer(vector: bool) -> void:
 	var params: Dictionary = loader._build_cached_beam_params(light,25.0,Color(0.2,0.4,0.8),0.5,10.0,0.03,{})
 	loader.renderer.update_beam(light,params)
 	var beam: MeshInstance3D = loader.renderer.get_beam_resource(light)
-	var bound: BoundBeamState = BoundBeamState.resolve(beam)
+	var bound: RefCounted = BoundBeamStateScript.resolve(beam)
 	loader.renderer.update_bound_intensity(light,beam,params,bound)
 	var writes: int = loader.renderer.renderer_shader_parameter_writes
 	var visibility: int = loader.renderer.renderer_visibility_writes
@@ -165,7 +172,7 @@ func check_initial_suppression(mode: String) -> void:
 	service.set_render_diagnostic_mode(mode)
 	var bindings := Bindings.new()
 	bindings.loader = loader
-	service.install_dense_presentation(loader,bindings)
+	test.check(service.install_dense_presentation(loader,bindings), "Dense installation succeeds")
 	test.check(not loader.anchors[0].visible, "Initial diagnostic mode hides structural light: "+mode)
 	apply(service,loader.frame(0.5,0.2))
 	test.check(not loader.anchors[0].visible and not service._dense_adapter._outputs[0].lights[0].realtime_visible, "Initial suppressed snapshot cannot enable a light")

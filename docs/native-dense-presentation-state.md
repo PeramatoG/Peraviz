@@ -1,5 +1,11 @@
 # Native dense presentation state (milestone 1)
 
+**Runtime acceptance takes priority:** the latest Windows run at `832882d` is
+invalid for performance because required scripts did not compile. See
+[runtime recovery and clean-cache validation](native-dense-runtime-recovery.md).
+The next canonical run must validate `full` visually before performance work
+resumes; the earlier performance commands below remain a deferred plan.
+
 The main-thread presentation service in `native/src/presentation/` stores one
 independent state per canonical physical renderer output. This is internal
 Peraviz runtime data. It does not change MVR, GDTF, selected DMXMode, channel
@@ -266,7 +272,7 @@ batched aperture presentation with approximately 1,000 independently controlled
 color/intensity outputs. Beam batching, new renderers and grouping remain separate
 work. Rendering scalability is not established by this milestone.
 
-### Corrective candidate acceptance commands
+### Deferred performance acceptance commands
 
 Run each mode with the same reference scene and chase, prioritizing no-beams:
 

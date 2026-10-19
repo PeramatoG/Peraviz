@@ -32,6 +32,11 @@ class ResultClassificationTests(unittest.TestCase):
         self.assertTrue(outcome.failed)
         self.assertIn("SCRIPT ERROR: assertion stopped cleanup", outcome.message)
 
+    def test_compilation_diagnostics_with_zero_exit_fail(self) -> None:
+        for diagnostic in ["Parse Error: missing type", "Compile Error: dependency", "Failed to load script", "Invalid call. Nonexistent function 'new'"]:
+            with self.subTest(diagnostic=diagnostic):
+                self.assertTrue(RUNNER.classify_result(0, diagnostic).failed)
+
     def test_ordinary_warning_only_passes(self) -> None:
         self.assertFalse(RUNNER.classify_result(0, "WARNING: fallback renderer active\n").failed)
 

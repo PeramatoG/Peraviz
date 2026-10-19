@@ -40,6 +40,8 @@ Changes since the previous Peraviz release.
 
 ## Fixes
 
+- Fixed fresh-checkout script loading by replacing the dense beam cache's global class dependency with explicit preloads. Preserved live light visibility during resource discovery, added explicit dense-install failure handling and real-application beam/footprint lifecycle checks from a clean Godot cache. Windows runs with compilation errors are invalid for performance acceptance; full visual review comes first.
+
 - Corrected conflicting SpotLight Node/RID visibility and missing bound-prism unchanged guards in the native dense presentation bridge. Diagnostic no-beams now suppresses light/beam/gobo renderer work after one cleanup while preserving held state and emissive apertures. Added actual mutation counters and a 1,095-output regression; canonical Windows performance validation remains pending.
 
 - Kept Shader Beam Proxy resources under their active renderer's ownership so ordinary DMX updates no longer hide and immediately reshow them, and made Quick Preset retain its selected value with a clear Custom state after manual edits.

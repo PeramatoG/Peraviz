@@ -1,6 +1,8 @@
 extends BeamRendererBase
 class_name LegacyConeBeamRenderer
 
+const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+
 const BeamGeometryCalculatorScript = preload("res://scripts/beam_geometry_calculator.gd")
 const GoboRotationPresentationScript = preload("res://scripts/runtime/gobo_indexed_rotation_presentation.gd")
 
@@ -42,7 +44,7 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if prism == null:
 		return
 	_attach_if_needed(light, prism)
-	BoundBeamState.invalidate_resource(prism)
+	BoundBeamStateScript.invalidate_resource(prism)
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -116,8 +118,8 @@ func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	var prism: MeshInstance3D = light.get_meta(MAIN_KEY) as MeshInstance3D
 	if prism == null or not is_instance_valid(prism):
 		return INTENSITY_UNRESOLVED
-	if prism.has_meta(BoundBeamState.META_KEY):
-		return update_bound_intensity(light, prism, params, BoundBeamState.resolve(prism))
+	if prism.has_meta(BoundBeamStateScript.META_KEY):
+		return update_bound_intensity(light, prism, params, BoundBeamStateScript.resolve(prism))
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var scaled_intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -338,7 +340,7 @@ func reset_scene_state() -> void:
 	_mesh_builder.clear_cache()
 
 # Uses the existing prism material implementation with setup-bound resources.
-func update_bound_intensity(_light: SpotLight3D, prism: MeshInstance3D, params: Dictionary, bound: BoundBeamState = null) -> int:
+func update_bound_intensity(_light: SpotLight3D, prism: MeshInstance3D, params: Dictionary, bound: RefCounted = null) -> int:
 	_last_parameter_write_count = 0
 	_last_visibility_write_count = 0
 	if not is_instance_valid(prism):
@@ -348,7 +350,7 @@ func update_bound_intensity(_light: SpotLight3D, prism: MeshInstance3D, params: 
 	var visible: bool = intensity > float(params.get("intensity_visibility_threshold", 0.015))
 	if visible and prism.mesh == null:
 		return INTENSITY_UNRESOLVED
-	var state: BoundBeamState = BoundBeamState.resolve(prism, bound)
+	var state: RefCounted = BoundBeamStateScript.resolve(prism, bound)
 	if prism.visible != visible:
 		_set_bound_visibility(prism, visible)
 		_last_visibility_write_count = 1
