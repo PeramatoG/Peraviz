@@ -1,7 +1,8 @@
 extends RefCounted
 
 # Peraviz presentation geometry only: native GDTF/DMX semantics remain upstream.
-# Coordinates are emitter-local; fixture ancestors supply Pan/Tilt to both consumers.
+# Coordinates are emitter-local; the presentation carrier supplies the current
+# mechanical Pan/Tilt pose to both consumers without changing local optics.
 const META: StringName = &"peraviz_optical_projection_state"
 const RadialProfile = preload("res://scripts/beam_renderers/radial_light_profile.gd")
 const Geometry = preload("res://scripts/beam_geometry_calculator.gd")
@@ -112,7 +113,8 @@ func projector_basis() -> Basis:
 
 func apply_footprint(light: SpotLight3D) -> void:
 	# A fixture/emitter owner may explicitly replace its local optical transform.
-	# Ancestor Pan/Tilt needs no state mutation: both consumers inherit it.
+	# Mechanical Pan/Tilt needs no optical state mutation: both consumers
+	# inherit the presentation carrier pose.
 	if footprint_applied and not light.transform.is_equal_approx(last_projector_transform):
 		var previous_origin := base_transform.origin
 		base_transform = light.transform

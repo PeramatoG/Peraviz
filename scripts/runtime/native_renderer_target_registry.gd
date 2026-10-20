@@ -22,6 +22,7 @@ var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
 var _renderer_generation: int = 0
+var _transform_controller: WeakRef
 
 func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
@@ -38,6 +39,7 @@ func clear() -> void:
 	clear_scene_state()
 
 func clear_renderer_targets() -> void:
+	_transform_controller = null
 	_pan_targets.clear()
 	_tilt_targets.clear()
 	_dimmer_targets.clear()
@@ -127,37 +129,54 @@ func _log_output_fanout_once() -> void:
 	var median_index: int = int(floor(float(fanouts.size()) * 0.5))
 	print("[native-renderer-fanout] dimmer_targets=%d output_records=%d unique_emitters=%d color_outputs=%d min=%d median=%d max=%d fanout_hist=%s top=%s" % [_dimmer_targets.size(), _beam_output_records_by_id.size(), get_emitter_anchors().size(), outputs_with_color.size(), fanouts[0], fanouts[median_index], fanouts[-1], str(histogram), str(top.slice(0, mini(10, top.size())))])
 
+# The controller is generation-owned by the dense adapter; never retain stale bindings.
+func install_transform_controller(controller: RefCounted) -> void:
+	_transform_controller = weakref(controller)
+	controller.install_audit(_pan_targets, _tilt_targets, _beam_output_records_by_id.values())
+
+func _write_axis(axis: Node3D, degrees: float, pan: bool) -> void:
+	if not is_instance_valid(axis): return
+	var current: float = axis.rotation_degrees.y if pan else axis.rotation_degrees.x
+	if is_equal_approx(current, degrees): return
+	if pan: axis.rotation_degrees.y = degrees
+	else: axis.rotation_degrees.x = degrees
+	var controller: RefCounted = _transform_controller.get_ref() if _transform_controller != null else null
+	if controller != null and controller.trace: controller.moved(axis, pan)
+
+# One aggregate clock pair per transform section, never a timer per physical output.
+func apply_transform_batch(integers: PackedInt32Array, floats: PackedFloat32Array, int_offset: int, float_offset: int, rows: int) -> int:
+	if rows < 0 or int_offset < 0 or float_offset < 0 or int_offset + rows * 4 > integers.size() or float_offset + rows * 2 > floats.size(): return 0
+	var controller: RefCounted = _transform_controller.get_ref() if _transform_controller != null else null
+	var tracing: bool = controller != null and controller.trace
+	var started: int = Time.get_ticks_usec() if tracing else 0
+	var applied: int = 0
+	for row in range(rows):
+		var ib: int = int_offset + row * 4
+		var fb: int = float_offset + row * 2
+		if apply_transform_targets_fast(integers[ib + 1], integers[ib + 2], floats[fb], floats[fb + 1]): applied += 1
+	if tracing: controller.add_mechanical_time(Time.get_ticks_usec() - started)
+	return applied
+
 func apply_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
-	var pan_axis: Node3D = _pan_targets.get(pan_component_id, null) as Node3D
-	var tilt_axis: Node3D = _tilt_targets.get(tilt_component_id, null) as Node3D
-	var result: Dictionary = {"pan_requested": pan_component_id > 0, "pan_applied": false, "tilt_requested": tilt_component_id > 0, "tilt_applied": false, "failed": 0}
-	if pan_component_id > 0 and pan_axis != null:
-		pan_axis.rotation_degrees.y = pan_degrees
-		result["pan_applied"] = true
-	elif pan_component_id > 0:
-		if not _target_resolution_failures.has(pan_component_id):
-			_target_resolution_failures[pan_component_id] = {"target_id": pan_component_id, "semantic": "pan", "reason": "target never registered"}
-		result["failed"] = int(result["failed"]) + 1
-	if tilt_component_id > 0 and tilt_axis != null:
-		tilt_axis.rotation_degrees.x = tilt_degrees
-		result["tilt_applied"] = true
-	elif tilt_component_id > 0:
-		if not _target_resolution_failures.has(tilt_component_id):
-			_target_resolution_failures[tilt_component_id] = {"target_id": tilt_component_id, "semantic": "tilt", "reason": "target never registered"}
-		result["failed"] = int(result["failed"]) + 1
-	return result
+	var pan_axis: Node3D = _pan_targets.get(pan_component_id) as Node3D
+	var tilt_axis: Node3D = _tilt_targets.get(tilt_component_id) as Node3D
+	_write_axis(pan_axis, pan_degrees, true)
+	_write_axis(tilt_axis, tilt_degrees, false)
+	var pan_ok: bool = pan_component_id > 0 and is_instance_valid(pan_axis)
+	var tilt_ok: bool = tilt_component_id > 0 and is_instance_valid(tilt_axis)
+	if pan_component_id > 0 and not pan_ok and not _target_resolution_failures.has(pan_component_id):
+		_target_resolution_failures[pan_component_id] = {"target_id": pan_component_id, "semantic": "pan", "reason": "target never registered"}
+	if tilt_component_id > 0 and not tilt_ok and not _target_resolution_failures.has(tilt_component_id):
+		_target_resolution_failures[tilt_component_id] = {"target_id": tilt_component_id, "semantic": "tilt", "reason": "target never registered"}
+	return {"pan_requested": pan_component_id > 0, "pan_applied": pan_ok, "tilt_requested": tilt_component_id > 0,
+		"tilt_applied": tilt_ok, "failed": int(pan_component_id > 0 and not pan_ok) + int(tilt_component_id > 0 and not tilt_ok)}
 
 func apply_transform_targets_fast(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> bool:
-	var applied: bool = false
-	var pan_axis: Node3D = _pan_targets.get(pan_component_id, null) as Node3D
-	var tilt_axis: Node3D = _tilt_targets.get(tilt_component_id, null) as Node3D
-	if pan_component_id > 0 and pan_axis != null:
-		pan_axis.rotation_degrees.y = pan_degrees
-		applied = true
-	if tilt_component_id > 0 and tilt_axis != null:
-		tilt_axis.rotation_degrees.x = tilt_degrees
-		applied = true
-	return applied
+	var pan_axis: Node3D = _pan_targets.get(pan_component_id) as Node3D
+	var tilt_axis: Node3D = _tilt_targets.get(tilt_component_id) as Node3D
+	_write_axis(pan_axis, pan_degrees, true)
+	_write_axis(tilt_axis, tilt_degrees, false)
+	return (pan_component_id > 0 and is_instance_valid(pan_axis)) or (tilt_component_id > 0 and is_instance_valid(tilt_axis))
 
 func has_dimmer_target(dimmer_target_id: int) -> bool:
 	return dimmer_target_id > 0 and _dimmer_targets.has(dimmer_target_id)

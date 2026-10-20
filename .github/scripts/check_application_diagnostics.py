@@ -11,6 +11,10 @@ def check_modes(base: list[str], fixture: Path, output: Path, environment: dict[
     """Require controller configuration, resource policy, truthful telemetry and leak-free exit."""
     script = ['--verbose','--script','res://tests/integration/test_application_diagnostics.gd']
     cases = [
+        ('transform-normal', [], ['--peraviz-perf-trace','--peraviz-transform-diagnostic=normal'], 'full', True, True),
+        ('transform-mechanical-only', [], ['--peraviz-perf-trace','--peraviz-transform-diagnostic=mechanical-only','--reload'], 'full', True, True),
+        ('transform-active-only', [], ['--peraviz-transform-diagnostic=active-only'], 'full', False, True),
+        ('transform-before-separator', ['--peraviz-transform-diagnostic=mechanical-only'], [], 'full', False, False),
         ('default', [], [], 'full', False, False),
         ('full-off', [], ['--peraviz-render-diagnostic=full'], 'full', False, True),
         ('full-trace-reload', [], ['--peraviz-perf-trace','--peraviz-render-diagnostic=full','--reload'], 'full', True, True),
@@ -22,11 +26,12 @@ def check_modes(base: list[str], fixture: Path, output: Path, environment: dict[
         ('duplicate-last-wins', [], ['--peraviz-render-diagnostic=full','--peraviz-render-diagnostic=no-beams'], 'no-beams', False, True),
     ]
     for name, engine, application, mode, trace, diagnostic in cases:
-        command = base + engine + script + ['--'] + application + [f'--expect-mode={mode}',f'--expect-trace={str(trace).lower()}',f'--fixture={fixture}']
+        transform = next((arg.split('=', 1)[1] for arg in reversed(application) if arg.startswith('--peraviz-transform-diagnostic=')), 'active-only')
+        command = base + engine + script + ['--'] + application + [f'--expect-mode={mode}',f'--expect-trace={str(trace).lower()}',f'--expect-transform-mode={transform}',f'--fixture={fixture}']
         log = output / f'command-line-{name}.log'
         text = run_stage(command, log, 60, environment)
         lines = re.findall(r'^\[peraviz-diagnostic\].*$',text,re.M)
-        expected = f'[peraviz-diagnostic] perf_trace={str(trace).lower()} render_mode={mode}'
+        expected = f'[peraviz-diagnostic] perf_trace={str(trace).lower()} render_mode={mode} transform_mode={transform}'
         if lines != ([expected] if diagnostic else []):
             raise RuntimeError(f'Incorrect/duplicate startup diagnostic in {log}: {lines}')
         if 'APPLICATION_DIAGNOSTICS_PASSED' not in text:

@@ -80,6 +80,20 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 				skip_diagnostics["invalid_schema_payload"] += row_count
 				_record_failure(skip_diagnostics, {"reason": "invalid schema stride", "section_type": section_type})
 			continue
+		# Dense transforms use one bounded batch; UUIDs and diagnostic row results
+		# are unnecessary for already-bound native component handles.
+		if dense and section_type == SECTION_GEOMETRY_TRANSFORM:
+			var valid: bool = int_stride == 4 and float_stride == 2 and row_count >= 0 and int_offset >= 0 and float_offset >= 0 and int_offset + row_count * 4 <= integers.size() and float_offset + row_count * 2 <= floats.size()
+			var applied: int = light_apply_service.apply_transform_batch(loader, integers, floats, int_offset, float_offset, row_count) if valid else 0
+			applied_rows += applied
+			failed_rows += row_count - applied
+			skipped += row_count - applied
+			for row in range(row_count if valid else 0): updated_fixtures[integers[int_offset + row * 4]] = true
+			if _performance_trace_enabled:
+				counts["transform_rows_generated"] += row_count
+				skip_diagnostics["rows_generated"] += row_count
+				if not valid: skip_diagnostics["invalid_schema_payload"] += row_count
+			continue
 		for row_index in range(row_count):
 			if _performance_trace_enabled:
 				skip_diagnostics["rows_generated"] = int(skip_diagnostics.get("rows_generated", 0)) + 1

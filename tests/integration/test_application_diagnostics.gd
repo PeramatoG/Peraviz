@@ -20,19 +20,23 @@ func run() -> void:
 	await process_frame
 	app = current_scene
 	var mode: String = argument("--expect-mode","full")
+	var transform_mode: String = argument("--expect-transform-mode", "active-only")
 	var trace: bool = argument("--expect-trace","false") == "true"
 	var fixture: String = argument("--fixture")
 	test.check(app._dmx_controller.get_render_diagnostic_mode() == mode, "User arguments reach production diagnostic mode")
 	test.check(app._dmx_controller._perf_trace_enabled == trace, "User arguments reach production trace configuration")
 	test.check(app._load_mvr_scene(fixture,"mvr",false).get("ok",false), "Production MVR scene loads")
 	var service: RefCounted = app._fixture_light_apply_service
+	test.check(service._dense_adapter.transforms.mode == transform_mode, "Application arguments select transform ownership")
 	test.check(service.is_dense_presentation_active(), "Dense installation is active in every mode")
 	apply_dmx(200,120)
 	await process_frame
+	var initial_presentation: Array[Transform3D] = capture_carrier_poses()
 	var initial_transform: Transform3D = app._native_target_registry._pan_targets.values()[0].global_transform
 	apply_dmx(210,220)
 	await process_frame
 	test.check(app._native_target_registry._pan_targets.values()[0].global_transform != initial_transform, "Native Pan still changes real transforms in every mode")
+	verify_transform_motion(transform_mode, initial_presentation)
 	var resources: Dictionary = verify_resources(mode)
 	var visible_beams: int = resources["beams"]
 	var visible_spots: int = resources["lights"]
@@ -96,6 +100,10 @@ func capture_scene_resources() -> Array[WeakRef]:
 		for handle in output.lights:
 			for resource in [handle,handle.bound_state,handle.beam,handle.beam.mesh,handle.beam.material_override,handle.light.light_projector]:
 				if resource != null: refs.append(weakref(resource))
+	refs.append(weakref(adapter.transforms))
+	for binding in adapter.transforms.bindings:
+		refs.append(weakref(binding))
+		if binding.carrier != null: refs.append(weakref(binding.carrier))
 	for node in app.proxies_root.find_children("*","CollisionShape3D",true,false):
 		refs.append(weakref(node))
 		if node.shape != null: refs.append(weakref(node.shape))
@@ -124,3 +132,24 @@ func verify_resources(mode: String) -> Dictionary:
 	test.check(visible_spots == (2 if mode == "full" else 0), "Actual projector-light policy differs by diagnostic mode")
 	test.check(lens_energy > 0.0 if mode != "transforms-only" else is_zero_approx(lens_energy), "No-beams preserves lenses; transforms-only suppresses their emission")
 	return {"beams":visible_beams,"lights":visible_spots}
+
+func capture_carrier_poses() -> Array[Transform3D]:
+	var poses: Array[Transform3D] = []
+	for binding in app._fixture_light_apply_service._dense_adapter.transforms.bindings:
+		poses.append(binding.carrier.global_transform if binding.detached else binding.source.global_transform)
+	return poses
+
+func verify_transform_motion(mode: String, previous: Array[Transform3D]) -> void:
+	var index: int = 0
+	for binding in app._fixture_light_apply_service._dense_adapter.transforms.bindings:
+		if mode == "normal":
+			test.check(not binding.detached and binding.carrier == null, "Normal A/B uses original inherited presentation ownership")
+		else:
+			test.check(binding.carrier.top_level and binding.anchor.get_parent() == binding.carrier, "Detached presentation keeps scene lifecycle and local optical owner")
+			if mode == "mechanical-only":
+				test.check(binding.carrier.global_transform.is_equal_approx(previous[index]), "Mechanical-only freezes the presentation carrier while physical Pan moves")
+			elif binding.shaft_active or binding.projector_active or binding.diagnostic_active:
+				test.check(binding.carrier.global_transform.is_equal_approx(binding.source.global_transform), "Active shaft/projector uses exact current mechanical pose")
+			else:
+				test.check(binding.carrier.global_transform.is_equal_approx(previous[index]), "Suppressed presentation remains transform-inactive")
+		index += 1

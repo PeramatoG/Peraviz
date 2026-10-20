@@ -110,6 +110,50 @@ int test_dynamic_visual_mask_contract() {
     return 0;
 }
 
+// Preserves native dark motion, deduplication and trace-only transform telemetry.
+int test_blackout_transform_trace() {
+    using namespace peraviz::runtime;
+    auto scene = make_scene();
+    PeravizVisualRuntimeCore runtime;
+    runtime.install_compiled_scene(scene);
+    runtime.set_performance_trace_enabled(true);
+    std::vector<uint8_t> dmx(8, 0);
+    for (int step = 0; step <= 100; ++step) {
+        dmx[1] = static_cast<uint8_t>(step);
+        dmx[2] = static_cast<uint8_t>(100 - step);
+        runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+        const auto frame = runtime.consume_latest_visual_frame();
+        if (first_section_changed_mask(frame, VisualSectionType::GeometryTransform, GeometryTransformChangedMask) != VisualChangeTransform)
+            return fail("Blackout must retain current semantic Pan/Tilt on every changed frame");
+        const float expected_pan = -270.0f + (float(step * 256) / 65535.0f) * 540.0f;
+        if (std::abs(frame.floats[0] - expected_pan) > 0.001f) return fail("Dark motion must not freeze native transform state");
+    }
+    if (runtime.stats().transform_rows_generated != 101) return fail("Trace must count emitted native transform rows");
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    if (!runtime.consume_latest_visual_frame().descriptors.empty() || runtime.stats().transform_rows_generated != 101)
+        return fail("Identical DMX stays filtered upstream without another transform row");
+    // Different raw Pan inputs resolve to one held physical value in this source.
+    scene.source_programs[1].physical_from = scene.source_programs[1].physical_to = 12.0;
+    runtime.install_compiled_scene(scene);
+    runtime.set_performance_trace_enabled(true);
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    runtime.consume_latest_visual_frame();
+    ++dmx[1];
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    const auto unchanged = runtime.consume_latest_visual_frame();
+    if (!unchanged.descriptors.empty() || runtime.stats().transform_rows_skipped_unchanged != 1)
+        return fail("Trace must distinguish evaluated unchanged transforms from emitted rows");
+    runtime.set_performance_trace_enabled(false);
+    const auto previous = runtime.stats();
+    ++dmx[2];
+    runtime.submit_universe_frame(10, dmx.data(), static_cast<int>(dmx.size()));
+    runtime.consume_latest_visual_frame();
+    if (runtime.stats().transform_rows_generated != previous.transform_rows_generated ||
+            runtime.stats().native_transform_decode_us != previous.native_transform_decode_us)
+        return fail("Trace OFF must not collect transform telemetry");
+    return 0;
+}
+
 // Verifies the production path emits transform and intensity sections from compiled programs.
 int test_compiled_scene_e2e() {
     peraviz::runtime::PeravizVisualRuntimeCore runtime;
@@ -1279,6 +1323,7 @@ int run_realtime_dmx_udp_load_harness(int argc, char **argv);
 int main(int argc, char **argv) {
     if (argc > 1 && std::string(argv[1]) == "--benchmark") return run_realtime_dmx_load_harness(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--udp-benchmark") return run_realtime_dmx_udp_load_harness(argc, argv);
+    if (test_blackout_transform_trace() != 0) return 1;
     if (test_compiled_scene_e2e() != 0) return 1;
     if (test_dynamic_visual_mask_contract() != 0) return 1;
     if (test_non_adjacent_16_bit_value() != 0) return 1;

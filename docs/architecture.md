@@ -53,6 +53,25 @@ Godot still mutates the existing presentation objects. This does not implement
 batching, grouping or a new renderer. See [dense presentation state](native-dense-presentation-state.md)
 for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
+## Presentation transform ownership
+
+The GDTF-derived mechanical Node3D hierarchy remains authoritative for Pan/Tilt,
+body geometry, lens meshes, collision/picking and editor interaction. Dense setup
+binds each presentation SpotLight anchor under a presentation-only top-level
+carrier, retaining the same fixture lifecycle and emitter-local Optical Projection
+State. A typed active array synchronizes only visible shafts, owned active surface
+lights and visible diagnostic axes from the current source world pose. Dark outputs
+are absent from that loop. Effective-transform comparisons suppress identical writes;
+intensity-only reactivation resolves the latest pose without fresh Pan/Tilt DMX.
+No resource has simultaneous Node and direct-RID transform writers.
+
+The developer application argument `--peraviz-transform-diagnostic=normal` restores
+inherited ownership; `mechanical-only` freezes presentation carriers while the
+mechanical hierarchy still moves. The default is `active-only`, including trace OFF.
+Trace ON audits static ownership at binding/resource replacement and reports native,
+mechanical and presentation transform stages. See [blackout motion measurement and
+Windows A/B](blackout-motion-transform-path.md). Grouping and MultiMesh remain deferred.
+
 ## Renderer ownership
 
 GDTF/native semantic state determines physical optical values. Peraviz resolves

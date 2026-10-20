@@ -110,7 +110,10 @@ func set_render_diagnostic_mode(mode: String) -> void:
 
 func set_performance_trace_enabled(enabled: bool) -> void:
 	_performance_trace_enabled = enabled
-	if _dense_adapter != null: _dense_adapter._trace = enabled
+	if _dense_adapter != null:
+		_dense_adapter._trace = enabled
+		_dense_adapter.transforms.trace = enabled
+		_dense_adapter.transforms.audit_dirty = enabled
 	if enabled:
 		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
 
@@ -126,6 +129,13 @@ func install_dense_presentation(loader: Node, registry: RefCounted) -> bool:
 			push_error("Dense presentation installation failed (native class or bindings unavailable); lighting playback is disabled. Legacy state fallback is forbidden.")
 		return false
 	return true
+
+# Also runs when no new semantic frame arrives (editor motion / held gobo state).
+func synchronize_presentation_transforms() -> void:
+	if _dense_adapter != null: _dense_adapter.transforms.synchronize()
+
+func apply_transform_batch(loader: Node, integers: PackedInt32Array, floats: PackedFloat32Array, int_offset: int, float_offset: int, rows: int) -> int:
+	return loader._apply_native_transform_batch(integers, floats, int_offset, float_offset, rows)
 
 func is_dense_presentation_active() -> bool:
 	return _dense_adapter != null and _dense_adapter.is_installed()

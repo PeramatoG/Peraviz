@@ -4,6 +4,8 @@ const VisualSettingsMigration = preload("res://scripts/visual_settings_migration
 const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
 
 const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+const TransformBinding = preload("res://scripts/runtime/presentation_transform_binding.gd")
+const TransformController = preload("res://scripts/runtime/presentation_transform_controller.gd")
 const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 
 # Temporary milestone-1 renderer bridge. Native state owns composition; these
@@ -24,9 +26,11 @@ class MaterialHandle:
 
 class LightHandle:
 	var light: SpotLight3D
+	var transform_binding: TransformBinding
 	var rid: RID
 	var beam: MeshInstance3D
 	var debug_axis: MeshInstance3D
+	var gobo_plane: MeshInstance3D
 	var has_gobo: bool = false
 	var refresh_gobo: Callable
 	# The retained renderer API requires this static, reused parameter object.
@@ -56,6 +60,7 @@ class OutputHandle:
 	var lights: Array[LightHandle] = []
 	var materials: Array[MaterialHandle] = []
 
+var transforms: TransformController = TransformController.new()
 var _native: Object
 var _generation: int = -1
 var _outputs: Array[OutputHandle] = []
@@ -98,6 +103,7 @@ func clear() -> void:
 				if handle.light.tree_entered.is_connected(handle.visibility_callback): handle.light.tree_entered.disconnect(handle.visibility_callback)
 			# The bound Callable contains this RefCounted handle; break that self-reference.
 			handle.visibility_callback = Callable()
+	transforms.clear()
 	_payload = {}
 	if _native != null:
 		_native.clear()
@@ -116,6 +122,8 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 		return false
 	_loader = loader
 	_trace = service._performance_trace_enabled
+	transforms.trace = _trace
+	transforms.mode = TransformController.from_arguments(OS.get_cmdline_user_args())
 	_mode = service._render_diagnostic_mode
 	_diagnostic_open_surface_lights = service._diagnostic_open_surface_lights
 	for key in MUTATION_COUNTERS: _totals[key] = 0
@@ -148,6 +156,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 				continue
 			var handle := LightHandle.new()
 			handle.light = light
+			handle.transform_binding = transforms.bind(light, output.canonical_id, _outputs.size() - 1)
 			handle.rid = light.get_instance()
 			handle.projection = OpticalProjectionScript.resolve(light)
 			handle.projected = service._has_projected_beam(record.get("beam_optical_profile", {}))
@@ -160,6 +169,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			_refresh_surface_profile_count(handle)
 			handle.beam = loader._get_beam_resource_for_light(light)
 			handle.debug_axis = light.get_meta("peraviz_beam_debug_axis") as MeshInstance3D if light.has_meta("peraviz_beam_debug_axis") else null
+			handle.gobo_plane = light.get_meta("peraviz_gobo_plane") as MeshInstance3D if light.has_meta("peraviz_gobo_plane") else null
 			handle.has_gobo = light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
 			if loader.has_method("_refresh_native_gobo_presentation"):
 				handle.refresh_gobo = Callable(loader, "_refresh_native_gobo_presentation").bind(light)
@@ -173,9 +183,13 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			light.tree_entered.connect(handle.visibility_callback)
 			output.lights.append(handle)
 			_lights_by_id[light.get_instance_id()] = handle
+	if registry.has_method("install_transform_controller"):
+		registry.install_transform_controller(transforms)
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
+	if transforms.mode != TransformController.ACTIVE_ONLY or _trace:
+		print("[peraviz-transform] startup mode=", transforms.mode, " bindings=", transforms.bindings.size())
 	print("[peraviz-surfaces] startup ", JSON.stringify(_surface_counts.snapshot()), " diagnostic_open=", _diagnostic_open_surface_lights)
 	return _generation >= 0
 
@@ -213,6 +227,7 @@ func apply() -> void:
 		return
 	if _mode == "transforms-only":
 		_payload = {}
+		transforms.synchronize()
 		return
 	var start: int = Time.get_ticks_usec() if _trace else 0
 	var indices: PackedInt32Array = _payload["indices_masks"]
@@ -227,7 +242,9 @@ func apply() -> void:
 	var mutation_start: int = Time.get_ticks_usec() if _trace else 0
 	for row in range(int(_payload["count"])):
 		var before: int = _mutation_serial
-		_apply_output(_outputs[indices[row * 2]], values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
+		var output: OutputHandle = _outputs[indices[row * 2]]
+		_apply_output(output, values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
+		for handle in output.lights: _update_transform_activity(handle)
 		if _trace and _mutation_serial != before: changed += 1
 	if _trace:
 		_totals["renderer_mutation_us"] += Time.get_ticks_usec() - mutation_start
@@ -244,6 +261,13 @@ func apply() -> void:
 		_totals["renderer_outputs_unchanged"] += int(_payload["dirty_count"]) - changed
 		_totals["compatibility_adapter_us"] += Time.get_ticks_usec() - start
 	_payload = {}
+	transforms.synchronize()
+
+# Bound resource state, not semantic DMX state, determines transform work.
+func _update_transform_activity(handle: LightHandle) -> void:
+	var full: bool = _mode == "full"
+	transforms.set_active(handle.transform_binding, full and is_instance_valid(handle.beam) and handle.beam.is_visible_in_tree(),
+		full and handle.realtime_visible, full and is_instance_valid(handle.debug_axis) and handle.debug_axis.is_visible_in_tree())
 
 func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
 	var color := Color(v[b+1], v[b+2], v[b+3], 1.0)
@@ -384,6 +408,7 @@ func _restore_spot_visibility(handle: LightHandle) -> void:
 	handle.realtime_visible = node_visible
 	handle.realtime_visibility_known = true
 	_set_spot_rid(handle, node_visible and handle.realtime_requested)
+	_update_transform_activity(handle)
 	if _trace: _totals["visibility_resyncs"] += 1
 
 # Called only at binding and diagnostic-mode boundaries, never for DMX intensity.
@@ -408,6 +433,7 @@ func _suppress_presentation_handles() -> void:
 			_hide_bound_node(handle.debug_axis, &"debug_axis_visibility_writes")
 			_set_structural_visibility(handle, false)
 			handle.suppressed = true
+			_update_transform_activity(handle)
 			if handle.has_gobo and handle.refresh_gobo.is_valid():
 				handle.refresh_gobo.call()
 				_record_event(&"projector_refresh_calls")
@@ -419,9 +445,13 @@ func _hide_bound_node(node: Node3D, counter: StringName) -> void:
 
 func _bind_beam_resource(handle: LightHandle, beam: MeshInstance3D) -> void:
 	if handle.beam != beam:
+		transforms.audit_dirty = true
 		handle.initialization_failed = false
 		_record_event(&"beam_resource_rebounds")
 	handle.beam = beam
+	var debug: MeshInstance3D = handle.light.get_meta("peraviz_beam_debug_axis") as MeshInstance3D if handle.light.has_meta("peraviz_beam_debug_axis") else null
+	if debug != handle.debug_axis: transforms.audit_dirty = true
+	handle.debug_axis = debug
 	if is_instance_valid(beam): handle.bound_state = BoundBeamStateScript.resolve(beam)
 
 func _capture_renderer_mutations() -> void:
@@ -458,7 +488,9 @@ func apply_light_state(light: SpotLight3D) -> int:
 	if handle == null: return -1
 	var settings: Dictionary = _loader.get("_visual_settings")
 	_surface_multiplier = VisualSettingsMigration.surface_multiplier(settings)
-	return _apply_spot(handle, bool(settings.get("enable_realtime_spotlights", false)), int(settings.get("beam_presentation", 1)))
+	var result: int = _apply_spot(handle, bool(settings.get("enable_realtime_spotlights", false)), int(settings.get("beam_presentation", 1)))
+	_update_transform_activity(handle)
+	return result
 
 # Mode changes replay held native state immediately, even without another DMX packet.
 func _sync_presentation_policy() -> void:
@@ -506,6 +538,7 @@ func diagnostics() -> Dictionary:
 # Only the once-per-report trace sampler resets these bounded interval counters.
 func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
+	result["transforms"] = transforms.consume_diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
 	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs"]:
@@ -534,6 +567,10 @@ func rebind_light(light: SpotLight3D) -> void:
 		handle.debug_axis = light.get_meta("peraviz_beam_debug_axis") as MeshInstance3D if light.has_meta("peraviz_beam_debug_axis") else null
 		handle.has_gobo = light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
 		_update_surface_counts(handle)
+		_update_transform_activity(handle)
+		var plane: MeshInstance3D = light.get_meta("peraviz_gobo_plane") as MeshInstance3D if light.has_meta("peraviz_gobo_plane") else null
+		if plane != handle.gobo_plane: transforms.audit_dirty = true
+		handle.gobo_plane = plane
 	_capture_renderer_mutations()
 
 func refresh_renderer() -> void:

@@ -1804,6 +1804,9 @@ func _apply_native_gobo_indexed_rotation(beam_target_id: int, wheel_id: int, whe
 func _apply_native_gobo_rotation_state(beam_target_id: int, wheel_id: int, wheel_instance_index: int, rotation_mode: int, revision: int, phase_degrees: float, angular_velocity_dps: float, reference_seconds: float, native_now_seconds: float) -> Dictionary:
 	return _native_target_registry.apply_gobo_rotation_state(beam_target_id, wheel_id, wheel_instance_index, rotation_mode, revision, phase_degrees, angular_velocity_dps, reference_seconds, native_now_seconds)
 
+func _apply_native_transform_batch(integers: PackedInt32Array, floats: PackedFloat32Array, int_offset: int, float_offset: int, rows: int) -> int:
+	return _native_target_registry.apply_transform_batch(integers, floats, int_offset, float_offset, rows)
+
 func _apply_native_transform_targets(pan_component_id: int, tilt_component_id: int, pan_degrees: float, tilt_degrees: float) -> Dictionary:
 	return _native_target_registry.apply_transform_targets(pan_component_id, tilt_component_id, pan_degrees, tilt_degrees)
 
@@ -2942,6 +2945,8 @@ func _process(delta: float) -> void:
 		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:
 		_dmx_controller.process_dmx(delta)
+	if _fixture_light_apply_service != null:
+		_fixture_light_apply_service.synchronize_presentation_transforms()
 
 # PeravizLoader extends Object; release its scene model when this owner is destroyed.
 func _notification(what: int) -> void:

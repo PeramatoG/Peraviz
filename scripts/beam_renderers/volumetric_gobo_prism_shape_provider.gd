@@ -18,7 +18,6 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 		projection.set_roll(float(beam.get_meta("peraviz_gobo_indexed_rotation_deg", params.get("gobo_rotation_deg", 0.0))))
 	projection.configure(params, gobo_texture)
 	projection.apply_footprint(light)
-	var beam_range: float = projection.visual_range
 	var lens_radius: float = projection.lens_radius
 	var bottom_radius: float = projection.far_radius
 	var gobo_scale: float = projection.gobo_scale

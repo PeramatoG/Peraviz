@@ -534,10 +534,10 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             gobo_rotation_rows.push_back({identity.fixture_id, identity.beam_render_target_id, identity.wheel_id, identity.wheel_instance_index, state.mode, static_cast<float>(state.phase_degrees), static_cast<float>(state.angular_velocity_dps), static_cast<float>(state.reference_seconds), state.revision});
         }
 
-        std::unordered_map<int, ComponentState> pending_transform_by_fixture;
         for (int property_index : property_indices) {
             if (property_index < 0 || property_index >= static_cast<int>(universe.properties.size())) continue;
             const CompiledPropertyProgram &program = universe.properties[static_cast<size_t>(property_index)];
+            if (program.parameter != SemanticParameter::Dimmer && program.parameter != SemanticParameter::Zoom) continue;
             const EvaluationResult evaluated = evaluate_property_value(universe.latest_frame, program.property);
             if (!evaluated.valid) continue;
             const float semantic_value = program.parameter == SemanticParameter::Dimmer ? evaluated.normalized_value : evaluated.physical_value;
@@ -556,11 +556,24 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 rows.push_back({program.property.fixture_id, program.property.render_target_id, change.changed_visual_mask, state, {}});
                 continue;
             }
+        }
+
+        const auto transform_decode_start = performance_trace_enabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        std::unordered_map<int, ComponentState> pending_transform_by_fixture;
+        for (int property_index : property_indices) {
+            if (property_index < 0 || property_index >= static_cast<int>(universe.properties.size())) continue;
+            const CompiledPropertyProgram &program = universe.properties[static_cast<size_t>(property_index)];
+            if (program.parameter == SemanticParameter::Dimmer || program.parameter == SemanticParameter::Zoom) continue;
+            const EvaluationResult evaluated = evaluate_property_value(universe.latest_frame, program.property);
+            if (!evaluated.valid) continue;
+            const float semantic_value = evaluated.physical_value;
             ComponentState &state = pending_transform_by_fixture[program.property.fixture_id];
             auto existing = transform_state_by_fixture_.find(program.property.fixture_id);
             if (!state.initialized && existing != transform_state_by_fixture_.end()) state = existing->second;
             apply_semantic_value(state, program.parameter, semantic_value);
         }
+
+        if (performance_trace_enabled_) stats_.native_transform_decode_us += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - transform_decode_start).count();
 
         for (int target_index : color_target_indices) {
             if (target_index < 0 || target_index >= static_cast<int>(universe.color_targets.size())) continue;
@@ -744,15 +757,22 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             ++stats_.color_rows;
             rows.push_back({fixture_id, beam_target_id, VisualChangeColor, {}, composed});
         }
+        const auto transform_merge_start = performance_trace_enabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         for (auto &[fixture_id, next_state] : pending_transform_by_fixture) {
             const auto params_it = render_params_by_fixture_.find(fixture_id);
             cook_render_state(next_state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());
             const FixtureChangeResult change = merge_transform_state(fixture_id, next_state);
-            if (!change.changed) { ++stats_.fixtures_skipped; continue; }
+            if (!change.changed) {
+                ++stats_.fixtures_skipped;
+                if (performance_trace_enabled_) ++stats_.transform_rows_skipped_unchanged;
+                continue;
+            }
+            if (performance_trace_enabled_) ++stats_.transform_rows_generated;
             add_visual_mask_stats(change.changed_visual_mask);
             ++stats_.fixtures_dirty;
             rows.push_back({fixture_id, 0, change.changed_visual_mask, next_state, {}});
         }
+        if (performance_trace_enabled_) stats_.native_transform_decode_us += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - transform_merge_start).count();
     }
 
     auto section_count_for = [&rows](uint32_t mask) { return static_cast<int32_t>(std::count_if(rows.begin(), rows.end(), [mask](const PendingRow &row) { return (row.changed_visual_mask & mask) != 0U; })); };

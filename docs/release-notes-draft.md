@@ -18,6 +18,9 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Decoupled realtime presentation transforms from mechanical Pan/Tilt inheritance. Dark outputs skip transform synchronization; active shafts, genuine projectors and diagnostic axes use the current mechanical pose on motion/reactivation. Added trace-only transform stages, static hierarchy audits, bounded developer A/B modes and blackout/reload regressions. Canonical Windows FPS validation remains pending.
+- Removed the unused Vector Prism `beam_range` declaration.
+
 - Corrected Vector Prism profile provenance, bounded FieldAngle support and Zoom diagnostics. Strengthened coherent axial decay, removed accidental double-face/overdrive gain, and normalized gobo contour energy with cached coverage analysis.
 - Added generic open Spot/Wash/Fresnel/PC surface-profile data and cached configurable gobo footprint softness. Realtime open lights are an opt-in developer diagnostic; production retains bounded projector/realtime ownership, measured surface-light inventory and independent shaft/surface gains. Scalable open footprints remain deferred.
 

@@ -375,6 +375,9 @@ struct VisualFrameStats {
     uint64_t fixtures_dirty = 0;
     uint64_t fixtures_skipped = 0;
     uint64_t changed_transform = 0;
+    uint64_t transform_rows_generated = 0;
+    uint64_t transform_rows_skipped_unchanged = 0;
+    uint64_t native_transform_decode_us = 0;
     uint64_t changed_dimmer = 0;
     uint64_t changed_color = 0;
     uint64_t changed_zoom = 0;

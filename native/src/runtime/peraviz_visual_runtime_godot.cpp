@@ -129,6 +129,9 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["universes_considered"] = static_cast<int64_t>(stats.universes_considered);
     out["fixtures_dirty"] = static_cast<int64_t>(stats.fixtures_dirty);
     out["fixtures_skipped"] = static_cast<int64_t>(stats.fixtures_skipped);
+    out["transform_rows_generated"] = static_cast<int64_t>(stats.transform_rows_generated);
+    out["transform_rows_skipped_unchanged"] = static_cast<int64_t>(stats.transform_rows_skipped_unchanged);
+    out["native_transform_decode_us"] = static_cast<int64_t>(stats.native_transform_decode_us);
     out["changed_transform"] = static_cast<int64_t>(stats.changed_transform);
     out["changed_dimmer"] = static_cast<int64_t>(stats.changed_dimmer);
     out["changed_color"] = static_cast<int64_t>(stats.changed_color);

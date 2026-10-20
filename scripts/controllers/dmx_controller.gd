@@ -55,7 +55,7 @@ func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_cont
 	_perf_trace_enabled = diagnostics["perf_trace"]
 	_render_diagnostic_mode = diagnostics["render_mode"]
 	if diagnostics["requested"]:
-		print("[peraviz-diagnostic] perf_trace=%s render_mode=%s" % [str(_perf_trace_enabled),_render_diagnostic_mode])
+		print("[peraviz-diagnostic] perf_trace=%s render_mode=%s transform_mode=%s" % [str(_perf_trace_enabled),_render_diagnostic_mode,diagnostics["transform_mode"]])
 	if _perf_trace_enabled:
 		_perf_snapshot = PerformanceTraceSnapshotScript.new()
 		_perf_snapshot.configure(owner.get_viewport())
@@ -342,6 +342,12 @@ func _report_performance_trace_if_needed() -> void:
 	var delta_mean: int = int(floor(float(native_delta.get("color_delta_sum_microunits", 0)) / float(maxi(emitted_rows, 1))))
 	print("[peraviz-color-dirty] relevant_offsets=%d color_offsets=%d offset_candidates=%d fanout_hist=%d/%d/%d/%d/%d fanout_max=%d dirty_candidates=%d emitted=%d unchanged=%d delta_u_mean_max=%d/%d delta_bands=%d/%d/%d" % [int(native_delta.get("changed_relevant_offsets", 0)), int(native_delta.get("color_changed_offsets", 0)), int(native_delta.get("color_changed_offset_candidates", 0)), int(native_delta.get("color_offset_fanout_1", 0)), int(native_delta.get("color_offset_fanout_2_4", 0)), int(native_delta.get("color_offset_fanout_5_16", 0)), int(native_delta.get("color_offset_fanout_17_64", 0)), int(native_delta.get("color_offset_fanout_65_plus", 0)), int(native_counters.get("color_offset_fanout_max", 0)), int(native_delta.get("color_dirty_candidates", 0)), emitted_rows, int(native_delta.get("color_composed_unchanged", 0)), delta_mean, int(native_delta.get("color_delta_max_microunits", 0)), int(native_delta.get("color_delta_tiny", 0)), int(native_delta.get("color_delta_small", 0)), int(native_delta.get("color_delta_visible", 0))])
 	print("[peraviz-presentation] beam_renderer=%d beam_presentation=%d native_outputs=%d visible_beams=%d visible_lights=%d" % [int(counters.get("beam_renderer_mode",0)), int(counters.get("beam_presentation",1)), int(counters.get("native_output_records",0)), int(counters.get("beam_visible_count",0)), int(counters.get("spotlight_visible_count",0))])
+	var transform_report: Dictionary = stability.get("dense_presentation", {}).get("transforms", {})
+	for key in ["transform_rows_generated", "transform_rows_skipped_unchanged", "native_transform_decode_us"]:
+		transform_report[key] = int(native_delta.get(key, 0))
+	for key in ["render_setup_cpu_ms", "viewport_cpu_ms", "viewport_gpu_ms"]:
+		transform_report[key] = stability.get(key, 0.0)
+	print("[peraviz-transform] %s" % JSON.stringify(transform_report))
 	print("[peraviz-surfaces] %s" % JSON.stringify(stability.get("dense_presentation", {}).get("surface_lights", {})))
 	stability["interval_ms"] = now_msec - _perf_trace_last_msec
 	stability["mode"] = _render_diagnostic_mode
