@@ -26,7 +26,11 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	var mirror_x: bool = projection.mirror_x
 	var mirror_z: bool = projection.mirror_z
 	if int(beam.get_meta("peraviz_projection_geometry_revision", -1)) != projection.geometry_revision:
-		var prism_mesh: ArrayMesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
+		var prism_mesh: ArrayMesh
+		if projection.radial_profile.rectangular and gobo_texture == null:
+			prism_mesh = _mesh_builder.build_aperture_beam_mesh({"shape": "rectangle", "rectangle_ratio": float(params.get("rectangle_ratio", 1.0))}, 1.0)
+		else:
+			prism_mesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
 		light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
 		light.set_meta("peraviz_last_beam_renderer_mode", shape_mode())
 		if prism_mesh != null:
@@ -37,6 +41,10 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 		beam.set_instance_shader_parameter("topology_near_radius", scaled_near)
 		beam.set_instance_shader_parameter("topology_far_radius", scaled_far)
 		beam.set_meta("peraviz_gobo_normalized_near_ratio", scaled_near / scaled_far)
+		# CPU culling must include the shader-expanded shoulder, including Rectangle.
+		var aspect: Vector2 = projection.radial_profile.aspect
+		var extent := Vector2(maxf(scaled_near, scaled_far), maxf(scaled_near, scaled_far)) * aspect
+		beam.custom_aabb = AABB(Vector3(-extent.x, -0.5, -extent.y), Vector3(extent.x * 2.0, 1.0, extent.y * 2.0))
 		beam.set_meta("peraviz_projection_geometry_revision", projection.geometry_revision)
 	projection.apply_shaft(beam)
 	return {

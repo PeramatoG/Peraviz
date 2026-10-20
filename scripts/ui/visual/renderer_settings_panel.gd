@@ -8,7 +8,7 @@ const BeamPresentationOptionsScript = preload("res://scripts/ui/visual/beam_pres
 signal setting_changed(key: String, value: Variant)
 
 const BASIC_KEYS := {
-	"spot_multiplier": true,
+	"footprint_multiplier": true,
 	"beam_multiplier": true,
 	"bloom_multiplier": true,
 	"volumetric_fog_density": true,
@@ -26,8 +26,13 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	add_theme_constant_override("separation", 10)
-	_add_slider_row("Spot intensity", "spot_multiplier", 0.0, 3.0, 0.01)
-	_add_slider_row("Beam / volume intensity", "beam_multiplier", 0.0, 100.0, 0.01)
+	_add_slider_row("Footprint / surface intensity", "footprint_multiplier", 0.0, 3.0, 0.01)
+	_add_slider_row("Experimental realtime light intensity", "spot_multiplier", 0.0, 3.0, 0.01)
+	_add_slider_row("Beam / shaft intensity", "beam_multiplier", 0.0, 100.0, 0.01)
+	_add_slider_row("Beam softness", "beam_softness", 0.0, 1.0, 0.01)
+	_add_slider_row("Beam radial falloff", "beam_radial_falloff", 0.25, 4.0, 0.01)
+	_add_slider_row("Beam axial decay", "beam_longitudinal_falloff", 0.0, 4.0, 0.01)
+	_add_slider_row("Shaft haze density", "haze_density_multiplier", 0.0, 2.0, 0.01)
 	_add_slider_row("Bloom", "bloom_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Ambient fog density", "ambient_fog_density", 0.0, 0.05, 0.001)
 	_add_slider_row("Volumetric fog density", "volumetric_fog_density", 0.0, 0.01, 0.0001)

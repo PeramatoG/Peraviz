@@ -1,5 +1,6 @@
 extends RefCounted
 
+const VisualSettingsMigration = preload("res://scripts/visual_settings_migration.gd")
 const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
 
 const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
@@ -61,6 +62,8 @@ var _warned_unresolved: bool = false
 var _warned_beam_initialization: bool = false
 var _trace: bool = false
 var _mode: String = "full"
+var _surface_multiplier: float = 1.0
+var _shaft_multiplier: float = 1.0
 var _mutation_serial: int = 0
 var _renderer_visibility_seen: int = 0
 var _renderer_shader_seen: int = 0
@@ -200,6 +203,8 @@ func apply() -> void:
 	var indices: PackedInt32Array = _payload["indices_masks"]
 	var values: PackedFloat32Array = _payload["values"]
 	var settings: Dictionary = _loader.get("_visual_settings")
+	_surface_multiplier = VisualSettingsMigration.surface_multiplier(settings)
+	_shaft_multiplier = maxf(float(settings.get("beam_multiplier", 20.0)), 0.0) / 20.0
 	var realtime: bool = bool(settings.get("enable_realtime_spotlights", false))
 	var presentation: int = int(settings.get("beam_presentation", 1))
 	var changed: int = 0
@@ -267,11 +272,11 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 		if resuming: _set_structural_visibility(handle, true)
 		handle.params["normalized_dimmer"] = clampf(v[b], 0.0, 1.0)
 		handle.params["beam_color"] = color
-		handle.params["beam_intensity"] = v[b+6]
-		handle.params["scaled_intensity"] = v[b+6]
+		handle.params["beam_intensity"] = v[b+6] * _shaft_multiplier
+		handle.params["scaled_intensity"] = v[b+6] * _shaft_multiplier
 		handle.params["beam_angle"] = v[b+9]
 		handle.params["intensity_max"] = 50.0
-		if v[b+6] <= float(handle.params.get("intensity_visibility_threshold", 0.015)):
+		if v[b+6] * _shaft_multiplier <= float(handle.params.get("intensity_visibility_threshold", 0.015)):
 			_hide_bound_node(handle.debug_axis, &"debug_axis_visibility_writes")
 		if _renderer == null: continue
 		if mask & (ZOOM | TOPOLOGY):
@@ -308,8 +313,8 @@ func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
 	if _mode == "full" and handle.visible:
 		enabled = realtime or handle.light.light_projector != null or presentation in [0, 2]
 	if enabled:
-		if handle.properties_dirty or not is_equal_approx(handle.light.light_energy, handle.energy):
-			handle.light.light_energy = handle.energy
+		if handle.properties_dirty or not is_equal_approx(handle.light.light_energy, handle.energy * _surface_multiplier):
+			handle.light.light_energy = handle.energy * _surface_multiplier
 			_record_mutation(&"spot_property_writes")
 		if handle.properties_dirty or not is_equal_approx(handle.light.spot_angle, handle.projection.half_angle_deg):
 			handle.light.spot_angle = handle.projection.half_angle_deg

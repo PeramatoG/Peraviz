@@ -81,6 +81,7 @@ var _beam_aperture_measurement_service: Variant = null
 var _visual_settings := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
+	"footprint_multiplier": 1.0,
 	"enable_realtime_spotlights": false,
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
@@ -97,7 +98,7 @@ var _visual_settings := {
 	"beam_noise_amount": 0.06,
 	"beam_noise_scale": 1.4,
 	"beam_softness": 0.32,
-	"beam_radial_falloff": 1.25,
+	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.1,
 	"haze_density_multiplier": 0.22,
 	"gobo_scale": 1.0,
@@ -155,6 +156,8 @@ var _shared_haze_controller: SharedHazeController
 const BeamRendererBaseScript = preload("res://scripts/beam_renderers/beam_renderer_base.gd")
 const LegacyConeBeamRendererScript = preload("res://scripts/beam_renderers/legacy_cone_beam_renderer.gd")
 const VolumetricBeamRendererScript = preload("res://scripts/beam_renderers/volumetric_beam_renderer.gd")
+const SurfaceFootprintPresentation = preload("res://scripts/beam_renderers/surface_footprint_presentation.gd")
+const VisualSettingsMigration = preload("res://scripts/visual_settings_migration.gd")
 const FixtureGoboProjectorScript = preload("res://scripts/fixture_gobo_projector.gd")
 const SharedHazeControllerScript = preload("res://scripts/shared_haze_controller.gd")
 const BeamOpticsControllerScript = preload("res://scripts/beam_optics_controller.gd")
@@ -227,8 +230,6 @@ const EMITTER_CONE_MAX_BASE_RADIUS_M: float = 250.0
 const EMITTER_LIGHT_MAX_FOOTPRINT_RADIUS_M: float = EMITTER_CONE_MAX_BASE_RADIUS_M
 const EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M: float = 0.75
 const EMITTER_LIGHT_FOOTPRINT_RANGE_MULTIPLIER: float = 1.0
-const EMITTER_LIGHT_SPOT_ATTENUATION_MIN: float = 0.0669
-const EMITTER_LIGHT_SPOT_ATTENUATION_MAX: float = 1.5
 const EMITTER_CONE_FADE_END_RATIO: float = 0.82
 const EMITTER_CONE_NEAR_ALPHA: float = 0.16
 const EMITTER_CONE_FAR_ALPHA: float = 0.004
@@ -426,6 +427,8 @@ func _initialize_beam_renderers() -> void:
 	_update_beam_renderer_mode(true)
 
 func _apply_visual_settings(settings: Dictionary) -> void:
+	if settings.has("spot_multiplier") and not settings.has("footprint_multiplier"):
+		settings = VisualSettingsMigration.migrate(settings)
 	var previous_settings: Dictionary = _visual_settings.duplicate(true)
 	for key in _visual_settings.keys():
 		if settings.has(key):
@@ -472,6 +475,10 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 	var beam_scalar_changed: bool = (
 		not is_equal_approx(float(previous_settings.get("beam_multiplier", 20.0)), float(_visual_settings.get("beam_multiplier", 20.0)))
 		or int(previous_settings.get("beam_presentation", 1)) != int(_visual_settings.get("beam_presentation", 1))
+		or previous_settings.get("beam_softness") != _visual_settings.get("beam_softness")
+		or previous_settings.get("beam_radial_falloff") != _visual_settings.get("beam_radial_falloff")
+		or previous_settings.get("beam_longitudinal_falloff") != _visual_settings.get("beam_longitudinal_falloff")
+		or previous_settings.get("haze_density_multiplier") != _visual_settings.get("haze_density_multiplier")
 	)
 	if beam_scalar_changed:
 		_refresh_existing_beam_material_scalars()
@@ -571,7 +578,7 @@ func _apply_light_scalars_to_light(light: SpotLight3D) -> void:
 	if not light_rid.is_valid():
 		return
 	var base_energy: float = float(light.get_meta("peraviz_base_light_energy", 0.0))
-	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_ENERGY, base_energy * float(_visual_settings.get("spot_multiplier", 1.0)))
+	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_ENERGY, base_energy * VisualSettingsMigration.surface_multiplier(_visual_settings))
 	RenderingServer.light_set_param(light_rid, RenderingServer.LIGHT_PARAM_VOLUMETRIC_FOG_ENERGY, float(_visual_settings.get("light_volumetric_fog_energy", 12.0)))
 
 func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
@@ -582,6 +589,9 @@ func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	var beam_multiplier: float = float(_visual_settings.get("beam_multiplier", 20.0))
 	beam_params["scaled_intensity"] = clamp(base_intensity * beam_multiplier, 0.0, BEAM_INTENSITY_MAX)
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
+	for key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier"]:
+		beam_params[key] = _visual_settings[key]
+	beam_params["haze_density"] = _visual_settings["haze_density_multiplier"]
 	var beam_phase_start: int = Time.get_ticks_usec()
 	_update_beam_for_light(light, beam_params)
 	if _fixture_light_apply_service != null:
@@ -615,7 +625,7 @@ func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionar
 	var luminous_flux: float = max(float(photometric.get("luminous_flux", 10000.0)), 0.0)
 	var base_light_energy: float = render_ready_values[0] if render_ready_values.size() >= 9 else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
-	_set_light_property_float(light, "light_energy", base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0)), last_state)
+	_set_light_property_float(light, "light_energy", base_light_energy * VisualSettingsMigration.surface_multiplier(_visual_settings), last_state)
 	_set_light_meta_float(light, "peraviz_beam_base_intensity", clamp(normalized_dimmer, 0.0, 1.0), last_state)
 	var scaled_intensity_override: float = render_ready_values[7] if render_ready_values.size() >= 9 else -1.0
 	return _update_beam_intensity_for_light(light, normalized_dimmer, beam_color, scaled_intensity_override) == BeamRendererBase.INTENSITY_CHANGED
@@ -1741,21 +1751,7 @@ func _present_native_gobo(light: SpotLight3D, texture: Texture2D, gobo_rotation_
 	_fixture_light_apply_service.rebind_dense_light(light)
 
 func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null) -> void:
-	if _fixture_gobo_projector == null:
-		return
-	var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
-	var active: bool = _fixture_light_apply_service._render_diagnostic_mode == "full" and bool(_fixture_light_apply_service._light_desired_for(light).get("visible", false)) if _fixture_light_apply_service != null else false
-	var resolved_texture: Texture2D = texture
-	if resolved_texture == null and light.has_meta("peraviz_gobo_texture"):
-		resolved_texture = light.get_meta("peraviz_gobo_texture") as Texture2D
-	var desired_texture: Texture2D = resolved_texture if active else null
-	if light.light_projector != desired_texture:
-		_fixture_gobo_projector._set_light_projector_texture(light, desired_texture)
-	_fixture_gobo_projector.set_shadow_mask_enabled(light, active and resolved_texture != null and int(_visual_settings.get("beam_presentation", 1)) == 2)
-	if _fixture_light_apply_service._render_diagnostic_mode == "full":
-		_fixture_gobo_projector.set_presentation_rotation(light, float(params.get("gobo_rotation_deg", 0.0)) if resolved_texture != null else 0.0)
-	if _fixture_light_apply_service != null:
-		_fixture_light_apply_service._apply_desired_light_state(self, light)
+	SurfaceFootprintPresentation.refresh(self, light, texture)
 
 func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 	var result: Dictionary = base_counters.duplicate(false)
@@ -2088,7 +2084,7 @@ func _find_or_create_emitter_light(emitter_node: Node3D) -> SpotLight3D:
 	light.shadow_normal_bias = 1.2
 	light.spot_range = 60.0
 	light.spot_angle = 25.0
-	light.spot_attenuation = 1.0
+	light.spot_attenuation = 2.0
 	light.set_meta("peraviz_lens_radius", lens_radius)
 	emitter_node.add_child(light)
 	return light
@@ -2212,7 +2208,6 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var has_render_ready: bool = render_ready_values.size() >= 9
 	var luminous_flux: float = max(float(photometric.get("luminous_flux", 10000.0)), 0.0)
 	var beam_angle: float = render_ready_values[3] if has_render_ready else clamp(float(photometric.get("beam_angle", 25.0)), 0.1, EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG)
-	var field_angle: float = clamp(float(photometric.get("field_angle", beam_angle)), beam_angle, EMITTER_LIGHT_MAX_BEAM_ANGLE_DEG)
 	var dimmer_controls: Dictionary = _resolve_dimmer_controls(controls)
 	if not has_render_ready and bool(dimmer_controls.get("has_zoom", false)):
 		var zoom_norm: float = clamp(float(dimmer_controls.get("zoom_norm", 0.0)), 0.0, 1.0)
@@ -2220,18 +2215,17 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 		var zoom_min_angle: float = float(zoom_limits.get("min_beam_angle", EMITTER_ZOOM_DEFAULT_MIN_BEAM_ANGLE_DEG))
 		var zoom_max_angle: float = float(zoom_limits.get("max_beam_angle", EMITTER_ZOOM_DEFAULT_MAX_BEAM_ANGLE_DEG))
 		beam_angle = lerp(zoom_min_angle, zoom_max_angle, zoom_norm)
-		field_angle = max(field_angle, beam_angle)
 
 	_set_light_property_bool(light, "visible", normalized_dimmer > 0.0001, last_state)
 	var base_light_energy: float = render_ready_values[0] if has_render_ready else luminous_flux * normalized_dimmer * EMITTER_LIGHT_ENERGY_SCALE
 	_set_light_meta_float(light, "peraviz_base_light_energy", base_light_energy, last_state)
-	var light_energy: float = base_light_energy * float(_visual_settings.get("spot_multiplier", 1.0))
+	var light_energy: float = base_light_energy * VisualSettingsMigration.surface_multiplier(_visual_settings)
 	_set_light_property_float(light, "light_energy", light_energy, last_state)
 	var beam_half_angle_deg: float = render_ready_values[2] if has_render_ready else beam_angle * 0.5
 	# Godot 4.2 SpotLight3D.spot_angle behaves as cone half-angle in degrees.
 	# Keep zoom/beam limits as full GDTF aperture, and convert here for light projection.
 	_set_light_property_float(light, "spot_angle", beam_half_angle_deg, last_state)
-	var spot_attenuation: float = clamp(beam_angle / max(field_angle, 0.1), EMITTER_LIGHT_SPOT_ATTENUATION_MIN, EMITTER_LIGHT_SPOT_ATTENUATION_MAX)
+	var spot_attenuation: float = 2.0
 	var beam_visual_length_m: float = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
 	# SpotLight3D range is an optional lighting policy; custom visible beam length is explicit and independent.
 	_set_light_property_float(light, "spot_range", clamp(beam_visual_length_m * EMITTER_LIGHT_FOOTPRINT_RANGE_MULTIPLIER, EMITTER_LIGHT_MIN_EFFECTIVE_RANGE_M, EMITTER_LIGHT_MAX_RANGE_M), last_state)
@@ -2251,6 +2245,8 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	beam_params["beam_visual_length_m"] = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
 	beam_params["beam_range"] = beam_params["beam_visual_length_m"]
 	beam_params["beam_type"] = str(photometric.get("beam_type", "Spot"))
+	beam_params["field_angle"] = float(photometric.get("field_angle", 0.0))
+	beam_params["profile_beam_angle"] = float(photometric.get("beam_angle", beam_angle))
 	beam_params["rectangle_ratio"] = float(photometric.get("rectangle_ratio", 1.0))
 	beam_params["official_beam_radius_m"] = float(radius_decision.get("official_beam_radius_m", 0.0))
 	beam_params["measured_model_aperture_radius_m"] = float(radius_decision.get("measured_model_aperture_radius_m", 0.0))
@@ -2394,6 +2390,8 @@ func _get_light_server_float_param(property_name: String) -> int:
 		"spot_range":
 			return RenderingServer.LIGHT_PARAM_RANGE
 		"spot_attenuation":
+			return RenderingServer.LIGHT_PARAM_ATTENUATION
+		"spot_angle_attenuation":
 			return RenderingServer.LIGHT_PARAM_SPOT_ATTENUATION
 		_:
 			return -1

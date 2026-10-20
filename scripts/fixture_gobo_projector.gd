@@ -560,6 +560,9 @@ func _apply_gobo_shake_tilt_to_light(light: SpotLight3D, shake_tilt_deg: float) 
 func _set_light_projector_texture(light: SpotLight3D, texture: Texture2D) -> void:
 	if light == null or not is_instance_valid(light):
 		return
+	if texture != null and light.has_meta(OpticalProjectionScript.META):
+		var projection: RefCounted = light.get_meta(OpticalProjectionScript.META)
+		if projection.smooth_profile_enabled and projection.surface_texture != null: texture = projection.surface_texture
 	# Godot custom branches may expose either `projector` or `light_projector`.
 	if _has_property(light, "projector"):
 		light.set("projector", texture)

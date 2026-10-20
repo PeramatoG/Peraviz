@@ -18,6 +18,9 @@ Changes since the previous Peraviz release.
 
 ## Improvements
 
+- Smoothed Vector Gobo Prism shafts with shared BeamAngle/FieldAngle light profiles, optical-distance decay and a zero-energy tail. Removed both artificial end caps, normal-driven intensity bands, opacity floors and the unused depth-texture dependency.
+- Added independent shaft and surface intensity controls with project-settings migration, and corrected surface distance attenuation. Existing gobo footprints share the shaft profile; scalable open/Wash surface-light activation remains deferred.
+
 - Corrected the Vector Gobo Prism artwork X conversion to match the surface projector without mirroring the gobo, while retaining shared optical state and synchronized Zoom/rotation.
 
 - Unified Vector Gobo Prism and surface-projector optical geometry in a shared presentation state. Repeated Zoom and gobo motion now derive absolute bases without cumulative compensation drift; hidden Zoom changes remain synchronized through blackout and held-state restoration.

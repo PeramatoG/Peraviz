@@ -582,7 +582,8 @@ func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dict
 		var params: Dictionary = existing_params.duplicate(false)
 		params["beam_type"] = str(optical_profile.get("beam_type", params.get("beam_type", "Wash")))
 		params["beam_angle"] = float(optical_profile.get("beam_angle", params.get("beam_angle", 25.0)))
-		params["field_angle"] = float(optical_profile.get("field_angle", params.get("field_angle", 25.0)))
+		params["field_angle"] = float(optical_profile.get("field_angle", params.get("field_angle", 0.0)))
+		params["profile_beam_angle"] = float(optical_profile.get("beam_angle", params.get("beam_angle", 25.0)))
 		params["lens_radius"] = render_radius
 		params["render_near_radius_m"] = render_radius
 		params["official_beam_radius_m"] = float(optical_profile.get("official_beam_radius_m", params.get("official_beam_radius_m", 0.0)))

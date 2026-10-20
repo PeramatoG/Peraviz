@@ -380,25 +380,11 @@ func _build_extruded_mesh(components: Array[Dictionary], near_radius: float, far
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var half_height: float = beam_height * 0.5
 	for component in components:
-		_add_caps(st, component, near_radius, far_radius, half_height)
 		_add_sides(st, component.get("outer", PackedVector2Array()) as PackedVector2Array, near_radius, far_radius, half_height)
 		for hole in component.get("holes", []) as Array[PackedVector2Array]:
 			_add_sides(st, hole, near_radius, far_radius, half_height)
 	st.generate_normals()
 	return st.commit()
-
-func _add_caps(st: SurfaceTool, component: Dictionary, near_radius: float, far_radius: float, half_height: float) -> void:
-	st.set_smooth_group(-1)
-	for triangle in GoboCompoundTopologyScript.triangulate(component):
-		var a: Vector2 = triangle["a"]
-		var b: Vector2 = triangle["b"]
-		var c: Vector2 = triangle["c"]
-		st.add_vertex(Vector3(a.x * near_radius, half_height, a.y * near_radius))
-		st.add_vertex(Vector3(b.x * near_radius, half_height, b.y * near_radius))
-		st.add_vertex(Vector3(c.x * near_radius, half_height, c.y * near_radius))
-		st.add_vertex(Vector3(c.x * far_radius, -half_height, c.y * far_radius))
-		st.add_vertex(Vector3(b.x * far_radius, -half_height, b.y * far_radius))
-		st.add_vertex(Vector3(a.x * far_radius, -half_height, a.y * far_radius))
 
 func _add_sides(st: SurfaceTool, polygon: PackedVector2Array, near_radius: float, far_radius: float, half_height: float) -> void:
 	st.set_smooth_group(0)

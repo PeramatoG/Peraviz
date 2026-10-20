@@ -5,6 +5,7 @@ class_name VisualSettingsWindow
 
 signal settings_changed(settings: Dictionary)
 
+const VisualSettingsMigration = preload("res://scripts/visual_settings_migration.gd")
 const GoboShakeLimitsScript = preload("res://scripts/gobo_shake_limits.gd")
 const UiVisibilityPolicyScript = preload("res://scripts/ui/ui_visibility_policy.gd")
 const RendererSettingsPanelScript = preload("res://scripts/ui/visual/renderer_settings_panel.gd")
@@ -16,6 +17,7 @@ const CUSTOM_PRESET_NAME := "Custom"
 const DEFAULT_SETTINGS := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
+	"footprint_multiplier": 1.0,
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
@@ -25,7 +27,7 @@ const DEFAULT_SETTINGS := {
 	"beam_noise_amount": 0.06,
 	"beam_noise_scale": 1.4,
 	"beam_softness": 0.32,
-	"beam_radial_falloff": 1.25,
+	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.1,
 	"haze_density_multiplier": 0.22,
 	"gobo_scale": 1.0,
@@ -75,6 +77,7 @@ const QUICK_PRESETS := {
 		"beam_presentation": 0,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
+		"footprint_multiplier": 1.0,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -87,6 +90,7 @@ const QUICK_PRESETS := {
 		"beam_presentation": 1,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
+		"footprint_multiplier": 1.0,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -99,6 +103,7 @@ const QUICK_PRESETS := {
 		"beam_presentation": 2,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
+		"footprint_multiplier": 1.0,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -111,6 +116,7 @@ const QUICK_PRESETS := {
 		"beam_presentation": 3,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
+		"footprint_multiplier": 1.0,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -141,6 +147,7 @@ func _ready() -> void:
 	_apply_settings_to_controls()
 
 func configure(initial_settings: Dictionary) -> void:
+	initial_settings = VisualSettingsMigration.migrate(initial_settings)
 	if initial_settings.is_empty():
 		return
 	for key in DEFAULT_SETTINGS.keys():

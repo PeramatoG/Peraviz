@@ -456,6 +456,8 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		near_radius = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
 	return {
 		"beam_angle": beam_angle,
+		"profile_beam_angle": float(profile.get("beam_angle", beam_angle)),
+		"field_angle": float(profile.get("field_angle", 0.0)),
 		"beam_visual_length_m": beam_range,
 		"beam_range": beam_range,
 		"beam_color": beam_color,
