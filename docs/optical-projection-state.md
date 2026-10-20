@@ -83,3 +83,8 @@ revision identity, asymmetric source-artwork UV correspondence (both axes),
 topology reuse, 600 motion/Zoom/camera updates, blackout and packed
 dense held-state replay. GPU footprint appearance and RTX 3070 reference FPS still
 require the reference scene on a graphical machine; headless FPS is not comparable.
+
+The reference renderer also consumes a [shared radial light profile](vector-light-profile.md).
+The presentation aperture includes its low-energy shoulder while `source_full_angle_deg`
+retains native Zoom. Both consumers still use the same resolved aperture and bases.
+The profile is a reusable presentation value, not an additional optical state owner.

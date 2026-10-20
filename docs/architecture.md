@@ -57,7 +57,12 @@ for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
 GDTF/native semantic state determines physical optical values. Peraviz resolves
 shared presentation geometry into one [Optical Projection State](optical-projection-state.md)
-per emitter. Vector shaft and surface footprint independently consume its aperture,
+per emitter. Every projected output may resolve surface-profile data without owning
+a realtime renderer light. Vector Prism grants realtime ownership only to genuine
+projectors and explicit realtime/experimental modes. Open-light A/B is an opt-in
+developer argument; see [surface ownership](surface-light-ownership.md). The future
+physical outputs → optical/surface state → Control/Render Groups → bounded/batched
+surface backend remains deferred. Vector shaft and surface footprint consume its aperture,
 base optical transform, native gobo roll, visual alignment and parity. They may not
 maintain competing authoritative optical transforms. Color/intensity remain in the
 native dense photometric state; camera movement cannot dirty projection geometry.

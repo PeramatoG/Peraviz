@@ -411,7 +411,7 @@ int test_direct_channels_and_inferred_ranges() {
     return 0;
 }
 
-// Verifies exact Beam LuminousFlux semantics and projected/emission renderer scales.
+// Verifies source flux scaling and authored/default optical provenance for exact Beams.
 int test_beam_luminous_flux_profiles() {
     const std::filesystem::path repo_root = repo_root_from_source();
     const std::string golden_xml = read_file(repo_root / "native/tests/data/golden_fixture_description.xml");
@@ -441,6 +441,11 @@ int test_beam_luminous_flux_profiles() {
     add_beam("NoneAura", true, 900.0f, "None");
     add_beam("GlowAura", true, 500.0f, "Glow");
     add_beam("Fresnel", true, 20000.0f, "Fresnel");
+    model.nodes[0].has_beam_angle = true;
+    model.nodes[0].beam_angle = 10.0f;
+    model.nodes[0].has_field_angle = true;
+    model.nodes[0].field_angle = 20.0f;
+    model.nodes[1].has_beam_type = false;
     const auto scene = peraviz::gdtf_runtime::compile_runtime_scene(model, 0);
     if (scene.beam_profiles.size() != 7) return fail("Expected one Beam profile per exact Beam geometry");
     bool saw_invalid_diagnostic = false;
@@ -449,6 +454,8 @@ int test_beam_luminous_flux_profiles() {
     }
     bool saw_explicit = false, saw_missing = false, saw_zero = false, saw_invalid = false, saw_none = false, saw_glow = false, saw_fresnel = false;
     for (const auto &profile : scene.beam_profiles) {
+        if (profile.geometry_path == "Explicit" && (!profile.beam_type_explicit || !profile.beam_angle_explicit || !profile.field_angle_explicit || profile.beam_angle_deg != 10.0 || profile.field_angle_deg != 20.0)) return fail("Authored optical values and provenance must survive compilation");
+        if (profile.geometry_path == "Missing" && (profile.beam_type != "Wash" || profile.beam_type_explicit || profile.beam_angle_explicit || profile.field_angle_explicit || profile.beam_angle_deg != 25.0 || profile.field_angle_deg != 25.0)) return fail("Missing photometry retains GDTF defaults with default provenance");
         if (profile.geometry_path == "Explicit") saw_explicit = profile.luminous_flux_source == "explicit" && std::fabs(profile.effective_luminous_flux_lm - 320.0) < 0.001 && std::fabs(profile.projected_lumen_scale - 0.032) < 0.001 && profile.has_projected_beam;
         if (profile.geometry_path == "Missing") saw_missing = profile.luminous_flux_source == "gdtf_default" && std::fabs(profile.effective_luminous_flux_lm - 10000.0) < 0.001 && std::fabs(profile.projected_lumen_scale - 1.0) < 0.001 && profile.has_projected_beam;
         if (profile.geometry_path == "Zero") saw_zero = profile.luminous_flux_source == "explicit" && std::fabs(profile.effective_luminous_flux_lm) < 0.001 && std::fabs(profile.projected_lumen_scale) < 0.001 && profile.has_projected_beam;

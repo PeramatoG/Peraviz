@@ -26,17 +26,31 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	var mirror_x: bool = projection.mirror_x
 	var mirror_z: bool = projection.mirror_z
 	if int(beam.get_meta("peraviz_projection_geometry_revision", -1)) != projection.geometry_revision:
-		var prism_mesh: ArrayMesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
+		var prism_mesh: ArrayMesh
+		if projection.radial_profile.rectangular and gobo_texture == null:
+			prism_mesh = _mesh_builder.build_normalized_rectangle_mesh(float(params.get("rectangle_ratio", 1.0)))
+		else:
+			prism_mesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
 		light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)
 		light.set_meta("peraviz_last_beam_renderer_mode", shape_mode())
 		if prism_mesh != null:
 			beam.mesh = prism_mesh
+			var material: ShaderMaterial = beam.material_override as ShaderMaterial
+			var coverage: Texture2D = prism_mesh.get_meta("peraviz_shaft_coverage") if prism_mesh.has_meta("peraviz_shaft_coverage") else null
+			material.set_shader_parameter("gobo_coverage", coverage)
+			material.set_shader_parameter("gobo_mask", gobo_texture)
+			material.set_shader_parameter("has_gobo_energy", coverage != null)
+			beam.set_instance_shader_parameter("gobo_transmission", float(coverage.get_meta("transmission", 1.0)) if coverage != null else 1.0)
 		var scaled_near: float = max(lens_radius * gobo_scale, 0.001)
 		var scaled_far: float = max(bottom_radius, 0.001)
 		beam.set_instance_shader_parameter("use_normalized_gobo_topology", true)
 		beam.set_instance_shader_parameter("topology_near_radius", scaled_near)
 		beam.set_instance_shader_parameter("topology_far_radius", scaled_far)
 		beam.set_meta("peraviz_gobo_normalized_near_ratio", scaled_near / scaled_far)
+		# CPU culling must include the shader-expanded shoulder, including Rectangle.
+		var aspect: Vector2 = projection.radial_profile.aspect
+		var extent := Vector2(maxf(scaled_near, scaled_far), maxf(scaled_near, scaled_far)) * aspect
+		beam.custom_aabb = AABB(Vector3(-extent.x, -0.5, -extent.y), Vector3(extent.x * 2.0, 1.0, extent.y * 2.0))
 		beam.set_meta("peraviz_projection_geometry_revision", projection.geometry_revision)
 	projection.apply_shaft(beam)
 	return {

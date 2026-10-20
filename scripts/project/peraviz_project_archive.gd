@@ -79,7 +79,7 @@ func open_project(project_path: String) -> Dictionary:
 	var visual_settings: Dictionary = {}
 	var visual_settings_value: Variant = _denormalize_json_value(_read_json_file(reader, VISUAL_SETTINGS_PATH, {}))
 	if visual_settings_value is Dictionary:
-		visual_settings = visual_settings_value as Dictionary
+		visual_settings = preload("res://scripts/visual_settings_migration.gd").migrate(visual_settings_value as Dictionary)
 	var dmx_settings: Dictionary = _merge_dmx_defaults(_read_json_file(reader, DMX_SETTINGS_PATH, {}))
 	var app_state: Dictionary = _read_json_file(reader, APP_STATE_PATH, {})
 	var fixture_overrides: Dictionary = _read_json_file(reader, FIXTURE_OVERRIDES_PATH, {})

@@ -1,182 +1,107 @@
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
-uniform sampler2D DEPTH_TEXTURE : hint_depth_texture, filter_linear_mipmap;
-
 instance uniform vec4 beam_dynamic_state : source_color = vec4(1.0, 0.95, 0.85, 0.0);
-uniform float falloff_power : hint_range(0.1, 10.0) = 2.2;
-uniform float facing_boost : hint_range(0.0, 10.0) = 2.2;
-uniform float facing_power : hint_range(0.1, 20.0) = 1.8;
-uniform float boost_along_y : hint_range(0.0, 10.0) = 1.0;
-uniform float feather_sharpness : hint_range(0.1, 20.0) = 4.0;
-uniform float feather_intensity : hint_range(0.0, 1.0) = 1.0;
-uniform float near_fade_start : hint_range(0.0, 50.0) = 0.01;
-uniform float near_fade_end : hint_range(0.0, 50.0) = 1.0;
-uniform float far_fade_start : hint_range(0.1, 100.0) = 25.0;
-uniform float far_fade_end : hint_range(0.1, 100.0) = 80.0;
 instance uniform float intensity_max = 100.0;
-uniform bool depth_feather_enabled = true;
-uniform float depth_fade_distance : hint_range(0.01, 5.0) = 0.5;
-uniform sampler2D gobo_texture : source_color;
-uniform bool use_gobo = false;
-uniform float gobo_contrast : hint_range(0.1, 4.0) = 1.0;
-uniform bool gobo_invert = false;
-uniform float gobo_min_transmission : hint_range(0.0, 1.0) = 0.12;
-uniform float gobo_contribution : hint_range(0.0, 1.0) = 0.85;
-instance uniform float cone_height = 15.0;
+instance uniform float cone_height = 75.0;
 instance uniform float gobo_projection_radius = 1.0;
-instance uniform float topology_near_radius = 1.0;
+instance uniform float topology_near_radius = 0.03;
 instance uniform float topology_far_radius = 1.0;
 instance uniform bool use_normalized_gobo_topology = false;
-instance uniform float radial_falloff = 1.1;
 instance uniform float longitudinal_falloff = 1.0;
-instance uniform float beam_softness = 0.35;
-instance uniform float gobo_scale = 1.0;
-instance uniform float gobo_rotation_deg = 0.0;
-instance uniform float haze_density = 0.35;
-uniform bool gobo_mirror_x = true;
-uniform bool gobo_mirror_z = false;
+instance uniform float haze_density = 0.22;
+// x = resolved exponent, y = coefficient, zw = rectangle half extents (or zero).
+instance uniform vec4 profile_parameters = vec4(8.0, 2.606038, 0.0, 0.0);
 
+uniform sampler2D gobo_coverage : filter_linear, repeat_disable;
+uniform sampler2D gobo_mask : filter_nearest, repeat_disable;
+uniform bool has_gobo_energy = false;
+instance uniform float gobo_transmission = 1.0;
+instance uniform float profile_feather_start = 0.86;
 
-varying vec3 v_view;
-varying vec3 v_local;
-varying flat vec4 v_beam_response;
-
-vec2 project_gobo_uv(vec3 local_pos) {
-	float source_y = 0.5 * cone_height;
-	float axial_dist = max(abs(source_y - local_pos.y), 0.001);
-	float projection_scale = cone_height / axial_dist;
-	float projection_radius = max(gobo_projection_radius, 0.001);
-	vec2 projected = local_pos.xz * projection_scale;
-	if (gobo_mirror_x) {
-		projected.x = -projected.x;
-	}
-	if (gobo_mirror_z) {
-		projected.y = -projected.y;
-	}
-	float rotation_rad = radians(gobo_rotation_deg);
-	float cos_r = cos(rotation_rad);
-	float sin_r = sin(rotation_rad);
-	vec2 rotated = vec2(
-		(projected.x * cos_r) - (projected.y * sin_r),
-		(projected.x * sin_r) + (projected.y * cos_r)
-	);
-	float safe_scale = max(gobo_scale, 0.05);
-	return vec2(0.5) + ((rotated / safe_scale) / (2.0 * projection_radius));
-}
-
-
-float radial_profile_from_local(vec3 local_pos) {
-	float source_y = 0.5 * cone_height;
-	float axial_dist = max(abs(source_y - local_pos.y), 0.001);
-	float projection_scale = cone_height / axial_dist;
-	float projection_radius = max(gobo_projection_radius, 0.001);
-	float local_radius = projection_radius / max(projection_scale, 0.0001);
-	float radius_norm = clamp(length(local_pos.xz) / max(local_radius, 0.0001), 0.0, 1.0);
-
-	// Keep a wider bright center and apply most softening near the outer rim only.
-	float broad_core = 1.0 - smoothstep(0.0, 0.78, radius_norm);
-	float shoulder_profile = 1.0 - smoothstep(0.52, 0.92, radius_norm);
-	float radial_profile = mix(shoulder_profile, 1.0, 0.92 * broad_core);
-
-	// Outer feather only in the final rim band to avoid inner-cone look.
-	float edge_feather = 1.0 - smoothstep(0.9, 1.0, radius_norm);
-	return radial_profile * mix(1.0, edge_feather, 0.82);
-}
-
-float sample_gobo_mask(vec2 uv) {
-	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-		return 0.0;
-	}
-	vec4 texel = texture(gobo_texture, uv);
-	float luma = clamp(dot(texel.rgb, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
-	float alpha = clamp(texel.a, 0.0, 1.0);
-	float open_amount = luma;
-	if (gobo_invert) {
-		open_amount = 1.0 - luma;
-	}
-	float optical_mask = pow(clamp(open_amount * alpha, 0.0, 1.0), gobo_contrast);
-	return mix(1.0, max(optical_mask, gobo_min_transmission), clamp(gobo_contribution, 0.0, 1.0));
-}
+varying vec3 optical_position;
+varying flat vec3 optical_camera;
+varying flat float intensity_response;
+varying flat float inside_volume;
 
 void vertex() {
-	float raw_intensity = max(beam_dynamic_state.a, 0.0);
-	float beam_intensity_norm = clamp(raw_intensity / 20.0, 0.0, 1.0);
-	float beam_intensity = pow(beam_intensity_norm, 2.2);
-	float beam_overdrive = 0.0;
-	if (intensity_max > 20.0) {
-		beam_overdrive = clamp((raw_intensity - 20.0) / (intensity_max - 20.0), 0.0, 1.0);
-	}
-	float intensity_alpha_input = clamp((raw_intensity / 20.0) * 4.0, 0.0, 3.6);
-	float overdrive_brightness_gain = mix(1.0, 30.0, beam_overdrive);
-	float max_brightness = mix(8.0, 120.0, beam_intensity_norm) * overdrive_brightness_gain;
-	v_beam_response = vec4(beam_intensity, beam_overdrive, intensity_alpha_input, max_brightness);
+	float axial = use_normalized_gobo_topology ? clamp(0.5 - VERTEX.y, 0.0, 1.0) : clamp(0.5 - VERTEX.y / cone_height, 0.0, 1.0);
 	if (use_normalized_gobo_topology) {
-		float axial = clamp(0.5 - VERTEX.y, 0.0, 1.0);
-		float radius = mix(topology_near_radius, topology_far_radius, axial);
-		VERTEX.xz *= radius;
+		VERTEX.xz *= mix(topology_near_radius, topology_far_radius, axial);
 	}
-	v_local = VERTEX;
-	v_view = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-
-float get_linear_depth(float raw_depth, mat4 inv_proj_mat) {
-	return 1.0 / (raw_depth * inv_proj_mat[2][3] + inv_proj_mat[3][3]);
+	// Cached topology Y is normalized; all attenuation coordinates are metres.
+	optical_position = vec3(VERTEX.x, axial * cone_height, VERTEX.z);
+	vec3 camera_local = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
+	float camera_axial = use_normalized_gobo_topology ? (0.5 - camera_local.y) * cone_height : 0.5 * cone_height - camera_local.y;
+	optical_camera = vec3(camera_local.x, camera_axial, camera_local.z);
+	float camera_radius = mix(topology_near_radius, topology_far_radius, camera_axial / cone_height);
+	vec2 camera_point = optical_camera.xz / max(camera_radius, 0.0001);
+	float camera_metric = length(camera_point);
+	if (profile_parameters.z > 0.0) {
+		vec2 rectangle_point = abs(camera_point / profile_parameters.zw);
+		camera_metric = max(rectangle_point.x, rectangle_point.y);
+	}
+	inside_volume = camera_axial >= 0.0 && camera_axial <= cone_height && camera_metric < 1.0 ? 1.0 : 0.0;
+	if (has_gobo_energy && inside_volume > 0.5) {
+		vec4 mask = textureLod(gobo_mask, camera_point * 0.5 + 0.5, 0.0);
+		inside_volume = dot(mask.rgb, vec3(0.299, 0.587, 0.114)) * mask.a >= 0.5 ? 1.0 : 0.0;
+	}
+	float intensity = max(beam_dynamic_state.a, 0.0);
+	intensity_response = intensity / 20.0;
 }
 
 void fragment() {
-	float beam_intensity = v_beam_response.x;
-	float beam_overdrive = v_beam_response.y;
-	float intensity_alpha_input = v_beam_response.z;
-	float max_brightness = v_beam_response.w;
-	float dist = length(v_view);
-	float near_alpha = smoothstep(near_fade_start, near_fade_end, dist);
-	float far_alpha = 1.0 - smoothstep(far_fade_start, far_fade_end, dist);
-	float dist_fade = max(near_alpha * far_alpha, 0.35);
-
-	float source_y = 0.5 * cone_height;
-	float axial_progress = clamp((source_y - v_local.y) / max(cone_height, 0.0001), 0.0, 1.0);
-	float apex_fade = pow(max(1.0 - axial_progress, 0.001), max(falloff_power * longitudinal_falloff, 0.1));
-	float base_brightness = intensity_alpha_input * apex_fade;
-
-	vec3 n = normalize(NORMAL);
-	vec3 v = normalize(-v_view);
-	float ndotv = abs(dot(n, v));
-	float location_weight = pow(max(1.0 - axial_progress, 0.0), boost_along_y);
-	float facing_multiplier = 1.0 + (facing_boost * location_weight * pow(ndotv, facing_power));
-
-	float brightness = min(base_brightness * facing_multiplier, max_brightness);
-	float feather_alpha = mix(1.0 - feather_intensity, 1.0, pow(clamp(ndotv, 0.0, 1.0), feather_sharpness * max(radial_falloff, 0.05)));
-	feather_alpha = max(feather_alpha, 0.08);
-	float radial_profile = radial_profile_from_local(v_local);
-
-	float depth_mult = 1.0;
-	if (depth_feather_enabled) {
-		float scene_depth = texture(DEPTH_TEXTURE, SCREEN_UV).r;
-		if (scene_depth < 0.9999) {
-			float scene_linear = get_linear_depth(scene_depth, INV_PROJECTION_MATRIX);
-			float frag_linear = -v_view.z;
-			float diff = scene_linear - frag_linear;
-			depth_mult = smoothstep(0.0, depth_fade_distance, diff);
-		}
+	// One analytic closest-axis sample estimates the smooth column envelope of
+	// the shell. Sampling density only at shell vertices would give r=1 everywhere.
+	// No geometric normals, shells, slices, ray marching or per-pixel loops.
+	vec3 ray = optical_position - optical_camera;
+	float spread = (topology_far_radius - topology_near_radius) / cone_height;
+	float camera_radius = topology_near_radius + spread * optical_camera.y;
+	// Godot's clockwise front faces are the inward-facing exit walls. Outside
+	// cameras use entry walls so the cap-free terminal opening cannot occlude
+	// the shaft; inside cameras use exit walls. Never accumulate both orientations.
+	if (FRONT_FACING != (inside_volume > 0.5)) { discard; }
+	float topology_gain = 1.0;
+	if (has_gobo_energy) {
+		vec2 direction = ray.xz * camera_radius - optical_camera.xz * spread * ray.y;
+		vec2 normal = vec2(-direction.y, direction.x) / max(length(direction), 0.000001);
+		float angle = atan(normal.y, normal.x);
+		if (angle < 0.0) { normal = -normal; angle += 3.14159265; }
+		float fragment_radius = topology_near_radius + spread * optical_position.y;
+		float offset = dot(normal, optical_position.xz / max(fragment_radius, 0.0001));
+		topology_gain = texture(gobo_coverage, vec2(offset / 3.0 + 0.5, angle / 3.14159265)).r;
 	}
-
-
-
-	float intensity_alpha = 0.25 + (0.9 * clamp(beam_intensity, 0.0, 1.0)) + (0.95 * beam_overdrive);
-	float visibility = 1.0;
-	float overdrive_alpha_gain = 1.0 + (2.6 * beam_overdrive);
-	float physical_alpha = feather_alpha * radial_profile * depth_mult * dist_fade * max(haze_density, 0.2) * intensity_alpha * overdrive_alpha_gain * visibility;
-	float radial_alpha_floor = 0.04 * visibility * mix(0.25, 1.0, pow(clamp(radial_profile, 0.0, 1.0), 1.2)) * mix(1.0, 1.6, beam_overdrive);
-	float final_alpha = max(physical_alpha, radial_alpha_floor);
-
-	float gobo_mask = 1.0;
-	if (use_gobo) {
-		vec2 gobo_uv = project_gobo_uv(v_local);
-		gobo_mask = sample_gobo_mask(gobo_uv);
+	float transverse_sq = dot(ray.xz, ray.xz);
+	float t = max(-dot(optical_camera.xz, ray.xz) / max(transverse_sq, 0.000001), 0.0);
+	if (abs(ray.y) > 0.0001) {
+		float t0 = -optical_camera.y / ray.y;
+		float t1 = (cone_height - optical_camera.y) / ray.y;
+		t = max(clamp(t, min(t0, t1), max(t0, t1)), 0.0);
 	}
-
-	ALBEDO = beam_dynamic_state.rgb * brightness * gobo_mask;
-	ALPHA = clamp(final_alpha * max(gobo_mask, 0.8), 0.0, 1.0);
-	EMISSION = ALBEDO * (1.6 + (8.0 * clamp(beam_intensity, 0.0, 1.0)) + (34.0 * beam_overdrive));
+	vec3 sample_pos = optical_camera + ray * t;
+	float axial = clamp(sample_pos.y, 0.0, cone_height);
+	float section_radius = mix(topology_near_radius, topology_far_radius, axial / cone_height);
+	if (!use_normalized_gobo_topology) {
+		section_radius = mix(topology_near_radius, gobo_projection_radius, axial / cone_height);
+	}
+	vec2 point = sample_pos.xz / max(section_radius, 0.0001);
+	float radius = length(point);
+	if (profile_parameters.z > 0.0) {
+		point /= profile_parameters.zw;
+		radius = max(abs(point.x), abs(point.y));
+	}
+	float radial = exp2(-1.44269504 * profile_parameters.y * pow(clamp(radius, 0.0, 1.0), profile_parameters.x));
+	radial *= 1.0 - smoothstep(profile_feather_start, 1.0, radius);
+	float d = axial;
+	float strength = max(longitudinal_falloff, 0.0);
+	float decay = exp2(-0.07934823 * strength * d) / (1.0 + 0.015 * strength * d * d);
+	float tail = (1.0 - smoothstep(0.72, 0.98, d / cone_height)) * (1.0 - smoothstep(0.72, 0.98, optical_position.y / cone_height));
+	if (!has_gobo_energy) { topology_gain = sqrt(max(1.0 - radius * radius, 0.0)); }
+	float density = radial * decay * tail * max(haze_density, 0.0) * intensity_response * 0.8 * gobo_transmission * topology_gain;
+	// Additive blending multiplies emission by alpha; split density equally so
+	// the displayed radial envelope retains the shared photometric anchors.
+	float response = sqrt(max(density, 0.0));
+	ALBEDO = beam_dynamic_state.rgb * response;
+	EMISSION = ALBEDO;
+	ALPHA = clamp(response, 0.0, 1.0);
 }

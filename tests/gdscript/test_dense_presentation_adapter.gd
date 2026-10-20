@@ -147,7 +147,7 @@ func _run() -> void:
 		applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})
 		test.check(projection.revision == before_revision + 1, "Dense Zoom resolves one shared revision")
 		test.check(projection.shaft_revision == projection.revision and projection.footprint_revision == projection.revision, "Packed dense Zoom synchronizes both consumers")
-		test.check(is_equal_approx(vector_loader.anchors[0].spot_angle, zoom * 0.5) and vector_beam.mesh == vector_mesh, "Dense Zoom shares aperture without replacing topology")
+		test.check(is_equal_approx(vector_loader.anchors[0].spot_angle, projection.half_angle_deg) and vector_beam.mesh == vector_mesh, "Dense Zoom shares aperture without replacing topology")
 	var optical_revision: int = projection.revision
 	frame["floats"][5] = 0.37
 	applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})
@@ -159,7 +159,19 @@ func _run() -> void:
 	applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})
 	test.check(not vector_beam.visible, "Suppressed optical updates retain hidden shaft")
 	vector_service.set_render_diagnostic_mode("full")
-	test.check(vector_beam.visible and projection.shaft_revision == projection.revision and projection.footprint_revision == projection.revision and is_equal_approx(vector_loader.anchors[0].spot_angle, 17.0), "Full resumes latest shared Zoom without a fresh DMX packet")
+	test.check(vector_beam.visible and projection.shaft_revision == projection.revision and projection.footprint_revision == projection.revision and is_equal_approx(projection.source_full_angle_deg, 34.0), "Full resumes latest shared Zoom without a fresh DMX packet")
+	# Settings replay must keep the shaft independent of surface blackout.
+	vector_loader._visual_settings["beam_multiplier"] = 0.0
+	vector_loader._visual_settings["footprint_multiplier"] = 2.0
+	vector_service.refresh_dense_renderer()
+	test.check(not vector_beam.visible and vector_loader.anchors[0].light_energy > 0.0, "Zero shaft keeps the surface light active")
+	vector_loader._visual_settings["beam_multiplier"] = 20.0
+	vector_loader._visual_settings["footprint_multiplier"] = 0.0
+	vector_service.refresh_dense_renderer()
+	test.check(vector_beam.visible and vector_loader.anchors[0].light_energy == 0.0, "Zero footprint preserves the shaft")
+	vector_loader._visual_settings["beam_multiplier"] = 0.0
+	vector_service.refresh_dense_renderer()
+	test.check(not vector_beam.visible and vector_loader.anchors[0].light_energy == 0.0, "Both presentations can be disabled independently")
 	vector_service.reset_scene_state()
 	for anchor in vector_loader.anchors: vector_loader.renderer.cleanup_beam(anchor)
 	vector_loader.free()
