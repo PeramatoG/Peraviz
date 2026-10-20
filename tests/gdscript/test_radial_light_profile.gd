@@ -86,7 +86,7 @@ func check_renderer() -> void:
 	image.fill(Color.WHITE)
 	light.set_meta("peraviz_gobo_texture", ImageTexture.create_from_image(image))
 	light.light_projector = light.get_meta("peraviz_gobo_texture")
-	var params := {"beam_type": "Spot", "beam_angle": 20.0, "field_angle": 40.0, "beam_visual_length_m": 75.0, "beam_range": 75.0, "scaled_intensity": 20.0, "haze_density": 0.0}
+	var params := {"beam_type": "Spot", "beam_angle": 20.0, "field_angle": 40.0, "beam_angle_explicit": true, "field_angle_explicit": true, "beam_visual_length_m": 75.0, "beam_range": 75.0, "scaled_intensity": 20.0, "haze_density": 0.0}
 	renderer.update_beam(light, params)
 	var beam: MeshInstance3D = renderer.get_beam_resource(light)
 	var state: RefCounted = light.get_meta(&"peraviz_optical_projection_state")

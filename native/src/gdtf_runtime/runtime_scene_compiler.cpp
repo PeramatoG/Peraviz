@@ -163,7 +163,7 @@ void resolve_luminous_flux(runtime::CompiledRuntimeScene &out, runtime::Compiled
     profile.projected_lumen_scale = profile.has_projected_beam ? profile.emission_lumen_scale : 0.0;
 }
 
-// Appends setup-time Beam profiles for exact GDTF Beam geometry nodes in one fixture patch.
+// Appends exact Beam profiles, retaining authored/default optical provenance at setup.
 void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &scene, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
     const std::string prefix = patch.fixture_uuid + "/";
     for (const SceneNode &node : scene.nodes) {
@@ -174,6 +174,9 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
         profile.geometry_path = node.gdtf_geometry_path;
         profile.geometry_key = node.gdtf_geometry_key;
         profile.render_target_id = stable_id(patch.fixture_uuid, "beam:target:" + node.gdtf_geometry_path);
+        profile.beam_type_explicit = node.has_beam_type;
+        profile.beam_angle_explicit = node.has_beam_angle;
+        profile.field_angle_explicit = node.has_field_angle;
         profile.beam_type = normalize_beam_type(node.has_beam_type ? node.beam_type : "Wash");
         profile.beam_angle_deg = node.has_beam_angle ? node.beam_angle : profile.beam_angle_deg;
         profile.field_angle_deg = node.has_field_angle ? node.field_angle : profile.field_angle_deg;
@@ -181,8 +184,8 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &
         profile.throw_ratio = node.has_throw_ratio ? node.throw_ratio : profile.throw_ratio;
         profile.rectangle_ratio = node.has_rectangle_ratio ? node.rectangle_ratio : profile.rectangle_ratio;
         profile.color_temperature = node.has_color_temperature ? node.color_temperature : profile.color_temperature;
-        profile.beam_angle_source = node.has_beam_angle ? "explicit" : "fallback";
-        profile.field_angle_source = node.has_field_angle ? "explicit" : "fallback";
+        profile.beam_angle_source = node.has_beam_angle ? "explicit" : "gdtf-default";
+        profile.field_angle_source = node.has_field_angle ? "explicit" : "gdtf-default";
         profile.beam_radius_source = node.has_beam_radius ? "explicit" : "fallback";
         profile.has_projected_beam = is_projected_beam_type(profile.beam_type);
         resolve_luminous_flux(out, profile, node, patch);

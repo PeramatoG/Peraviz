@@ -33,6 +33,7 @@ func _build_ui() -> void:
 	_add_slider_row("Beam radial falloff", "beam_radial_falloff", 0.25, 4.0, 0.01)
 	_add_slider_row("Beam axial decay", "beam_longitudinal_falloff", 0.0, 4.0, 0.01)
 	_add_slider_row("Shaft haze density", "haze_density_multiplier", 0.0, 2.0, 0.01)
+	_add_slider_row("Footprint softness", "footprint_softness", 0.0, 0.25, 0.005)
 	_add_slider_row("Bloom", "bloom_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Ambient fog density", "ambient_fog_density", 0.0, 0.05, 0.001)
 	_add_slider_row("Volumetric fog density", "volumetric_fog_density", 0.0, 0.01, 0.0001)

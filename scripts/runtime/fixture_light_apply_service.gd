@@ -456,6 +456,9 @@ func _beam_params_from_target_record(light: SpotLight3D, target_record: Dictiona
 		near_radius = max(float(profile.get("render_near_radius_m", profile.get("official_beam_radius_m", 0.03))), 0.001)
 	return {
 		"beam_angle": beam_angle,
+		"beam_type_explicit": bool(profile.get("beam_type_explicit", false)),
+		"beam_angle_explicit": bool(profile.get("beam_angle_explicit", false)),
+		"field_angle_explicit": bool(profile.get("field_angle_explicit", false)),
 		"profile_beam_angle": float(profile.get("beam_angle", beam_angle)),
 		"field_angle": float(profile.get("field_angle", 0.0)),
 		"beam_visual_length_m": beam_range,
@@ -960,6 +963,9 @@ func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: boo
 		return false
 	if light.light_projector != null:
 		return true
+	if light.has_meta(&"peraviz_optical_projection_state"):
+		var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
+		if projection.smooth_profile_enabled and projection.radial_profile.projected: return true
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
 	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) in [0, 2]
 

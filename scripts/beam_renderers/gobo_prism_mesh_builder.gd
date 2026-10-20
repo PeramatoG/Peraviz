@@ -1,6 +1,7 @@
 extends RefCounted
 class_name GoboPrismMeshBuilder
 
+const MAX_CACHED_MESHES: int = 128
 const VECTORIZATION_MAX_SIZE: int = 256
 const VECTORIZATION_ALPHA_THRESHOLD: float = 0.5
 const VECTORIZATION_EPSILON: float = 0.8
@@ -20,6 +21,7 @@ const CIRCULAR_STDDEV_RATIO_THRESHOLD: float = 0.045
 const CIRCULAR_MAX_DEVIATION_RATIO_THRESHOLD: float = 0.14
 const CIRCULAR_MIN_POINTS: int = 16
 
+const ShaftEnergy = preload("res://scripts/beam_renderers/gobo_shaft_energy.gd")
 const GoboPolygonCleanupScript = preload("res://scripts/beam_renderers/gobo_polygon_cleanup.gd")
 const GoboCompoundTopologyScript = preload("res://scripts/beam_renderers/gobo_compound_topology.gd")
 
@@ -37,6 +39,13 @@ func clear_cache() -> void:
 func get_counters() -> Dictionary:
 	return _counters.duplicate(true)
 
+func _cache_mesh(key: String, mesh: ArrayMesh) -> void:
+	if _mesh_cache.size() >= MAX_CACHED_MESHES:
+		_mesh_cache.clear()
+		_shape_cache.clear()
+		_normalized_polygon_cache.clear()
+	_mesh_cache[key] = mesh
+
 func build_normalized_beam_mesh(gobo_texture: Texture2D, apply_edge_mask_correction: bool = true) -> ArrayMesh:
 	var topology_key: String = _shape_cache_key(gobo_texture, apply_edge_mask_correction)
 	if _mesh_cache.has(topology_key):
@@ -46,7 +55,9 @@ func build_normalized_beam_mesh(gobo_texture: Texture2D, apply_edge_mask_correct
 	if polygons.is_empty():
 		polygons = [_build_fallback_circle()]
 	var mesh: ArrayMesh = _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, 1.0)
-	_mesh_cache[topology_key] = mesh
+	if gobo_texture != null:
+		mesh.set_meta("peraviz_shaft_coverage", ShaftEnergy.build(polygons, gobo_texture))
+	_cache_mesh(topology_key, mesh)
 	_counters["normalized_topology_creations"] += 1
 	return mesh
 
@@ -61,7 +72,7 @@ func build_normalized_rectangle_mesh(rectangle_ratio: float) -> ArrayMesh:
 	for index in range(ring.size()): ring[index] /= corner_radius
 	var polygons: Array[PackedVector2Array] = [ring]
 	var mesh := _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, 1.0)
-	_mesh_cache[key] = mesh
+	_cache_mesh(key, mesh)
 	return mesh
 
 func build_aperture_beam_mesh(aperture_profile: Dictionary, beam_height: float) -> ArrayMesh:
@@ -78,7 +89,7 @@ func build_aperture_beam_mesh(aperture_profile: Dictionary, beam_height: float) 
 	else:
 		polygons = [_build_fallback_circle()]
 	var mesh: ArrayMesh = _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, max(beam_height, 0.001))
-	_mesh_cache[key] = mesh
+	_cache_mesh(key, mesh)
 	return mesh
 
 func _build_normalized_rectangle(rectangle_ratio: float) -> PackedVector2Array:
@@ -159,6 +170,7 @@ func _vectorize_texture_to_normalized_polygons(gobo_texture: Texture2D, apply_ed
 	var image: Image = gobo_texture.get_image()
 	if image == null:
 		return []
+	image = image.duplicate()
 	if image.get_format() != Image.FORMAT_RGBA8:
 		image.convert(Image.FORMAT_RGBA8)
 	var longest_size: int = max(image.get_width(), image.get_height())

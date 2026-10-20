@@ -311,7 +311,10 @@ func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
 	var before: int = _mutation_serial
 	var enabled: bool = false
 	if _mode == "full" and handle.visible:
-		enabled = realtime or handle.light.light_projector != null or presentation in [0, 2]
+		enabled = (realtime or handle.light.light_projector != null or presentation in [0, 2] or (presentation == 1 and handle.projection.smooth_profile_enabled and handle.projected)) and _surface_multiplier > 0.0
+	if not enabled and _surface_multiplier <= 0.0 and handle.light.light_energy != 0.0:
+		handle.light.light_energy = 0.0
+		_record_mutation(&"spot_property_writes")
 	if enabled:
 		if handle.properties_dirty or not is_equal_approx(handle.light.light_energy, handle.energy * _surface_multiplier):
 			handle.light.light_energy = handle.energy * _surface_multiplier

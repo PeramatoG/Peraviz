@@ -33,6 +33,11 @@ var surface_texture: Texture2D
 var surface_source_id: int = -1
 var surface_profile_revision: int = -1
 var smooth_profile_enabled: bool = false
+var base_beam_angle_deg: float = 25.0
+var resolved_field_angle_deg: float = 25.0
+var footprint_softness: float = 0.04
+var surface_softness: float = -1.0
+var native_angle_attenuation: float = 1.0
 
 static func resolve(light: SpotLight3D) -> RefCounted:
 	if light.has_meta(META):
@@ -48,9 +53,11 @@ func configure(params: Dictionary, texture: Texture2D) -> bool:
 	var enable_profile := bool(params.get("smooth_light_profile", false))
 	# Typed comparisons inside the reusable profile avoid temporary containers and
 	# recomputing curves/textures during Zoom, color, intensity or roll playback.
-	var profile_changed: bool = radial_profile.configure(str(params.get("beam_type", "Spot")), float(params.get("profile_beam_angle", params.get("beam_angle", 25.0))), float(params.get("field_angle", 0.0)), float(params.get("rectangle_ratio", 1.0)), float(params.get("beam_softness", 0.32)), float(params.get("beam_radial_falloff", 1.0)))
+	base_beam_angle_deg = float(params.get("profile_beam_angle", base_beam_angle_deg if configured else (params.get("beam_angle", 25.0) if bool(params.get("beam_angle_explicit", false)) else 25.0)))
+	var profile_changed: bool = radial_profile.configure(str(params.get("beam_type", "Wash")), base_beam_angle_deg, float(params.get("field_angle", 25.0)), float(params.get("rectangle_ratio", 1.0)), float(params.get("beam_softness", 0.32)), float(params.get("beam_radial_falloff", 1.0)), bool(params.get("beam_angle_explicit", false)), bool(params.get("field_angle_explicit", false)))
 	profile_changed = profile_changed or smooth_profile_enabled != enable_profile
 	if profile_changed: profile_revision += 1
+	footprint_softness = clampf(float(params.get("footprint_softness", 0.04)), 0.0, 0.25)
 	var angle := clampf(float(params.get("beam_angle", 25.0)), 0.1, 178.0)
 	var radius := maxf(float(params.get("lens_radius", 0.03)), 0.005)
 	var length_m := Geometry.clamp_visual_length(float(params.get("beam_visual_length_m", params.get("beam_range", 75.0))))
@@ -64,11 +71,13 @@ func configure(params: Dictionary, texture: Texture2D) -> bool:
 		return false
 	smooth_profile_enabled = enable_profile
 	source_full_angle_deg = angle
+	resolved_field_angle_deg = radial_profile.dynamic_field_angle(angle, float(params.get("profile_beam_angle", angle)))
 	# Visual artwork scale expands the same cone for both consumers.
 	half_angle_deg = rad_to_deg(atan(tan(deg_to_rad(angle * 0.5)) * scale_value * (radial_profile.support_scale if smooth_profile_enabled else 1.0)))
 	var guarded_tangent := maxf(Geometry.RESOURCE_GUARD_RADIUS_M - radius * scale_value, 0.0) / length_m
 	half_angle_deg = minf(half_angle_deg, minf(89.0, rad_to_deg(atan(guarded_tangent))))
 	full_angle_deg = half_angle_deg * 2.0
+	native_angle_attenuation = radial_profile.native_angular_attenuation(rad_to_deg(atan(tan(deg_to_rad(angle * 0.5)) * scale_value)), half_angle_deg)
 	lens_radius = radius
 	visual_range = length_m
 	gobo_scale = scale_value
@@ -117,7 +126,8 @@ func apply_footprint(light: SpotLight3D) -> void:
 	# Angular attenuation is already baked from the shared profile.
 	if smooth_profile_enabled:
 		if light.spot_attenuation != 2.0: light.spot_attenuation = 2.0
-		if light.spot_angle_attenuation != 0.0: light.spot_angle_attenuation = 0.0
+		var angular: float = 0.0 if texture_id != 0 or radial_profile.rectangular else native_angle_attenuation
+		if light.spot_angle_attenuation != angular: light.spot_angle_attenuation = angular
 	last_projector_transform = resolved
 	footprint_applied = true
 	footprint_revision = revision
@@ -138,3 +148,11 @@ func apply_shaft(beam: MeshInstance3D) -> void:
 	if not beam.transform.is_equal_approx(resolved): beam.transform = resolved
 	if not beam.has_meta(META): beam.set_meta(META, self)
 	shaft_revision = revision
+
+func diagnostic(params: Dictionary) -> String:
+	var type_source := "explicit" if bool(params.get("beam_type_explicit", false)) else "gdtf-default"
+	var beam_source := "explicit" if bool(params.get("beam_angle_explicit", false)) else "gdtf-default"
+	var field_source := "explicit" if bool(params.get("field_angle_explicit", false)) else "gdtf-default"
+	var base_angle := base_beam_angle_deg
+	var source := "zoom" if not is_equal_approx(base_angle, source_full_angle_deg) else beam_source
+	return "BeamType=%s source=%s BeamAngle=%.3f source=%s BaseBeamAngle=%.3f source=%s FieldAngle=%.3f source=%s ResolvedFieldAngle=%.3f source=%s profile=%s" % [str(params.get("beam_type", "Wash")), type_source, source_full_angle_deg, source, base_angle, beam_source, float(params.get("field_angle", 25.0)), field_source, resolved_field_angle_deg, "scaled-from-base-profile" if radial_profile.anchored else "type-fallback", "anchored" if radial_profile.anchored else "fallback"]

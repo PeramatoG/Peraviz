@@ -20,6 +20,7 @@ const PRESENTATION_SHADER_PROXY: int = 3
 const FogVolumeControllerScript = preload("res://scripts/fog_volume_gobo_beam_controller.gd")
 const ShaderBeamProxyControllerScript = preload("res://scripts/beam_renderers/shader_beam_proxy_controller.gd")
 
+const OpticalProjection = preload("res://scripts/runtime/optical_projection_state.gd")
 const FootprintCache = preload("res://scripts/beam_renderers/footprint_profile_cache.gd")
 var _footprint_cache: RefCounted = FootprintCache.new()
 
@@ -79,6 +80,14 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 		_sync_debug_axis(light, false)
 		return
 
+	# Surface geometry/photometry must resolve even when the shaft gain is zero.
+	var projection: RefCounted = OpticalProjection.resolve(light)
+	projection.configure(params, light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
+	if not params.has("profile_beam_angle"): params["profile_beam_angle"] = projection.base_beam_angle_deg
+	projection.apply_footprint(light)
+	refresh_surface_profile(light)
+	if bool(params.get("beam_debug_optics", false)): print("[PeravizOpticalProfile] ", projection.diagnostic(params))
+
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
 	var threshold: float = float(params.get("intensity_visibility_threshold", 0.015))
@@ -118,9 +127,9 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	_set_bound_shader_parameter(beam, "cone_height", max(beam_range, 0.001))
 	_set_bound_shader_parameter(beam, "gobo_projection_radius", gobo_projection_radius)
 	if light.has_meta(&"peraviz_optical_projection_state"):
-		var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
 		var profile: RefCounted = projection.radial_profile
 		_set_bound_shader_parameter(beam, "profile_parameters", profile.signature)
+		_set_bound_shader_parameter(beam, "profile_feather_start", profile.feather_start)
 		refresh_surface_profile(light)
 
 # Cold gobo/setup bridge; roll and repeated Zoom only compare typed identities.
@@ -130,11 +139,19 @@ func refresh_surface_profile(light: SpotLight3D) -> void:
 	if not projection.configured: return
 	var source: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
 	var source_id: int = source.get_instance_id() if source != null else 0
-	if projection.surface_source_id == source_id and projection.surface_profile_revision == projection.profile_revision: return
+	if projection.surface_source_id == source_id and projection.surface_profile_revision == projection.profile_revision and projection.surface_softness == projection.footprint_softness: return
 	projection.surface_source_id = source_id
 	projection.surface_profile_revision = projection.profile_revision
-	# Preserve the existing active-light budget: open outputs stay shaft-only.
-	projection.surface_texture = _footprint_cache.texture_for(projection.radial_profile, source) if source != null else null
+	projection.surface_softness = projection.footprint_softness
+	# Circular open profiles use native unshadowed angular attenuation. Rectangle
+	# needs a mask because a native circular cone cannot represent its corners.
+	projection.surface_texture = _footprint_cache.texture_for(projection.radial_profile, source, projection.footprint_softness) if source != null or projection.radial_profile.rectangular else null
+	if source == null:
+		if light.has_meta("peraviz_pre_projector_shadow_enabled"):
+			light.shadow_enabled = bool(light.get_meta("peraviz_pre_projector_shadow_enabled"))
+			light.remove_meta("peraviz_pre_projector_shadow_enabled")
+		if projection.radial_profile.rectangular: light.shadow_enabled = true
+		light.light_projector = projection.surface_texture
 	if source != null and light.light_projector != null:
 		light.light_projector = projection.surface_texture
 
@@ -155,7 +172,7 @@ func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void
 		return
 	beam.set_meta("peraviz_static_beam_hash", static_hash)
 	_set_bound_shader_parameter(beam, "haze_density", haze_density)
-	_set_bound_shader_parameter(beam, "longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.1)), 0.0))
+	_set_bound_shader_parameter(beam, "longitudinal_falloff", max(float(params.get("beam_longitudinal_falloff", 1.0)), 0.0))
 
 func update_beam_intensity(light: SpotLight3D, params: Dictionary) -> int:
 	_last_parameter_write_count = 0

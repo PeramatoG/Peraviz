@@ -2,7 +2,7 @@ extends SceneTree
 
 # Reproducible visual review fixture. Run with a real Forward+ renderer (software
 # Vulkan is sufficient for captures, never for reference-scene FPS comparisons).
-# Open surface projectors are enabled ONLY in this four-light review scene.
+# Open surfaces use the same native unshadowed path as production.
 const Renderer = preload("res://scripts/beam_renderers/volumetric_beam_renderer.gd")
 const Projector = preload("res://scripts/fixture_gobo_projector.gd")
 const Cache = preload("res://scripts/beam_renderers/footprint_profile_cache.gd")
@@ -10,6 +10,8 @@ var renderer = Renderer.new()
 var world: Node3D
 var camera: Camera3D
 var cache = Cache.new()
+var current_angle: float = 12.0
+var explicit_pair: bool = false
 
 func _init() -> void:
 	call_deferred("run")
@@ -34,7 +36,9 @@ func run() -> void:
 	camera.look_at(Vector3(0, 1, -9))
 	camera.fov = 56
 	renderer.configure(camera, {"beam_presentation": 1})
-	for mode in ["open-spot", "wash", "gobo", "near-far-footprint", "overlapping-white"]:
+	for mode in ["open-spot", "wash", "gobo", "near-far-footprint", "overlapping-white", "narrow-spot", "wide-spot"]:
+		current_angle = 4.0 if mode == "narrow-spot" else (28.0 if mode == "wide-spot" else 12.0)
+		explicit_pair = mode in ["gobo", "narrow-spot", "wide-spot"]
 		var objects := Node3D.new()
 		world.add_child(objects)
 		if mode == "near-far-footprint":
@@ -45,7 +49,7 @@ func run() -> void:
 		else:
 			camera.position = Vector3(14, 8, 6)
 			camera.look_at(Vector3(0, 1, -9))
-			add_beam(objects, "Wash" if mode == "wash" else "Spot", Vector3(0, 1, 0), mode == "gobo", 11 if mode == "gobo" else 0)
+			add_beam(objects, "Wash" if mode == "wash" else "Spot", Vector3(0, 1, 0), mode == "gobo", 11 if mode in ["gobo", "wash", "open-spot"] else 0)
 			if mode == "overlapping-white":
 				add_beam(objects, "Spot", Vector3(0.7, 1, 0), false, 0)
 		var label := Label.new()
@@ -80,14 +84,13 @@ func add_beam(parent: Node3D, kind: String, origin: Vector3, gobo: bool, wall_di
 		var texture := ImageTexture.create_from_image(image)
 		light.set_meta("peraviz_gobo_texture", texture)
 		Projector.new()._set_light_projector_texture(light, texture)
-	var params := {"beam_type": kind, "beam_angle": 12.0, "field_angle": 18.0 if gobo else 0.0, "beam_range": 20.0, "beam_visual_length_m": 20.0, "lens_radius": 0.03, "scaled_intensity": 12.0, "haze_density": 0.3, "beam_color": Color.WHITE, "beam_longitudinal_falloff": 1.1}
+	var params := {"beam_type": kind, "beam_type_explicit": true, "beam_angle_explicit": true, "field_angle_explicit": explicit_pair, "profile_beam_angle": 12.0, "beam_angle": current_angle, "field_angle": 18.0 if explicit_pair else 25.0, "beam_range": 20.0, "beam_visual_length_m": 20.0, "lens_radius": 0.03, "scaled_intensity": 12.0, "haze_density": 0.3, "beam_color": Color.WHITE, "beam_longitudinal_falloff": 1.0}
 	renderer.update_beam(light, params)
 	var state: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
 	if wall_distance > 0:
 		if not gobo:
-			# Isolated generic profile acceptance, not the production activation policy.
-			Projector.new()._set_light_projector_texture(light, cache.texture_for(state.radial_profile, null))
-			renderer.get_beam_resource(light).visible = false
+			# Same native open-light policy as production; hide shafts only for distance comparison.
+			if origin.x != 0.0: renderer.get_beam_resource(light).visible = false
 		var wall := MeshInstance3D.new()
 		var box := BoxMesh.new()
 		box.size = Vector3(7, 7, 0.05)

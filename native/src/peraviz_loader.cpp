@@ -386,6 +386,9 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             target["geometry_path"] = String(profile.geometry_path.c_str());
             Dictionary optical;
             optical["beam_type"] = String(profile.beam_type.c_str());
+            optical["beam_type_explicit"] = profile.beam_type_explicit;
+            optical["beam_angle_explicit"] = profile.beam_angle_explicit;
+            optical["field_angle_explicit"] = profile.field_angle_explicit;
             optical["beam_angle"] = profile.beam_angle_deg;
             optical["field_angle"] = profile.field_angle_deg;
             optical["official_beam_radius_m"] = profile.beam_radius_m;

@@ -35,6 +35,12 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 		light.set_meta("peraviz_last_beam_renderer_mode", shape_mode())
 		if prism_mesh != null:
 			beam.mesh = prism_mesh
+			var material: ShaderMaterial = beam.material_override as ShaderMaterial
+			var coverage: Texture2D = prism_mesh.get_meta("peraviz_shaft_coverage") if prism_mesh.has_meta("peraviz_shaft_coverage") else null
+			material.set_shader_parameter("gobo_coverage", coverage)
+			material.set_shader_parameter("gobo_mask", gobo_texture)
+			material.set_shader_parameter("has_gobo_energy", coverage != null)
+			beam.set_instance_shader_parameter("gobo_transmission", float(coverage.get_meta("transmission", 1.0)) if coverage != null else 1.0)
 		var scaled_near: float = max(lens_radius * gobo_scale, 0.001)
 		var scaled_far: float = max(bottom_radius, 0.001)
 		beam.set_instance_shader_parameter("use_normalized_gobo_topology", true)

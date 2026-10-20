@@ -99,8 +99,9 @@ var _visual_settings := {
 	"beam_noise_scale": 1.4,
 	"beam_softness": 0.32,
 	"beam_radial_falloff": 1.0,
-	"beam_longitudinal_falloff": 1.1,
+	"beam_longitudinal_falloff": 1.0,
 	"haze_density_multiplier": 0.22,
+	"footprint_softness": 0.04,
 	"gobo_scale": 1.0,
 	"gobo_rotation_deg": 0.0,
 	"beam_gobo_alignment_rotation_deg": 0.0,
@@ -478,6 +479,7 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 		or previous_settings.get("beam_softness") != _visual_settings.get("beam_softness")
 		or previous_settings.get("beam_radial_falloff") != _visual_settings.get("beam_radial_falloff")
 		or previous_settings.get("beam_longitudinal_falloff") != _visual_settings.get("beam_longitudinal_falloff")
+		or previous_settings.get("footprint_softness") != _visual_settings.get("footprint_softness")
 		or previous_settings.get("haze_density_multiplier") != _visual_settings.get("haze_density_multiplier")
 	)
 	if beam_scalar_changed:
@@ -589,7 +591,7 @@ func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	var beam_multiplier: float = float(_visual_settings.get("beam_multiplier", 20.0))
 	beam_params["scaled_intensity"] = clamp(base_intensity * beam_multiplier, 0.0, BEAM_INTENSITY_MAX)
 	beam_params["intensity_max"] = BEAM_INTENSITY_MAX
-	for key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier"]:
+	for key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier", "footprint_softness"]:
 		beam_params[key] = _visual_settings[key]
 	beam_params["haze_density"] = _visual_settings["haze_density_multiplier"]
 	var beam_phase_start: int = Time.get_ticks_usec()
@@ -2133,6 +2135,8 @@ func _get_fixture_emitter_photometrics(fixture_uuid: String) -> Array:
 
 func _extract_emitter_photometrics(item: Dictionary) -> Dictionary:
 	var data: Dictionary = DEFAULT_EMITTER_PHOTOMETRICS.duplicate(true)
+	for key in ["beam_type", "beam_angle", "field_angle"]:
+		data[key + "_explicit"] = bool(item.get("has_" + key, false))
 	if bool(item.get("has_luminous_flux", false)):
 		data["luminous_flux"] = float(item.get("luminous_flux", data["luminous_flux"]))
 	if bool(item.get("has_color_temperature", false)):
@@ -2244,7 +2248,9 @@ func _apply_emitter_light_state(light: SpotLight3D, photometric: Dictionary, nor
 	var beam_params: Dictionary = _build_cached_beam_params(light, beam_angle, beam_color, normalized_dimmer, scaled_intensity, lens_radius, beam_defaults)
 	beam_params["beam_visual_length_m"] = BeamGeometryCalculatorScript.clamp_visual_length(float(_visual_settings.get("beam_visual_length_m", 75.0)))
 	beam_params["beam_range"] = beam_params["beam_visual_length_m"]
-	beam_params["beam_type"] = str(photometric.get("beam_type", "Spot"))
+	beam_params["beam_type"] = str(photometric.get("beam_type", "Wash"))
+	for key in ["beam_type_explicit", "beam_angle_explicit", "field_angle_explicit"]:
+		beam_params[key] = bool(photometric.get(key, photometric.get("has_" + key.trim_suffix("_explicit"), false)))
 	beam_params["field_angle"] = float(photometric.get("field_angle", 0.0))
 	beam_params["profile_beam_angle"] = float(photometric.get("beam_angle", beam_angle))
 	beam_params["rectangle_ratio"] = float(photometric.get("rectangle_ratio", 1.0))

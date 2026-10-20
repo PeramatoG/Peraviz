@@ -294,6 +294,9 @@ struct CompiledBeamOpticalProfile {
     std::string geometry_key;
     int32_t render_target_id = 0;
     std::string beam_type = "Wash";
+    bool beam_type_explicit = false;
+    bool beam_angle_explicit = false;
+    bool field_angle_explicit = false;
     double beam_angle_deg = 25.0;
     double field_angle_deg = 25.0;
     double beam_radius_m = 0.05;
@@ -306,8 +309,8 @@ struct CompiledBeamOpticalProfile {
     double emission_lumen_scale = 1.0;
     std::string luminous_flux_source = "gdtf_default";
     double color_temperature = 6000.0;
-    std::string beam_angle_source = "fallback";
-    std::string field_angle_source = "fallback";
+    std::string beam_angle_source = "gdtf-default";
+    std::string field_angle_source = "gdtf-default";
     std::string beam_radius_source = "fallback";
     std::string aperture_source = "official_beam_type";
     bool has_projected_beam = true;
