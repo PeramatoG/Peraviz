@@ -22,6 +22,8 @@ const ShaderBeamProxyControllerScript = preload("res://scripts/beam_renderers/sh
 
 const OpticalProjection = preload("res://scripts/runtime/optical_projection_state.gd")
 const FootprintCache = preload("res://scripts/beam_renderers/footprint_profile_cache.gd")
+const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
+var _diagnostic_open_surface_lights: bool = SurfacePolicy.open_lights_from_arguments(OS.get_cmdline_user_args())
 var _footprint_cache: RefCounted = FootprintCache.new()
 
 var _beam_material_template: ShaderMaterial
@@ -139,18 +141,23 @@ func refresh_surface_profile(light: SpotLight3D) -> void:
 	if not projection.configured: return
 	var source: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
 	var source_id: int = source.get_instance_id() if source != null else 0
-	if projection.surface_source_id == source_id and projection.surface_profile_revision == projection.profile_revision and projection.surface_softness == projection.footprint_softness: return
+	var open_owner: bool = SurfacePolicy.owns_realtime_light(bool(_settings.get("enable_realtime_spotlights", false)), _presentation_mode, false, _diagnostic_open_surface_lights, projection.has_projected_surface_profile)
+	var uses_projector: bool = source != null or (projection.radial_profile.rectangular and open_owner)
+	if projection.surface_source_id == source_id and projection.surface_profile_revision == projection.profile_revision and projection.surface_softness == projection.footprint_softness and projection.surface_uses_projector == uses_projector: return
 	projection.surface_source_id = source_id
 	projection.surface_profile_revision = projection.profile_revision
 	projection.surface_softness = projection.footprint_softness
+	projection.surface_uses_projector = uses_projector
 	# Circular open profiles use native unshadowed angular attenuation. Rectangle
 	# needs a mask because a native circular cone cannot represent its corners.
-	projection.surface_texture = _footprint_cache.texture_for(projection.radial_profile, source, projection.footprint_softness) if source != null or projection.radial_profile.rectangular else null
+	projection.surface_texture = _footprint_cache.texture_for(projection.radial_profile, source, projection.footprint_softness) if uses_projector else null
 	if source == null:
 		if light.has_meta("peraviz_pre_projector_shadow_enabled"):
 			light.shadow_enabled = bool(light.get_meta("peraviz_pre_projector_shadow_enabled"))
 			light.remove_meta("peraviz_pre_projector_shadow_enabled")
-		if projection.radial_profile.rectangular: light.shadow_enabled = true
+		if uses_projector:
+			light.set_meta("peraviz_pre_projector_shadow_enabled", light.shadow_enabled)
+			light.shadow_enabled = true
 		light.light_projector = projection.surface_texture
 	if source != null and light.light_projector != null:
 		light.light_projector = projection.surface_texture

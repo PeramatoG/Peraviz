@@ -2,7 +2,9 @@ extends SceneTree
 
 # Reproducible visual review fixture. Run with a real Forward+ renderer (software
 # Vulkan is sufficient for captures, never for reference-scene FPS comparisons).
-# Open surfaces use the same native unshadowed path as production.
+# Pass -- --peraviz-open-footprint-lights=on to review native open footprints.
+# Production defaults to profile data without one realtime light per output.
+const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 const Renderer = preload("res://scripts/beam_renderers/volumetric_beam_renderer.gd")
 const Projector = preload("res://scripts/fixture_gobo_projector.gd")
 const Cache = preload("res://scripts/beam_renderers/footprint_profile_cache.gd")
@@ -87,9 +89,13 @@ func add_beam(parent: Node3D, kind: String, origin: Vector3, gobo: bool, wall_di
 	var params := {"beam_type": kind, "beam_type_explicit": true, "beam_angle_explicit": true, "field_angle_explicit": explicit_pair, "profile_beam_angle": 12.0, "beam_angle": current_angle, "field_angle": 18.0 if explicit_pair else 25.0, "beam_range": 20.0, "beam_visual_length_m": 20.0, "lens_radius": 0.03, "scaled_intensity": 12.0, "haze_density": 0.3, "beam_color": Color.WHITE, "beam_longitudinal_falloff": 1.0}
 	renderer.update_beam(light, params)
 	var state: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
+	var open_diagnostic: bool = SurfacePolicy.open_lights_from_arguments(OS.get_cmdline_user_args())
+	var owns_light: bool = SurfacePolicy.owns_realtime_light(false, 1, light.light_projector != null, open_diagnostic, state.has_projected_surface_profile)
+	RenderingServer.instance_set_visible(light.get_instance(), owns_light)
+	print("[gallery-surfaces] type=", kind, " profile=", state.has_projected_surface_profile, " owns_light=", owns_light, " projector=", light.light_projector != null, " shadow=", light.shadow_enabled)
 	if wall_distance > 0:
 		if not gobo:
-			# Same native open-light policy as production; hide shafts only for distance comparison.
+			# Isolate distance falloff when the diagnostic owns an open surface light.
 			if origin.x != 0.0: renderer.get_beam_resource(light).visible = false
 		var wall := MeshInstance3D.new()
 		var box := BoxMesh.new()

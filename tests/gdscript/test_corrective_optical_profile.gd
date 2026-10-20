@@ -117,7 +117,7 @@ func check_surfaces() -> void:
 		test.check(state.configured and state.radial_profile.projected and light.spot_attenuation == 2.0, "Open footprint resolves even with zero shaft gain")
 		test.check(state.base_beam_angle_deg == 25.0, "Missing base photometry retains the canonical default despite current Zoom")
 		if kind != "Rectangle": test.check(light.light_projector == null and not light.shadow_enabled and light.spot_angle_attenuation > 0, "Ordinary open footprint uses native unshadowed falloff")
-		else: test.check(light.light_projector != null, "Rectangle uses its required noncircular mask")
+		else: test.check(light.light_projector == null and not light.shadow_enabled, "Open Rectangle data does not implicitly own a shadowed projector")
 		light.free()
 	var zoom_light := SpotLight3D.new()
 	root.add_child(zoom_light)

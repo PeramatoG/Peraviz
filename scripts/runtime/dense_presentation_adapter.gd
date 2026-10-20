@@ -4,6 +4,7 @@ const VisualSettingsMigration = preload("res://scripts/visual_settings_migration
 const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
 
 const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 
 # Temporary milestone-1 renderer bridge. Native state owns composition; these
 # handles only bind existing renderer objects. Delete with the batched backend.
@@ -31,6 +32,10 @@ class LightHandle:
 	# The retained renderer API requires this static, reused parameter object.
 	var params: Dictionary
 	var projected: bool
+	var output_index: int
+	var has_projected_surface_profile: bool = false
+	var owns_realtime_surface_light: bool = false
+	var surface_counter_flags: int = 0
 	var color: Color = Color.WHITE
 	var energy: float = 0.0
 	var projection: RefCounted
@@ -47,6 +52,7 @@ class LightHandle:
 
 class OutputHandle:
 	var canonical_id: int
+	var surface_profile_count: int = 0
 	var lights: Array[LightHandle] = []
 	var materials: Array[MaterialHandle] = []
 
@@ -68,6 +74,8 @@ var _mutation_serial: int = 0
 var _renderer_visibility_seen: int = 0
 var _renderer_shader_seen: int = 0
 var _renderer_debug_seen: int = 0
+var _diagnostic_open_surface_lights: bool = false
+var _surface_counts = SurfacePolicy.Counters.new()
 const MUTATION_COUNTERS: PackedStringArray = [
 	"spot_node_visibility_writes", "spot_rid_visibility_writes", "beam_visibility_writes",
 	"debug_axis_visibility_writes", "beam_shader_parameter_writes", "material_parameter_writes",
@@ -96,6 +104,7 @@ func clear() -> void:
 	_native = null
 	_generation = -1
 	_outputs.clear()
+	_surface_counts = SurfacePolicy.Counters.new()
 	_lights_by_id.clear()
 	_loader = null
 	_service = null
@@ -108,6 +117,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	_loader = loader
 	_trace = service._performance_trace_enabled
 	_mode = service._render_diagnostic_mode
+	_diagnostic_open_surface_lights = service._diagnostic_open_surface_lights
 	for key in MUTATION_COUNTERS: _totals[key] = 0
 	# Weak ownership avoids a service -> adapter -> service reference cycle.
 	_service = weakref(service)
@@ -121,6 +131,9 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	for record in bindings["outputs"]:
 		var output := OutputHandle.new()
 		output.canonical_id = int(record["beam_render_target_id"])
+		_outputs.append(output)
+		if service._has_projected_beam(record.get("beam_optical_profile", {})):
+			_surface_counts.projected_outputs += 1
 		for entry in record.get("lens_material_targets", []):
 			var material: BaseMaterial3D = entry.get("material") if entry is Dictionary else entry as BaseMaterial3D
 			if material == null:
@@ -138,11 +151,13 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			handle.rid = light.get_instance()
 			handle.projection = OpticalProjectionScript.resolve(light)
 			handle.projected = service._has_projected_beam(record.get("beam_optical_profile", {}))
+			handle.output_index = _outputs.size() - 1
 			# Resolve static defaults, params and resources once, before live snapshots.
 			if handle.projected and not light.has_meta("peraviz_beam_last_params"):
 				service._apply_visual_frame_initial_light_state(loader, light, record.get("beam_optical_profile", {}), 0.0, Color.WHITE, 0.0, 0.0, 12.5, 25.0, 0.0, 0.0)
 			handle.realtime_visibility_known = false
 			handle.params = light.get_meta("peraviz_beam_last_params", {})
+			_refresh_surface_profile_count(handle)
 			handle.beam = loader._get_beam_resource_for_light(light)
 			handle.debug_axis = light.get_meta("peraviz_beam_debug_axis") as MeshInstance3D if light.has_meta("peraviz_beam_debug_axis") else null
 			handle.has_gobo = light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
@@ -158,10 +173,10 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			light.tree_entered.connect(handle.visibility_callback)
 			output.lights.append(handle)
 			_lights_by_id[light.get_instance_id()] = handle
-		_outputs.append(output)
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
+	print("[peraviz-surfaces] startup ", JSON.stringify(_surface_counts.snapshot()), " diagnostic_open=", _diagnostic_open_surface_lights)
 	return _generation >= 0
 
 func is_installed() -> bool:
@@ -310,8 +325,9 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
 	var before: int = _mutation_serial
 	var enabled: bool = false
+	handle.owns_realtime_surface_light = _mode == "full" and handle.projected and _surface_multiplier > 0.0 and SurfacePolicy.owns_realtime_light(realtime, presentation, handle.light.light_projector != null, _diagnostic_open_surface_lights, handle.has_projected_surface_profile)
 	if _mode == "full" and handle.visible:
-		enabled = (realtime or handle.light.light_projector != null or presentation in [0, 2] or (presentation == 1 and handle.projection.smooth_profile_enabled and handle.projected)) and _surface_multiplier > 0.0
+		enabled = handle.owns_realtime_surface_light
 	if not enabled and _surface_multiplier <= 0.0 and handle.light.light_energy != 0.0:
 		handle.light.light_energy = 0.0
 		_record_mutation(&"spot_property_writes")
@@ -336,6 +352,31 @@ func _set_spot_rid(handle: LightHandle, visible: bool) -> void:
 		_record_mutation(&"spot_rid_visibility_writes")
 	handle.realtime_visible = visible
 	handle.realtime_visibility_known = true
+	_update_surface_counts(handle)
+
+func _refresh_surface_profile_count(handle: LightHandle) -> void:
+	var resolved: bool = handle.projected and handle.projection.has_projected_surface_profile
+	if resolved == handle.has_projected_surface_profile: return
+	var output := _outputs[handle.output_index]
+	var previous: bool = output.surface_profile_count > 0
+	output.surface_profile_count += 1 if resolved else -1
+	if previous != (output.surface_profile_count > 0):
+		_surface_counts.surface_profiles += 1 if output.surface_profile_count > 0 else -1
+	handle.has_projected_surface_profile = resolved
+
+func _update_surface_counts(handle: LightHandle) -> void:
+	var flags: int = SurfacePolicy.OWNED if handle.owns_realtime_surface_light else 0
+	if handle.realtime_visible:
+		flags |= SurfacePolicy.ACTIVE
+		if handle.has_gobo or handle.light.light_projector != null:
+			flags |= SurfacePolicy.PROJECTOR
+			if handle.light.light_projector != null: flags |= SurfacePolicy.PROJECTOR_TEXTURE
+			if handle.light.shadow_enabled: flags |= SurfacePolicy.SHADOWED_PROJECTOR
+		else:
+			flags |= SurfacePolicy.OPEN
+			if not handle.light.shadow_enabled: flags |= SurfacePolicy.OPEN_SHADOWLESS
+	_surface_counts.update(handle.surface_counter_flags, flags)
+	handle.surface_counter_flags = flags
 
 # Godot sends its own instance visibility before this signal. Repair only a conflict.
 func _restore_spot_visibility(handle: LightHandle) -> void:
@@ -361,6 +402,7 @@ func _suppress_presentation_handles() -> void:
 					_record_mutation(&"material_parameter_writes")
 		for handle in output.lights:
 			handle.realtime_requested = false
+			handle.owns_realtime_surface_light = false
 			_set_spot_rid(handle, false)
 			_hide_bound_node(handle.beam, &"beam_visibility_writes")
 			_hide_bound_node(handle.debug_axis, &"debug_axis_visibility_writes")
@@ -415,6 +457,7 @@ func apply_light_state(light: SpotLight3D) -> int:
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	if handle == null: return -1
 	var settings: Dictionary = _loader.get("_visual_settings")
+	_surface_multiplier = VisualSettingsMigration.surface_multiplier(settings)
 	return _apply_spot(handle, bool(settings.get("enable_realtime_spotlights", false)), int(settings.get("beam_presentation", 1)))
 
 # Mode changes replay held native state immediately, even without another DMX packet.
@@ -455,12 +498,15 @@ func diagnostics() -> Dictionary:
 	_capture_renderer_mutations()
 	var result: Dictionary = _totals.duplicate()
 	result["render_diagnostic_mode"] = _mode
+	result["surface_lights"] = _surface_counts.snapshot()
+	result["diagnostic_open_surface_lights"] = _diagnostic_open_surface_lights
 	if _native != null: result.merge(_native.get_sizes())
 	return result
 
 # Only the once-per-report trace sampler resets these bounded interval counters.
 func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
+	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
 	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs"]:
 		_totals[key] = 0
@@ -481,11 +527,13 @@ func rebind_light(light: SpotLight3D) -> void:
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	if handle != null:
 		handle.params = light.get_meta("peraviz_beam_last_params", {})
+		_refresh_surface_profile_count(handle)
 		var beam: MeshInstance3D = _loader._get_beam_resource_for_light(light)
 		if beam != handle.beam: handle.suppressed = false
 		_bind_beam_resource(handle, beam)
 		handle.debug_axis = light.get_meta("peraviz_beam_debug_axis") as MeshInstance3D if light.has_meta("peraviz_beam_debug_axis") else null
 		handle.has_gobo = light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
+		_update_surface_counts(handle)
 	_capture_renderer_mutations()
 
 func refresh_renderer() -> void:

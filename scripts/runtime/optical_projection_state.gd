@@ -38,6 +38,8 @@ var resolved_field_angle_deg: float = 25.0
 var footprint_softness: float = 0.04
 var surface_softness: float = -1.0
 var native_angle_attenuation: float = 1.0
+var has_projected_surface_profile: bool = false
+var surface_uses_projector: bool = false
 
 static func resolve(light: SpotLight3D) -> RefCounted:
 	if light.has_meta(META):
@@ -55,6 +57,7 @@ func configure(params: Dictionary, texture: Texture2D) -> bool:
 	# recomputing curves/textures during Zoom, color, intensity or roll playback.
 	base_beam_angle_deg = float(params.get("profile_beam_angle", base_beam_angle_deg if configured else (params.get("beam_angle", 25.0) if bool(params.get("beam_angle_explicit", false)) else 25.0)))
 	var profile_changed: bool = radial_profile.configure(str(params.get("beam_type", "Wash")), base_beam_angle_deg, float(params.get("field_angle", 25.0)), float(params.get("rectangle_ratio", 1.0)), float(params.get("beam_softness", 0.32)), float(params.get("beam_radial_falloff", 1.0)), bool(params.get("beam_angle_explicit", false)), bool(params.get("field_angle_explicit", false)))
+	has_projected_surface_profile = radial_profile.projected
 	profile_changed = profile_changed or smooth_profile_enabled != enable_profile
 	if profile_changed: profile_revision += 1
 	footprint_softness = clampf(float(params.get("footprint_softness", 0.04)), 0.0, 0.25)
@@ -155,4 +158,5 @@ func diagnostic(params: Dictionary) -> String:
 	var field_source := "explicit" if bool(params.get("field_angle_explicit", false)) else "gdtf-default"
 	var base_angle := base_beam_angle_deg
 	var source := "zoom" if not is_equal_approx(base_angle, source_full_angle_deg) else beam_source
-	return "BeamType=%s source=%s BeamAngle=%.3f source=%s BaseBeamAngle=%.3f source=%s FieldAngle=%.3f source=%s ResolvedFieldAngle=%.3f source=%s profile=%s" % [str(params.get("beam_type", "Wash")), type_source, source_full_angle_deg, source, base_angle, beam_source, float(params.get("field_angle", 25.0)), field_source, resolved_field_angle_deg, "scaled-from-base-profile" if radial_profile.anchored else "type-fallback", "anchored" if radial_profile.anchored else "fallback"]
+	var review: bool = str(params.get("beam_type", "Wash")).to_lower() == "spot" and bool(params.get("beam_type_explicit", false)) and radial_profile.anchored and radial_profile.field_ratio > 3.0
+	return "BeamType=%s source=%s BeamAngle=%.3f source=%s BaseBeamAngle=%.3f source=%s FieldAngle=%.3f source=%s ResolvedFieldAngle=%.3f source=%s profile=%s shoulder_ratio=%.3f exponent=%.3f photometry_review=%s" % [str(params.get("beam_type", "Wash")), type_source, source_full_angle_deg, source, base_angle, beam_source, float(params.get("field_angle", 25.0)), field_source, resolved_field_angle_deg, "scaled-from-base-profile" if radial_profile.anchored else "type-fallback", "anchored" if radial_profile.anchored else "fallback", radial_profile.field_ratio, radial_profile.exponent, "suspicious-spot-shoulder" if review else "none"]

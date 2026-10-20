@@ -55,6 +55,7 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 		result["viewport_cpu_ms"] = RenderingServer.viewport_get_measured_render_time_cpu(rid)
 		result["viewport_gpu_ms"] = RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	var sizes: Dictionary = {}
+	var cache_builds: Dictionary = {}
 	if owner != null:
 		var service: Object = owner.get("_fixture_light_apply_service")
 		if service != null:
@@ -71,6 +72,7 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 			var gobos: Object = registry.get("_gobo_resources")
 			_sample_collections(sizes, gobos, GOBO_COLLECTIONS, "gobo")
 			_sample_collections(sizes, gobos.get("_mesh_builder"), MESH_COLLECTIONS, "gobo_mesh")
+			cache_builds["gobo_registry_energy_builds"] = gobos.get("_mesh_builder").get_counters()["gobo_energy_builds"]
 		var renderers: Dictionary = owner.get("_beam_renderers")
 		for renderer_id in renderers:
 			var renderer: Object = renderers[renderer_id]
@@ -78,10 +80,12 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 			if renderer is LegacyConeBeamRenderer:
 				_sample_collections(sizes, renderer._mesh_builder, MESH_COLLECTIONS, prefix)
 			elif renderer is VolumetricBeamRenderer:
+				cache_builds[prefix + "_footprint_textures"] = renderer._footprint_cache.creations
 				_sample_collections(sizes, renderer._proxy_controller, PROXY_COLLECTIONS, prefix + "_proxy")
 				for provider in renderer._shape_providers.values():
 					if provider is VolumetricGoboPrismShapeProvider:
 						_sample_collections(sizes, provider._mesh_builder, MESH_COLLECTIONS, prefix)
+						cache_builds[prefix + "_gobo_energy_builds"] = provider._mesh_builder.get_counters()["gobo_energy_builds"]
 
 	if native_runtime != null:
 		var native_sizes: Dictionary = native_runtime.get_state_sizes()
@@ -90,6 +94,7 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 	for key in sizes:
 		_sampled_high_water[key] = maxi(int(_sampled_high_water.get(key, 0)), int(sizes[key]))
 	result["sizes"] = sizes
+	result["presentation_cache_builds"] = cache_builds
 	result["sampled_high_water"] = _sampled_high_water.duplicate()
 	return result
 

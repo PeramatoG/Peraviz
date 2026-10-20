@@ -140,12 +140,14 @@ with the scene. Active resources remain owned by their existing output nodes.
 
 ## Open and gobo footprints
 
-Every projected type is eligible for surface illumination in the existing dense
-and compatibility visibility policies. Shaft gain zero also resolves surface optics
-at cold setup, without allocating an unnecessary shaft mesh.
+Every projected type can resolve a surface profile; this does not grant ownership
+of a realtime Godot light. Production Vector Prism keeps open profiles as data
+while genuine gobos/projectors and explicit realtime/experimental modes own their
+existing renderer cost. See [surface ownership and Windows validation](surface-light-ownership.md).
+Shaft gain zero still resolves surface optics at cold setup.
 
-Open **Spot/Wash/Fresnel/PC** use the existing SpotLight3D with **no projector
-texture and no shadow requirement**. Native angular attenuation is fitted to the
+When explicitly enabled for diagnostics, open **Spot/Wash/Fresnel/PC** use the
+existing SpotLight3D with **no projector texture and no shadow requirement**. Native angular attenuation is fitted to the
 resolved support and 50% contour:
 
 ```
@@ -159,8 +161,9 @@ the shaft support. Distance uses `spot_attenuation=2.0` (inverse-square-like), w
 the correct RenderingServer distance enum `LIGHT_PARAM_ATTENUATION`.
 
 A real gobo retains its shadowed projector, multiplying original transmission by
-the shared radial profile. Rectangle also needs a derived mask: a native circular
-cone cannot reproduce its rectangular boundary. These texture paths use angular
+the shared radial profile. Explicit Rectangle realtime presentation also needs a derived mask: a native
+circular cone cannot reproduce its rectangular boundary. Default open Rectangle
+profile data do not create a projector or enable shadows. These texture paths use angular
 attenuation zero to avoid an additional unrelated radial curve. Original source
 textures/vector metadata are never blurred or resized in place.
 
@@ -179,17 +182,16 @@ beam softness, radial falloff, axial decay (normal=1), shaft haze (zero allowed)
 footprint softness and experimental realtime-light intensity. Old settings migrate
 `spot_multiplier` to missing `footprint_multiplier`; missing softness gets 0.04.
 
-No new light/beam Nodes are created per frame. Open footprints activate already
-owned **unshadowed** light RIDs rather than generating shadowed gobo projectors.
-This avoids texture/atlas/shadow costs but still activates more real lights than
-the previous shaft-only policy. At 1,095 outputs, clustered-light count and GPU
-surface lighting may remain a cost problem for the later grouped/batched backend.
-No same-scene RTX 3070 before/after FPS can be measured here: the canonical MVR,
-matching live DMX and Windows GPU are unavailable. The previous 24–25 FPS trace-OFF,
-22–23 trace-ON, 30–32 no-beams and 50–59 transforms-only figures remain a reference,
-not a claimed result. Investigate a repeatable loss beyond roughly 5% on that scene.
-The published captures are reproducible software Forward+ fixtures, not substitutes
-for the user's real-fixture acceptance or performance measurement.
+No new light/beam Nodes are created per frame. The attempted one-light-per-open-output
+policy caused the user's measured regression to approximately 1 FPS at 1,095 outputs.
+It is removed from production and retained only behind the explicit small-scene
+`--peraviz-open-footprint-lights=on` diagnostic. Fixed-size surface inventory exposes
+physical projected outputs, profiles, owned/active lights and open/projector/shadow
+counts. Scalable open footprints remain deferred to grouped/batched presentation.
+The pre-regression 24–25 FPS full trace-OFF reference is a required Windows comparison,
+not a post-fix result measured here. See the linked exact commands and limitations.
+Published software captures demonstrate optical capabilities under the diagnostic;
+they do not substitute for real-fixture acceptance or the canonical GPU benchmark.
 
 ## Regression and visual review
 
@@ -203,7 +205,7 @@ Run the real Forward+ review fixtures with Godot 4.7.1:
 
 ```
 godot --rendering-method forward_plus --rendering-driver vulkan --audio-driver Dummy \
-  --path . --script tests/manual/vector_light_profile_gallery.gd
+  --path . --script tests/manual/vector_light_profile_gallery.gd -- --peraviz-open-footprint-lights=on
 godot --rendering-method forward_plus --rendering-driver vulkan --audio-driver Dummy \
   --path . --script tests/manual/gobo_energy_validation.gd
 ```

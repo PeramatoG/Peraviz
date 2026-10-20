@@ -19,10 +19,10 @@ Changes since the previous Peraviz release.
 ## Improvements
 
 - Corrected Vector Prism profile provenance, bounded FieldAngle support and Zoom diagnostics. Strengthened coherent axial decay, removed accidental double-face/overdrive gain, and normalized gobo contour energy with cached coverage analysis.
-- Enabled native unshadowed open Spot/Wash/Fresnel/PC footprints and added cached configurable gobo footprint softness. Source photometry, optical alignment and independent shaft/surface gains remain intact.
+- Added generic open Spot/Wash/Fresnel/PC surface-profile data and cached configurable gobo footprint softness. Realtime open lights are an opt-in developer diagnostic; production retains bounded projector/realtime ownership, measured surface-light inventory and independent shaft/surface gains. Scalable open footprints remain deferred.
 
 - Smoothed Vector Gobo Prism shafts with shared BeamAngle/FieldAngle light profiles, optical-distance decay and a zero-energy tail. Removed both artificial end caps, normal-driven intensity bands, opacity floors and the unused depth-texture dependency.
-- Added independent shaft and surface intensity controls with project-settings migration, and corrected surface distance attenuation. Gobo footprints share the shaft profile; open circular footprints use fitted native angular attenuation, while grouped/batched surface-light scalability remains future work.
+- Added independent shaft and surface intensity controls with project-settings migration, and corrected surface distance attenuation. Gobo footprints share the shaft profile; open circular profile data include fitted native angular attenuation for explicit diagnostic use. Grouped/batched surface-light scalability remains future work.
 
 - Corrected the Vector Gobo Prism artwork X conversion to match the surface projector without mirroring the gobo, while retaining shared optical state and synchronized Zoom/rotation.
 

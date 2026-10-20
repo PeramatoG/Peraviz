@@ -17,6 +17,8 @@ const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_r
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
 const DensePresentationAdapterScript = preload("res://scripts/runtime/dense_presentation_adapter.gd")
+const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
+var _diagnostic_open_surface_lights: bool = SurfacePolicy.open_lights_from_arguments(OS.get_cmdline_user_args())
 
 var _dense_adapter: RefCounted
 var _dense_required: bool = false
@@ -648,8 +650,14 @@ func _apply_desired_light_state(loader: Node, light: SpotLight3D) -> int:
 	var state: Dictionary = _light_desired_for(light)
 	var requested_visible: bool = bool(state.get("visible", false))
 	var enabled: bool = (_should_enable_realtime_spotlight(loader, requested_visible) or _requires_realtime_spotlight(loader, light, requested_visible)) and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL
+	var settings: Dictionary = loader.get("_visual_settings") if loader != null and loader.get("_visual_settings") is Dictionary else {}
+	enabled = enabled and float(settings.get("footprint_multiplier", 1.0)) > 0.0
 	var writes: int = 0
 	var property_writes: int = 0
+	if not enabled and float(settings.get("footprint_multiplier", 1.0)) <= 0.0 and light.light_energy != 0.0:
+		light.light_energy = 0.0
+		writes += 1
+		property_writes += 1
 	if enabled:
 		if not is_equal_approx(light.light_energy, float(state.get("energy", 0.0))):
 			light.light_energy = float(state.get("energy", 0.0))
@@ -901,11 +909,14 @@ func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible
 		return 0
 	var physical_output_visible: bool = bool(_light_desired_for(light).get("visible", false))
 	real_spot_visible = physical_output_visible and (real_spot_visible or _requires_realtime_spotlight(loader, light, physical_output_visible))
+	var settings: Dictionary = loader.get("_visual_settings") if loader != null and loader.get("_visual_settings") is Dictionary else {}
+	real_spot_visible = real_spot_visible and _render_diagnostic_mode == RenderDiagnosticPolicyScript.FULL and float(settings.get("footprint_multiplier", 1.0)) > 0.0
 	var writes: int = 0
 	if light.visible != visible:
 		light.visible = visible
 		writes += 1
 	var last_state: Dictionary = _light_desired_for(light)
+	last_state["owns_realtime_surface_light"] = real_spot_visible
 	var previous_realtime_visible: bool = bool(last_state.get("applied_realtime_visible", not real_spot_visible))
 	last_state["applied_realtime_visible"] = real_spot_visible
 	var light_id: int = light.get_instance_id()
@@ -926,7 +937,6 @@ func _apply_canonical_light_visibility(loader: Node, light: SpotLight3D, visible
 		_visual_apply_counters["spotlight_visible_count"] = _visible_light_ids.size()
 		var clustered_limit: int = int(_visual_apply_counters.get("clustered_element_limit", 512))
 		_warn_visual_once("clustered_element_budget", "Shared Haze requested more realtime SpotLights than the Forward+ clustered-element limit (%d). This mode is diagnostic at this scale." % clustered_limit, _visible_light_ids.size() > clustered_limit)
-		var settings: Variant = loader.get("_visual_settings") if loader != null else null
 		_visual_apply_counters["beam_presentation"] = int((settings as Dictionary).get("beam_presentation", 1)) if settings is Dictionary else 1
 	return writes
 
@@ -961,13 +971,12 @@ func _should_enable_realtime_spotlight(loader: Node, visible: bool) -> bool:
 func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: bool) -> bool:
 	if not visible or light == null or not is_instance_valid(light):
 		return false
-	if light.light_projector != null:
-		return true
+	var has_profile: bool = false
 	if light.has_meta(&"peraviz_optical_projection_state"):
 		var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
-		if projection.smooth_profile_enabled and projection.radial_profile.projected: return true
+		has_profile = projection.has_projected_surface_profile
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
-	return settings is Dictionary and int((settings as Dictionary).get("beam_presentation", 1)) in [0, 2]
+	return SurfacePolicy.owns_realtime_light(false, int(settings.get("beam_presentation", 1)) if settings is Dictionary else 1, light.light_projector != null, _diagnostic_open_surface_lights, has_profile)
 
 # Emits a bounded one-time warning for compatibility presentation failures.
 func _warn_visual_once(key: String, message: String, condition: bool = true) -> void:

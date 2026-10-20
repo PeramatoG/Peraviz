@@ -28,13 +28,13 @@ const GoboCompoundTopologyScript = preload("res://scripts/beam_renderers/gobo_co
 var _shape_cache: Dictionary = {}
 var _mesh_cache: Dictionary = {}
 var _normalized_polygon_cache: Dictionary = {}
-var _counters: Dictionary = {"normalized_topology_creations": 0, "normalized_topology_cache_hits": 0}
+var _counters: Dictionary = {"normalized_topology_creations": 0, "normalized_topology_cache_hits": 0, "gobo_energy_builds": 0}
 
 func clear_cache() -> void:
 	_shape_cache.clear()
 	_mesh_cache.clear()
 	_normalized_polygon_cache.clear()
-	_counters = {"normalized_topology_creations": 0, "normalized_topology_cache_hits": 0}
+	_counters = {"normalized_topology_creations": 0, "normalized_topology_cache_hits": 0, "gobo_energy_builds": 0}
 
 func get_counters() -> Dictionary:
 	return _counters.duplicate(true)
@@ -57,6 +57,7 @@ func build_normalized_beam_mesh(gobo_texture: Texture2D, apply_edge_mask_correct
 	var mesh: ArrayMesh = _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, 1.0)
 	if gobo_texture != null:
 		mesh.set_meta("peraviz_shaft_coverage", ShaftEnergy.build(polygons, gobo_texture))
+		_counters["gobo_energy_builds"] += 1
 	_cache_mesh(topology_key, mesh)
 	_counters["normalized_topology_creations"] += 1
 	return mesh
