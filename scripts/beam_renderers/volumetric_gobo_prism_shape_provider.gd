@@ -28,7 +28,7 @@ func apply_shape(beam: MeshInstance3D, light: SpotLight3D, params: Dictionary) -
 	if int(beam.get_meta("peraviz_projection_geometry_revision", -1)) != projection.geometry_revision:
 		var prism_mesh: ArrayMesh
 		if projection.radial_profile.rectangular and gobo_texture == null:
-			prism_mesh = _mesh_builder.build_aperture_beam_mesh({"shape": "rectangle", "rectangle_ratio": float(params.get("rectangle_ratio", 1.0))}, 1.0)
+			prism_mesh = _mesh_builder.build_normalized_rectangle_mesh(float(params.get("rectangle_ratio", 1.0)))
 		else:
 			prism_mesh = _mesh_builder.build_normalized_beam_mesh(gobo_texture)
 		light.set_meta("peraviz_last_beam_gobo_consumed", gobo_texture != null)

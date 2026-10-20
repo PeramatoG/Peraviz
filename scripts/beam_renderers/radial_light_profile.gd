@@ -25,6 +25,13 @@ var _softness: float
 var _bias: float
 
 func configure(beam_type: String, beam_angle: float, field_angle: float, rectangle_ratio: float = 1.0, softness: float = 0.32, radial_bias: float = 1.0) -> bool:
+	# Normalize invalid metadata before the cache comparison: NaN is unequal to
+	# itself and must not trigger curve generation on every optical update.
+	beam_angle = beam_angle if is_finite(beam_angle) else 0.0
+	field_angle = field_angle if is_finite(field_angle) else 0.0
+	rectangle_ratio = rectangle_ratio if is_finite(rectangle_ratio) else 1.0
+	softness = softness if is_finite(softness) else 0.32
+	radial_bias = radial_bias if is_finite(radial_bias) else 1.0
 	if _configured and _kind == beam_type and _angles == Vector2(beam_angle, field_angle) and _ratio == rectangle_ratio and _softness == softness and _bias == radial_bias:
 		return false
 	_configured = true

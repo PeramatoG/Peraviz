@@ -50,6 +50,16 @@ func build_normalized_beam_mesh(gobo_texture: Texture2D, apply_edge_mask_correct
 	_counters["normalized_topology_creations"] += 1
 	return mesh
 
+# Rectangle setup consumes a scalar contract, without per-output parameter maps.
+func build_normalized_rectangle_mesh(rectangle_ratio: float) -> ArrayMesh:
+	var ratio := maxf(rectangle_ratio, 0.01)
+	var key := "__aperture_rectangle_%.3f_1.0000" % ratio
+	if _mesh_cache.has(key): return _mesh_cache[key] as ArrayMesh
+	var polygons: Array[PackedVector2Array] = [_build_normalized_rectangle(ratio)]
+	var mesh := _build_extruded_mesh(GoboCompoundTopologyScript.build(polygons), 1.0, 1.0, 1.0)
+	_mesh_cache[key] = mesh
+	return mesh
+
 func build_aperture_beam_mesh(aperture_profile: Dictionary, beam_height: float) -> ArrayMesh:
 	var shape: String = str(aperture_profile.get("shape", "circle")).to_lower()
 	if shape == "no_projected_beam":

@@ -35,6 +35,8 @@ func run() -> void:
 	for invalid in [Vector2(0, 0), Vector2(25, 25), Vector2(25, 25.00001), Vector2(-10, 20), Vector2(NAN, INF), Vector2(30, 10)]:
 		spot.configure("Spot", invalid.x, invalid.y)
 		test.check(not spot.anchored and is_finite(spot.exponent), "Invalid/unstable angles use a finite fallback")
+	spot.configure("Spot", NAN, INF)
+	test.check(not spot.configure("Spot", NAN, INF), "Repeated invalid metadata reuses its fallback instead of rebuilding curves")
 	for kind in ["None", "Glow"]:
 		spot.configure(kind, 20, 40)
 		test.check(not spot.projected and spot.sample_support(Vector2.ZERO) == 0.0, "None/Glow have no projection")
@@ -46,7 +48,7 @@ func run() -> void:
 		test.check(Profile.axial(0, length_m) > Profile.axial(length_m * 0.5, length_m) and Profile.axial(length_m * 0.5, length_m) > Profile.axial(length_m * 0.95, length_m), "Axial intensity decays continuously")
 	test.check(Profile.surface_distance(5) > Profile.surface_distance(10), "Surface inverse-square baseline attenuates with distance")
 	check_mesh(Builder.new().build_normalized_beam_mesh(null))
-	check_mesh(Builder.new().build_aperture_beam_mesh({"shape": "rectangle", "rectangle_ratio": 2.0}, 1.0))
+	check_mesh(Builder.new().build_normalized_rectangle_mesh(2.0))
 	var cache = Cache.new()
 	spot.configure("Spot", 20, 40)
 	var texture: Texture2D = cache.texture_for(spot, null)
