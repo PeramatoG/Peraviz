@@ -41,14 +41,19 @@ func run() -> void:
 		spot.configure(kind, 20, 40)
 		test.check(not spot.projected and spot.sample_support(Vector2.ZERO) == 0.0, "None/Glow have no projection")
 	spot.configure("Rectangle", 20, 0, 4.0)
-	test.check_close(spot.sample_support(Vector2(1.0, 0)), spot.sample_support(Vector2(0, 0.25)), 0.00001, "Rectangle uses its aperture metric")
+	test.check_close(spot.sample_support(Vector2(spot.aspect.x * 0.5, 0)), spot.sample_support(Vector2(0, spot.aspect.y * 0.5)), 0.00001, "Rectangle uses its aperture metric")
 	for length_m in [1.0, 12.0, 75.0, 150.0]:
 		for decay in [0.0, 1.1, 4.0]:
 			test.check(Profile.axial(length_m, length_m, decay) < Profile.TERMINAL_EPSILON and Profile.axial(length_m * 0.98, length_m, decay) == 0.0, "Finite shaft reaches zero before the end even with decay disabled")
 		test.check(Profile.axial(0, length_m) > Profile.axial(length_m * 0.5, length_m) and Profile.axial(length_m * 0.5, length_m) > Profile.axial(length_m * 0.95, length_m), "Axial intensity decays continuously")
 	test.check(Profile.surface_distance(5) > Profile.surface_distance(10), "Surface inverse-square baseline attenuates with distance")
 	check_mesh(Builder.new().build_normalized_beam_mesh(null))
-	check_mesh(Builder.new().build_normalized_rectangle_mesh(2.0))
+	var rectangle := Builder.new().build_normalized_rectangle_mesh(2.0)
+	check_mesh(rectangle)
+	var rectangle_vertices: PackedVector3Array = rectangle.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	for vertex in rectangle_vertices:
+		test.check(Vector2(vertex.x, vertex.z).length() <= 1.00001, "Rectangle corners fit within the common projector cone")
+		test.check_close(absf(vertex.x / vertex.z), 2.0, 0.00001, "Normalized Rectangle preserves the GDTF aspect ratio")
 	var cache = Cache.new()
 	spot.configure("Spot", 20, 40)
 	var texture: Texture2D = cache.texture_for(spot, null)

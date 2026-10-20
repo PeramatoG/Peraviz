@@ -57,7 +57,7 @@ func configure(beam_type: String, beam_angle: float, field_angle: float, rectang
 	support_scale = pow(-log(EDGE_INTENSITY) / LN2, 1.0 / exponent)
 	coefficient = LN2 * pow(support_scale, exponent)
 	var safe_ratio := clampf(rectangle_ratio if is_finite(rectangle_ratio) else 1.0, 0.01, 100.0)
-	aspect = Vector2(sqrt(safe_ratio), 1.0 / sqrt(safe_ratio)) if rectangular else Vector2.ONE
+	aspect = Vector2(sqrt(safe_ratio), 1.0 / sqrt(safe_ratio)).normalized() if rectangular else Vector2.ONE
 	var next := Vector4(exponent, coefficient if projected else 0.0, aspect.x if rectangular else 0.0, aspect.y if rectangular else 0.0)
 	signature = next
 	return true

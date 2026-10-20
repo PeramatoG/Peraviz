@@ -72,7 +72,9 @@ aperture / 250 m resource guard can compress the distribution at extreme Zoom;
 this remains a presentation limit, not a reinterpretation of fixture metadata.
 
 Rectangle uses max(abs(x)/half_width, abs(y)/half_height) and the retained aspect
-ratio; open Rectangle gets cached four-sided topology. Other projected types use
+ratio; open Rectangle gets cached four-sided topology. Rectangle half extents
+are normalized by their corner radius so both the pyramid and profile fit within
+the point projector's circular support without cropping its corners. Other projected types use
 circular distance. Gobo vector boundaries shape transmission without replacing the
 radial envelope. Both consumers inherit the same absolute roll, parity and aperture.
 
