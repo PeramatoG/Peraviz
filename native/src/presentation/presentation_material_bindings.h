@@ -19,9 +19,13 @@ public:
     PackedFloat32Array values(const RID &rid) const;
     // Reports actual material setters in the last applied batch.
     size_t writes() const { return writes_; }
+    // Reports retained unique material RIDs without resource discovery.
     size_t size() const { return bindings_.size(); }
+    // Counts physical Color-domain candidates in the most recent batch.
     size_t color_outputs() const { return color_outputs_; }
+    // Counts deduplicated material candidates before cached-value filtering.
     size_t affected() const { return dirty_.size(); }
+    // Counts candidate RIDs whose committed RGB and energy already match.
     size_t unchanged() const { return unchanged_; }
     // Reports redundant shared-RID setters avoided in that batch.
     size_t avoided() const { return avoided_; }
