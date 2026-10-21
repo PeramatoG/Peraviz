@@ -6,7 +6,45 @@ This document is the source of truth for the active runtime. The [GDTF support m
 
 Native C++ owns MVR/GDTF parsing, selected-mode semantic compilation, fixture patch and DMX source programs, physical-value evaluation, target-oriented state, dirty detection, and render-ready frame assembly. The compiled setup model is `CompiledRuntimeScene`.
 
-Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes.
+Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes. C++ is the simulation and calculation
+core; Godot is the presentation engine. Future native dependency evaluation,
+physical composition and Render Group reduction connect directly to compact
+presentation snapshots. Godot must not shuttle physical-state buffers between
+native calculation stages. Any future parallel evaluation and race resolution
+belong in C++; no Godot worker threads are introduced.
+
+Scene import uses one owned native preparation task for archive/XML work, immutable
+geometry expansion, selected-mode compilation and Control/Render Group classification.
+Generation-scoped geometry templates retain model leases and rebind UUIDs/keys per
+instance; scene replacement retires them. Setup indexes follow actual fixture/resource
+ownership. Godot transfers the completed data, builds nodes/targets in frame-budgeted
+batches. Renderer target/material/group installation is a single main-thread
+transaction, matching main’s publication order: no rendering turn consumes
+individual resources before their final sharing/aggregate bindings. CPU preparation
+is already complete. This transaction is not subject to the 8 ms construction
+budget; its wall time is recorded separately. Initial light defaults yield, and
+hidden fixture-inspection tables retain data without allocating row Controls;
+visible tables build eight rows per frame with generation-safe replacement.
+The completed scene activates at most 16 visual instances per rendered batch
+behind an opaque modal shield before its removal. This avoids exposing the whole
+hidden scene to the graphics backend in one frame and restores exact local
+visibility, transforms and resource identity; cancellation hides the retired
+generation before restoring its local flags. Final readiness waits for three
+render-server `frame_post_draw` acknowledgments, with a process-frame fallback
+only in headless mode. These signals are not GPU fences. Activation counts alone
+do not establish readiness. While hidden/minimized, readiness explicitly defers;
+a drawable window missing acknowledgments for 15 seconds fails and retires the
+generation. The coordinator propagates failure and keeps DMX gated through resource
+diagnostics/publication; failed imports remain gated until a later successful load.
+This watchdog cannot interrupt a blocked engine/driver call. Phase text reports
+native preparation through an atomic token and Godot setup on the main thread.
+PVZ opening restores saved visual settings and the universe offset after retiring the
+old scene and before constructing the new resources. Receiver startup and original
+PVZ preference publication finish inside the same loading generation; no visual
+restoration runs after its summary. Bulk visual scalar changes defer per-member
+dense rebinding and commit one global group rebuild with held-state replay.
+The loading indicator gates edits and DMX application against partial targets. Cancellation drains the task and clears
+partial resources; native code never mutates the SceneTree from that task.
 
 Legacy fixture bindings and Godot-side semantic helpers remain in limited compatibility, inspection, or transitional areas. They are not authoritative for native-supported live attributes.
 

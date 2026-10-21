@@ -53,7 +53,7 @@ func run() -> void:
 	service.set_performance_trace_enabled(true)
 	var bindings := Bindings.new()
 	bindings.loader = loader
-	test.check(service.install_dense_presentation(loader, bindings), "1000-output Vector Prism installs with existing anchors")
+	test.check(await service.install_dense_presentation(loader, bindings), "1000-output Vector Prism installs with existing anchors")
 	var adapter = service._dense_adapter
 	apply(service, loader.frame(0.7, 0.2))
 	var counts: Dictionary = adapter.consume_diagnostics()["surface_lights"]

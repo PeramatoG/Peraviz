@@ -5,6 +5,8 @@
 #include <iostream>
 #include <new>
 #include <set>
+#include <chrono>
+#include <tuple>
 
 using namespace peraviz;
 using namespace peraviz::runtime;
@@ -52,7 +54,24 @@ static Rig make_rig(int fixtures=1,int count=50) {
     return rig;
 }
 // Compiles renderer groups with exact inverse control membership.
-static std::vector<RenderEmitterGroup> groups(const Rig &rig) { return compile_render_emitter_groups(rig.scene,rig.model,compile_control_groups(rig.scene)); }
+static std::vector<RenderEmitterGroup> groups(const Rig &rig) {
+    const auto indexed_controls = analyze_control_groups(rig.scene, true);
+    const auto reference_controls = analyze_control_groups(rig.scene, false);
+    check(indexed_controls.groups.size()==reference_controls.groups.size(), "Indexed controls preserve group count");
+    for (size_t i=0; i<indexed_controls.groups.size(); ++i)
+        check(indexed_controls.groups[i].id==reference_controls.groups[i].id && indexed_controls.groups[i].physical_ids==reference_controls.groups[i].physical_ids, "Indexed controls preserve ordered identities");
+    const auto &a=indexed_controls.fallbacks, &b=reference_controls.fallbacks;
+    check(std::tie(a.dimmer,a.color,a.optics,a.projector_gobo,a.wheel,a.scaling,a.ambiguous)==std::tie(b.dimmer,b.color,b.optics,b.projector_gobo,b.wheel,b.scaling,b.ambiguous), "Indexed controls preserve every rejection counter");
+    auto indexed=compile_render_emitter_groups(rig.scene,rig.model,indexed_controls.groups,true);
+    auto reference=compile_render_emitter_groups(rig.scene,rig.model,reference_controls.groups,false);
+    check(indexed.size()==reference.size(), "Indexed render groups preserve row count");
+    for (size_t i=0; i<indexed.size(); ++i) {
+        const auto &x=indexed[i], &y=reference[i];
+        check(std::tie(x.id,x.fixture_id,x.presentation,x.physical_ids,x.control_group_ids,x.anchor_geometry_key,x.origin,x.direction,x.rejection_reason,x.approximate_color_members,x.candidate_members,x.nominal_flux,x.aperture_radius,x.beam_angle,x.field_angle,x.packing_density)==
+              std::tie(y.id,y.fixture_id,y.presentation,y.physical_ids,y.control_group_ids,y.anchor_geometry_key,y.origin,y.direction,y.rejection_reason,y.approximate_color_members,y.candidate_members,y.nominal_flux,y.aperture_radius,y.beam_angle,y.field_angle,y.packing_density), "Indexed render groups preserve exact optics, order and rejection reasons");
+    }
+    return indexed;
+}
 // Adds canonical seated Color-wheel bindings without fixture/model-name exceptions.
 static void add_color_wheel(Rig &rig) {
     CompiledDmxSourceProgram source; source.program_id=777; source.sources={{0,7,0}}; source.attribute_name="Color1";
@@ -90,6 +109,29 @@ static void test_color_wheel_eligibility() {
     effects.scene.beam_profiles[0].approximated_color_source_programs={779};
     check(compile_control_groups(effects.scene).size()==2 && groups(effects).size()==1 && groups(effects)[0].approximate_color_members==50,
         "Independent unsupported FX sources retain exact control authority while sharing resolved optical approximation");
+    auto multi=rig;
+    auto second_source=rig.scene.source_programs.back(); second_source.program_id=778; second_source.sources[0].address=8;
+    multi.scene.source_programs.push_back(second_source);
+    auto second_palette=rig.scene.wheel_palettes[0]; second_palette.wheel_renderer_id=889;
+    second_palette.slots[1].linear_red=0.25f;
+    multi.scene.wheel_palettes.push_back(second_palette);
+    for (auto binding : rig.scene.wheel_bindings) {
+        binding.binding_id+=1000; binding.source_program_id=778; binding.wheel_renderer_id=889;
+        binding.mode=CompiledWheelMode::Index;
+        multi.scene.wheel_bindings.push_back(binding);
+    }
+    check(groups(multi).size()==1 && compile_control_groups(multi.scene).size()==1, "Multiple distinct palettes/functions retain exact ownership and compatible aggregation");
+    multi.scene.wheel_palettes.back().fixture_id=2;
+    check(groups(multi).size()==50, "A second wheel owned by another fixture cannot borrow a valid first palette");
+    auto duplicate=rig;
+    duplicate.scene.source_programs.push_back(duplicate.scene.source_programs.back());
+    check(groups(duplicate).size()==50, "Duplicate exact source identities remain ambiguous in indexed lookup");
+    duplicate=rig; duplicate.scene.wheel_palettes.push_back(duplicate.scene.wheel_palettes[0]);
+    check(groups(duplicate).size()==50, "Duplicate palette renderer identities retain missing-resource rejection");
+    auto master=rig;
+    master.scene.source_programs.back().activation.target_kind=gdtf_runtime::ModeMasterTargetKind::DmxChannel;
+    master.scene.source_programs.back().activation.master_program_id=999;
+    check(groups(master).size()==50, "Unresolved ModeMaster authority is never weakened by indexing");
     auto mixed=rig; auto extra=rig.scene.wheel_bindings[0]; extra.binding_id=99999; extra.mode=CompiledWheelMode::Index; mixed.scene.wheel_bindings.push_back(extra);
     check(groups(mixed).size()==2,"Overlapping ambiguous wheel control stays conservative regardless of the current mode");
     auto media=rig; media.scene.wheel_palettes[0].slots[1].media_file_name="pattern";
@@ -196,6 +238,17 @@ int main() {
     physical.finish_snapshot(gen); const auto old_generation=gen;
     projection.clear(); physical.clear();
     check(projection.row_count()==0 && !physical.update(old_generation,0,2,2,dim),"Scene reload retires accumulators, membership and old physical generation");
+    for (int count : {1,20,100,250}) {
+        auto scalable=make_rig(count);
+        const auto start=std::chrono::steady_clock::now();
+        const auto before_allocations=allocations;
+        auto controls=analyze_control_groups(scalable.scene,true);
+        auto rows=compile_render_emitter_groups(scalable.scene,scalable.model,controls.groups,true);
+        std::cout << "setup indexed fixtures=" << count << " outputs=" << scalable.scene.beam_profiles.size()
+            << " rows=" << rows.size() << " allocations=" << allocations-before_allocations
+            << " ms=" << std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count() << '\n';
+        check(groups(scalable).size()==size_t(count), "Scalability reference preserves fifty physical emitters per fixture");
+    }
     auto load=make_rig(20);
     auto load_groups=groups(load);
     check(load.scene.beam_profiles.size()==1000 && load_groups.size()==20,"Twenty compact sources retain 1000 physical outputs and exactly 20 renderer shafts");

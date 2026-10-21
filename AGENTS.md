@@ -9,6 +9,7 @@ These rules apply to the entire repository. Direct task instructions take preced
 - Treat Peraviz as a low-latency visualizer fed by a native data pipeline.
 - Keep protocol handling, MVR/GDTF interpretation, DMX resolution, interpolation, dirty-state generation, and render-data preparation in native C++ whenever practical.
 - Keep Godot focused on presentation, interaction, scene resources, renderer-facing mutation, and UI. Native worker threads must not mutate Godot scene nodes.
+- C++ is the simulation and calculation core; Godot is the presentation engine. Keep native dependency evaluation, physical composition and Render Group reduction connected directly, delivering complete compact snapshots to Godot. Do not shuttle physical-state buffers through Godot for further native semantic calculation. Any future parallel evaluation and race resolution belong entirely in C++; do not create Godot worker threads.
 - Keep structural setup separate from live playback. Prefer versioned, sectioned, batched contracts with stable numeric IDs and packed payloads.
 - Avoid per-frame `Array`, `Dictionary`, `String`, `Variant`, allocation, and scene-tree churn. Reuse renderer resources and nodes.
 - Do not restore the removed fixed visual-frame row or obsolete visual-frame buffer path.

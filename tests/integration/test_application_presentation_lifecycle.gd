@@ -33,7 +33,7 @@ func run() -> void:
 	app._visual_settings["beam_presentation"] = 1
 	app._visual_settings["beam_render_mode"] = 1 if args.has("--legacy") else 0
 	app._update_beam_renderer_mode(true)
-	var imported: Dictionary = app._load_mvr_scene(fixture, "mvr", false)
+	var imported: Dictionary = await app._load_mvr_scene(fixture, "mvr", false)
 	test.check(bool(imported.get("ok", false)), "Reference fixture uses normal MVR import path")
 	service = app._fixture_light_apply_service
 	test.check(service.is_dense_presentation_active(), "Dense production installation is active")

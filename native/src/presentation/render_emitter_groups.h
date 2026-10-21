@@ -36,7 +36,7 @@ struct RenderEmitterGroup {
     double nominal_flux = 0.0, aperture_radius = 0.0;
     double beam_angle = 25.0, field_angle = 25.0, packing_density = 0.0;
 };
-std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene, const SceneModel &model);
+std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene, const SceneModel &model, bool indexed = true);
 std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
-        const SceneModel &model, const std::vector<PresentationControlGroup> &controls);
+        const SceneModel &model, const std::vector<PresentationControlGroup> &controls, bool indexed = true);
 } // namespace peraviz::presentation

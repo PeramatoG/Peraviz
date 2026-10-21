@@ -1,5 +1,20 @@
 # Peraviz v0.x.x
 
+- Fixed PVZ project opening performing saved visual restoration after reporting scene readiness. Saved visual settings and universe offset now precede resource construction; saved receiver startup and original PVZ preference publication remain inside the loading generation. Bulk visual changes rebuild dense groups once instead of once per physical member, preventing repeated global resource recreation for aggregated fixtures.
+
+- Restored coherent renderer-resource installation in one main-thread turn: individual, shared and aggregate bindings finish before rendering can consume an intermediate configuration. Native preparation remains asynchronous; model construction and initial light defaults remain budgeted.
+- Hidden fixture inspectors now defer row Controls, and visible tables build eight fixture rows per frame with revision-safe replacement. Finalization phases have distinct labels. Fixed unused-signal/integer-division warnings and added `--peraviz-load-trace` as an alternative to the telemetry environment variable.
+
+- Corrected render-readiness failure propagation and misleading activation completion. Loading now distinguishes activation from final render acknowledgment, defers explicitly for an unavailable window, and fails missing acknowledgments while drawable without publishing an incomplete scene. Opt-in bounded breadcrumbs locate engine-draw versus callback/continuation stalls; the owner Windows first-render blocker remains unconfirmed.
+
+- Split initial graphics activation into batches of at most 16 visual instances, with visible progress, to avoid submitting the full hidden scene at once. Original visibility, transforms, shared resources and DMX generation gating are preserved, including cancellation.
+- Fixed premature loading completion: an opaque loading shield now remains over the completed scene during initial graphics submission. Load telemetry distinguishes import chunks from full event-loop/render gaps. Shader/driver stalls during loading remain measurable; headless timing is not a Windows responsiveness guarantee.
+- Scene loading now shows animated feedback before preparation, performs CPU parsing/classification in one owned native task, and batches main-thread node/target construction. Phase labels identify the current operation. Partial scenes remain hidden and DMX application waits for registration and actual initial rendered frames; cancellation/reload retires the setup generation.
+
+- Repeated fixtures reuse immutable selected-mode geometry templates and spectral preparation. Native classification and Godot descendant binding use setup indexes; opt-in phase summaries and reference switches support deterministic comparisons. Physical outputs, mechanical transforms and PR #105 aggregation remain unchanged.
+
+- Raised the generic Jolt body capacity to 65,536 so large scenes can retain existing per-mesh fixture-picking shapes (the 250 × 50-emitter generated case exceeded the previous 10,240 limit).
+
 - Fixed false missing-palette rejection from unrelated GDTF ColorMixReset/ColorCalibrationMode controls. Wheel requirements now follow parsed Color selection/motion identity or explicit links; unlinked unsupported ColorEffects retains approximation status, while genuinely unresolved references keep conservative fallback.
 
 - Color-wheel presentation now permits combined shafts for compatible compact emitters, including explicitly approximate Spin/FX behavior, while preserving canonical physical state and control authority. Gobo/projector and incompatible optical dependencies retain individual fallback; unsupported effect fidelity remains explicitly diagnosed. Startup presentation revision is 4.
@@ -10,7 +25,7 @@ Changes since the previous Peraviz release.
 
 ## Highlights
 
-- Added native compact-source Render Emitter Groups: compatible multi-emitter heads retain physical lenses and exact DMX state while rendering one Vector Prism shaft. Aggregates mix independent pixel colors in linear light, keep static origins, use incremental native accumulation and publish renderer-sized payloads. Exact wheel/gobo ownership and one startup summary expose conservative fallbacks; separated cells, bars, divergent emitters and different mechanical lineages remain individual. Shared Control Groups are retained; no Windows FPS improvement is claimed without measurement.
+- Added native compact-source Render Emitter Groups: compatible multi-emitter heads retain physical lenses and exact DMX state while rendering one Vector Prism shaft. Aggregates mix independent pixel colors in linear light, keep static origins, use incremental native accumulation and publish renderer-sized payloads. Exact wheel/gobo ownership and one startup summary expose conservative fallbacks; separated cells, bars, divergent emitters and different mechanical lineages remain individual. Shared Control Groups are retained. The owner confirmed approximately 40 FPS with active Color after PR #105 (previously approximately 23 FPS); setup changes do not claim an additional Windows playback gain.
 
 - Added selected-DMXMode presentation Control Groups for compatible open Wash/Spot outputs. Shared Color/Dimmer shaft and source-compatible lens materials avoid redundant renderer mutations while retaining every physical Beam, canonical identity, Color gain, held state and normal Pan/Tilt transform. Wheel/gobo, ambiguous controls, differing scales and explicit realtime/debug light paths remain individual.
 

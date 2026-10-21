@@ -9,7 +9,13 @@ reference renderer. The subsequent shared dynamic Control Group correction is do
 [rendering-performance architecture](rendering-performance-architecture.md);
 this historical closure implements none of the visual follow-ups below.
 
-## Current canonical evidence
+Latest owner evidence after PR #105: 82 fixtures, 1,095 canonical physical outputs,
+20 actual aggregate shafts for 1,000 compact Wash emitters, 115 renderer rows and
+approximately 40 FPS during active Color (previously approximately 23 FPS).
+Loading work and its bounded synthetic comparison are recorded in
+[setup measurements](rendering-performance-architecture.md#scene-setup-and-loading).
+
+## Foundation reference evidence (before Render Groups)
 
 The owner reports approximately **24–25 FPS / 40–42 ms per frame after warmup**,
 stable for several minutes in normal full presentation. The previous progressive

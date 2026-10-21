@@ -469,4 +469,26 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
     return result;
 }
 
+// Expands each immutable selected-mode geometry once, then binds only instance identity.
+GdtfGeometryBuildResult FixtureGeometryTemplates::instantiate(const GdtfBuildRequest &request,
+        const std::string &parent_id, int &extracted_asset_count) {
+    std::error_code error;
+    const auto path=std::filesystem::u8path(request.gdtf_archive_path);
+    const auto revision=std::filesystem::last_write_time(path,error);
+    const auto size=std::filesystem::file_size(path,error);
+    const auto key = std::make_tuple(request.gdtf_archive_path, request.gdtf_mode, revision, size);
+    auto found = templates_.find(key);
+    if (found == templates_.end()) {
+        const GdtfBuildRequest definition{request.gdtf_archive_path, request.gdtf_mode, "", ""};
+        found = templates_.emplace(key, build_fixture_geometry_nodes(definition, "", MatrixUtils::Identity(), extracted_asset_count)).first;
+    } else ++hits_;
+    GdtfGeometryBuildResult result = found->second;
+    for (auto &node : result.nodes) {
+        node.node_id = request.fixture_node_id + node.node_id;
+        node.parent_id = node.parent_id.empty() ? parent_id : request.fixture_node_id + node.parent_id;
+        node.gdtf_geometry_key = gdtf_runtime::make_fixture_geometry_key(request.fixture_node_id, node.gdtf_geometry_path);
+    }
+    return result;
+}
+
 } // namespace peraviz

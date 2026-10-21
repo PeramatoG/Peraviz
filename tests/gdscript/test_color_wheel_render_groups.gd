@@ -19,7 +19,7 @@ func _load(wheel: String, pixels: bool = false, load_case: bool = false, selecte
 	if pixels: args.append("--pixels")
 	if load_case: args.append("--load")
 	test.check(OS.execute("python3",args) == 0,"Representative standard Color-wheel MVR is generated")
-	var imported: Dictionary = app._load_mvr_scene(path,"mvr",false)
+	var imported: Dictionary = await app._load_mvr_scene(path,"mvr",false)
 	test.check(imported.get("ok",false),"Normal MVR import succeeds")
 	service = app._fixture_light_apply_service
 	runtime = app._dmx_controller._dmx_fixture_runtime
@@ -72,7 +72,7 @@ func _run() -> void:
 	app._visual_settings["beam_render_mode"] = 0
 	app._update_beam_renderer_mode(true)
 	dmx.resize(512)
-	_load("select",false,true)
+	await _load("select",false,true)
 	var sizes: Dictionary = adapter.diagnostics()
 	test.check(sizes["physical_outputs"] == 1000 and sizes["render_rows"] == 20 and sizes["aggregated_members"] == 1000 and sizes["control_groups"] == 20,"Twenty normal-imported Color-wheel heads retain 1000 physical outputs and bind 20 real aggregates")
 	if sizes["aggregated_groups"] != 20:
@@ -125,7 +125,7 @@ func _run() -> void:
 	dmx[2] = 130
 	await _apply()
 	test.check(aggregate.global_transform != transform,"Color-wheel aggregate retains mechanical Tilt inheritance")
-	_load("select",true)
+	await _load("select",true)
 	test.check(not is_instance_valid(aggregate) and adapter.diagnostics()["control_groups"] == 51 and adapter.diagnostics()["render_rows"] == 2,"Scene replacement retains independent pixel authorities and retires old aggregates")
 	dmx.fill(0)
 	dmx[0] = 200
@@ -145,14 +145,14 @@ func _run() -> void:
 		if physical[10] == 0: dark += 1
 	test.check(red == 25 and dark == 25,"Shared red transmission composes with independent RGB pixels without collapsing their physical state")
 	for kind in ["media","facet","gobo","gobo_motion","missing","unknown_slot"]:
-		_load(kind)
+		await _load(kind)
 		var fallback: Dictionary = adapter.diagnostics()
 		test.check(fallback["aggregated_groups"] == 0 and fallback["render_rows"] == 51,"Unsupported/spatial wheel or gobo remains individual: "+kind)
 	for kind in ["index","spin","random","audio","unknown","fx"]:
-		_load(kind)
+		await _load(kind)
 		test.check(adapter.diagnostics()["render_rows"] == 2,"Uniform resolved Color approximation permits one shaft regardless of unsupported capability: "+kind)
 	# Generic concentric-ring geometry and mixed ChannelFunction ranges, authored independently of private assets.
-	_load("basic",false,true,"BasicControls")
+	await _load("basic",false,true,"BasicControls")
 	test.check(adapter.diagnostics()["physical_outputs"] == 1000 and adapter.diagnostics()["render_rows"] == 20,"Twenty Basic-style ring heads with unlinked FX and Base Color controls retain 1000 canonical outputs and bind 20 combined shafts")
 	if adapter.diagnostics()["render_rows"] != 20:
 		print("TEST FAILURE: Base Color control regression: ",adapter.diagnostics())
@@ -189,7 +189,7 @@ func _run() -> void:
 	var ring_aggregate: SpotLight3D = adapter._render_bindings.aggregate_outputs()[0].lights[0].light
 	test.check(is_equal_approx(adapter._native.physical_values(0)[9],adapter._render_bindings.aggregate_outputs()[0].lights[0].projection.source_full_angle_deg),"Live shared Zoom remains exact on the ring aggregate")
 	_check_shared_shaft()
-	_load("basic",false,false,"Basic")
+	await _load("basic",false,false,"Basic")
 	test.check(not is_instance_valid(ring_aggregate) and adapter.diagnostics()["render_rows"] == 2,"Scene replacement retires old aggregate resources while Basic keeps efficient shaft presentation")
 	compiled = app._loader.compile_visual_runtime_scene(0)
 	test.check(compiled["setup_summary"]["source_program_count"] == 11,"Mixed selected mode retains scalar, wheel selection, Spin and unsupported FX source programs")
@@ -223,9 +223,9 @@ func _run() -> void:
 	for output in adapter._outputs:
 		var physical: PackedFloat32Array = adapter._native.physical_values(output.index)
 		test.check(physical[1]>0.99 and physical[2]>0.99 and physical[3]>0.99 and physical[10]>0.99,"NoFeature removes the wheel optical layer and restores held additive Color")
-	_load("basic",false,false,"Extended")
+	await _load("basic",false,false,"Extended")
 	test.check(adapter.diagnostics()["render_rows"] == 2 and adapter.diagnostics()["control_groups"] == 4,"Extended mode recomputes independent ring authority while retaining compatible optical aggregation")
-	_load("basic",false,false,"ExtendedSeated")
+	await _load("basic",false,false,"ExtendedSeated")
 	test.check(adapter.diagnostics()["render_rows"] == 2 and adapter.diagnostics()["control_groups"] == 4,"Ring-level RGB authorities remain distinct even with one optically valid aggregate")
 	dmx.fill(0)
 	dmx[0] = 200
@@ -240,9 +240,9 @@ func _run() -> void:
 		var channel: int = 0 if physical[1]>0.99 else 1 if physical[2]>0.99 else 2
 		colors[channel] = int(colors.get(channel,0))+1
 	test.check(colors.get(0,0)==14 and colors.get(1,0)==16 and colors.get(2,0)==20,"All three independently controlled rings retain exact physical membership and RGB")
-	_load("basic",false,false,"Seated")
+	await _load("basic",false,false,"Seated")
 	test.check(adapter.diagnostics()["render_rows"] == 2 and adapter.diagnostics()["control_groups"] == 2,"Returning to a supported selected mode compiles fresh shared authority and geometry")
-	_load("basic",false,false,"BrokenControls")
+	await _load("basic",false,false,"BrokenControls")
 	compiled = app._loader.compile_visual_runtime_scene(0)
 	var broken: Dictionary = compiled["renderer_manifest"][0]["render_group_diagnostics"]
 	test.check(adapter.diagnostics()["render_rows"] == 51 and broken["native_accepted_aggregates"] == 0 and broken["native_rejected_physical"].get("wheel_missing_palette",0) == 50,"An actual unresolved Wheel remains individual even alongside unlinked FX and unrelated Base controls")

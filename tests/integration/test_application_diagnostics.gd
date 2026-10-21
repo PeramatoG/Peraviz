@@ -24,7 +24,7 @@ func run() -> void:
 	var fixture: String = argument("--fixture")
 	test.check(app._dmx_controller.get_render_diagnostic_mode() == mode, "User arguments reach production diagnostic mode")
 	test.check(app._dmx_controller._perf_trace_enabled == trace, "User arguments reach production trace configuration")
-	test.check(app._load_mvr_scene(fixture,"mvr",false).get("ok",false), "Production MVR scene loads")
+	test.check((await app._load_mvr_scene(fixture,"mvr",false)).get("ok",false), "Production MVR scene loads")
 	var service: RefCounted = app._fixture_light_apply_service
 	test.check(service.is_dense_presentation_active(), "Dense installation is active in every mode")
 	apply_dmx(200,120)
@@ -57,7 +57,7 @@ func run() -> void:
 		for ref in retired: test.check(ref.get_ref() == null, "Explicit unload releases owned scene resources and bound handles: "+str(ref.get_ref()))
 		test.check(service._dense_adapter == null and app._native_target_registry._lens_material_cache.is_empty(), "Unload retires dense generation and material bindings")
 		test.check(app._asset_cache._scene_cache.is_empty() and app._asset_cache._mesh_cache.is_empty(), "Unload releases import caches")
-		test.check(app._load_mvr_scene(fixture,"mvr",false).get("ok",false), "Second scene load succeeds")
+		test.check((await app._load_mvr_scene(fixture,"mvr",false)).get("ok",false), "Second scene load succeeds")
 		test.check(service.is_dense_presentation_active() and service._dense_adapter._generation != previous_generation, "Reload installs a fresh dense generation")
 		apply_dmx(200,180)
 		await process_frame

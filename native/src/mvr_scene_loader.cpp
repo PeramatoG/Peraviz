@@ -1,4 +1,6 @@
 #include "mvr_scene_loader.h"
+#include "scene_setup_options.h"
+#include <chrono>
 
 #include "asset_cache.h"
 #include "archive/zip_archive.h"
@@ -761,6 +763,10 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
     peraviz::debug_runtime::set_coordinate_debug_enabled(peraviz_debug_coords);
     peraviz::debug_runtime::log_coordinate_mapping_metadata();
 
+    const auto load_start = std::chrono::steady_clock::now();
+    const auto options = SceneSetupOptions::read();
+    const bool reuse_templates = options.fixture_templates && !peraviz_debug_coords;
+    FixtureGeometryTemplates templates;
     SceneModel model;
     model.runtime_tables = peraviz::table_model::create_perastage_runtime_tables();
     if (!std::filesystem::exists(std::filesystem::u8path(path))) {
@@ -800,6 +806,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
 
     const auto symdefs = parse_symdefs(root);
 
+    model.archive_xml_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - load_start).count();
     int serial = 0;
     std::function<void(tinyxml2::XMLElement *, const Matrix &, const std::string &)> parse_child_list;
     parse_child_list = [&](tinyxml2::XMLElement *child_list, const Matrix &parent_world,
@@ -838,8 +845,12 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
 
                 if (!gdtf_path.empty()) {
                     const GdtfBuildRequest request{gdtf_path, gdtf_mode, id, node.name};
-                    GdtfGeometryBuildResult fixture_geometry = build_fixture_geometry_nodes(
-                        request, id, node_world, model.extracted_asset_count);
+                    const auto geometry_start = std::chrono::steady_clock::now();
+                    GdtfGeometryBuildResult fixture_geometry = reuse_templates
+                        ? templates.instantiate(request, id, model.extracted_asset_count)
+                        : build_fixture_geometry_nodes(request, id, node_world, model.extracted_asset_count);
+                    model.geometry_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - geometry_start).count();
+                    if (!reuse_templates) ++model.geometry_definitions;
                     model.asset_leases.retain(fixture_geometry.cache_lease);
                     model.nodes.insert(model.nodes.end(), fixture_geometry.nodes.begin(), fixture_geometry.nodes.end());
                 }
@@ -888,6 +899,8 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
         }
     }
 
+    if (reuse_templates) model.geometry_definitions = templates.definitions();
+    model.geometry_template_hits = templates.hits();
     model.extracted_asset_count += mvr_cache.extracted_assets();
     return model;
 }

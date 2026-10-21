@@ -136,7 +136,7 @@ func configure(native_scene_loader, scene_registry: SceneRegistry, renderer_targ
 	if _native_visual_runtime != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
 
-func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dictionary:
+func rebuild(universe_offset: int, rebuild_reason: String = "explicit", budget: SceneLoadBudget = null) -> Dictionary:
 	_runtime_generation += 1
 	_receiver_subscription_generation = -1
 	_last_rebuild_reason = rebuild_reason
@@ -191,6 +191,7 @@ func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dicti
 		_gobo_vectorization_cache.enrich_bindings_with_vector_gobos(_bindings)
 
 	for binding in _bindings:
+		if budget != null and not await budget.checkpoint(): return {}
 		if binding is not Dictionary:
 			continue
 		var fixture_uuid: String = str(binding.get("fixture_uuid", ""))
@@ -217,7 +218,7 @@ func rebuild(universe_offset: int, rebuild_reason: String = "explicit") -> Dicti
 		if requires_time_tick:
 			_time_tick_fixture_ids.append(fixture_uuid)
 
-	_register_native_visual_runtime_bindings()
+	await _register_native_visual_runtime_bindings(budget)
 
 	if _fixture_row_provider != null:
 		_fixture_row_provider.set_dmx_state(_bindings, _unbound)
@@ -457,26 +458,34 @@ func _register_native_fixture_id(fixture_uuid: String) -> void:
 	_native_fixture_uuids_by_id[fixture_id] = fixture_uuid
 	_native_channel_values[fixture_uuid] = {}
 
-func _register_native_visual_runtime_bindings() -> void:
+func _register_native_visual_runtime_bindings(budget: SceneLoadBudget = null) -> void:
 	if _native_scene_loader == null or not _native_scene_loader.has_method("compile_visual_runtime_scene"):
 		_native_bindings_count = 0
 		return
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "runtime_payload_and_manifest"
 	var compiled_scene: Dictionary = _native_scene_loader.compile_visual_runtime_scene(_runtime_universe_offset)
+	if budget != null and not await budget.checkpoint(true): return
 	_register_compiled_runtime_setup_metadata(compiled_scene)
 	_register_native_renderer_manifest(compiled_scene.get("renderer_manifest", []))
-	if not _install_renderer_manifest(compiled_scene.get("renderer_manifest", [])):
+	if not await _install_renderer_manifest(compiled_scene.get("renderer_manifest", []), budget):
 		_native_bindings_count = 0
 		return
 	if _renderer_target_registry.has_method("_install_native_gobo_assets"):
 		_renderer_target_registry._install_native_gobo_assets(compiled_scene.get("gobo_assets", []))
 	_native_bindings_count = int(compiled_scene.get("property_count", 0))
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "native_runtime_install"
 	if _native_visual_runtime.has_method("install_compiled_scene"):
 		_native_visual_runtime.install_compiled_scene(compiled_scene)
 	if _sectioned_visual_frame_applier != null and _native_visual_runtime.has_method("get_visual_frame_schema"):
 		_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
+	if budget != null and not await budget.checkpoint(true): return
 	_report_native_setup_summary()
 
-func _install_renderer_manifest(renderer_manifest: Array) -> bool:
+func _install_renderer_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null) -> bool:
 	if _renderer_target_registry == null:
 		push_error("Native DPT setup requires a renderer target registry; compiled scene was not installed.")
 		_native_setup_summary["target_registry_error"] = "missing renderer target registry"
@@ -487,7 +496,11 @@ func _install_renderer_manifest(renderer_manifest: Array) -> bool:
 			_native_setup_summary["target_registry_error"] = "missing method %s" % method_name
 			return false
 	# Legacy test registries return null; production returns an explicit install result.
-	var installed: Variant = _renderer_target_registry._register_native_runtime_targets(renderer_manifest)
+	var installed: Variant
+	if budget != null:
+		installed = await _renderer_target_registry._register_native_runtime_targets(renderer_manifest, budget)
+	else:
+		installed = await _renderer_target_registry._register_native_runtime_targets(renderer_manifest)
 	if installed is bool and not installed:
 		_native_setup_summary["target_registry_error"] = "dense presentation installation failed"
 		return false

@@ -7,8 +7,8 @@
 namespace peraviz::debug_runtime {
 namespace {
 
-bool g_baseline_debug_enabled = false;
-bool g_coordinate_debug_enabled = false;
+thread_local bool g_baseline_debug_enabled = false;
+thread_local bool g_coordinate_debug_enabled = false;
 
 // Formats a vector into a readable debug string.
 godot::String vec_to_string(const std::array<float, 3> &v) {

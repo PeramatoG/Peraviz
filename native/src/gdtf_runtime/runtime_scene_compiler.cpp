@@ -3,6 +3,7 @@
 #include "dmx/gdtf_attribute_classifier.h"
 #include "dmx/gdtf_xml_reader.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
+#include "gdtf_runtime/physical_resource_templates.h"
 
 #include <algorithm>
 #include <cmath>
@@ -164,10 +165,9 @@ void resolve_luminous_flux(runtime::CompiledRuntimeScene &out, runtime::Compiled
 }
 
 // Appends exact Beam profiles, retaining authored/default optical provenance at setup.
-void append_beam_profiles(runtime::CompiledRuntimeScene &out, const SceneModel &scene, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
-    const std::string prefix = patch.fixture_uuid + "/";
-    for (const SceneNode &node : scene.nodes) {
-        if (!node.is_beam || node.gdtf_geometry_key.rfind(prefix, 0) != 0) continue;
+void append_beam_profiles(runtime::CompiledRuntimeScene &out, const std::vector<const SceneNode *> &beams, const SceneModel::FixturePatch &patch, int32_t fixture_id) {
+    for (const SceneNode *node_ptr : beams) {
+        const SceneNode &node = *node_ptr;
         runtime::CompiledBeamOpticalProfile profile;
         profile.fixture_id = fixture_id;
         profile.fixture_uuid = patch.fixture_uuid;
@@ -847,6 +847,13 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
     int32_t next_program_id = 1;
     std::unordered_set<int32_t> generated_ids;
     std::unordered_map<std::string, CompiledGdtfFixtureType> fixture_type_cache;
+    std::unordered_map<std::string, std::vector<const SceneNode *>> beams_by_fixture;
+    for (const auto &node : scene.nodes) if (node.is_beam) {
+        const auto separator = node.gdtf_geometry_key.find('/');
+        if (separator != std::string::npos) beams_by_fixture[node.gdtf_geometry_key.substr(0, separator)].push_back(&node);
+    }
+    using PhysicalResources = PhysicalResourceTemplates;
+    std::unordered_map<std::string, PhysicalResources> physical_resources;
     for (const SceneModel::FixturePatch &patch : scene.fixture_patches) {
         if (patch.fixture_uuid.empty() || patch.mvr_universe <= 0 || patch.mvr_address <= 0 || patch.mvr_address > 512 || patch.dmx_mode.empty() || patch.gdtf_path.empty()) {
             out.diagnostics.push_back({"PVZ-GDTF-FIXTURE-SKIPPED", "warning", "Fixture patch is missing UUID, mode, GDTF path, universe, or address.", patch.fixture_uuid});
@@ -865,63 +872,23 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
-        for (const PhysicalEmitterResource &emitter : fixture_type.emitters) {
-            runtime::CompiledEmitterResource compiled;
-            compiled.resource_id = stable_id(patch.fixture_uuid, "emitter:" + std::to_string(emitter.id));
-            compiled.name = emitter.name;
-            compiled.color = {emitter.color.x, emitter.color.y, emitter.color.Y, emitter.color.valid};
-            compiled.dominant_wavelength_nm = emitter.dominant_wavelength_nm;
-            compiled.has_dominant_wavelength = emitter.has_dominant_wavelength;
-            for (const PhysicalColorMeasurement &measurement : emitter.measurements) {
-                runtime::CompiledColorMeasurement cm;
-                cm.physical_percent = measurement.physical_percent;
-                cm.luminous_intensity = measurement.luminous_intensity;
-                cm.transmission = measurement.transmission;
-                cm.interpolation_to = measurement.interpolation_to;
-                for (const PhysicalSpectralPoint &point : measurement.spectral_points) cm.spectral_points.push_back({point.wavelength_nm, point.energy});
-                std::vector<runtime::SpectralSample> samples;
-                for (const runtime::CompiledSpectralPoint &point : cm.spectral_points) samples.push_back({point.wavelength_nm, point.energy});
-                const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
-                cm.has_spectrum_xyz = xyz.valid;
-                cm.xyz_x = xyz.x; cm.xyz_y = xyz.y; cm.xyz_z = xyz.z;
-                compiled.measurements.push_back(cm);
-            }
-            const runtime::CieXyz xyz = compiled.color.valid ? runtime::cie_xyy_to_xyz({compiled.color.x, compiled.color.y, compiled.color.Y, true}) : runtime::dominant_wavelength_to_xyz(compiled.dominant_wavelength_nm);
-            const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
-            compiled.fallback_linear_r = rgb.r; compiled.fallback_linear_g = rgb.g; compiled.fallback_linear_b = rgb.b;
-            compiled.valid = xyz.valid || !compiled.measurements.empty();
-            out.emitter_resources.push_back(compiled);
+        auto resources_it = physical_resources.find(cache_key);
+        if (resources_it == physical_resources.end()) {
+            auto resources=compile_physical_resource_templates(fixture_type);
+            resources_it = physical_resources.emplace(cache_key, std::move(resources)).first;
         }
-        for (const PhysicalFilterResource &filter : fixture_type.filters) {
-            runtime::CompiledFilterResource compiled;
-            compiled.resource_id = stable_id(patch.fixture_uuid, "filter:" + std::to_string(filter.id));
-            compiled.name = filter.name;
-            compiled.color = {filter.color.x, filter.color.y, filter.color.Y, filter.color.valid};
-            for (const PhysicalColorMeasurement &measurement : filter.measurements) {
-                runtime::CompiledColorMeasurement cm;
-                cm.physical_percent = measurement.physical_percent;
-                cm.luminous_intensity = measurement.luminous_intensity;
-                cm.transmission = measurement.transmission;
-                cm.interpolation_to = measurement.interpolation_to;
-                for (const PhysicalSpectralPoint &point : measurement.spectral_points) cm.spectral_points.push_back({point.wavelength_nm, point.energy});
-                std::vector<runtime::SpectralSample> samples;
-                for (const runtime::CompiledSpectralPoint &point : cm.spectral_points) samples.push_back({point.wavelength_nm, point.energy});
-                const runtime::CieXyz xyz = runtime::spectrum_to_xyz(samples);
-                cm.has_spectrum_xyz = xyz.valid;
-                cm.xyz_x = xyz.x; cm.xyz_y = xyz.y; cm.xyz_z = xyz.z;
-                compiled.measurements.push_back(cm);
-            }
-            const runtime::CieXyz xyz = runtime::cie_xyy_to_xyz({compiled.color.x, compiled.color.y, compiled.color.Y, compiled.color.valid});
-            const runtime::LinearRgb rgb = runtime::xyz_to_linear_srgb(xyz);
-            compiled.fallback_linear_r = rgb.r; compiled.fallback_linear_g = rgb.g; compiled.fallback_linear_b = rgb.b;
-            compiled.fallback_transmission = compiled.color.valid ? std::clamp(compiled.color.Y, 0.0, 1.0) : 1.0;
-            compiled.valid = xyz.valid || !compiled.measurements.empty();
-            out.filter_resources.push_back(compiled);
+        for (auto resource : resources_it->second.first) {
+            resource.resource_id = stable_id(patch.fixture_uuid, "emitter:" + std::to_string(resource.resource_id));
+            out.emitter_resources.push_back(std::move(resource));
+        }
+        for (auto resource : resources_it->second.second) {
+            resource.resource_id = stable_id(patch.fixture_uuid, "filter:" + std::to_string(resource.resource_id));
+            out.filter_resources.push_back(std::move(resource));
         }
         out.fixtures.push_back({fixture_id, patch.fixture_uuid, patch.gdtf_path, patch.dmx_mode, artnet_universe, patch.mvr_address, 10000.0, 25.0, 1.0, 20.0});
         const size_t source_program_start = out.source_programs.size();
         const size_t motion_binding_start = out.gobo_motion_bindings.size();
-        append_beam_profiles(out, scene, patch, fixture_id);
+        append_beam_profiles(out, beams_by_fixture[patch.fixture_uuid], patch, fixture_id);
         std::unordered_map<int32_t, std::vector<const ChannelProgram *>> programs_by_component;
         for (const ChannelProgram &program : fixture_type.channel_programs) programs_by_component[program.component_id].push_back(&program);
         const size_t property_start = out.properties.size();

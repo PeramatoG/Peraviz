@@ -147,7 +147,7 @@ func setup_fixture_runtime(native_scene_loader: Variant, scene_registry: SceneRe
 	_dmx_fixture_runtime.set_debug_force_full_apply(_debug_force_full_apply)
 	_dmx_fixture_runtime.set_render_diagnostic_mode(_render_diagnostic_mode)
 	_dmx_fixture_runtime.set_performance_trace_enabled(_perf_trace_enabled)
-	return refresh_fixture_bindings("initial_scene_setup")
+	return await refresh_fixture_bindings("initial_scene_setup")
 
 func set_debug_force_full_apply(enabled: bool) -> void:
 	_debug_force_full_apply = enabled
@@ -155,12 +155,14 @@ func set_debug_force_full_apply(enabled: bool) -> void:
 		_dmx_fixture_runtime.set_debug_force_full_apply(enabled)
 
 
-func set_universe_offset(value: int) -> void:
+# Setup can install the saved offset before compiling bindings, without rebuilding retired targets.
+func set_universe_offset(value: int, refresh_bindings: bool = true) -> void:
 	if _dmx_universe_offset_input == null:
 		return
 	if int(_dmx_universe_offset_input.value) == value:
 		return
-	_dmx_universe_offset_input.value = value
+	if refresh_bindings: _dmx_universe_offset_input.value = value
+	else: _dmx_universe_offset_input.set_value_no_signal(value)
 
 func get_universe_offset() -> int:
 	if _dmx_universe_offset_input == null:
@@ -180,20 +182,24 @@ func start_dmx() -> bool:
 func stop_dmx() -> void:
 	_set_dmx_enabled(false)
 
-func refresh_fixture_bindings(rebuild_reason: String = "explicit_fixture_binding_refresh") -> Dictionary:
+func refresh_fixture_bindings(rebuild_reason: String = "explicit_fixture_binding_refresh", budget: SceneLoadBudget = null) -> Dictionary:
 	if _dmx_fixture_runtime == null or _dmx_universe_offset_input == null:
 		return {}
-	var summary: Dictionary = _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value), rebuild_reason)
+	var summary: Dictionary = await _dmx_fixture_runtime.rebuild(int(_dmx_universe_offset_input.value), rebuild_reason, budget)
 	_fixture_binding_summary = summary
-	_prewarm_bound_fixture_lighting()
+	await _prewarm_bound_fixture_lighting(budget)
 	_refresh_dmx_unbound_details()
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
 	return summary
 
-func _prewarm_bound_fixture_lighting() -> void:
+func _prewarm_bound_fixture_lighting(budget: SceneLoadBudget = null) -> void:
 	if _dmx_fixture_runtime == null or not _apply_dmx_controls_callback.is_valid():
 		return
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "fixture_prewarm"
 	for fixture_uuid in _dmx_fixture_runtime.get_bound_fixture_ids():
+		if budget != null and not await budget.checkpoint(): return
 		_apply_dmx_controls_callback.call(str(fixture_uuid), {"prewarm_only": true})
 
 func get_fixture_rows() -> Array:
@@ -216,7 +222,7 @@ func exit_tree() -> void:
 		_dmx_receiver.stop()
 
 func _on_dmx_universe_offset_changed(_value: float) -> void:
-	refresh_fixture_bindings("universe_offset_changed")
+	await refresh_fixture_bindings("universe_offset_changed")
 
 func _on_dmx_unbound_details_toggled(_button_pressed: bool) -> void:
 	_refresh_dmx_unbound_details()

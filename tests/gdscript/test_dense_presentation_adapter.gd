@@ -53,7 +53,7 @@ func _run() -> void:
 	var lens := StandardMaterial3D.new()
 	lens.emission_enabled = true
 	loader.outputs[0]["lens_material_targets"] = [{"material": lens, "beam_optical_profile": {"emission_lumen_scale": 1.5}}]
-	service.install_dense_presentation(loader, registry)
+	await service.install_dense_presentation(loader, registry)
 	var applier = Applier.new()
 	applier.install_schema({"schema_generation": 7, "sections": [
 		{"section_type": 2, "row_stride_ints": 3, "row_stride_floats": 5},
@@ -130,7 +130,7 @@ func _run() -> void:
 	vector_loader.dense_service = vector_service
 	var vector_bindings := Bindings.new()
 	vector_bindings.outputs = vector_loader.outputs
-	vector_service.install_dense_presentation(vector_loader, vector_bindings)
+	await vector_service.install_dense_presentation(vector_loader, vector_bindings)
 	frame["schema_generation"] = 7
 	applier.set_performance_trace_enabled(false)
 	applier.apply_snapshot(frame, vector_loader, vector_service, 0.016, null, {})

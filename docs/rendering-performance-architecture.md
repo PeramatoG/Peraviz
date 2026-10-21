@@ -2,11 +2,146 @@
 
 **Status:** Native Control Groups and first AGGREGATED/INDIVIDUAL Render Emitter Groups implemented
 
-**Date:** 2026-09-03
+**Date:** 2026-10-21
 
 **Scope:** GDTF/MVR semantics, physical emitter ownership, render aggregation, batching, beam rendering, and the short-term performance roadmap.
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
+
+## Scene setup and loading
+
+PR #105 owner validation retained 1,095 physical outputs, grouped 1,000 compact
+Wash emitters into 20 actual shafts and produced 115 renderer rows at about
+40 FPS with Color active (previously about 23 FPS). This branch changes setup,
+not the live reducer or optical presentation policy.
+
+The stall has multiple concrete causes: per-instance archive hashing/XML geometry
+expansion; repeated global source/property/palette/Zoom searches; and Godot target
+registration scanning every imported geometry for each semantic target. The latter
+made the intermediate 100-fixture run take about 22 seconds despite native indexing.
+An ordered reverse ancestry index reduced it to about 6 seconds. A final legacy
+lighting prewarm also needed per-fixture frame-budget checkpoints.
+
+Bounded Linux Debug / Godot 4.7.1 headless comparison, generic 20-fixture selected
+mode with 50 projected emitters each; milliseconds, cold / same-content reload.
+Reference uses synchronous import and reference geometry/classifiers; timings are
+observations, not CI thresholds or Windows predictions.
+
+| Phase / observation | Reference | Efficient |
+| --- | ---: | ---: |
+| Archive/XML | 0.6 / 4.5 | 0.6 / 0.5 |
+| Geometry parse/expand/instantiate | 239 / 255 | 13 / 15 |
+| Selected-mode compile / patch binding | 27 / 26 | 28 / 29 |
+| Native Control Groups | 454 / 443 | 298 / 290 |
+| Native Render Groups | 261 / 266 | 91 / 53 |
+| Godot node/model resources | 50 / 90 | 57 / 54 |
+| Physical fixture registration | 50 / 64 | 60 / 57 |
+| Runtime/target/resource registration | 1,754 / 1,787 | 599 / 559 |
+| Total headless import | 2,122 / 2,242 | 1,208 / 1,246 |
+| Main-thread import chunk (headless) | 2,122 / 2,242 | 46 / 38 |
+| Geometry definitions / template hits | 20 / 0 | 1 / 19 |
+| Physical nodes / outputs / final rows | 1,140 / 1,000 / 20 | 1,140 / 1,000 / 20 |
+| Member shafts / actual aggregate shafts / lens material RIDs | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
+
+Windows follow-up still freezes for over a minute at `2455 / 2455`. That counter
+represented activated visual instances before the final rendering wait, not completed
+frames. Native setup completed with 1,095 outputs, 20 aggregates and 115 rows; the
+ordinary DMX process is gated during loading. Neither headless nor llvmpipe results
+prove that this Windows blocker is fixed. The exact Windows engine/driver call is
+not yet identified; full shaft lifecycle changes are deferred.
+
+The readiness wait now distinguishes activated instances, queued batches, pre-draw
+submissions, post-draw acknowledgments, maximum batch time and final barrier time.
+UI activation progress follows acknowledgments and transitions to a separate final
+render-wait label. A drawable window without an acknowledgment for 15 seconds
+fails; a minimized/hidden window explicitly defers and remains cancellable. The
+coordinator now honors failure rather than publishing success and keeps the DMX
+gate through publication and resource diagnostics. This is not a timeout pretending
+a scene is ready, and cannot recover a truly blocked main thread.
+
+`PERAVIZ_LOAD_TELEMETRY=1` also enables bounded `[peraviz-load-progress]` breadcrumbs
+before root visibility, first/midpoint/last activation batches, final wait and
+publication. Pre/post-draw markers distinguish a stalled engine draw from a lost
+callback or stalled continuation. In pinned Godot 4.7.1, `Main::iteration` calls
+`RenderingServer::sync` before draw; `RenderingServerDefault::_draw` emits post-draw
+after `end_frame` but before profile/memory bookkeeping. It is not a GPU completion
+fence. Up to four whole event-loop gaps are reported during this setup generation;
+trace-off has no persistent playback instrumentation. Capture the last breadcrumbs
+from the owner Windows run before assigning the remaining blocker to a specific
+shader, driver or engine operation.
+
+A focused Forward+ graphical regression covers normal production import (51 outputs,
+2 rows, 1 aggregate), lost acknowledgments and unavailable-window cancellation.
+The latter remain responsive and cannot publish success. Inspection also confirmed
+that five independent Vector Prism materials share one external Shader resource;
+deep-copying materials does not imply five shader compilations in Godot 4.7.1.
+Member shaft/material allocation remains a separate lifecycle optimization.
+
+The later Windows report showed “Finishing scene setup”, a caption previously
+shared by pre-render navigation/defaults and post-render publication. Its supplied
+log did not contain telemetry, so that screenshot alone cannot identify the call.
+Those phases now have distinct captions and inspector/preferences/resource markers;
+`-- --peraviz-load-trace` enables the same bounded trace without environment setup.
+
+Compared with main, renderer binding had gained yields between individual material
+creation, Control Group sharing, aggregate binding and final native RID installation.
+Those intermediate configurations can reach graphics preparation before replacement.
+Binding now runs in one main-thread transaction as on main, preserving the same
+resources and groups. The one-fixture graphical probe completed that transaction
+in about 63–90 ms; this is not a Windows prediction. Larger transactions remain a
+responsiveness tradeoff, recorded as `renderer_binding_transaction_ms`; no hard
+8 ms cap is claimed. Hidden inspectors allocate zero row Labels (rather than 656
+for 82 fixtures); visible tables build eight rows per turn and retire stale rebuilds.
+The owner subsequently confirmed that direct MVR import succeeds while PVZ opening
+of the same scene stalls after the summary (6.60 s import, 0.148 s inspector,
+2.675 s resource transaction). PVZ restored saved visual settings after readiness;
+a scalar update could rebuild every group for each physical member. Saved settings
+and patch offset now precede resource construction inside the import generation;
+saved receiver startup and original PVZ preference publication finish before success.
+Bulk visual changes defer member rebinding and rebuild groups once. A generic
+102-output headless regression reproduces 201 global rebuilds / 1,192 ms on the
+old bulk route versus one rebuild / about 69 ms after correction, retaining exact
+nonzero held state, two aggregates and four render rows. The actual saved-project
+opening/reopening route is covered separately from direct MVR import. These timings
+are Linux observations; the corrected Windows PVZ route still needs validation.
+
+Runtime registration previously included synchronous classification. It now follows
+CPU preparation; phase times include yielded waits, so nested phase rows must not
+be added. Warm means a same-content reload in the same process, not a persistent
+semantic cache. Definition work is deliberately rebuilt once per setup generation.
+The loader owns one CPU task, joins it on destruction, drains it on cancellation,
+and transfers data once. Coordinate-debug loading retains the synchronous path.
+
+Efficient scalability observations (cold / reload total; largest main-thread span):
+1 fixture: 0.16 / 0.17 s, about 9 ms; 100 fixtures: 6.0 / 6.2 s, 221 / 184 ms;
+250 fixtures: 15.6 / 16.0 s, 627 / 463 ms. Counts remain 50/5,000/12,500 physical
+outputs and 1/100/250 actual aggregate shafts. Native classifier allocations for
+1/20/100/250 fixtures were 1,056/21,776/114,614/288,632, showing generation-local
+work rather than persistent growth. The picking-body capacity is 65,536; the old
+10,240 default could not retain 12,500 existing per-mesh selection bodies.
+
+Remaining bounded bottleneck: bulk setup payload and renderer manifest serialization
+still execute on the main thread, reaching roughly 0.6 seconds at 12,500 outputs.
+A separate paged setup-contract PR should address this; there is no claim of a hard
+8 ms cap on individual engine/native operations. Member shafts are still allocated
+before actual aggregate acceptance. Lazy shafts should be a separate resource-owner
+change: keep physical anchors/lenses, publish accepted membership before shaft
+allocation, recreate fallback shafts per renderer generation and replay held state
+before readiness. Current shared Control Group binding requires existing shafts;
+this PR preserves its tested lifecycle rather than partially replacing it.
+
+Developer comparisons are centralized at setup boundaries:
+`PERAVIZ_LOAD_TELEMETRY=1` emits bounded progress breadcrumbs and one final JSON summary;
+`PERAVIZ_SETUP_REFERENCE_GEOMETRY=1` disables geometry templates;
+`PERAVIZ_SETUP_REFERENCE_INDEXES=1` selects native/reference classification and
+Godot descendant scans. They never enter canonical scene data or live frame loops.
+Run `python3 tests/integration/benchmark_scene_setup.py --godot "$GODOT_BIN" --output work/setup.json`
+for generated 1/20/100/250 cases (add `--reference --instances 20` for a bounded A/B).
+Add `--rendered --instances 20` on a graphical machine for actual Forward+ loading,
+first focused click and DMX-start observations (including cold/reload frame gaps).
+Native and normal-import regressions compare exact ordered identities, transforms,
+controls, optics, resources, groups and rejection reasons, including selected modes,
+references, multiple wheels, unresolved authority, cancellation and scene revision.
 
 ## Current roadmap and evidence
 
