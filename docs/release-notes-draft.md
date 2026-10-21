@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Corrected render-readiness failure propagation and misleading activation completion. Loading now distinguishes activation from final render acknowledgment, defers explicitly for an unavailable window, and fails missing acknowledgments while drawable without publishing an incomplete scene. Opt-in bounded breadcrumbs locate engine-draw versus callback/continuation stalls; the owner Windows first-render blocker remains unconfirmed.
+
 - Split initial graphics activation into batches of at most 16 visual instances, with visible progress, to avoid submitting the full hidden scene at once. Original visibility, transforms, shared resources and DMX generation gating are preserved, including cancellation.
 - Fixed premature loading completion: an opaque loading shield now remains over the completed scene during initial graphics submission. Load telemetry distinguishes import chunks from full event-loop/render gaps. Shader/driver stalls during loading remain measurable; headless timing is not a Windows responsiveness guarantee.
 - Scene loading now shows animated feedback before preparation, performs CPU parsing/classification in one owned native task, and batches main-thread node/target construction. Phase labels identify the current operation. Partial scenes remain hidden and DMX application waits for registration and actual initial rendered frames; cancellation/reload retires the setup generation.

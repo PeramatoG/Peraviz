@@ -19,7 +19,7 @@ func _heartbeat() -> void:
 	for child in app.get_children():
 		if child.get_script() == preload("res://scripts/scene_loading/scene_loading_overlay.gd"):
 			observed_phases[child._phase_label.text] = true
-			if child._phase_label.text == "Preparing first rendered frames…":
+			if child._phase_label.text == "Activating scene visuals…":
 				rendering_kept_gated = rendering_kept_gated and app._scene_loading and child.get_child(0).color.a == 1.0
 				if cancel_during_render:
 					cancel_during_render = false
@@ -117,7 +117,7 @@ func _run() -> void:
 	test.check(loading_frames >= 10 and result["load_metrics"]["yielded_frames"] >= 10, "Main event loop processes frames throughout import")
 	test.check(result["load_metrics"]["physical_outputs"] == 1020 and result["load_metrics"]["final_render_rows"] == 40, "Physical projected and emission-only outputs survive normal aggregate binding")
 	test.check(app.proxies_root.visible and not app._scene_loading, "Ready scene becomes visible only after registration")
-	test.check(observed_phases.size() >= 3 and observed_phases.has("Preparing first rendered frames…"), "Loading feedback names changing setup and graphics phases")
+	test.check(observed_phases.size() >= 3 and observed_phases.has("Activating scene visuals…"), "Loading feedback names changing setup and graphics phases")
 	test.check(rendering_kept_gated and result["load_metrics"]["first_render_ms"] > 0, "Rendering prepares behind modal feedback before DMX readiness")
 	test.check(result["load_metrics"]["max_event_loop_gap_ms"] > 0, "Telemetry includes complete render/event-loop intervals")
 	var registry: RefCounted = app._native_target_registry

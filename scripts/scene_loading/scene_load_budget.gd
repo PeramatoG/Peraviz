@@ -22,6 +22,8 @@ var _previous_frame_us: int = 0
 var _observing: bool = false
 var max_block_phase: String = "loading_feedback"
 var frame_budget_us: int = 8000
+var trace_enabled: bool = OS.get_environment("PERAVIZ_LOAD_TELEMETRY") == "1"
+var _gap_breadcrumbs: int = 0
 
 func valid() -> bool:
 	return current.is_valid() and bool(current.call())
@@ -58,4 +60,14 @@ func _observe_frame() -> void:
 	if gap > max_event_loop_gap_us:
 		max_event_loop_gap_us = gap
 		max_event_loop_gap_phase = phase
+	if trace_enabled and gap >= 1000000 and _gap_breadcrumbs < 4:
+		_gap_breadcrumbs += 1
+		breadcrumb("event_loop_gap", {"gap_ms": gap / 1000.0})
 	_previous_frame_us = now
+
+# Setup-only breadcrumbs leave evidence before a blocked draw prevents a summary.
+func breadcrumb(event: String, values: Dictionary = {}) -> void:
+	if not trace_enabled: return
+	var record: Dictionary = {"event": event, "phase": phase, "monotonic_ms": Time.get_ticks_msec()}
+	record.merge(values)
+	print("[peraviz-load-progress] ", JSON.stringify(record))

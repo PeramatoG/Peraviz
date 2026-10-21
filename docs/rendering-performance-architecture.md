@@ -43,48 +43,39 @@ observations, not CI thresholds or Windows predictions.
 | Physical nodes / outputs / final rows | 1,140 / 1,000 / 20 | 1,140 / 1,000 / 20 |
 | Member shafts / actual aggregate shafts / lens material RIDs | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
 
-Headless runs do not submit a real Forward+ frame and cannot establish GUI readiness.
-The first Windows follow-up on this branch reported a minute-long hang after the
-loading indicator disappeared and about 30 FPS during playback; this is not an
-accepted Windows responsiveness or playback result. The supplied log still retained
-1,095 physical outputs, 20 aggregate resources and 115 renderer rows. A real graphical
-Linux probe reproduced expensive rendering after the former readiness boundary;
-starting the DMX receiver itself took about 1 ms. No button/focus handler performs
-fixture compilation. The completed scene now renders behind opaque loading feedback
-for three `frame_post_draw` submissions before DMX/input readiness is published.
-This does not promise driver/GPU completion or eliminate first-use shader stalls.
-`first_render_ms` and `max_event_loop_gap_ms` (plus phase) expose that remaining
-boundary separately from `max_main_thread_block_ms`, which measures import chunks.
+Windows follow-up still freezes for over a minute at `2455 / 2455`. That counter
+represented activated visual instances before the final rendering wait, not completed
+frames. Native setup completed with 1,095 outputs, 20 aggregates and 115 rows; the
+ordinary DMX process is gated during loading. Neither headless nor llvmpipe results
+prove that this Windows blocker is fixed. The exact Windows engine/driver call is
+not yet identified; full shaft lifecycle changes are deferred.
 
-Earlier render-gated probe (before staged activation), generated 20 × 50 outputs,
-Forward+ Vulkan, Linux software
-GPU (llvmpipe), 320 × 240. Driver cache state is uncontrolled: these observations
-check the readiness boundary, not a hardware speedup or Windows latency estimate.
+The readiness wait now distinguishes activated instances, queued batches, pre-draw
+submissions, post-draw acknowledgments, maximum batch time and final barrier time.
+UI activation progress follows acknowledgments and transitions to a separate final
+render-wait label. A drawable window without an acknowledgment for 15 seconds
+fails; a minimized/hidden window explicitly defers and remains cancellable. The
+coordinator now honors failure rather than publishing success and keeps the DMX
+gate through publication and resource diagnostics. This is not a timeout pretending
+a scene is ready, and cannot recover a truly blocked main thread.
 
-| Observation | Previous readiness | Render-gated readiness |
-| --- | ---: | ---: |
-| Import return, including new render wait | 34.4 s | 36.4 s |
-| Largest observed post-ready gap before first light activation | 4.59 s | < 0.25 s |
-| DMX receiver start call | 1.05 ms | 0.81 ms |
-| Physical outputs / renderer rows / actual aggregates | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
+`PERAVIZ_LOAD_TELEMETRY=1` also enables bounded `[peraviz-load-progress]` breadcrumbs
+before root visibility, first/midpoint/last activation batches, final wait and
+publication. Pre/post-draw markers distinguish a stalled engine draw from a lost
+callback or stalled continuation. In pinned Godot 4.7.1, `Main::iteration` calls
+`RenderingServer::sync` before draw; `RenderingServerDefault::_draw` emits post-draw
+after `end_frame` but before profile/memory bookkeeping. It is not a GPU completion
+fence. Up to four whole event-loop gaps are reported during this setup generation;
+trace-off has no persistent playback instrumentation. Capture the last breadcrumbs
+from the owner Windows run before assigning the remaining blocker to a specific
+shader, driver or engine operation.
 
-Long first-use shader/driver stalls can still block the event loop during loading.
-The next Windows validation confirmed the minute-long freeze during the named
-first-render phase, after all control/group setup logs completed. Keeping the modal
-shield alone did not fix it. Initial activation now hides locally visible visual
-instances while the root is hidden, then restores at most 16 per actual rendered
-batch. This bounds the number of new instances entering the backend per frame,
-without changing official data, resources, local visibility or final render rows.
-Cancellation restores flags beneath the hidden retired root. The phase label shows
-activation progress, and summary metrics include instance count, batch count and
-maximum full batch wall time. Individual shader/driver operations are still atomic;
-this is not a guaranteed millisecond cap or a claim that Windows is already fixed.
-A bounded graphical staging probe retained 1,000 outputs, 20 rows and 20 aggregates;
-2,020 locally visible visual instances were activated in 127 batches. Software-GPU
-batch wall time reached 0.76 s; the animation/event loop advanced between batches.
-Staging adds frame overhead (especially on software rendering), so total import
-time is not expected to improve just by adding render boundaries. The objective
-here is to reduce one large activation stall without weakening scene readiness.
+A focused Forward+ graphical regression covers normal production import (51 outputs,
+2 rows, 1 aggregate), lost acknowledgments and unavailable-window cancellation.
+The latter remain responsive and cannot publish success. Inspection also confirmed
+that five independent Vector Prism materials share one external Shader resource;
+deep-copying materials does not imply five shader compilations in Godot 4.7.1.
+Member shaft/material allocation remains a separate lifecycle optimization.
 
 Runtime registration previously included synchronous classification. It now follows
 CPU preparation; phase times include yielded waits, so nested phase rows must not
@@ -112,7 +103,7 @@ before readiness. Current shared Control Group binding requires existing shafts;
 this PR preserves its tested lifecycle rather than partially replacing it.
 
 Developer comparisons are centralized at setup boundaries:
-`PERAVIZ_LOAD_TELEMETRY=1` emits one end-of-load JSON summary;
+`PERAVIZ_LOAD_TELEMETRY=1` emits bounded progress breadcrumbs and one final JSON summary;
 `PERAVIZ_SETUP_REFERENCE_GEOMETRY=1` disables geometry templates;
 `PERAVIZ_SETUP_REFERENCE_INDEXES=1` selects native/reference classification and
 Godot descendant scans. They never enter canonical scene data or live frame loops.

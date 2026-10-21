@@ -669,6 +669,7 @@ func _on_file_selected(path: String) -> void:
 	_load_mvr_scene(path, "mvr")
 
 var _scene_loading: bool = false
+var _scene_load_failed: bool = false
 var _scene_load_generation: int = 0
 var _scene_setup_resource_metrics: Dictionary = {}
 
@@ -2922,7 +2923,7 @@ func _refresh_dmx_fixture_bindings(budget: SceneLoadBudget = null) -> bool:
 	return _fixture_light_apply_service.is_dense_presentation_active()
 
 func _process(delta: float) -> void:
-	if _scene_loading: return
+	if _scene_loading or _scene_load_failed: return
 	if _native_target_registry != null:
 		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:

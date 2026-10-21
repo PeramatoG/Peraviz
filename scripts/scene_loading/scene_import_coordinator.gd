@@ -1,7 +1,7 @@
 extends RefCounted
 
 # Owns one asynchronous application import, keeping publication and generation retirement together.
-static func load_scene(app: Node, path: String, loaded_file_type: String, remember_loaded_file: bool) -> Dictionary:
+static func load_scene(app: Node, path: String, loaded_file_type: String, remember_loaded_file: bool, render_readiness: RefCounted = null) -> Dictionary:
 	if app._scene_loading:
 		return {"ok": false, "error": "scene import already running", "node_count": 0}
 	var load_started := Time.get_ticks_usec()
@@ -9,6 +9,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		app._status_presenter.set_scene_state_loading(path)
 	app._clear_scene()
 	app._scene_loading = true
+	app._scene_load_failed = false
 	app._scene_setup_resource_metrics.clear()
 	var loading_overlay := preload("res://scripts/scene_loading/scene_loading_overlay.gd").new()
 	app.add_child(loading_overlay)
@@ -48,17 +49,26 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		budget,
 		app._dmx_controller.get_universe_offset()
 	)
-	var render_readiness := preload("res://scripts/scene_loading/scene_render_readiness.gd").new()
+	if render_readiness == null:
+		render_readiness = preload("res://scripts/scene_loading/scene_render_readiness.gd").new()
 	var first_render_started := Time.get_ticks_usec()
 	if bool(import_result.get("ok", false)) and budget.valid():
 		budget.phase = "first_render"
 		# Draw this phase before exposing a large scene to the rendering backend.
 		await budget.checkpoint(true)
 		await budget.checkpoint(true)
-		if budget.valid(): await render_readiness.prepare_scene(app.proxies_root, budget)
+		if budget.valid() and not await render_readiness.prepare_scene(app.proxies_root, budget):
+			import_result["ok"] = false
+			import_result["error"] = render_readiness.error_message if not render_readiness.error_message.is_empty() else "scene import cancelled"
 	var first_render_ms := (Time.get_ticks_usec() - first_render_started) / 1000.0
 	if not budget.valid():
 		import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
+	if bool(import_result.get("ok", false)):
+		budget.phase = "publish_scene"
+		budget.breadcrumb("scene_publish_begin")
+		await budget.checkpoint(true)
+		if not budget.valid():
+			import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
 	if bool(import_result.get("ok", false)):
 		app._refresh_fixture_inspection_panel()
 		app._loaded_mvr_path = path
@@ -73,26 +83,29 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 			app._status_presenter.set_scene_state_load_error(error_message)
 	if not bool(import_result.get("ok", false)):
 		app._clear_scene()
+	budget.breadcrumb("scene_publish_end", {"ok": bool(import_result.get("ok", false))})
 	# Only remove feedback after scene registration and real rendered frames complete.
-	loading_overlay.queue_free()
-	budget.finish()
-	app._scene_loading = false
 	var metrics: Dictionary = import_result.get("load_metrics", {})
 	metrics.merge(render_readiness.metrics)
 	metrics["first_render_ms"] = first_render_ms
+	metrics.merge(app._scene_setup_resource_metrics)
+	if app._fixture_light_apply_service.is_dense_presentation_active():
+		var counts: Dictionary = app._fixture_light_apply_service._dense_adapter.diagnostics()
+		for key in ["physical_outputs", "final_render_rows", "allocated_member_shafts", "aggregate_shaft_resources", "unique_lens_material_rids"]:
+			metrics[key] = counts.get(key, 0)
+	budget.breadcrumb("scene_resources_sampled")
+	loading_overlay.queue_free()
+	budget.finish()
 	metrics["max_event_loop_gap_phase"] = budget.max_event_loop_gap_phase
 	metrics["max_event_loop_gap_ms"] = budget.max_event_loop_gap_us / 1000.0
 	metrics["total_ms"] = (Time.get_ticks_usec() - load_started) / 1000.0
 	metrics["max_main_thread_block_ms"] = budget.max_block_us / 1000.0
 	metrics["max_main_thread_block_phase"] = budget.max_block_phase
 	metrics["yielded_frames"] = budget.yields
-	metrics.merge(app._scene_setup_resource_metrics)
-	if app._fixture_light_apply_service.is_dense_presentation_active():
-		var counts: Dictionary = app._fixture_light_apply_service._dense_adapter.diagnostics()
-		for key in ["physical_outputs", "final_render_rows", "allocated_member_shafts", "aggregate_shaft_resources", "unique_lens_material_rids"]:
-			metrics[key] = counts.get(key, 0)
+	app._scene_load_failed = not bool(import_result.get("ok", false))
+	app._scene_loading = false
 	import_result["load_metrics"] = metrics
-	if OS.get_environment("PERAVIZ_LOAD_TELEMETRY") == "1":
+	if budget.trace_enabled:
 		print("[peraviz-load] ", JSON.stringify(metrics))
 	return import_result
 

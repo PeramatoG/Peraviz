@@ -6,7 +6,12 @@ This document is the source of truth for the active runtime. The [GDTF support m
 
 Native C++ owns MVR/GDTF parsing, selected-mode semantic compilation, fixture patch and DMX source programs, physical-value evaluation, target-oriented state, dirty detection, and render-ready frame assembly. The compiled setup model is `CompiledRuntimeScene`.
 
-Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes.
+Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes. C++ is the simulation and calculation
+core; Godot is the presentation engine. Future native dependency evaluation,
+physical composition and Render Group reduction connect directly to compact
+presentation snapshots. Godot must not shuttle physical-state buffers between
+native calculation stages. Any future parallel evaluation and race resolution
+belong in C++; no Godot worker threads are introduced.
 
 Scene import uses one owned native preparation task for archive/XML work, immutable
 geometry expansion, selected-mode compilation and Control/Render Group classification.
@@ -18,8 +23,13 @@ behind an opaque modal shield before its removal. This avoids exposing the whole
 hidden scene to the graphics backend in one frame and restores exact local
 visibility, transforms and resource identity; cancellation hides the retired
 generation before restoring its local flags. Final readiness waits for three
-actual `frame_post_draw` submissions, with a process-frame fallback only in
-headless mode; process-frame yields alone do not prove graphical readiness. Phase text reports
+render-server `frame_post_draw` acknowledgments, with a process-frame fallback
+only in headless mode. These signals are not GPU fences. Activation counts alone
+do not establish readiness. While hidden/minimized, readiness explicitly defers;
+a drawable window missing acknowledgments for 15 seconds fails and retires the
+generation. The coordinator propagates failure and keeps DMX gated through resource
+diagnostics/publication; failed imports remain gated until a later successful load.
+This watchdog cannot interrupt a blocked engine/driver call. Phase text reports
 native preparation through an atomic token and Godot setup on the main thread.
 The loading indicator gates edits and DMX application against partial targets. Cancellation drains the task and clears
 partial resources; native code never mutates the SceneTree from that task.

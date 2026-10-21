@@ -19,7 +19,10 @@ const PHASE_LABELS: Dictionary = {
 	"native_runtime_install": "Installing fixture controls…",
 	"fixture_prewarm": "Preparing lighting…",
 	"finalize": "Finishing scene setup…",
-	"first_render": "Preparing first rendered frames…",
+	"first_render": "Activating scene visuals…",
+	"render_completion": "Waiting for first rendered frames…",
+	"render_window_deferred": "Restore the window to finish preparing the scene…",
+	"publish_scene": "Finishing scene setup…",
 }
 var _phase_label: Label
 
@@ -69,4 +72,4 @@ func set_phase(value: String) -> void:
 
 func set_render_progress(completed: int, total: int) -> void:
 	if _phase_label != null:
-		_phase_label.text = "%s %d / %d" % [PHASE_LABELS["first_render"], completed, total]
+		_phase_label.text = "Preparing visuals: %d / %d; rendering…" % [completed, total]
