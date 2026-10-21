@@ -11,10 +11,11 @@ var dmx := PackedByteArray()
 func _initialize() -> void:
 	call_deferred("_run")
 
-func _generate(pixels: bool) -> String:
-	var path: String = ProjectSettings.globalize_path("user://render_group_%s.mvr" % str(pixels))
+func _generate(pixels: bool, load_case: bool = false) -> String:
+	var path: String = ProjectSettings.globalize_path("user://render_group_%s_%s.mvr" % [str(pixels), str(load_case)])
 	var args := PackedStringArray([ProjectSettings.globalize_path("res://tests/integration/generate_render_group_fixture.py"), path])
 	if pixels: args.append("--pixels")
+	if load_case: args.append("--load")
 	test.check(OS.execute("python3", args) == 0, "Standard MVR/GDTF synthetic fixture is generated")
 	return path
 
@@ -113,6 +114,27 @@ func _run() -> void:
 		if values[1] > 0.99 and values[3] < 0.01: red_pixels += 1
 		if values[3] > 0.99 and values[1] < 0.01: blue_pixels += 1
 	test.check(red_pixels == 25 and blue_pixels == 25 and not first.is_empty(), "All individual native pixels remain exact behind the mixed shaft")
+	_load(_generate(false, true))
+	counts = adapter.diagnostics()
+	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 20 and counts["aggregate_shaft_resources"] == 20,
+		"Twenty production-imported compact sources retain 1000 physical outputs and allocate exactly 20 aggregate shafts")
+	dmx.fill(0)
+	for f in range(20):
+		dmx[f*16] = 200
+		dmx[f*16+3] = 160
+		dmx[f*16+4] = 255
+	await _apply()
+	adapter.consume_diagnostics()
+	for f in range(20):
+		dmx[f*16+4] = 64
+		dmx[f*16+6] = 255
+	await _apply()
+	counts = adapter.consume_diagnostics()
+	test.check(counts["visible_member_shafts"] == 0 and counts["visible_aggregate_shafts"] == 20 and counts["total_visible_vector_prism_shafts"] == 20,
+		"The 1000-output application graph renders 20 actual shafts and no member shafts")
+	test.check(counts["renderer_outputs_processed"] == 20 and counts["native_dirty_outputs"] == 1000,
+		"One shared Color tick crosses the production boundary as 20 render rows rather than 1000 physical rows")
+	test.check(counts["packed_buffer_bytes"] == 20 * 56, "The 1000-output application's packed payload is renderer-sized")
 	app._clear_scene()
 	app.queue_free()
 	service = null
