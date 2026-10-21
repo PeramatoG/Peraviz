@@ -96,7 +96,7 @@ func aggregate_outputs() -> Array:
 func counts(adapter: RefCounted) -> Dictionary:
 	var resource_counts: Dictionary = {"render_groups": rows.size(), "final_render_rows": rows.size(),
 		"godot_accepted_aggregates": _aggregates.size(), "godot_rejected_aggregates": native_aggregates - _aggregates.size(), "godot_binding_rejections": binding_rejections.duplicate(), "aggregated_groups": _aggregates.size(), "aggregated_members": 0,
-		"individual": 0, "largest_render_group": 0, "physical_projected_outputs": 0,
+		"individual": 0, "largest_render_group": 0, "physical_projected_outputs": adapter._surface_counts.projected_outputs,
 		"allocated_member_shafts": 0, "visible_member_shafts": 0, "aggregate_shaft_resources": 0,
 		"visible_aggregate_shafts": 0, "total_visible_vector_prism_shafts": 0}
 	for row in rows:
@@ -105,7 +105,6 @@ func counts(adapter: RefCounted) -> Dictionary:
 		else: resource_counts["individual"] += 1
 	for output in adapter._outputs:
 		for handle in output.lights:
-			if handle.projected: resource_counts["physical_projected_outputs"] += 1
 			if is_instance_valid(handle.beam):
 				resource_counts["allocated_member_shafts"] += 1
 				if handle.beam.is_visible_in_tree(): resource_counts["visible_member_shafts"] += 1
