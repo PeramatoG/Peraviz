@@ -358,6 +358,11 @@ void parse_wheels(tinyxml2::XMLElement *root, CompiledGdtfFixtureType &fixture) 
             int32_t slot_index = 1;
             for (tinyxml2::XMLElement *slot_node : dmx::collect_direct_children_by_name(wheel_node, "slot")) {
                 ParsedWheelSlot slot;
+                slot.has_unproven_presentation = slot_node->FirstChildElement() != nullptr;
+                for (const tinyxml2::XMLAttribute *attribute=slot_node->FirstAttribute();attribute;attribute=attribute->Next()) {
+                    const std::string name=dmx::lower_ascii(attribute->Name());
+                    if (name!="name" && name!="color" && name!="filter" && name!="mediafilename") slot.has_unproven_presentation=true;
+                }
                 slot.slot_index = slot_index++;
                 slot.name = dmx::trim_ascii(read_attr(slot_node, "Name", "name"));
                 slot.media_file_name = dmx::trim_ascii(read_attr(slot_node, "MediaFileName", "mediafilename"));

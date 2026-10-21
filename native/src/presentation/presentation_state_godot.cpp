@@ -132,7 +132,7 @@ Dictionary PeravizPresentationState::get_sizes() const {
     Dictionary sizes;
     sizes["diagnostic_skip_lens_writes_active"]=lens_writes_suppressed_;
     sizes["diagnostic_skip_lens_writes_requested"]=diagnostic_skip_lens_writes_;
-    sizes["presentation_contract_revision"]=3;
+    sizes["presentation_contract_revision"]=4;
     sizes["extension_build"]=String(__DATE__ " " __TIME__);
     sizes["unique_lens_material_rids"]=int64_t(materials_.size());
     sizes["physical_outputs"]=int64_t(state_.bindings().size()); sizes["render_rows"]=int64_t(projection_.row_count());

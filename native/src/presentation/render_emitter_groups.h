@@ -20,7 +20,7 @@ struct EmitterSpatialDescriptor {
     std::vector<std::string> axis_lineage;
     EmitterVector origin{}, direction{0, -1, 0};
     double aperture_radius = 0.0, nominal_flux = 0.0;
-    bool reliable = false;
+    bool reliable = false, approximate_color = false;
     std::string rejection_reason = "geometry_lineage";
 };
 // A renderer source has exact inverse physical/control membership even when pixels mix.
@@ -31,6 +31,7 @@ struct RenderEmitterGroup {
     std::string anchor_geometry_key;
     EmitterVector origin{}, direction{0, -1, 0};
     std::string rejection_reason;
+    size_t approximate_color_members = 0;
     size_t candidate_members = 0; // Count each optical bucket once, including rejected buckets.
     double nominal_flux = 0.0, aperture_radius = 0.0;
     double beam_angle = 25.0, field_angle = 25.0, packing_density = 0.0;

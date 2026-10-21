@@ -27,8 +27,9 @@ godot::Array serialize_render_groups(const std::vector<RenderEmitterGroup> &grou
 // Reports classification outcomes with disjoint physical rejection counts and bucket-counted candidates.
 godot::Dictionary serialize_render_group_diagnostics(const std::vector<RenderEmitterGroup> &groups) {
     godot::Dictionary out, rejected;
-    int64_t candidates=0, accepted=0, members=0;
+    int64_t candidates=0, accepted=0, members=0, approximate=0;
     for (const auto &group:groups) {
+        approximate+=group.approximate_color_members;
         if (group.candidate_members>=AggregationPolicy::minimum_members) ++candidates;
         if (group.presentation==RenderPresentationClass::Aggregated) { ++accepted; members+=group.physical_ids.size(); }
         else {
@@ -37,6 +38,7 @@ godot::Dictionary serialize_render_group_diagnostics(const std::vector<RenderEmi
         }
     }
     out["native_aggregate_candidates"]=candidates; out["native_accepted_aggregates"]=accepted;
+    out["native_approximate_projected_color_outputs"]=approximate;
     out["native_aggregated_members"]=members; out["native_rejected_physical"]=rejected;
     return out;
 }

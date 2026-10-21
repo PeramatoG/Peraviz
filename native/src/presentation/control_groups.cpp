@@ -1,4 +1,5 @@
 #include "presentation/control_groups.h"
+#include "presentation/wheel_presentation_eligibility.h"
 #include <algorithm>
 #include <map>
 #include <cmath>
@@ -13,14 +14,15 @@ using namespace runtime;
 using ColorInput = std::tuple<int32_t, int32_t, double, bool, int32_t, int32_t>;
 struct ControlSignature {
     int32_t fixture = 0;
-    std::vector<int32_t> dimmer, zoom;
+    std::vector<int32_t> dimmer, zoom, approximated_effects;
     std::vector<ColorInput> color;
+    std::vector<WheelControlSignature> wheels;
     bool additive = false;
     std::tuple<std::string, bool, bool, double, double, double, double, double, double, double, double, double, double> optics;
     // Orders exact setup authority and optics without hashing collisions or live values.
     bool operator<(const ControlSignature &other) const {
-        return std::tie(fixture, dimmer, zoom, color, additive, optics) <
-            std::tie(other.fixture, other.dimmer, other.zoom, other.color, other.additive, other.optics);
+        return std::tie(fixture, dimmer, zoom, approximated_effects, color, wheels, additive, optics) <
+            std::tie(other.fixture, other.dimmer, other.zoom, other.approximated_effects, other.color, other.wheels, other.additive, other.optics);
     }
 };
 // Uses canonical GDTF ancestry, never fixture names or geometry-name heuristics.
@@ -29,7 +31,7 @@ bool controls(const std::string &ancestor, const std::string &beam) {
 }
 }
 // Proves open projected sharing from compiled selected-mode authorities; ambiguous
-// overlap, any wheel/gobo ownership and unsupported profiles remain individual.
+// overlap, patterned/projector requirements and unsupported optical profiles remain individual.
 ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene &scene) {
     using namespace runtime;
     std::map<ControlSignature, size_t> signatures;
@@ -39,6 +41,7 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
     for (const auto &beam : scene.beam_profiles) {
         ControlSignature s;
         s.fixture = beam.fixture_id;
+        s.approximated_effects=beam.approximated_color_source_programs;
         s.optics = {beam.beam_type, beam.beam_angle_explicit, beam.field_angle_explicit, beam.effective_luminous_flux_lm, beam.beam_angle_deg, beam.field_angle_deg, beam.beam_radius_m,
             beam.throw_ratio, beam.rectangle_ratio, beam.color_temperature, beam.luminous_flux,
             beam.projected_lumen_scale, beam.emission_lumen_scale};
@@ -48,7 +51,13 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
                 beam.effective_luminous_flux_lm, beam.projected_lumen_scale, beam.emission_lumen_scale})
             if (!std::isfinite(value)) safe = false;
         if (has_projector_dependency(scene, beam)) { safe = false; ++analysis.fallbacks.projector_gobo; }
-        if (has_wheel_dependency(scene, beam)) { safe = false; ++analysis.fallbacks.wheel; }
+        const auto wheel=analyze_wheel_presentation(scene,beam);
+        s.wheels=wheel.controls;
+        if (!wheel.supported()) { safe = false; ++analysis.fallbacks.wheel; }
+        for (int32_t id:s.approximated_effects) {
+            const auto source=std::find_if(scene.source_programs.begin(),scene.source_programs.end(),[&](const auto &p) { return p.program_id==id; });
+            if (source==scene.source_programs.end() || !source->activation.valid) safe=false;
+        }
         for (const auto &property : scene.properties) {
             if (property.fixture_id != beam.fixture_id || !controls(property.geometry_name, beam.geometry_path)) continue;
             if (property.semantic == CompiledSemantic::Dimmer || property.semantic == CompiledSemantic::Zoom) {
@@ -81,10 +90,10 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
         if (first == first_signature.end()) first_signature.emplace(beam.fixture_id, s);
         else {
             if (s.dimmer != first->second.dimmer) ++analysis.fallbacks.dimmer;
-            if (s.color != first->second.color || s.additive != first->second.additive) ++analysis.fallbacks.color;
+            if (s.color != first->second.color || s.wheels != first->second.wheels || s.approximated_effects != first->second.approximated_effects || s.additive != first->second.additive) ++analysis.fallbacks.color;
             if (s.optics != first->second.optics || s.zoom != first->second.zoom) ++analysis.fallbacks.optics;
         }
-        if (!safe && !has_projector_dependency(scene, beam) && !has_wheel_dependency(scene, beam)) ++analysis.fallbacks.ambiguous;
+        if (!safe && !has_projector_dependency(scene, beam) && wheel.supported()) ++analysis.fallbacks.ambiguous;
         if (first != first_signature.end()) {
             // Photometric splits are distinct from optical-family splits in the startup audit.
             const auto &base = *std::find_if(scene.beam_profiles.begin(), scene.beam_profiles.end(), [&](const auto &p) { return p.fixture_id == beam.fixture_id; });
@@ -109,12 +118,6 @@ bool has_projector_dependency(const runtime::CompiledRuntimeScene &scene, const 
     for (const auto &b : scene.gobo_bindings)
         if ((b.fixture_id <= 0 || b.fixture_id == beam.fixture_id) && (b.beam_render_target_id <= 0 || b.beam_render_target_id == beam.render_target_id)) return true;
     for (const auto &b : scene.gobo_motion_bindings)
-        if ((b.fixture_id <= 0 || b.fixture_id == beam.fixture_id) && (b.beam_render_target_id <= 0 || b.beam_render_target_id == beam.render_target_id)) return true;
-    return false;
-}
-// Checks the selected-mode wheel's exact output route, including ambiguous unresolved routes.
-bool has_wheel_dependency(const runtime::CompiledRuntimeScene &scene, const runtime::CompiledBeamOpticalProfile &beam) {
-    for (const auto &b : scene.wheel_bindings)
         if ((b.fixture_id <= 0 || b.fixture_id == beam.fixture_id) && (b.beam_render_target_id <= 0 || b.beam_render_target_id == beam.render_target_id)) return true;
     return false;
 }

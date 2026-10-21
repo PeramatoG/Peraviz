@@ -1,4 +1,5 @@
 #include "presentation/render_emitter_groups.h"
+#include "presentation/wheel_presentation_eligibility.h"
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -95,11 +96,13 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
         d.origin=relative.origin;
         // Main's emitter anchor is rotated -90 degrees around X: its -Z light axis is local -Y.
         d.direction=normalized(rotate(relative,{0,-1,0}));
+        const auto wheel=analyze_wheel_presentation(scene,beam);
+        d.approximate_color=wheel.approximate && beam.has_projected_beam;
         d.rejection_reason = !rigid ? "nonrigid_geometry" : !beam.valid ? "invalid_optical_profile" :
             !beam.has_projected_beam ? "emission_only" : (beam.beam_type!="Wash" && beam.beam_type!="Spot") ? "beam_type" :
             (beam.beam_radius_source!="explicit" || !std::isfinite(d.aperture_radius) || d.aperture_radius<=0) ? "beam_radius_provenance" :
             (!std::isfinite(d.nominal_flux) || d.nominal_flux<=0) ? "nominal_flux" :
-            has_projector_dependency(scene,beam) ? "projector_dependency" : has_wheel_dependency(scene,beam) ? "wheel_dependency" : "";
+            has_projector_dependency(scene,beam) ? "projector_dependency" : !wheel.supported() ? wheel.rejection : "";
         d.reliable=d.rejection_reason.empty();
         out.push_back(d);
     }
@@ -141,7 +144,9 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
         double area=0,largest_radius=0;
         V direction{};
         for (size_t i:candidate) {
-            const auto &d=descriptors[i]; group.nominal_flux+=d.nominal_flux;
+            const auto &d=descriptors[i];
+            if (d.approximate_color) ++group.approximate_color_members;
+            group.nominal_flux+=d.nominal_flux;
             group.origin=add(group.origin,mul(d.origin,d.nominal_flux)); direction=add(direction,mul(d.direction,d.nominal_flux));
             area+=d.aperture_radius*d.aperture_radius; largest_radius=std::max(largest_radius,d.aperture_radius);
             group.physical_ids.push_back(d.physical_id);
@@ -165,6 +170,7 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
             out.push_back(std::move(group));
         } else for (size_t i:candidate) {
             RenderEmitterGroup single;
+            single.approximate_color_members=descriptors[i].approximate_color?1:0;
             single.candidate_members=i==candidate.front()?candidate.size():0;
             single.rejection_reason=!descriptors[i].reliable?descriptors[i].rejection_reason:
                 candidate.size()<AggregationPolicy::minimum_members?(descriptors[i].rejection_reason.empty()?"compatible_peers":descriptors[i].rejection_reason):

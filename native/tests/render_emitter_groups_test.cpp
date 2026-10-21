@@ -1,4 +1,5 @@
 #include "presentation/render_group_projection.h"
+#include "presentation/wheel_presentation_eligibility.h"
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
@@ -52,8 +53,67 @@ static Rig make_rig(int fixtures=1,int count=50) {
 }
 // Compiles renderer groups with exact inverse control membership.
 static std::vector<RenderEmitterGroup> groups(const Rig &rig) { return compile_render_emitter_groups(rig.scene,rig.model,compile_control_groups(rig.scene)); }
+// Adds canonical seated Color-wheel bindings without fixture/model-name exceptions.
+static void add_color_wheel(Rig &rig) {
+    CompiledDmxSourceProgram source; source.program_id=777; source.sources={{0,7,0}}; source.attribute_name="Color1";
+    rig.scene.source_programs.push_back(source);
+    CompiledWheelPalette palette; palette.fixture_id=1; palette.wheel_renderer_id=888;
+    CompiledWheelPaletteSlot open; open.slot_index=1; open.uniform_color_presentation=true;
+    auto red=open; red.slot_index=2; red.linear_green=red.linear_blue=red.srgb_green=red.srgb_blue=0; red.gain=0.5f;
+    palette.slots={open,red}; rig.scene.wheel_palettes.push_back(palette);
+    for (const auto &beam:rig.scene.beam_profiles) {
+        CompiledWheelTargetBinding binding; binding.fixture_id=beam.fixture_id; binding.binding_id=10000+beam.render_target_id;
+        binding.beam_render_target_id=beam.render_target_id; binding.source_program_id=777; binding.wheel_renderer_id=888;
+        binding.channel_sets={{0,127,1},{128,255,2}};
+        rig.scene.wheel_bindings.push_back(binding);
+    }
+}
+// Separates proven shared wheel authority from optical aggregation of independent colors.
+static void test_color_wheel_eligibility() {
+    auto rig=make_rig(); add_color_wheel(rig);
+    check(compile_control_groups(rig.scene).size()==1 && groups(rig).size()==1,"Proven seated uniform Color wheels allow shared controls and one optical aggregate");
+    auto independent=rig;
+    auto source=rig.scene.source_programs.back(); source.program_id=778; source.sources[0].address=8;
+    independent.scene.source_programs.push_back(source); independent.scene.wheel_bindings[0].source_program_id=778;
+    check(compile_control_groups(independent.scene).size()==2 && groups(independent).size()==1,"Different wheel authorities split controls while compatible optics still aggregate");
+    for (auto mode:{CompiledWheelMode::Index,CompiledWheelMode::Spin,CompiledWheelMode::Random,CompiledWheelMode::AudioUnsupported,CompiledWheelMode::OtherUnsupported}) {
+        auto unsupported=rig; for (auto &binding:unsupported.scene.wheel_bindings) binding.mode=mode;
+        check(groups(unsupported).size()==1 && groups(unsupported)[0].approximate_color_members==50,"Uniform resolved indexed/temporal approximations aggregate without claiming missing effect fidelity");
+    }
+    auto effects=make_rig();
+    CompiledDmxSourceProgram fx; fx.program_id=778; fx.sources={{0,8,0}};
+    effects.scene.source_programs.push_back(fx); fx.program_id=779; fx.sources[0].address=9; effects.scene.source_programs.push_back(fx);
+    for (auto &beam:effects.scene.beam_profiles) {
+        beam.color_presentation_status=ColorPresentationStatus::UnsupportedEffectApproximation;
+        beam.approximated_color_source_programs={778};
+    }
+    effects.scene.beam_profiles[0].approximated_color_source_programs={779};
+    check(compile_control_groups(effects.scene).size()==2 && groups(effects).size()==1 && groups(effects)[0].approximate_color_members==50,
+        "Independent unsupported FX sources retain exact control authority while sharing resolved optical approximation");
+    auto mixed=rig; auto extra=rig.scene.wheel_bindings[0]; extra.binding_id=99999; extra.mode=CompiledWheelMode::Index; mixed.scene.wheel_bindings.push_back(extra);
+    check(groups(mixed).size()==2,"Overlapping ambiguous wheel control stays conservative regardless of the current mode");
+    auto media=rig; media.scene.wheel_palettes[0].slots[1].media_file_name="pattern";
+    check(groups(media).size()==50,"Patterned slots stay individual even if their current aggregate RGB matches");
+    auto unknown=rig; unknown.scene.wheel_palettes[0].slots[0].uniform_color_presentation=false;
+    check(groups(unknown).size()==50,"Absent setup proof stays conservative, including decoded semantic-only palettes");
+    auto ownership=rig; ownership.scene.wheel_bindings[0].beam_render_target_id=0;
+    check(groups(ownership).size()==50,"Unknown wheel output ownership vetoes the fixture conservatively");
+    ownership=rig; ownership.scene.wheel_bindings[0].fixture_id=0;
+    check(groups(ownership).size()==2,"Unknown fixture ownership vetoes its known output");
+    auto missing=rig; missing.scene.wheel_bindings[0].source_program_id=999;
+    check(groups(missing).size()==2,"Missing source authority remains individual");
+    missing=rig; missing.scene.wheel_palettes.clear(); check(groups(missing).size()==50,"Missing wheel palettes remain individual");
+    auto overlap=rig; extra=rig.scene.wheel_bindings[0]; extra.binding_id=99999; overlap.scene.wheel_bindings.push_back(extra);
+    check(groups(overlap).size()==2,"Overlapping wheel functions retain conservative fallback");
+    auto zoom=rig; CompiledComponentProperty property; property.fixture_id=1; property.property_id=9090; property.semantic=CompiledSemantic::Zoom;
+    property.geometry_name=rig.scene.beam_profiles[0].geometry_path; property.contributors.push_back({777,1}); zoom.scene.properties.push_back(property);
+    check(groups(zoom).size()==2,"A uniform Color wheel never overrides independent Zoom authority");
+    auto gobo=rig; CompiledGoboMotionBinding motion; motion.fixture_id=1; motion.beam_render_target_id=1; gobo.scene.gobo_motion_bindings.push_back(motion);
+    check(groups(gobo).size()==2,"Color-only wheel eligibility never bypasses gobo motion ownership");
+}
 // Exercises geometry counterexamples, mixed pixel radiometry, compact rows and allocation-free scaling.
 int main() {
+    test_color_wheel_eligibility();
     auto rig=make_rig();
     auto render=groups(rig);
     check(render.size()==1 && render[0].presentation==RenderPresentationClass::Aggregated && render[0].physical_ids.size()==50,"Compact common-aperture sources classify as one aggregate");

@@ -153,6 +153,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/presentation/control_groups.cpp
+        src/presentation/wheel_presentation_eligibility.cpp
         src/presentation/dense_presentation_state.cpp
         src/presentation/render_emitter_groups.cpp
         src/presentation/render_group_projection.cpp
@@ -215,6 +216,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_render_emitter_group_tests
         tests/render_emitter_groups_test.cpp
         src/presentation/control_groups.cpp
+        src/presentation/wheel_presentation_eligibility.cpp
         src/presentation/render_emitter_groups.cpp
         src/presentation/render_group_projection.cpp
         src/presentation/dense_presentation_state.cpp
@@ -225,6 +227,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_control_group_tests
         tests/presentation_control_groups_test.cpp
         src/presentation/control_groups.cpp
+        src/presentation/wheel_presentation_eligibility.cpp
         src/presentation/dense_presentation_state.cpp
     )
     target_include_directories(peraviz_native_control_group_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -233,6 +236,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_dense_presentation_tests
         tests/dense_presentation_state_test.cpp
         src/presentation/control_groups.cpp
+        src/presentation/wheel_presentation_eligibility.cpp
         src/presentation/dense_presentation_state.cpp
     )
     target_include_directories(peraviz_native_dense_presentation_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -367,6 +371,7 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_visual_runtime_tests
         tests/control_group_compiler_test.cpp
         src/presentation/control_groups.cpp
+        src/presentation/wheel_presentation_eligibility.cpp
         tests/visual_runtime_core_test.cpp
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp

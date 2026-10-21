@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Color-wheel presentation now permits combined shafts for compatible compact emitters, including explicitly approximate Spin/FX behavior, while preserving canonical physical state and control authority. Gobo/projector and incompatible optical dependencies retain individual fallback; unsupported effect fidelity remains explicitly diagnosed. Startup presentation revision is 4.
+
 - Render Group startup diagnostics now distinguish native optical fallback from Godot resource rejection and identify the compact-row extension build. Dynamic Color tracing separates physical composition, reduction and lens RID submission, with a trace-only lens isolation option. Color row ownership uses a setup index, Zoom skips unaffected lens materials, and two GDScript warnings are resolved.
 
 Changes since the previous Peraviz release.

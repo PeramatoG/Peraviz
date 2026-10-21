@@ -108,6 +108,7 @@ enum class CompiledWheelMode : int32_t {
     Spin = 2,
     Random = 3,
     AudioUnsupported = 4,
+    OtherUnsupported = 5,
 };
 
 struct CompiledWheelPaletteSlot {
@@ -124,6 +125,8 @@ struct CompiledWheelPaletteSlot {
     std::string provenance;
     std::string name;
     int32_t filter_resource_id = 0;
+    // Setup-only Peraviz proof; omitted from runtime wire data and false after decoding.
+    bool uniform_color_presentation = false;
 };
 
 struct CompiledWheelPalette {
@@ -286,6 +289,8 @@ struct CompiledFixtureInstance {
 };
 
 
+enum class ColorPresentationStatus { Resolved, UnsupportedEffectApproximation, MissingWheelResource };
+
 struct CompiledBeamOpticalProfile {
     int32_t fixture_id = 0;
     std::string fixture_uuid;
@@ -315,6 +320,8 @@ struct CompiledBeamOpticalProfile {
     std::string aperture_source = "official_beam_type";
     bool has_projected_beam = true;
     bool valid = true;
+    ColorPresentationStatus color_presentation_status = ColorPresentationStatus::Resolved; // Setup only.
+    std::vector<int32_t> approximated_color_source_programs;
 };
 
 struct CompiledRuntimeDiagnostic {

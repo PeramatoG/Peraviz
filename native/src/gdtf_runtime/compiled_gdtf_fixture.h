@@ -101,6 +101,7 @@ struct ParsedWheelSlot {
     std::string media_file_name;
     std::string extracted_media_path;
     std::string provenance;
+    bool has_unproven_presentation = false; // Retain unsupported Slot payload for presentation safety.
 };
 
 struct ParsedWheel {
