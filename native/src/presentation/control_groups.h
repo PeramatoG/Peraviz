@@ -17,6 +17,6 @@ struct ControlGroupAnalysis {
 };
 // A zero/unknown target is ambiguous; a known unrelated target never vetoes another Beam.
 bool has_projector_dependency(const runtime::CompiledRuntimeScene &scene, const runtime::CompiledBeamOpticalProfile &beam);
-ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene &scene);
+ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene &scene, bool indexed = true);
 std::vector<PresentationControlGroup> compile_control_groups(const runtime::CompiledRuntimeScene &scene);
 } // namespace peraviz::presentation

@@ -35,7 +35,7 @@ func run() -> void:
 	service.set_performance_trace_enabled(true)
 	var bindings := Bindings.new()
 	bindings.loader = loader
-	test.check(service.install_dense_presentation(loader,bindings), "Dense installation succeeds")
+	test.check(await service.install_dense_presentation(loader,bindings), "Dense installation succeeds")
 	test.check(service.is_dense_presentation_active(), "Dense installation is explicitly active")
 	var adapter: RefCounted = service._dense_adapter
 	var first: Dictionary = loader.frame(0.7,0.2)
@@ -172,7 +172,7 @@ func check_initial_suppression(mode: String) -> void:
 	service.set_render_diagnostic_mode(mode)
 	var bindings := Bindings.new()
 	bindings.loader = loader
-	test.check(service.install_dense_presentation(loader,bindings), "Dense installation succeeds")
+	test.check(await service.install_dense_presentation(loader,bindings), "Dense installation succeeds")
 	test.check(not loader.anchors[0].visible, "Initial diagnostic mode hides structural light: "+mode)
 	apply(service,loader.frame(0.5,0.2))
 	test.check(not loader.anchors[0].visible and not service._dense_adapter._outputs[0].lights[0].realtime_visible, "Initial suppressed snapshot cannot enable a light")

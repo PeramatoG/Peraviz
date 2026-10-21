@@ -15,6 +15,8 @@ var _zoom_authority_targets: Dictionary = {}
 var _color_targets: Dictionary = {}
 var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
+var _emitters_by_ancestor: Dictionary = {}
+var _indexed_setup: bool = true
 var _dimmer_emitter_owner_by_key: Dictionary = {}
 var _beam_profiles_by_geometry_key: Dictionary = {}
 var _beam_output_records_by_geometry_key: Dictionary = {}
@@ -50,6 +52,7 @@ func clear_renderer_targets() -> void:
 	_color_targets.clear()
 	_target_resolution_failures.clear()
 	_geometry_targets_by_key.clear()
+	_emitters_by_ancestor.clear()
 	_dimmer_emitter_owner_by_key.clear()
 	_beam_profiles_by_geometry_key.clear()
 	_beam_output_records_by_geometry_key.clear()
@@ -90,10 +93,18 @@ func advance_gobo_motion(delta_seconds: float) -> void:
 func get_gobo_counters() -> Dictionary:
 	return _gobo_resources.counters()
 
-func install_manifest(renderer_manifest: Array) -> void:
+func install_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null) -> void:
 	clear_renderer_targets()
+	_indexed_setup = OS.get_environment("PERAVIZ_SETUP_REFERENCE_INDEXES") != "1"
 	_build_geometry_target_map(renderer_manifest)
+	_index_emitter_ancestors()
 	_index_beam_profiles(renderer_manifest)
+	# Bind even canonical physical outputs with no live scalar contributor.
+	for geometry_key in _beam_profiles_by_geometry_key:
+		if budget != null and not await budget.checkpoint(): return
+		var emitter: Node3D = _geometry_targets_by_key.get(geometry_key) as Node3D
+		if emitter != null:
+			_resolve_beam_output_record(_fixture_uuid_from_geometry_key(geometry_key), emitter, int(_beam_profiles_by_geometry_key[geometry_key].get("beam_render_target_id", 0)))
 	for item in renderer_manifest:
 		if item is not Dictionary:
 			continue
@@ -104,15 +115,11 @@ func install_manifest(renderer_manifest: Array) -> void:
 		var targets: Array = row.get("targets", [])
 		if not targets.is_empty():
 			for target_item in targets:
+				if budget != null and not await budget.checkpoint(): return
 				if target_item is Dictionary:
 					_register_renderer_target(target_item)
 			continue
 		_register_legacy_manifest_row(row)
-	# Bind even canonical physical outputs with no live scalar contributor.
-	for geometry_key in _beam_profiles_by_geometry_key:
-		var emitter: Node3D = _geometry_targets_by_key.get(geometry_key) as Node3D
-		if emitter != null:
-			_resolve_beam_output_record(_fixture_uuid_from_geometry_key(geometry_key), emitter, int(_beam_profiles_by_geometry_key[geometry_key].get("beam_render_target_id", 0)))
 	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
 	_log_summary_once()
 	_log_output_fanout_once()
@@ -746,7 +753,23 @@ func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
 	prepared.emission_energy_multiplier = 0.0
 	return prepared
 
+# Setup-only reverse ancestry edges preserve the original geometry insertion order.
+func _index_emitter_ancestors() -> void:
+	_emitters_by_ancestor.clear()
+	if not _indexed_setup: return
+	for key: String in _geometry_targets_by_key:
+		var node: Node3D = _geometry_targets_by_key[key]
+		if not bool(node.get_meta("peraviz_is_emitter", false)): continue
+		var ancestor: String = key
+		while not ancestor.is_empty():
+			if not _emitters_by_ancestor.has(ancestor): _emitters_by_ancestor[ancestor] = []
+			_emitters_by_ancestor[ancestor].append(node)
+			var separator: int = ancestor.rfind("/")
+			if separator < 0: break
+			ancestor = ancestor.substr(0, separator)
+
 func _collect_descendant_emitters(geometry_key: String) -> Array:
+	if _indexed_setup: return _emitters_by_ancestor.get(geometry_key, [])
 	var nodes: Array = []
 	var prefix: String = geometry_key + "/"
 	for key in _geometry_targets_by_key.keys():

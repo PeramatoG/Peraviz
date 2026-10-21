@@ -3,17 +3,26 @@ class_name NodeFactory
 
 var _missing_cache_roots_reported: Dictionary = {}
 
-func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache) -> void:
+func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, budget: SceneLoadBudget = null) -> bool:
+	var constructed: Array[Node3D] = []
 	node_index.clear()
 	_missing_cache_roots_reported.clear()
 	for item in nodes:
+		if budget != null and not await budget.checkpoint():
+			_discard_unattached_nodes(constructed)
+			return false
 		if item is Dictionary:
 			var node_id: String = str(item.get("node_id", ""))
 			if node_id.is_empty():
 				continue
-			node_index[node_id] = create_scene_node(item, loader, asset_cache)
+			var node: Node3D = create_scene_node(item, loader, asset_cache)
+			constructed.append(node)
+			node_index[node_id] = node
 
 	for item in nodes:
+		if budget != null and not await budget.checkpoint():
+			_discard_unattached_nodes(constructed)
+			return false
 		if item is Dictionary:
 			var node_id: String = str(item.get("node_id", ""))
 			var parent_id: String = str(item.get("parent_id", ""))
@@ -28,6 +37,12 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 	_apply_mesh_orientation_corrections(proxies_root, false, loader, asset_cache)
 	_remove_redundant_dummy_meshes(proxies_root)
 	rebuild_loaded_bounds.call()
+	return true
+
+func _discard_unattached_nodes(constructed: Array[Node3D]) -> void:
+	for node in constructed:
+		if is_instance_valid(node) and node.get_parent() == null:
+			node.free()
 
 func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache) -> Node3D:
 	var item_type: String = str(data.get("type", "scene_object"))

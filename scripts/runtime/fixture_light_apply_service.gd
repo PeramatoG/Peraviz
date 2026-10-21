@@ -115,10 +115,10 @@ func set_performance_trace_enabled(enabled: bool) -> void:
 		_visual_apply_counters["clustered_element_limit"] = int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
 
 # Installs the normal native presentation path after renderer target setup.
-func install_dense_presentation(loader: Node, registry: RefCounted) -> bool:
+func install_dense_presentation(loader: Node, registry: RefCounted, budget: SceneLoadBudget = null) -> bool:
 	_dense_required = true
 	_dense_adapter = DensePresentationAdapterScript.new()
-	if not _dense_adapter.install(loader, self, registry):
+	if not await _dense_adapter.install(loader, self, registry, budget):
 		_dense_adapter.clear()
 		_dense_adapter = null
 		if not _dense_install_error_reported:

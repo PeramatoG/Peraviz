@@ -2,11 +2,82 @@
 
 **Status:** Native Control Groups and first AGGREGATED/INDIVIDUAL Render Emitter Groups implemented
 
-**Date:** 2026-09-03
+**Date:** 2026-10-21
 
 **Scope:** GDTF/MVR semantics, physical emitter ownership, render aggregation, batching, beam rendering, and the short-term performance roadmap.
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
+
+## Scene setup and loading
+
+PR #105 owner validation retained 1,095 physical outputs, grouped 1,000 compact
+Wash emitters into 20 actual shafts and produced 115 renderer rows at about
+40 FPS with Color active (previously about 23 FPS). This branch changes setup,
+not the live reducer or optical presentation policy.
+
+The stall has multiple concrete causes: per-instance archive hashing/XML geometry
+expansion; repeated global source/property/palette/Zoom searches; and Godot target
+registration scanning every imported geometry for each semantic target. The latter
+made the intermediate 100-fixture run take about 22 seconds despite native indexing.
+An ordered reverse ancestry index reduced it to about 6 seconds. A final legacy
+lighting prewarm also needed per-fixture frame-budget checkpoints.
+
+Bounded Linux Debug / Godot 4.7.1 headless comparison, generic 20-fixture selected
+mode with 50 projected emitters each; milliseconds, cold / same-content reload.
+Reference uses synchronous import and reference geometry/classifiers; timings are
+observations, not CI thresholds or Windows predictions.
+
+| Phase / observation | Reference | Efficient |
+| --- | ---: | ---: |
+| Archive/XML | 0.6 / 4.5 | 0.6 / 0.5 |
+| Geometry parse/expand/instantiate | 239 / 255 | 13 / 15 |
+| Selected-mode compile / patch binding | 27 / 26 | 28 / 29 |
+| Native Control Groups | 454 / 443 | 298 / 290 |
+| Native Render Groups | 261 / 266 | 91 / 53 |
+| Godot node/model resources | 50 / 90 | 57 / 54 |
+| Physical fixture registration | 50 / 64 | 60 / 57 |
+| Runtime/target/resource registration | 1,754 / 1,787 | 599 / 559 |
+| Total import / visible-frame acknowledgement | 2,122 / 2,242 | 1,208 / 1,246 |
+| Main-thread uninterrupted span | 2,122 / 2,242 | 46 / 38 |
+| Geometry definitions / template hits | 20 / 0 | 1 / 19 |
+| Physical nodes / outputs / final rows | 1,140 / 1,000 / 20 | 1,140 / 1,000 / 20 |
+| Member shafts / actual aggregate shafts / lens material RIDs | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
+
+Runtime registration previously included synchronous classification. It now follows
+CPU preparation; phase times include yielded waits, so nested phase rows must not
+be added. Warm means a same-content reload in the same process, not a persistent
+semantic cache. Definition work is deliberately rebuilt once per setup generation.
+The loader owns one CPU task, joins it on destruction, drains it on cancellation,
+and transfers data once. Coordinate-debug loading retains the synchronous path.
+
+Efficient scalability observations (cold / reload total; largest main-thread span):
+1 fixture: 0.16 / 0.17 s, about 9 ms; 100 fixtures: 6.0 / 6.2 s, 221 / 184 ms;
+250 fixtures: 15.6 / 16.0 s, 627 / 463 ms. Counts remain 50/5,000/12,500 physical
+outputs and 1/100/250 actual aggregate shafts. Native classifier allocations for
+1/20/100/250 fixtures were 1,056/21,776/114,614/288,632, showing generation-local
+work rather than persistent growth. The picking-body capacity is 65,536; the old
+10,240 default could not retain 12,500 existing per-mesh selection bodies.
+
+Remaining bounded bottleneck: bulk setup payload and renderer manifest serialization
+still execute on the main thread, reaching roughly 0.6 seconds at 12,500 outputs.
+A separate paged setup-contract PR should address this; there is no claim of a hard
+8 ms cap on individual engine/native operations. Member shafts are still allocated
+before actual aggregate acceptance. Lazy shafts should be a separate resource-owner
+change: keep physical anchors/lenses, publish accepted membership before shaft
+allocation, recreate fallback shafts per renderer generation and replay held state
+before readiness. Current shared Control Group binding requires existing shafts;
+this PR preserves its tested lifecycle rather than partially replacing it.
+
+Developer comparisons are centralized at setup boundaries:
+`PERAVIZ_LOAD_TELEMETRY=1` emits one end-of-load JSON summary;
+`PERAVIZ_SETUP_REFERENCE_GEOMETRY=1` disables geometry templates;
+`PERAVIZ_SETUP_REFERENCE_INDEXES=1` selects native/reference classification and
+Godot descendant scans. They never enter canonical scene data or live frame loops.
+Run `python3 tests/integration/benchmark_scene_setup.py --godot "$GODOT_BIN" --output work/setup.json`
+for generated 1/20/100/250 cases (add `--reference --instances 20` for a bounded A/B).
+Native and normal-import regressions compare exact ordered identities, transforms,
+controls, optics, resources, groups and rejection reasons, including selected modes,
+references, multiple wheels, unresolved authority, cancellation and scene revision.
 
 ## Current roadmap and evidence
 

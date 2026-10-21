@@ -27,7 +27,7 @@ func _init() -> void:
 	var node_index: Dictionary = {}
 	var factory: RefCounted = NodeFactoryScript.new()
 	var asset_cache: RefCounted = AssetCacheScript.new()
-	factory.build_node_tree(nodes, root, node_index, func() -> void: pass, loader, asset_cache)
+	await factory.build_node_tree(nodes, root, node_index, func() -> void: pass, loader, asset_cache)
 	if fixture_asset_paths.size() < 4 or int(asset_cache.debug_summary().get("scene_unique", 0)) < 2:
 		push_error("Production NodeFactory did not instantiate every repeated fixture model.")
 		quit(1)

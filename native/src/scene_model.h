@@ -97,6 +97,9 @@ struct SceneModel {
         std::string gdtf_path;
     };
 
+    // Setup-only observations, outside canonical fixture and runtime semantics.
+    double archive_xml_ms = 0.0, geometry_ms = 0.0;
+    size_t geometry_definitions = 0, geometry_template_hits = 0;
     int fixture_count = 0;
     int truss_count = 0;
     int object_count = 0;

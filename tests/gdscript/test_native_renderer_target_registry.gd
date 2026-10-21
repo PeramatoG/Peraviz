@@ -107,7 +107,7 @@ func _run() -> void:
 	var registry: NativeRendererTargetRegistry = _make_registry(harness)
 	var empty_summary: Dictionary = registry.get_summary()
 	test.check(int(empty_summary.get("pan_targets_resolved", -1)) == 0, "Registry contract check failed near source line 103")
-	registry.install_manifest([{
+	await registry.install_manifest([{
 		"fixture_uuid": "fixture-a",
 		"targets": [
 			_target("fixture-a", "pan", 101, "fixture-a/Base/Pan"),
@@ -135,7 +135,7 @@ func _run() -> void:
 	registry.apply_gobo_rotation_state(201, 71, 1, 2, 1, 30.0, 60.0, 1.0, 1.0)
 	var selected_beam: MeshInstance3D = initial_record.get("beam_instances", [])[0] as MeshInstance3D
 	var selected_mesh: Mesh = selected_beam.mesh
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base")] }])
+	await registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base")] }])
 	var refreshed_record: Dictionary = registry.get_dimmer_target_record(201)
 	var refreshed_beam: MeshInstance3D = refreshed_record.get("beam_instances", [])[0] as MeshInstance3D
 	test.check(refreshed_beam.mesh == selected_mesh, "Renderer manifest refresh must rehydrate the held selected gobo without new DMX")
@@ -154,20 +154,20 @@ func _run() -> void:
 	test.check(registry._renderer_generation != old_dense_generation and registry.get_dense_presentation_bindings()["ids"].is_empty(), "Registry clear retires all dense bindings")
 	test.check(not registry.has_dimmer_target(201), "Registry contract check failed near source line 127")
 
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Missing")]}])
+	await registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Missing")]}])
 	test.check(registry.get_target_failure(101) is Dictionary, "Registry contract check failed near source line 130")
 
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Base/Pan"), _target("fixture-a", "pan", 101, "fixture-a/Base/Pan")]}])
+	await registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "pan", 101, "fixture-a/Base/Pan"), _target("fixture-a", "pan", 101, "fixture-a/Base/Pan")]}])
 	var duplicate_summary: Dictionary = registry.get_summary().get("registry_summary", {})
 	test.check(int(duplicate_summary.get("duplicate_manifest_target_ids", 0)) == 1, "Registry contract check failed near source line 134")
 
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base"), _target("fixture-a", "dimmer", 202, "fixture-a/Base/EmitterLens")]}])
+	await registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [_target("fixture-a", "dimmer", 201, "fixture-a/Base"), _target("fixture-a", "dimmer", 202, "fixture-a/Base/EmitterLens")]}])
 	var overlap_summary: Dictionary = registry.get_summary().get("registry_summary", {})
 	test.check(int(overlap_summary.get("dimmer_target_overlaps", 0)) >= 1, "Registry contract check failed near source line 138")
 	test.check(registry.get_target_failure(202) is Dictionary, "Registry contract check failed near source line 139")
 
 	harness.collect_emitter_light_calls = 0
-	registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [
+	await registry.install_manifest([{"fixture_uuid": "fixture-a", "targets": [
 		_target("fixture-a", "beam_profile", 401, "fixture-a/Base/EmitterLens", {"beam_type": "Wash", "has_projected_beam": true, "projected_lumen_scale": 0.25, "emission_lumen_scale": 0.25}),
 		_target("fixture-a", "dimmer", 201, "fixture-a/Base/EmitterLens"),
 		_target("fixture-a", "color", 401, "fixture-a/Base/EmitterLens"),
@@ -198,7 +198,7 @@ func _run() -> void:
 	var profile_b: Dictionary = {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 7500.0, "projected_lumen_scale": 0.75, "emission_lumen_scale": 0.75, "luminous_flux_source": "explicit"}
 	var profile_aura: Dictionary = {"beam_type": "None", "has_projected_beam": false, "effective_luminous_flux_lm": 900.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.09, "luminous_flux_source": "explicit"}
 	var profile_glow: Dictionary = {"beam_type": "Glow", "has_projected_beam": false, "effective_luminous_flux_lm": 500.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.05, "luminous_flux_source": "explicit"}
-	keyed_registry.install_manifest([{"fixture_uuid": "fixture-b", "targets": [
+	await keyed_registry.install_manifest([{"fixture_uuid": "fixture-b", "targets": [
 		_target("fixture-b", "beam_profile", 302, "fixture-b/Base/BeamB", profile_b),
 		_target("fixture-b", "beam_profile", 303, "fixture-b/Base/Aura", profile_aura),
 		_target("fixture-b", "beam_profile", 304, "fixture-b/Base/Glow", profile_glow),
@@ -234,7 +234,7 @@ func _run() -> void:
 	quantum_targets.append(_target("fixture-q", "beam_profile", 700, "fixture-q/Base/Aura", {"beam_type": "None", "has_projected_beam": false, "effective_luminous_flux_lm": 900.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.09, "luminous_flux_source": "explicit"}))
 	quantum_targets.append(_target("fixture-q", "dimmer", 800, "fixture-q/Base"))
 	var quantum_registry: NativeRendererTargetRegistry = _make_registry(quantum_harness)
-	quantum_registry.install_manifest([{"fixture_uuid": "fixture-q", "targets": quantum_targets}])
+	await quantum_registry.install_manifest([{"fixture_uuid": "fixture-q", "targets": quantum_targets}])
 	var quantum_record: Dictionary = quantum_registry.get_dimmer_target_record(800)
 	test.check(quantum_record.get("beam_instances", []).size() == 50, "Registry contract check failed near source line 205")
 	var quantum_dense: Dictionary = quantum_registry.get_dense_presentation_bindings()

@@ -668,46 +668,15 @@ func _on_file_selected(path: String) -> void:
 		return
 	_load_mvr_scene(path, "mvr")
 
+var _scene_loading: bool = false
+var _scene_load_generation: int = 0
+var _scene_setup_resource_metrics: Dictionary = {}
+
+func _is_scene_load_current(generation: int) -> bool:
+	return is_inside_tree() and _scene_load_generation == generation
+
 func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_loaded_file: bool = true) -> Dictionary:
-	if _status_presenter != null:
-		_status_presenter.set_scene_state_loading(path)
-	_clear_scene()
-	var import_result: Dictionary = _scene_import_service.import_scene(
-		path,
-		_loader,
-		_node_factory,
-		_fixture_binding_service,
-		_asset_cache,
-		proxies_root,
-		_node_index,
-		Callable(self, "_refresh_dmx_fixture_bindings"),
-		Callable(self, "_populate_fixture_list"),
-		Callable(self, "_sync_selection_state"),
-		Callable(self, "_rebuild_debug_gizmos"),
-		Callable(self, "_focus_loaded_scene"),
-		Callable(self, "_update_debug_legend"),
-		Callable(self, "_refresh_emitter_light_scalars"),
-		Callable(self, "_extract_emitter_photometrics"),
-		Callable(self, "_rebuild_loaded_bounds"),
-		Callable(self, "_set_has_loaded_bounds"),
-		_debug_coords_enabled,
-		_debug_asset_cache_enabled,
-		_scene_registry,
-		_fixture_row_provider
-	)
-	if bool(import_result.get("ok", false)):
-		_refresh_fixture_inspection_panel()
-		_loaded_mvr_path = path
-		_last_loaded_file_type = loaded_file_type
-		if remember_loaded_file:
-			_remember_loaded_file(path, loaded_file_type)
-		if _status_presenter != null:
-			_status_presenter.set_scene_state_loaded(int(import_result.get("node_count", 0)))
-	else:
-		if _status_presenter != null:
-			var error_message: String = str(import_result.get("error", "unknown error"))
-			_status_presenter.set_scene_state_load_error(error_message)
-	return import_result
+	return await preload("res://scripts/scene_loading/scene_import_coordinator.gd").load_scene(self, path, loaded_file_type, remember_loaded_file)
 
 
 func _on_save_project_selected(path: String) -> void:
@@ -741,7 +710,7 @@ func _open_project(path: String) -> void:
 			_status_presenter.set_scene_state_load_error(str(project_result.get("error", "unknown error")))
 		return
 
-	var import_result: Dictionary = _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz", false)
+	var import_result: Dictionary = await _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz", false)
 	if not bool(import_result.get("ok", false)):
 		return
 
@@ -948,7 +917,8 @@ func _on_mvr_xchange_update_requested() -> void:
 func _on_mvr_xchange_file_received(path: String, _metadata: Dictionary) -> void:
 	if path.is_empty():
 		return
-	_load_mvr_scene(path, "mvr", false)
+	var result: Dictionary = await _load_mvr_scene(path, "mvr", false)
+	if not result.get("ok", false): return
 	if _mvr_xchange_controller != null:
 		_mvr_xchange_controller.mark_loaded(path)
 	if _status_presenter != null:
@@ -1151,7 +1121,7 @@ func _update_debug_legend() -> void:
 	_debug_overlay_service.print_debug_legend(_debug_coords_enabled)
 
 func _build_node_tree(nodes: Array) -> void:
-	_node_factory.build_node_tree(nodes, proxies_root, _node_index, Callable(self, "_rebuild_loaded_bounds"), _loader, _asset_cache)
+	await _node_factory.build_node_tree(nodes, proxies_root, _node_index, Callable(self, "_rebuild_loaded_bounds"), _loader, _asset_cache)
 
 func _apply_mesh_orientation_corrections(node: Node3D, inherited_flip: bool) -> void:
 	if node == null:
@@ -1621,6 +1591,7 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 	return "box"
 
 func _clear_scene() -> void:
+	_scene_load_generation += 1
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service.reset_scene_state()
 	_clear_fixture_inspection_panel()
@@ -1644,7 +1615,7 @@ func _clear_scene() -> void:
 	)
 
 func _register_fixture_registry(nodes: Array) -> void:
-	_fixture_binding_service.register_fixture_registry(nodes, _node_index, _scene_registry, Callable(self, "_extract_emitter_photometrics"))
+	await _fixture_binding_service.register_fixture_registry(nodes, _node_index, _scene_registry, Callable(self, "_extract_emitter_photometrics"))
 
 func _read_manual_fixture_test_setting() -> bool:
 	var setting_enabled: bool = bool(ProjectSettings.get_setting("peraviz_manual_fixture_test", false))
@@ -1777,13 +1748,25 @@ func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 func _set_native_presentation_enabled(enabled: bool) -> void:
 	_native_target_registry.set_presentation_enabled(enabled)
 
-func _register_native_runtime_targets(renderer_manifest: Array) -> bool:
+func _register_native_runtime_targets(renderer_manifest: Array, budget: SceneLoadBudget = null) -> bool:
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service.reset_scene_state()
 	if _dmx_controller != null:
 		_fixture_light_apply_service.set_render_diagnostic_mode(_dmx_controller.get_render_diagnostic_mode())
-	_native_target_registry.install_manifest(renderer_manifest)
-	return _fixture_light_apply_service.install_dense_presentation(self, _native_target_registry)
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "godot_targets"
+	var resources_start := Time.get_ticks_usec()
+	await _native_target_registry.install_manifest(renderer_manifest, budget)
+	_scene_setup_resource_metrics["godot_targets_ms"] = (Time.get_ticks_usec() - resources_start) / 1000.0
+	resources_start = Time.get_ticks_usec()
+	if budget != null and not budget.valid(): return false
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "dense_binding"
+	var installed: bool = await _fixture_light_apply_service.install_dense_presentation(self, _native_target_registry, budget)
+	_scene_setup_resource_metrics["aggregate_material_binding_ms"] = (Time.get_ticks_usec() - resources_start) / 1000.0
+	return installed
 
 func _install_native_gobo_assets(asset_rows: Array) -> void:
 	_native_target_registry.install_gobo_assets(asset_rows)
@@ -2928,16 +2911,18 @@ func bridge_setup_dmx_controls() -> void:
 	_setup_dmx_controls()
 
 func _setup_dmx_fixture_runtime() -> void:
-	_dmx_controller.setup_fixture_runtime(_loader, _scene_registry, self, _fixture_row_provider)
+	await _dmx_controller.setup_fixture_runtime(_loader, _scene_registry, self, _fixture_row_provider)
 
-func _refresh_dmx_fixture_bindings() -> void:
-	var summary: Dictionary = _dmx_controller.refresh_fixture_bindings("scene_refresh")
+func _refresh_dmx_fixture_bindings(budget: SceneLoadBudget = null) -> bool:
+	var summary: Dictionary = await _dmx_controller.refresh_fixture_bindings("scene_refresh", budget)
 	_refresh_fixture_inspection_panel()
 	var unbound_count: int = int(summary.get("unbound", 0))
 	if _status_presenter != null and unbound_count > 0:
 		_status_presenter.set_scene_state_warning_unbound(unbound_count)
+	return _fixture_light_apply_service.is_dense_presentation_active()
 
 func _process(delta: float) -> void:
+	if _scene_loading: return
 	if _native_target_registry != null:
 		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:

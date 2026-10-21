@@ -212,7 +212,7 @@ func _run() -> void:
 	var required_registry_methods := ["_register_native_runtime_targets", "_get_native_target_registry_summary", "_apply_native_transform_targets", "_has_native_dimmer_target", "_get_native_dimmer_target_record", "_has_native_optics_target", "_get_native_optics_target_record", "_get_native_target_failure"]
 	for method_name in required_registry_methods:
 		test.check(renderer_registry.has_method(method_name), "Fake renderer registry is missing current contract method: %s" % method_name)
-	test.check(runtime._install_renderer_manifest([]), "An empty manifest should install when the complete registry contract is available")
+	test.check(await runtime._install_renderer_manifest([]), "An empty manifest should install when the complete registry contract is available")
 	test.check(renderer_registry.install_calls == 1, "Renderer manifest installation should invoke the registry once")
 	loader.free()
 	runtime = null

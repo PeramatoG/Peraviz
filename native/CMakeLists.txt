@@ -107,6 +107,7 @@ add_library(peraviz_native SHARED
     src/peraviz_debug_runtime.cpp
     src/runtime_storage.cpp
     src/scene_model.cpp
+    src/scene_setup_preparation.cpp
     src/gdtf_scene_builder.cpp
     src/gdtf_runtime/gdtf_geometry_identity.cpp
     src/mvr_scene_loader.cpp

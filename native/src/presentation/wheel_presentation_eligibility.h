@@ -3,6 +3,7 @@
 #include <tuple>
 
 namespace peraviz::presentation {
+struct SetupIndex;
 using WheelSetSignature = std::tuple<uint32_t, uint32_t, int32_t, double, double>;
 using WheelControlSignature = std::tuple<int32_t, int32_t, int32_t, bool, float, std::vector<WheelSetSignature>>;
 // Peraviz setup proof only: wheel selection remains canonical native Color/Wheel state.
@@ -14,5 +15,5 @@ struct WheelPresentationEligibility {
     bool supported() const { return rejection == nullptr; }
 };
 WheelPresentationEligibility analyze_wheel_presentation(const runtime::CompiledRuntimeScene &scene,
-    const runtime::CompiledBeamOpticalProfile &beam);
+    const runtime::CompiledBeamOpticalProfile &beam, const SetupIndex *index = nullptr);
 }

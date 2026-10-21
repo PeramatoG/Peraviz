@@ -134,7 +134,7 @@ func clear() -> void:
 	_service = null
 	_renderer = null
 
-func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
+func install(loader: Node, service: RefCounted, registry: RefCounted, budget: SceneLoadBudget = null) -> bool:
 	clear()
 	if not ClassDB.class_exists("PeravizPresentationState"):
 		return false
@@ -168,6 +168,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 		signature[0].sort()
 		signature[2].sort()
 	for record in bindings["outputs"]:
+		if budget != null and not await budget.checkpoint(): return false
 		var output := OutputHandle.new()
 		output.index = _outputs.size()
 		output.canonical_id = int(record["beam_render_target_id"])
@@ -214,8 +215,17 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			output.lights.append(handle)
 			_lights_by_id[light.get_instance_id()] = handle
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "control_group_resources"
 	_install_groups()
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "aggregate_resources"
 	if not _install_render_bindings(): return false
+	if budget != null:
+		await budget.checkpoint(true)
+		budget.phase = "final_runtime_install"
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
 	var summary: Dictionary = {"physical_outputs": _outputs.size(), "control_groups": _totals["presentation_control_groups"],

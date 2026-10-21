@@ -1,13 +1,15 @@
 extends RefCounted
 class_name FixtureBindingService
 
-func register_fixture_registry(nodes: Array, node_index: Dictionary, scene_registry: SceneRegistry, extract_emitter_photometrics: Callable) -> void:
+func register_fixture_registry(nodes: Array, node_index: Dictionary, scene_registry: SceneRegistry, extract_emitter_photometrics: Callable, budget: SceneLoadBudget = null) -> void:
 	if nodes.is_empty():
 		return
 
+	var ownership_cache: Dictionary = {}
 	var parent_lookup: Dictionary = {}
 	var type_lookup: Dictionary = {}
 	for item in nodes:
+		if budget != null and not await budget.checkpoint(): return
 		if item is not Dictionary:
 			continue
 		var node_id: String = str(item.get("node_id", ""))
@@ -28,13 +30,14 @@ func register_fixture_registry(nodes: Array, node_index: Dictionary, scene_regis
 		}
 
 	for item in nodes:
+		if budget != null and not await budget.checkpoint(): return
 		if item is not Dictionary:
 			continue
 		var node_id: String = str(item.get("node_id", ""))
 		if node_id.is_empty():
 			continue
 
-		var fixture_uuid: String = resolve_fixture_uuid(node_id, parent_lookup, type_lookup, {})
+		var fixture_uuid: String = resolve_fixture_uuid(node_id, parent_lookup, type_lookup, ownership_cache)
 		if fixture_uuid.is_empty() or not fixture_anchors.has(fixture_uuid):
 			continue
 		if node_id == fixture_uuid:
@@ -67,6 +70,7 @@ func register_fixture_registry(nodes: Array, node_index: Dictionary, scene_regis
 				anchors["emitter_photometrics"] = photometric_entries
 
 	for fixture_uuid in fixture_anchors.keys():
+		if budget != null and not await budget.checkpoint(): return
 		var fixture_node: Node3D = node_index.get(fixture_uuid)
 		if fixture_node == null:
 			print("[PeravizSceneRegistry] register_fixture skipped: fixture node missing uuid=", fixture_uuid)

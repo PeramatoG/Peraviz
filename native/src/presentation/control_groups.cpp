@@ -4,6 +4,8 @@
 #include <map>
 #include <cmath>
 #include <tuple>
+#include <optional>
+#include "presentation/setup_index.h"
 
 namespace peraviz::presentation {
 namespace {
@@ -32,8 +34,21 @@ bool controls(const std::string &ancestor, const std::string &beam) {
 }
 // Proves open projected sharing from compiled selected-mode authorities; ambiguous
 // overlap, patterned/projector requirements and unsupported optical profiles remain individual.
-ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene &scene) {
+ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene &scene, bool indexed) {
     using namespace runtime;
+    std::optional<SetupIndex> index;
+    if (indexed) index.emplace(scene);
+    std::vector<const CompiledComponentProperty *> reference_properties;
+    std::vector<const CompiledColorTargetProgram *> reference_colors;
+    if (!indexed) {
+        for (const auto &p : scene.properties) reference_properties.push_back(&p);
+        for (const auto &c : scene.color_targets) reference_colors.push_back(&c);
+    }
+    const auto source_for = [&](int32_t id) -> const CompiledDmxSourceProgram * {
+        if (index) return index->source(id);
+        const auto found = std::find_if(scene.source_programs.begin(), scene.source_programs.end(), [&](const auto &p) { return p.program_id == id; });
+        return found == scene.source_programs.end() ? nullptr : &*found;
+    };
     std::map<ControlSignature, size_t> signatures;
     ControlGroupAnalysis analysis;
     auto &groups = analysis.groups;
@@ -50,22 +65,24 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
                 beam.throw_ratio, beam.rectangle_ratio, beam.color_temperature, beam.luminous_flux,
                 beam.effective_luminous_flux_lm, beam.projected_lumen_scale, beam.emission_lumen_scale})
             if (!std::isfinite(value)) safe = false;
-        if (has_projector_dependency(scene, beam)) { safe = false; ++analysis.fallbacks.projector_gobo; }
-        const auto wheel=analyze_wheel_presentation(scene,beam);
+        const bool projector = index ? index->projector(beam) : has_projector_dependency(scene, beam);
+        if (projector) { safe = false; ++analysis.fallbacks.projector_gobo; }
+        const auto wheel=analyze_wheel_presentation(scene,beam,index ? &*index : nullptr);
         s.wheels=wheel.controls;
         if (!wheel.supported()) { safe = false; ++analysis.fallbacks.wheel; }
         for (int32_t id:s.approximated_effects) {
-            const auto source=std::find_if(scene.source_programs.begin(),scene.source_programs.end(),[&](const auto &p) { return p.program_id==id; });
-            if (source==scene.source_programs.end() || !source->activation.valid) safe=false;
+            const auto *source=source_for(id);
+            if (!source || !source->activation.valid) safe=false;
         }
-        for (const auto &property : scene.properties) {
+        const auto &properties = index ? index->properties[beam.fixture_id] : reference_properties;
+        for (const auto *property_ptr : properties) {
+            const auto &property = *property_ptr;
             if (property.fixture_id != beam.fixture_id || !controls(property.geometry_name, beam.geometry_path)) continue;
             if (property.semantic == CompiledSemantic::Dimmer || property.semantic == CompiledSemantic::Zoom) {
                 if (property.contributors.empty()) safe = false;
                 for (const auto &contributor : property.contributors) {
-                    const auto program = std::find_if(scene.source_programs.begin(), scene.source_programs.end(),
-                        [&](const auto &p) { return p.program_id == contributor.source_program_id; });
-                    if (program == scene.source_programs.end() || !program->activation.valid) safe = false;
+                    const auto *program = source_for(contributor.source_program_id);
+                    if (!program || !program->activation.valid) safe = false;
                 }
             }
             if (property.semantic == CompiledSemantic::Dimmer) s.dimmer.push_back(property.property_id);
@@ -73,14 +90,15 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
         }
         safe = safe && s.dimmer.size() == 1 && s.zoom.size() <= 1;
         int color_targets = 0;
-        for (const auto &target : scene.color_targets) {
+        const auto &colors = index ? index->colors[beam.render_target_id] : reference_colors;
+        for (const auto *target_ptr : colors) {
+            const auto &target = *target_ptr;
             if (target.fixture_id != beam.fixture_id || target.beam_render_target_id != beam.render_target_id) continue;
             ++color_targets;
             s.additive = target.additive_source;
             for (const auto &input : target.inputs) {
-                const auto program = std::find_if(scene.source_programs.begin(), scene.source_programs.end(),
-                    [&](const auto &p) { return p.program_id == input.source_program_id; });
-                if (program == scene.source_programs.end() || !program->activation.valid) safe = false;
+                const auto *program = source_for(input.source_program_id);
+                if (!program || !program->activation.valid) safe = false;
                 s.color.emplace_back(input.source_program_id, int32_t(input.semantic), input.default_value,
                     input.use_normalized_value, input.emitter_resource_id, input.filter_resource_id);
             }
@@ -93,11 +111,10 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
             if (s.color != first->second.color || s.wheels != first->second.wheels || s.approximated_effects != first->second.approximated_effects || s.additive != first->second.additive) ++analysis.fallbacks.color;
             if (s.optics != first->second.optics || s.zoom != first->second.zoom) ++analysis.fallbacks.optics;
         }
-        if (!safe && !has_projector_dependency(scene, beam) && wheel.supported()) ++analysis.fallbacks.ambiguous;
+        if (!safe && !projector && wheel.supported()) ++analysis.fallbacks.ambiguous;
         if (first != first_signature.end()) {
             // Photometric splits are distinct from optical-family splits in the startup audit.
-            const auto &base = *std::find_if(scene.beam_profiles.begin(), scene.beam_profiles.end(), [&](const auto &p) { return p.fixture_id == beam.fixture_id; });
-            if (base.projected_lumen_scale != beam.projected_lumen_scale || base.emission_lumen_scale != beam.emission_lumen_scale) ++analysis.fallbacks.scaling;
+            if (std::get<11>(first->second.optics) != beam.projected_lumen_scale || std::get<12>(first->second.optics) != beam.emission_lumen_scale) ++analysis.fallbacks.scaling;
         }
         // Preserve contributor/input order because native composition order is authoritative.
         if (safe) {

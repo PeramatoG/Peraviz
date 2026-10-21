@@ -37,8 +37,8 @@ func run() -> void:
 	var passed: bool = true
 	if OS.get_cmdline_user_args().has("--installation"):
 		bindings.invalid = true
-		passed = not service.install_dense_presentation(loader,bindings)
-		passed = passed and not service.install_dense_presentation(loader,bindings)
+		passed = not await service.install_dense_presentation(loader,bindings)
+		passed = passed and not await service.install_dense_presentation(loader,bindings)
 		passed = passed and not service.is_dense_presentation_active()
 		passed = passed and service.compose_dense_snapshot(PackedInt32Array(),PackedInt32Array(),PackedFloat32Array()) == -1
 		passed = passed and service._target_states.is_empty() and service._snapshot_output_commits.is_empty()
@@ -49,7 +49,7 @@ func run() -> void:
 		loader.renderer = broken
 		loader._active_beam_renderer = broken
 		broken.ensure_beam(loader.anchors[0])
-		passed = service.install_dense_presentation(loader,bindings)
+		passed = await service.install_dense_presentation(loader,bindings)
 		broken.initialization_requests = 0
 		service._dense_adapter.consume_diagnostics()
 		for i in range(30):

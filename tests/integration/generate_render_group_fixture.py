@@ -13,7 +13,7 @@ def channel(offset: int, attribute: str, geometry: str, high: float = 1) -> str:
     return f'<DMXChannel Offset="{offset}" Geometry="{geometry}"><LogicalChannel Attribute="{attribute}"><ChannelFunction Attribute="{attribute}" DMXFrom="0" PhysicalFrom="0" PhysicalTo="{high}"/></LogicalChannel></DMXChannel>'
 
 
-def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "") -> None:
+def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False) -> None:
     """Retain fifty physical lenses, one emission-only output and a genuine mechanical chain."""
     geometries = []
     for i in range(50):
@@ -80,7 +80,10 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
             if wheel == 'media':
                 gdtf.writestr('wheels/pattern.png', gobo_png())
     mode = selected_mode or ('Basic' if wheel == 'basic' else 'Pixels' if pixels else 'Global')
-    fixtures = ''.join(f'<Fixture uuid="source-{i+1}" name="Source" Universe="1" Address="{1+16*i}"><GDTFSpec>source.gdtf</GDTFSpec><GDTFMode>{mode}</GDTFMode></Fixture>' for i in range(sources))
+    stride = 192 if pixels else 16
+    fixtures = ''.join(f'<Fixture uuid="source-{i+1}" name="Source" Universe="{1+(stride*i)//512}" Address="{1+(stride*i)%512}">' +
+                       (f'<Matrix>{{1,0,0}}{{0,1,0}}{{0,0,1}}{{{i*1000},{i*100},0}}</Matrix>' if transforms else '') +
+                       f'<GDTFSpec>source.gdtf</GDTFSpec><GDTFMode>{mode}</GDTFMode></Fixture>' for i in range(sources))
     scene = '<GeneralSceneDescription><Scene><Layers><Layer uuid="layer"><ChildList>' + fixtures + '</ChildList></Layer></Layers></Scene></GeneralSceneDescription>'
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as mvr:
@@ -89,4 +92,4 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
 
 
 if __name__ == '__main__':
-    generate(Path(sys.argv[1]), '--pixels' in sys.argv, 20 if '--load' in sys.argv else 1, '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''))
+    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv)

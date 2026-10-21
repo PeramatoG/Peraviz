@@ -8,6 +8,15 @@ Native C++ owns MVR/GDTF parsing, selected-mode semantic compilation, fixture pa
 
 Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes.
 
+Scene import uses one owned native preparation task for archive/XML work, immutable
+geometry expansion, selected-mode compilation and Control/Render Group classification.
+Generation-scoped geometry templates retain model leases and rebind UUIDs/keys per
+instance; scene replacement retires them. Setup indexes follow actual fixture/resource
+ownership. Godot transfers the completed data, builds nodes/targets in frame-budgeted
+batches, and publishes readiness after binding. A modal loading indicator gates edits
+and DMX application against partial targets. Cancellation drains the task and clears
+partial resources; native code never mutates the SceneTree from that task.
+
 Legacy fixture bindings and Godot-side semantic helpers remain in limited compatibility, inspection, or transitional areas. They are not authoritative for native-supported live attributes.
 
 ## Setup and playback contracts

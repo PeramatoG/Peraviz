@@ -6,6 +6,9 @@
 #include "mvr_scene_loader.h"
 #include "runtime_storage.h"
 #include "scene_model.h"
+#include "gdtf_scene_builder.h"
+#include <chrono>
+#include <tuple>
 
 #include <filesystem>
 #include <fstream>
@@ -122,6 +125,7 @@ int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
 
     peraviz::SceneModel active = peraviz::load_mvr(first_mvr.u8string(), false, false);
     const std::vector<std::filesystem::path> first_models = model_paths(active);
+    if (active.geometry_definitions!=1 || active.geometry_template_hits!=1) return fail("MVR geometry did not reuse one selected-mode definition");
     if (active.fixture_patches.size() != 2 || first_models.size() < 4 || active.asset_leases.size() != 2) return fail("The active scene did not retain one MVR cache and one shared GDTF cache");
     std::filesystem::path first_cache;
     for (const auto &path : first_models) {
@@ -160,6 +164,8 @@ int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
     return 0;
 }
 
+#include "fixture_geometry_templates_test.h"
+
 } // namespace
 
 // Runs active-scene extraction ownership regressions in an isolated runtime root.
@@ -169,6 +175,7 @@ int main() {
     peraviz::runtime_storage::set_runtime_root_for_tests(root / "runtime");
     if (const int result = test_scene_lease_set_deduplication(); result != 0) return result;
     if (const int result = test_mvr_gdtf_active_scene_lifetime(root); result != 0) return result;
+    if (const int result = test_fixture_geometry_templates(root); result != 0) return result;
     peraviz::runtime_storage::cleanup_current_session();
     peraviz::runtime_storage::reset_runtime_root_for_tests();
     std::filesystem::remove_all(root);

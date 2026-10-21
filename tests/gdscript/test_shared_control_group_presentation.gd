@@ -74,7 +74,7 @@ func _run() -> void:
 	var service = Service.new()
 	var bindings := Bindings.new()
 	bindings.outputs = loader.outputs
-	service.install_dense_presentation(loader, bindings)
+	await service.install_dense_presentation(loader, bindings)
 	var adapter: RefCounted = service._dense_adapter
 	var sizes: Dictionary = adapter.diagnostics()
 	test.check(sizes["physical_outputs"] == 51 and sizes["presentation_control_groups"] == 2 and sizes["largest_group"] == 50, "51 canonical outputs become one 50-member presentation group plus Aura")
@@ -127,7 +127,7 @@ func _run() -> void:
 	get_root().add_child(split_loader)
 	await process_frame
 	bindings.outputs = split_loader.outputs
-	service.install_dense_presentation(split_loader, bindings)
+	await service.install_dense_presentation(split_loader, bindings)
 	adapter = service._dense_adapter
 	test.check(adapter._groups[0].materials.size() == 5, "Different source appearance, multipass state and lens scaling retain distinct material subgroups")
 	_snapshot(adapter, PackedFloat32Array([0.5, 10, 8, 10, 2]), PackedFloat32Array([0.2, 0.4, 0.8, 1]))

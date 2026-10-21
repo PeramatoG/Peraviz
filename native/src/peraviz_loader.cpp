@@ -1,4 +1,7 @@
 #include "peraviz_loader.h"
+#include <chrono>
+#include <algorithm>
+#include "scene_setup_options.h"
 #include "runtime/compiled_runtime_scene_codec.h"
 
 #include "mvr_scene_loader.h"
@@ -119,6 +122,10 @@ namespace godot {
 
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("begin_load_mvr", "path", "universe_offset"), &PeravizLoader::begin_load_mvr, DEFVAL(-1));
+    ClassDB::bind_method(D_METHOD("is_load_mvr_ready"), &PeravizLoader::is_load_mvr_ready);
+    ClassDB::bind_method(D_METHOD("finish_load_mvr"), &PeravizLoader::finish_load_mvr);
+    ClassDB::bind_method(D_METHOD("get_load_metrics"), &PeravizLoader::get_load_metrics);
     ClassDB::bind_method(D_METHOD("load_mvr", "path", "peraviz_debug_baseline", "peraviz_debug_coords"), &PeravizLoader::load_mvr);
     ClassDB::bind_method(D_METHOD("load_3ds_mesh_data", "path"), &PeravizLoader::load_3ds_mesh_data);
     ClassDB::bind_method(D_METHOD("get_fixtures_patch"), &PeravizLoader::get_fixtures_patch);
@@ -139,15 +146,66 @@ void PeravizLoader::_bind_methods() {
                          DEFVAL(-1));
 }
 
+// Starts one owned CPU import; future destruction joins before loader data can disappear.
+bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
+    if (preparation_.valid()) return false;
+    const std::string native_path(path.utf8().get_data());
+#ifdef PERAVIZ_ENABLE_DMX
+    peraviz::dmx::clear_fixture_control_offsets_cache();
+#endif
+    prepared_.reset();
+    load_metrics_.clear();
+    preparation_=std::async(std::launch::async, [native_path, universe_offset] {
+        return peraviz::prepare_scene_setup(native_path,universe_offset);
+    });
+    return true;
+}
+
+// Polls completion without waiting or touching the worker-owned result.
+bool PeravizLoader::is_load_mvr_ready() const {
+    return preparation_.valid() && preparation_.wait_for(std::chrono::seconds(0))==std::future_status::ready;
+}
+
+// Transfers completed immutable CPU data exactly once; engine data stays on this thread.
+Array PeravizLoader::finish_load_mvr() {
+    if (!is_load_mvr_ready()) return {};
+    try {
+        prepared_=preparation_.get();
+    } catch (const std::exception &error) {
+        UtilityFunctions::push_error("MVR preparation failed: ",error.what());
+        return {};
+    }
+    last_scene_model_=std::move(prepared_->model);
+    load_metrics_["native_mvr_ms"]=prepared_->load_ms;
+    return serialize_scene_nodes(false,false);
+}
+
+// Retains the synchronous reference/debug import contract for native and test consumers.
 Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
                               bool peraviz_debug_coords) {
 #ifdef PERAVIZ_ENABLE_DMX
     peraviz::dmx::clear_fixture_control_offsets_cache();
 #endif
+    if (preparation_.valid()) return {};
+    prepared_.reset();
+    load_metrics_.clear();
+    const auto load_start = std::chrono::steady_clock::now();
     last_scene_model_ = peraviz::load_mvr(std::string(path.utf8().get_data()),
                                           peraviz_debug_baseline,
                                           peraviz_debug_coords);
 
+    load_metrics_["native_mvr_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - load_start).count();
+    return serialize_scene_nodes(peraviz_debug_baseline, peraviz_debug_coords);
+}
+
+// Serializes instance-local node records only on the main thread after native preparation.
+Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool peraviz_debug_coords) {
+    load_metrics_["archive_xml_ms"] = last_scene_model_.archive_xml_ms;
+    load_metrics_["geometry_ms"] = last_scene_model_.geometry_ms;
+    load_metrics_["geometry_definitions"] = int64_t(last_scene_model_.geometry_definitions);
+    load_metrics_["geometry_template_hits"] = int64_t(last_scene_model_.geometry_template_hits);
+    load_metrics_["physical_nodes"] = int64_t(last_scene_model_.nodes.size());
+    const auto serialize_start = std::chrono::steady_clock::now();
     UtilityFunctions::print("[PeravizNative] load_mvr nodes=", static_cast<int64_t>(last_scene_model_.nodes.size()),
                             " baseline_debug=", peraviz_debug_baseline,
                             " coords_debug=", peraviz_debug_coords,
@@ -216,6 +274,7 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
         d["has_basis"] = node.local_transform.has_basis;
         out[index++] = d;
     }
+    load_metrics_["node_payload_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - serialize_start).count();
     return out;
 }
 
@@ -256,6 +315,9 @@ Array PeravizLoader::get_fixtures_patch() const {
 }
 
 
+// Returns bounded setup telemetry without logging per-fixture records.
+Dictionary PeravizLoader::get_load_metrics() const { return load_metrics_.duplicate(); }
+
 // Serializes a native compiled runtime scene into the versioned packed setup contract.
 Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) const {
     Dictionary out;
@@ -263,12 +325,19 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     PackedFloat32Array floats;
 #ifdef PERAVIZ_ENABLE_DMX
 
-    const peraviz::runtime::CompiledRuntimeScene scene = peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, universe_offset);
+    const auto compile_start = std::chrono::steady_clock::now();
+    const bool reuse_prepared=prepared_ && prepared_->universe_offset==universe_offset;
+    std::optional<peraviz::runtime::CompiledRuntimeScene> local_scene;
+    if (!reuse_prepared) local_scene=peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, universe_offset);
+    const auto &scene=reuse_prepared ? prepared_->compiled : *local_scene;
+    load_metrics_["mode_compile_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compile_start).count();
+    load_metrics_["unique_selected_modes"] = scene.gdtf_files_opened;
+    const auto contract_start = std::chrono::steady_clock::now();
     const peraviz::runtime::PackedCompiledRuntimeScene packed = peraviz::runtime::encode_compiled_runtime_scene(scene);
     integers.resize(static_cast<int64_t>(packed.integers.size()));
-    for (int64_t index = 0; index < integers.size(); ++index) integers.set(index, packed.integers[static_cast<size_t>(index)]);
+    if (!packed.integers.empty()) std::copy(packed.integers.begin(), packed.integers.end(), integers.ptrw());
     floats.resize(static_cast<int64_t>(packed.floats.size()));
-    for (int64_t index = 0; index < floats.size(); ++index) floats.set(index, packed.floats[static_cast<size_t>(index)]);
+    if (!packed.floats.empty()) std::copy(packed.floats.begin(), packed.floats.end(), floats.ptrw());
     Array gobo_assets;
     for (const peraviz::runtime::CompiledGoboAsset &asset : scene.gobo_assets) {
         Dictionary item;
@@ -295,12 +364,28 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         item["subject"] = String(diagnostic.subject.c_str());
         diagnostics[index] = item;
     }
-    const auto control_analysis = peraviz::presentation::analyze_control_groups(scene);
-    const auto render_groups = peraviz::presentation::compile_render_emitter_groups(scene, last_scene_model_, control_analysis.groups);
+    load_metrics_["runtime_payload_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - contract_start).count();
+    const auto controls_start = std::chrono::steady_clock::now();
+    const auto setup_options = peraviz::SceneSetupOptions::read();
+    const auto control_analysis = reuse_prepared ? prepared_->controls : peraviz::presentation::analyze_control_groups(scene, setup_options.indexed_classification);
+    load_metrics_["control_groups_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - controls_start).count();
+    const auto groups_start = std::chrono::steady_clock::now();
+    const auto render_groups = reuse_prepared ? prepared_->groups : peraviz::presentation::compile_render_emitter_groups(scene, last_scene_model_, control_analysis.groups, setup_options.indexed_classification);
+    load_metrics_["render_groups_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - groups_start).count();
+    const auto manifest_start = std::chrono::steady_clock::now();
+    load_metrics_["physical_outputs"] = int64_t(scene.beam_profiles.size());
     std::unordered_map<int32_t, int32_t> control_group_by_physical_id;
     for (const auto &group : control_analysis.groups)
         if (group.physical_ids.size() > 1)
             for (int32_t id : group.physical_ids) control_group_by_physical_id[id] = group.id;
+    std::unordered_map<int32_t,std::vector<const peraviz::runtime::CompiledComponentProperty *>> properties_by_fixture;
+    std::unordered_map<int32_t,std::vector<const peraviz::runtime::CompiledColorTargetProgram *>> colors_by_fixture;
+    std::unordered_map<int32_t,std::vector<const peraviz::runtime::CompiledBeamOpticalProfile *>> beams_by_fixture;
+    std::unordered_map<std::string,int32_t> fixture_ids;
+    for (const auto &p : scene.properties) properties_by_fixture[p.fixture_id].push_back(&p);
+    for (const auto &c : scene.color_targets) colors_by_fixture[c.fixture_id].push_back(&c);
+    for (const auto &b : scene.beam_profiles) beams_by_fixture[b.fixture_id].push_back(&b);
+    for (const auto &f : scene.fixtures) fixture_ids.emplace(f.fixture_uuid,f.fixture_id);
     Array manifest;
     manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
     Array renderer_targets;
@@ -315,7 +400,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         entry["start_address"] = fixture.start_address;
         int32_t capability_flags = 0;
         Array targets;
-        for (const peraviz::runtime::CompiledComponentProperty &property : scene.properties) {
+        for (const auto *property_ptr : properties_by_fixture[fixture.fixture_id]) {
+            const auto &property=*property_ptr;
             if (property.fixture_id != fixture.fixture_id) {
                 continue;
             }
@@ -356,7 +442,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             targets.push_back(target);
             renderer_targets.push_back(target);
         }
-        for (const peraviz::runtime::CompiledColorTargetProgram &color_target : scene.color_targets) {
+        for (const auto *color_ptr : colors_by_fixture[fixture.fixture_id]) {
+            const auto &color_target=*color_ptr;
             if (color_target.fixture_id != fixture.fixture_id || color_target.beam_render_target_id <= 0) {
                 continue;
             }
@@ -376,7 +463,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             targets.push_back(target);
             renderer_targets.push_back(target);
         }
-        for (const peraviz::runtime::CompiledBeamOpticalProfile &profile : scene.beam_profiles) {
+        for (const auto *profile_ptr : beams_by_fixture[fixture.fixture_id]) {
+            const auto &profile=*profile_ptr;
             if (profile.fixture_id != fixture.fixture_id || profile.render_target_id <= 0) {
                 continue;
             }
@@ -501,17 +589,8 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         result["dmx_mode"] = String(patch.dmx_mode.c_str());
         result["mvr_universe"] = patch.mvr_universe;
         result["mvr_address"] = patch.mvr_address;
-        int32_t fixture_id = 0;
-        for (const auto &fixture : scene.fixtures) {
-            if (fixture.fixture_uuid == patch.fixture_uuid) {
-                fixture_id = fixture.fixture_id;
-                break;
-            }
-        }
-        int32_t property_count = 0;
-        for (const auto &property : scene.properties) {
-            if (property.fixture_id == fixture_id) ++property_count;
-        }
+        const int32_t fixture_id = fixture_ids[patch.fixture_uuid];
+        const int32_t property_count = int32_t(properties_by_fixture[fixture_id].size());
         result["manifest_included"] = fixture_id > 0;
         result["fixture_id"] = fixture_id;
         result["supported_dpt_property_count"] = property_count;
@@ -524,6 +603,12 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     out["fixture_count"] = static_cast<int32_t>(scene.fixtures.size());
     out["program_count"] = static_cast<int32_t>(scene.source_programs.size());
     out["property_count"] = static_cast<int32_t>(scene.properties.size());
+    if (reuse_prepared) {
+        load_metrics_["mode_compile_ms"]=prepared_->compile_ms;
+        load_metrics_["control_groups_ms"]=prepared_->controls_ms;
+        load_metrics_["render_groups_ms"]=prepared_->groups_ms;
+    }
+    load_metrics_["renderer_manifest_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - manifest_start).count();
 #else
     integers.push_back(1);
     integers.push_back(0);

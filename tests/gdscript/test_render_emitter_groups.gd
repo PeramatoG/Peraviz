@@ -21,7 +21,7 @@ func _generate(pixels: bool, load_case: bool = false) -> String:
 	return path
 
 func _load(path: String) -> void:
-	var imported: Dictionary = app._load_mvr_scene(path, "mvr", false)
+	var imported: Dictionary = await app._load_mvr_scene(path, "mvr", false)
 	test.check(bool(imported.get("ok", false)), "Production MVR import succeeds")
 	service = app._fixture_light_apply_service
 	service.set_performance_trace_enabled(true)
@@ -62,7 +62,7 @@ func _run() -> void:
 	app._visual_settings["beam_presentation"] = 1
 	app._visual_settings["beam_render_mode"] = 0
 	app._update_beam_renderer_mode(true)
-	_load(_generate(false))
+	await _load(_generate(false))
 	var sizes: Dictionary = adapter.diagnostics()
 	test.check(sizes["physical_outputs"] == 51 and sizes["render_rows"] == 2 and sizes["aggregated_members"] == 50, "51 canonical outputs bind one aggregate shaft plus independent emission-only row")
 	if int(sizes.get("aggregated_groups", 0)) != 1:
@@ -110,7 +110,7 @@ func _run() -> void:
 	test.check(adapter.diagnostics()["visible_member_shafts"] == 0, "Repeated zero crossings never revive member shaft resources")
 	var old_generation: int = adapter._generation
 	var old_light: SpotLight3D = light
-	_load(_generate(true))
+	await _load(_generate(true))
 	test.check(not is_instance_valid(old_light) and adapter._generation != old_generation, "Scene replacement retires old aggregate nodes and native generation")
 	test.check(adapter.diagnostics()["aggregated_members"] == 50 and adapter.diagnostics()["control_groups"] == 51, "Independent pixel controls retain one compact optical aggregate plus Aura")
 	dmx.fill(0)
@@ -128,7 +128,7 @@ func _run() -> void:
 		if values[1] > 0.99 and values[3] < 0.01: red_pixels += 1
 		if values[3] > 0.99 and values[1] < 0.01: blue_pixels += 1
 	test.check(red_pixels == 25 and blue_pixels == 25 and not first.is_empty(), "All individual native pixels remain exact behind the mixed shaft")
-	_load(_generate(false, true))
+	await _load(_generate(false, true))
 	counts = adapter.diagnostics()
 	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 20 and counts["aggregate_shaft_resources"] == 20,
 		"Twenty production-imported compact sources retain 1000 physical outputs and allocate exactly 20 aggregate shafts")

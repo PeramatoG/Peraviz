@@ -5,6 +5,8 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <optional>
+#include "presentation/setup_index.h"
 
 namespace peraviz::presentation {
 namespace {
@@ -53,18 +55,26 @@ std::vector<int32_t> zoom_authority(const runtime::CompiledRuntimeScene &scene, 
 }
 // Tests optical family and static geometry; Color/Dimmer source identity intentionally may differ.
 bool compatible(const runtime::CompiledRuntimeScene &scene, const runtime::CompiledBeamOpticalProfile &a,
-        const runtime::CompiledBeamOpticalProfile &b, const EmitterSpatialDescriptor &x, const EmitterSpatialDescriptor &y) {
+        const runtime::CompiledBeamOpticalProfile &b, const EmitterSpatialDescriptor &x, const EmitterSpatialDescriptor &y,
+        const std::vector<std::vector<int32_t>> *zooms, size_t ai, size_t bi) {
     return x.reliable && y.reliable && a.fixture_id == b.fixture_id && x.anchor_geometry_key == y.anchor_geometry_key &&
         x.axis_lineage == y.axis_lineage && a.beam_type == b.beam_type && a.beam_angle_explicit == b.beam_angle_explicit &&
         a.field_angle_explicit == b.field_angle_explicit && a.color_temperature == b.color_temperature &&
         std::abs(a.beam_angle_deg-b.beam_angle_deg) <= AggregationPolicy::maximum_angle_difference_degrees &&
         std::abs(a.field_angle_deg-b.field_angle_deg) <= AggregationPolicy::maximum_angle_difference_degrees &&
-        zoom_authority(scene,a) == zoom_authority(scene,b) && dot(x.direction,y.direction) >= std::cos(AggregationPolicy::maximum_direction_spread_degrees*3.141592653589793/180.0);
+        (zooms ? (*zooms)[ai] == (*zooms)[bi] : zoom_authority(scene,a) == zoom_authority(scene,b)) && dot(x.direction,y.direction) >= std::cos(AggregationPolicy::maximum_direction_spread_degrees*3.141592653589793/180.0);
 }
 }
 // Resolves every Beam relative to its nearest shared mechanical boundary from actual SceneModel ancestry.
-std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene, const SceneModel &model) {
+std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene, const SceneModel &model, bool indexed) {
+    std::optional<SetupIndex> index;
+    if (indexed) index.emplace(scene);
+    std::unordered_map<int32_t, std::set<std::string>> mechanical_paths;
+    if (indexed) for (const auto &p : scene.properties)
+        if (p.semantic == runtime::CompiledSemantic::Pan || p.semantic == runtime::CompiledSemantic::Tilt)
+            mechanical_paths[p.fixture_id].insert(p.geometry_name);
     std::unordered_map<std::string,const SceneNode*> by_id, by_key;
+    by_id.reserve(model.nodes.size()); by_key.reserve(model.nodes.size());
     for (const auto &node : model.nodes) { if (!node.node_id.empty()) by_id[node.node_id]=&node; if (!node.gdtf_geometry_key.empty()) by_key[node.gdtf_geometry_key]=&node; }
     std::vector<EmitterSpatialDescriptor> out;
     for (const auto &beam : scene.beam_profiles) {
@@ -84,7 +94,7 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
         std::reverse(chain.begin(),chain.end());
         if (chain.empty() || chain.front()->gdtf_geometry_path.find('/')!=std::string::npos || chain.front()->node_id.empty()) { out.push_back(d); continue; }
         size_t anchor=0;
-        for (size_t i=0;i<chain.size();++i) if (mechanical(*chain[i],scene,beam.fixture_id)) { anchor=i; d.axis_lineage.push_back(chain[i]->gdtf_geometry_key); }
+        for (size_t i=0;i<chain.size();++i) if ((indexed ? (chain[i]->is_axis || mechanical_paths[beam.fixture_id].count(chain[i]->gdtf_geometry_path)) : mechanical(*chain[i],scene,beam.fixture_id))) { anchor=i; d.axis_lineage.push_back(chain[i]->gdtf_geometry_key); }
         d.anchor_geometry_key=chain[anchor]->gdtf_geometry_key;
         Transform relative;
         bool rigid=true;
@@ -96,13 +106,13 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
         d.origin=relative.origin;
         // Main's emitter anchor is rotated -90 degrees around X: its -Z light axis is local -Y.
         d.direction=normalized(rotate(relative,{0,-1,0}));
-        const auto wheel=analyze_wheel_presentation(scene,beam);
+        const auto wheel=analyze_wheel_presentation(scene,beam,index ? &*index : nullptr);
         d.approximate_color=wheel.approximate && beam.has_projected_beam;
         d.rejection_reason = !rigid ? "nonrigid_geometry" : !beam.valid ? "invalid_optical_profile" :
             !beam.has_projected_beam ? "emission_only" : (beam.beam_type!="Wash" && beam.beam_type!="Spot") ? "beam_type" :
             (beam.beam_radius_source!="explicit" || !std::isfinite(d.aperture_radius) || d.aperture_radius<=0) ? "beam_radius_provenance" :
             (!std::isfinite(d.nominal_flux) || d.nominal_flux<=0) ? "nominal_flux" :
-            has_projector_dependency(scene,beam) ? "projector_dependency" : !wheel.supported() ? wheel.rejection : "";
+            (index ? index->projector(beam) : has_projector_dependency(scene,beam)) ? "projector_dependency" : !wheel.supported() ? wheel.rejection : "";
         d.reliable=d.rejection_reason.empty();
         out.push_back(d);
     }
@@ -110,28 +120,48 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
 }
 // Classifies compact co-directional sources once; separated cells and ambiguous geometry stay individual.
 std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
-        const SceneModel &model, const std::vector<PresentationControlGroup> &controls) {
-    auto descriptors=compile_emitter_spatial_descriptors(scene,model);
+        const SceneModel &model, const std::vector<PresentationControlGroup> &controls, bool indexed) {
+    auto descriptors=compile_emitter_spatial_descriptors(scene,model,indexed);
     std::unordered_map<int32_t,int32_t> control_by_id;
     for (const auto &c:controls) for (int32_t id:c.physical_ids) control_by_id[id]=c.id;
+    std::vector<std::vector<int32_t>> zooms;
+    if (indexed) {
+        SetupIndex index(scene);
+        zooms.resize(scene.beam_profiles.size());
+        for (size_t i=0; i<zooms.size(); ++i) {
+            const auto &beam=scene.beam_profiles[i];
+            for (const auto *p : index.properties[beam.fixture_id])
+                if (p->semantic==runtime::CompiledSemantic::Zoom &&
+                    (p->geometry_name==beam.geometry_path || beam.geometry_path.rfind(p->geometry_name+"/",0)==0))
+                    zooms[i].push_back(p->property_id);
+        }
+    }
     std::vector<std::vector<size_t>> candidates;
+    std::unordered_map<int32_t, std::vector<size_t>> candidates_by_fixture;
+    std::vector<size_t> all_candidates;
     for (size_t i=0;i<descriptors.size();++i) {
         bool joined=false;
-        if (descriptors[i].reliable) for (auto &candidate:candidates) {
+        const auto &eligible = indexed ? candidates_by_fixture[descriptors[i].fixture_id] : all_candidates;
+        if (descriptors[i].reliable) for (size_t candidate_index : eligible) {
+            auto &candidate=candidates[candidate_index];
             bool fits=true;
-            for (size_t member:candidate) if (!compatible(scene,scene.beam_profiles[member],scene.beam_profiles[i],descriptors[member],descriptors[i])) {
+            for (size_t member:candidate) if (!compatible(scene,scene.beam_profiles[member],scene.beam_profiles[i],descriptors[member],descriptors[i],indexed ? &zooms : nullptr,member,i)) {
                 fits=false;
                 if (descriptors[member].fixture_id==descriptors[i].fixture_id && descriptors[member].reliable) {
                     const auto &a=scene.beam_profiles[member], &b=scene.beam_profiles[i];
                     descriptors[i].rejection_reason=descriptors[member].anchor_geometry_key!=descriptors[i].anchor_geometry_key || descriptors[member].axis_lineage!=descriptors[i].axis_lineage ? "axis_lineage" :
-                        zoom_authority(scene,a)!=zoom_authority(scene,b) ? "zoom_authority" :
+                        (indexed ? zooms[member]!=zooms[i] : zoom_authority(scene,a)!=zoom_authority(scene,b)) ? "zoom_authority" :
                         dot(descriptors[member].direction,descriptors[i].direction)<std::cos(AggregationPolicy::maximum_direction_spread_degrees*3.141592653589793/180.0) ? "direction_spread" : "optical_profile";
                 }
                 break;
             }
             if (fits) { candidate.push_back(i); joined=true; break; }
         }
-        if (!joined) candidates.push_back({i});
+        if (!joined) {
+            candidates_by_fixture[descriptors[i].fixture_id].push_back(candidates.size());
+            all_candidates.push_back(candidates.size());
+            candidates.push_back({i});
+        }
     }
     std::vector<RenderEmitterGroup> out;
     for (const auto &candidate:candidates) {
