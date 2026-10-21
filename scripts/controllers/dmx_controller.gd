@@ -155,12 +155,14 @@ func set_debug_force_full_apply(enabled: bool) -> void:
 		_dmx_fixture_runtime.set_debug_force_full_apply(enabled)
 
 
-func set_universe_offset(value: int) -> void:
+# Setup can install the saved offset before compiling bindings, without rebuilding retired targets.
+func set_universe_offset(value: int, refresh_bindings: bool = true) -> void:
 	if _dmx_universe_offset_input == null:
 		return
 	if int(_dmx_universe_offset_input.value) == value:
 		return
-	_dmx_universe_offset_input.value = value
+	if refresh_bindings: _dmx_universe_offset_input.value = value
+	else: _dmx_universe_offset_input.set_value_no_signal(value)
 
 func get_universe_offset() -> int:
 	if _dmx_universe_offset_input == null:

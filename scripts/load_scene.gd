@@ -597,7 +597,7 @@ func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 		beam_params[key] = _visual_settings[key]
 	beam_params["haze_density"] = _visual_settings["haze_density_multiplier"]
 	var beam_phase_start: int = Time.get_ticks_usec()
-	_update_beam_for_light(light, beam_params)
+	_update_beam_for_light(light, beam_params, false)
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service._track_phase("beam_update", beam_phase_start)
 
@@ -606,10 +606,11 @@ func _ensure_beam_runtime_for_light(light: SpotLight3D) -> void:
 		return
 	_active_beam_renderer.ensure_beam(light)
 
-func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void:
+# Bulk settings changes defer dense group rebuilding until every member is updated.
+func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary, rebind_dense: bool = true) -> void:
 	if _fixture_light_apply_service._render_diagnostic_mode != "full":
 		light.set_meta("peraviz_beam_last_params", beam_params)
-		_fixture_light_apply_service.rebind_dense_light(light)
+		if rebind_dense: _fixture_light_apply_service.rebind_dense_light(light)
 		return
 	if _active_beam_renderer == null:
 		return
@@ -618,7 +619,7 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary) -> void
 	_active_beam_renderer.update_beam(light, beam_params)
 	_refresh_native_gobo_presentation(light)
 	_native_target_registry.rebind_beam_resource(light, _active_beam_renderer.get_beam_resource(light))
-	_fixture_light_apply_service.rebind_dense_light(light)
+	if rebind_dense: _fixture_light_apply_service.rebind_dense_light(light)
 
 func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
 	if light == null or not is_instance_valid(light) or not light.has_meta("peraviz_beam_last_params"):
@@ -678,8 +679,8 @@ var _scene_setup_resource_metrics: Dictionary = {}
 func _is_scene_load_current(generation: int) -> bool:
 	return is_inside_tree() and _scene_load_generation == generation
 
-func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_loaded_file: bool = true) -> Dictionary:
-	return await preload("res://scripts/scene_loading/scene_import_coordinator.gd").load_scene(self, path, loaded_file_type, remember_loaded_file)
+func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_loaded_file: bool = true, project_context: Dictionary = {}) -> Dictionary:
+	return await preload("res://scripts/scene_loading/scene_import_coordinator.gd").load_scene(self, path, loaded_file_type, remember_loaded_file, null, project_context)
 
 
 func _on_save_project_selected(path: String) -> void:
@@ -713,20 +714,10 @@ func _open_project(path: String) -> void:
 			_status_presenter.set_scene_state_load_error(str(project_result.get("error", "unknown error")))
 		return
 
-	var import_result: Dictionary = await _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz", false)
-	if not bool(import_result.get("ok", false)):
-		return
-
-	var visual_project_settings: Variant = project_result.get("visual_settings", {})
-	var dmx_project_settings: Dictionary = {}
-	var dmx_settings_value: Variant = project_result.get("dmx_settings", {})
-	if dmx_settings_value is Dictionary:
-		dmx_project_settings = dmx_settings_value as Dictionary
-	_restore_visual_project_settings(visual_project_settings)
-	_restore_dmx_project_settings(dmx_project_settings)
-	_last_loaded_file_type = "pvz"
-	_remember_loaded_file(path, "pvz")
-	if _status_presenter != null:
+	# Apply saved settings inside the import generation before creating renderer resources.
+	project_result["source_path"] = path
+	var import_result: Dictionary = await _load_mvr_scene(str(project_result.get("scene_path", "")), "pvz", true, project_result)
+	if bool(import_result.get("ok", false)) and _status_presenter != null:
 		_status_presenter.show_toast("Opened Peraviz project: %s" % path.get_file())
 
 func _collect_dmx_project_settings() -> Dictionary:

@@ -1,6 +1,8 @@
 extends CanvasLayer
 
 const PHASE_LABELS: Dictionary = {
+	"project_settings": "Restoring project settings…",
+	"project_completion": "Finishing project opening…",
 	"loading_feedback": "Opening scene…",
 	"native_mvr": "Reading scene and fixture definitions…",
 	"mode_compile": "Preparing fixture controls…",

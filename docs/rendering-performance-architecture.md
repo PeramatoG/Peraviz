@@ -92,8 +92,18 @@ in about 63–90 ms; this is not a Windows prediction. Larger transactions remai
 responsiveness tradeoff, recorded as `renderer_binding_transaction_ms`; no hard
 8 ms cap is claimed. Hidden inspectors allocate zero row Labels (rather than 656
 for 82 fixtures); visible tables build eight rows per turn and retire stale rebuilds.
-The Windows scene-specific stall still requires owner validation; successful group
-counts alone do not prove graphics preparation is cheap.
+The owner subsequently confirmed that direct MVR import succeeds while PVZ opening
+of the same scene stalls after the summary (6.60 s import, 0.148 s inspector,
+2.675 s resource transaction). PVZ restored saved visual settings after readiness;
+a scalar update could rebuild every group for each physical member. Saved settings
+and patch offset now precede resource construction inside the import generation;
+saved receiver startup and original PVZ preference publication finish before success.
+Bulk visual changes defer member rebinding and rebuild groups once. A generic
+102-output headless regression reproduces 201 global rebuilds / 1,192 ms on the
+old bulk route versus one rebuild / about 69 ms after correction, retaining exact
+nonzero held state, two aggregates and four render rows. The actual saved-project
+opening/reopening route is covered separately from direct MVR import. These timings
+are Linux observations; the corrected Windows PVZ route still needs validation.
 
 Runtime registration previously included synchronous classification. It now follows
 CPU preparation; phase times include yielded waits, so nested phase rows must not

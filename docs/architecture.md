@@ -38,6 +38,11 @@ generation. The coordinator propagates failure and keeps DMX gated through resou
 diagnostics/publication; failed imports remain gated until a later successful load.
 This watchdog cannot interrupt a blocked engine/driver call. Phase text reports
 native preparation through an atomic token and Godot setup on the main thread.
+PVZ opening restores saved visual settings and the universe offset after retiring the
+old scene and before constructing the new resources. Receiver startup and original
+PVZ preference publication finish inside the same loading generation; no visual
+restoration runs after its summary. Bulk visual scalar changes defer per-member
+dense rebinding and commit one global group rebuild with held-state replay.
 The loading indicator gates edits and DMX application against partial targets. Cancellation drains the task and clears
 partial resources; native code never mutates the SceneTree from that task.
 

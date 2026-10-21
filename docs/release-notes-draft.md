@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Fixed PVZ project opening performing saved visual restoration after reporting scene readiness. Saved visual settings and universe offset now precede resource construction; saved receiver startup and original PVZ preference publication remain inside the loading generation. Bulk visual changes rebuild dense groups once instead of once per physical member, preventing repeated global resource recreation for aggregated fixtures.
+
 - Restored coherent renderer-resource installation in one main-thread turn: individual, shared and aggregate bindings finish before rendering can consume an intermediate configuration. Native preparation remains asynchronous; model construction and initial light defaults remain budgeted.
 - Hidden fixture inspectors now defer row Controls, and visible tables build eight fixture rows per frame with revision-safe replacement. Finalization phases have distinct labels. Fixed unused-signal/integer-division warnings and added `--peraviz-load-trace` as an alternative to the telemetry environment variable.
 

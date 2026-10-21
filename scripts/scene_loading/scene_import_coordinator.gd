@@ -1,7 +1,7 @@
 extends RefCounted
 
 # Owns one asynchronous application import, keeping publication and generation retirement together.
-static func load_scene(app: Node, path: String, loaded_file_type: String, remember_loaded_file: bool, render_readiness: RefCounted = null) -> Dictionary:
+static func load_scene(app: Node, path: String, loaded_file_type: String, remember_loaded_file: bool, render_readiness: RefCounted = null, project_context: Dictionary = {}) -> Dictionary:
 	if app._scene_loading:
 		return {"ok": false, "error": "scene import already running", "node_count": 0}
 	var load_started := Time.get_ticks_usec()
@@ -24,6 +24,19 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	# Two event-loop turns let the loading status draw before CPU preparation starts.
 	await budget.checkpoint(true)
 	await budget.checkpoint(true)
+	var project_settings_ms: float = 0.0
+	if not project_context.is_empty() and budget.valid():
+		budget.phase = "project_settings"
+		budget.breadcrumb("project_settings_begin")
+		await budget.checkpoint(true)
+		if budget.valid():
+			var settings_started := Time.get_ticks_usec()
+			app._restore_visual_project_settings(project_context.get("visual_settings", {}))
+			var saved_dmx: Dictionary = project_context.get("dmx_settings", {})
+			if saved_dmx.has("universe_offset"):
+				app._dmx_controller.set_universe_offset(int(saved_dmx["universe_offset"]), false)
+			project_settings_ms = (Time.get_ticks_usec() - settings_started) / 1000.0
+		budget.breadcrumb("project_settings_end")
 	var import_result: Dictionary = await app._scene_import_service.import_scene(
 		path,
 		app._loader,
@@ -84,9 +97,17 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		budget.phase = "save_preferences"
 		budget.breadcrumb("session_preferences_begin")
 		await budget.checkpoint(true)
-		if budget.valid(): app._remember_loaded_file(path, loaded_file_type)
+		if budget.valid(): app._remember_loaded_file(str(project_context.get("source_path", path)), loaded_file_type)
 		else: import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
 		budget.breadcrumb("session_preferences_end")
+	if bool(import_result.get("ok", false)) and not project_context.is_empty():
+		# The offset is already installed; starting a saved receiver stays behind the loading gate.
+		budget.phase = "project_completion"
+		budget.breadcrumb("project_completion_begin")
+		var saved_dmx: Dictionary = project_context.get("dmx_settings", {}).duplicate()
+		saved_dmx.erase("universe_offset")
+		app._restore_dmx_project_settings(saved_dmx)
+		budget.breadcrumb("project_completion_end")
 	if bool(import_result.get("ok", false)):
 		app._loaded_mvr_path = path
 		app._last_loaded_file_type = loaded_file_type
@@ -101,6 +122,8 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	budget.breadcrumb("scene_publish_end", {"ok": bool(import_result.get("ok", false))})
 	# Only remove feedback after scene registration and real rendered frames complete.
 	var metrics: Dictionary = import_result.get("load_metrics", {})
+	metrics["project_settings_ms"] = project_settings_ms
+	metrics["loaded_file_type"] = loaded_file_type
 	metrics.merge(render_readiness.metrics)
 	metrics["first_render_ms"] = first_render_ms
 	budget.phase = "resource_summary"
