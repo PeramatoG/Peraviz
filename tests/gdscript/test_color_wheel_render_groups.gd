@@ -152,10 +152,19 @@ func _run() -> void:
 		_load(kind)
 		test.check(adapter.diagnostics()["render_rows"] == 2,"Uniform resolved Color approximation permits one shaft regardless of unsupported capability: "+kind)
 	# Generic concentric-ring geometry and mixed ChannelFunction ranges, authored independently of private assets.
-	_load("basic",false,true,"Basic")
-	test.check(adapter.diagnostics()["physical_outputs"] == 1000 and adapter.diagnostics()["render_rows"] == 20,"Twenty Basic-style ring heads with Spin/FX ranges retain 1000 canonical outputs and bind 20 combined shafts")
+	_load("basic",false,true,"BasicControls")
+	test.check(adapter.diagnostics()["physical_outputs"] == 1000 and adapter.diagnostics()["render_rows"] == 20,"Twenty Basic-style ring heads with unlinked FX and Base Color controls retain 1000 canonical outputs and bind 20 combined shafts")
+	if adapter.diagnostics()["render_rows"] != 20:
+		print("TEST FAILURE: Base Color control regression: ",adapter.diagnostics())
+		app.queue_free()
+		await process_frame
+		test.finish(self)
+		return
 	var compiled: Dictionary = app._loader.compile_visual_runtime_scene(0)
 	test.check(compiled["renderer_manifest"][0]["render_group_diagnostics"]["native_approximate_projected_color_outputs"] == 1000,"Setup identifies accepted approximation without misreporting unsupported effect fidelity")
+	var basic_codes: Dictionary = {}
+	for diagnostic in compiled["diagnostics"]: basic_codes[diagnostic["code"]] = true
+	test.check(not basic_codes.has("PVZ-COLOR-WHEEL-RESOURCE-MISSING") and basic_codes.has("PVZ-COLOR-EFFECT-UNSUPPORTED"),"Unlinked FX remains approximate while unrelated Base Color controls produce no missing-wheel diagnostic")
 	var descriptor: Dictionary = compiled["renderer_manifest"][0]["render_emitter_groups"][0]
 	test.check(absf(descriptor["aperture_radius"]-0.142)<0.001 and absf(descriptor["packing_density"]-0.80)<0.02 and descriptor["beam_angle"] == 28 and descriptor["field_angle"] == 43.75,"Actual converted native geometry proves enclosure/density and retains Beam/Field angles")
 	dmx.fill(0)
@@ -168,6 +177,11 @@ func _run() -> void:
 	await _apply()
 	_check_physical_and_lenses(2)
 	_check_shared_shaft()
+	for f in range(20): dmx[f*16+9] = 200
+	await _apply()
+	_check_physical_and_lenses(2)
+	_check_shared_shaft()
+	test.check(adapter.diagnostics()["render_rows"] == 20,"Base calibration/control DMX changes preserve shaft membership and supported Color")
 	for f in range(20):
 		dmx[f*16+3] = 220
 		dmx[f*16+8] = 128
@@ -228,6 +242,10 @@ func _run() -> void:
 	test.check(colors.get(0,0)==14 and colors.get(1,0)==16 and colors.get(2,0)==20,"All three independently controlled rings retain exact physical membership and RGB")
 	_load("basic",false,false,"Seated")
 	test.check(adapter.diagnostics()["render_rows"] == 2 and adapter.diagnostics()["control_groups"] == 2,"Returning to a supported selected mode compiles fresh shared authority and geometry")
+	_load("basic",false,false,"BrokenControls")
+	compiled = app._loader.compile_visual_runtime_scene(0)
+	var broken: Dictionary = compiled["renderer_manifest"][0]["render_group_diagnostics"]
+	test.check(adapter.diagnostics()["render_rows"] == 51 and broken["native_accepted_aggregates"] == 0 and broken["native_rejected_physical"].get("wheel_missing_palette",0) == 50,"An actual unresolved Wheel remains individual even alongside unlinked FX and unrelated Base controls")
 	app._clear_scene()
 	app.queue_free()
 	service = null

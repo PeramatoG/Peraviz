@@ -518,6 +518,18 @@ runtime::CompiledWheelMode classify_wheel_mode(const std::string &attribute_name
     return runtime::CompiledWheelMode::OtherUnsupported;
 }
 
+// Recognizes wheel-owning Color identities, without classifying unrelated Color controls as wheels.
+bool color_attribute_requires_wheel(const AttributeIdentity &attribute) {
+    if (attribute.known_official && attribute.canonical_family == "Color") return true;
+    if (attribute.name == "ColorWheel" || attribute.name == "ColorSelect") return true;
+    const size_t suffix = attribute.name.find("Wheel");
+    if (suffix == std::string::npos) return false;
+    const auto selection = normalize_attribute_identity(0, attribute.name.substr(0, suffix));
+    if (!selection.known_official || selection.canonical_family != "Color") return false;
+    const std::string operation = attribute.name.substr(suffix);
+    return operation == "WheelIndex" || operation == "WheelSpin" || operation == "WheelRandom" || operation == "WheelAudio";
+}
+
 // Retains unsupported FX source bytes, ranges and activation without claiming a live evaluator.
 int32_t retain_unsupported_color_source(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch,
         const ChannelProgram &parser_program, const std::unordered_map<int32_t,const GeometryInstance*> &geometries,
@@ -538,7 +550,7 @@ int32_t retain_unsupported_color_source(runtime::CompiledRuntimeScene &scene, co
     return id;
 }
 
-// Retains exact Color-wheel bindings and explicit unsupported-effect presentation blockers.
+// Retains exact Color-wheel bindings and separates unsupported effects from missing resources.
 void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                           const SceneModel::FixturePatch &patch,
                           const CompiledGdtfFixtureType &fixture_type,
@@ -588,7 +600,8 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         auto record_color_presentation=[&](runtime::ColorPresentationStatus reason,const char *code,const char *message) {
             auto geometry=geometries_by_id.find(parser_program.geometry_instance_id);
             for (auto &beam:scene.beam_profiles) if (beam.fixture_id==fixture_id &&
-                    (geometry==geometries_by_id.end() || color_channel_controls_beam(*geometry->second,beam))) beam.color_presentation_status=reason;
+                    (geometry==geometries_by_id.end() || color_channel_controls_beam(*geometry->second,beam)) &&
+                    beam.color_presentation_status!=runtime::ColorPresentationStatus::MissingWheelResource) beam.color_presentation_status=reason;
             scene.diagnostics.push_back({code,"warning",message,patch.fixture_uuid+" attribute="+parser_program.attribute_name});
         };
         const std::string lower_attribute=dmx::lower_ascii(parser_program.attribute_name);
@@ -611,13 +624,16 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                     scene.wheel_bindings.push_back(std::move(binding));
                 }
             }
+            if (!parser_program.wheel_reference.empty() && renderer_id_by_wheel.find(parser_program.wheel_id)==renderer_id_by_wheel.end())
+                record_color_presentation(runtime::ColorPresentationStatus::MissingWheelResource,"PVZ-COLOR-WHEEL-RESOURCE-MISSING",
+                    "Selected-mode ColorEffects explicitly references an unresolved or empty Wheel; affected outputs remain individual.");
             continue;
         }
         if (parser_program.wheel_id<=0) {
             const auto attribute=attributes_by_id.find(parser_program.attribute_id);
-            if (attribute!=attributes_by_id.end() && lower_attribute.rfind("color",0)==0 && semantic_for_attribute(*attribute->second)==runtime::CompiledSemantic::Unknown)
+            if (!parser_program.wheel_reference.empty() || (attribute!=attributes_by_id.end() && color_attribute_requires_wheel(*attribute->second)))
                 record_color_presentation(runtime::ColorPresentationStatus::MissingWheelResource,"PVZ-COLOR-WHEEL-RESOURCE-MISSING",
-                    "Selected-mode Color wheel/effect lacks a resolved Wheel resource; affected outputs remain individual.");
+                    "Selected-mode wheel-owning function lacks a resolved Wheel resource; affected outputs remain individual.");
             continue;
         }
         const runtime::CompiledWheelMode wheel_mode = classify_wheel_mode(parser_program.attribute_name);

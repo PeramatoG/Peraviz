@@ -154,6 +154,16 @@ setters/s and ~12 ms GDScript application/frame; stopping Color gave ~74–75 FP
 Native lens RID bindings/writes were zero. The all-wheel veto was an upstream blocker;
 these measurements do not establish the entire CPU/GPU split or a new FPS improvement.
 
+The subsequent revision-4 Windows run at `bd902d1` still had zero aggregates,
+1,095 rows, and exactly 1,000 `wheel_missing_palette` rejections (~23 FPS with Color
+active). Native compilation had incorrectly treated Base-level ColorMixReset and
+ColorCalibrationMode as wheel owners through a broad Color-prefix check. The focused
+correction uses parsed Color selection/motion identity and explicit Wheel references;
+unlinked unsupported ColorEffects remains approximate. Missing references take priority
+over approximation regardless of channel order. A generic 37-slot Basic-style regression
+includes both Base controls, Spin, and unlinked FX, with a matching broken-link fallback
+case. Geometry safeguards and live presentation policy are unchanged.
+
 **Default policy:** compatible compact emitters contribute to one combined volumetric
 shaft through their resolved physical Color/energy, even when colors differ. An
 unsupported macro does not justify retaining fifty shafts when those shafts cannot

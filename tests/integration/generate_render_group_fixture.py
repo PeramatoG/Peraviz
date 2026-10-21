@@ -59,7 +59,9 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
         rgb = ''.join(channel(5+i,a,'Head') for i,a in enumerate(['ColorAdd_R','ColorAdd_G','ColorAdd_B']))
         ring_rgb = ''.join(channel(5+ring*3+i,a,f'Ring{ring}') for ring in range(3) for i,a in enumerate(['ColorAdd_R','ColorAdd_G','ColorAdd_B']))
         ctc = channel(9,'CTC','Head',6500)
-        variants = [('Seated',head_common+rgb+wheel_functions(8,False)+ctc),('Basic',head_common+rgb+wheel_functions(8,True)+ctc),('Extended',head_common+ring_rgb+wheel_functions(14,True)),('ExtendedSeated',head_common+ring_rgb+wheel_functions(14,False))]
+        base_controls = '<DMXChannel Offset="10" Geometry="Root"><LogicalChannel Attribute="Control"><ChannelFunction Attribute="ColorMixReset" DMXFrom="0"/><ChannelFunction Attribute="ColorCalibrationMode" DMXFrom="128"/></LogicalChannel></DMXChannel>'
+        basic_controls = head_common+rgb+wheel_functions(8,True).replace('Attribute="ColorEffects1" Wheel="Chromatic"','Attribute="ColorEffects1"')+ctc+base_controls
+        variants = [('BrokenControls',basic_controls.replace('Wheel="Chromatic"','Wheel="Absent"')),('BasicControls',basic_controls),('Seated',head_common+rgb+wheel_functions(8,False)+ctc),('Basic',head_common+rgb+wheel_functions(8,True)+ctc),('Extended',head_common+ring_rgb+wheel_functions(14,True)),('ExtendedSeated',head_common+ring_rgb+wheel_functions(14,False))]
         modes = ''.join(f'<DMXMode Name="{name}" Geometry="Root"><DMXChannels>{channels}</DMXChannels></DMXMode>' for name,channels in variants)
     xml = '<GDTF><FixtureType Name="Synthetic Source"><Models><Model Name="Lens" File="lens" PrimitiveType="Cylinder" Length="0.02" Width="0.02" Height="0.002"/></Models><Geometries><Geometry Name="Root"><Axis Name="Pan"><Axis Name="Tilt">' + ''.join(geometries) + '</Axis></Axis></Geometry></Geometries><DMXModes>' + modes + '</DMXModes>' + wheel_xml + '</FixtureType></GDTF>'
     if wheel == 'fx':

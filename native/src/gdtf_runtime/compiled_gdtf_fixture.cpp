@@ -670,6 +670,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 program.filter_resource_id = resolve_physical_resource_link(fixture.filters, dmx::trim_ascii(read_attr(fn, "Filter", "filter")));
                 program.color_space_name = dmx::trim_ascii(read_attr(fn, "ColorSpace", "colorspace"));
                 program.wheel_id = resolved_wheel_id > 0 ? resolved_wheel_id : 0;
+                program.wheel_reference = wheel_link;
                 program.wheel_family_number = normalize_attribute_identity(0, attribute_name).primary_index;
                 const ParsedGoboSemantic gobo_semantic = parse_gobo_semantic(attribute_name);
                 if (gobo_semantic.recognized && gobo_semantic.kind != GoboSemanticKind::Selection && program.wheel_id == 0) {
