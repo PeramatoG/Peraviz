@@ -379,6 +379,7 @@ struct VisualFrameStats {
     uint64_t changed_color = 0;
     uint64_t changed_zoom = 0;
     uint64_t color_rows = 0;
+    uint64_t color_evaluation_us = 0, color_composition_us = 0;
     uint64_t color_targets_dirty = 0;
     uint64_t color_inputs_evaluated = 0;
     uint64_t color_targets_cooked = 0;

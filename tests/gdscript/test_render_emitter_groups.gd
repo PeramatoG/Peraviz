@@ -2,6 +2,7 @@ extends SceneTree
 
 const TestCase = preload("res://tests/gdscript/headless_test_case.gd")
 var test = TestCase.new()
+var owner_check_pending: bool = false
 var app: Node
 var service: RefCounted
 var runtime: RefCounted
@@ -25,13 +26,26 @@ func _load(path: String) -> void:
 	service = app._fixture_light_apply_service
 	service.set_performance_trace_enabled(true)
 	runtime = app._dmx_controller._dmx_fixture_runtime
+	runtime._native_visual_runtime.set_performance_trace_enabled(true)
 	runtime._sectioned_visual_frame_applier.set_performance_trace_enabled(true)
 	adapter = service._dense_adapter
+	owner_check_pending = true
 	test.check(adapter != null and service.is_dense_presentation_active(), "Production native renderer installation succeeds")
 
 func _apply() -> void:
 	runtime._native_visual_runtime.submit_universe_frame(0, dmx)
 	var frame: Dictionary = runtime._native_visual_runtime.consume_latest_visual_frame()
+	if owner_check_pending:
+		var expected: Dictionary = {}
+		for record in adapter._binding_records: expected[int(record["beam_render_target_id"])] = record["fixture_uuid"]
+		var descriptors: PackedInt32Array = frame["descriptors"]
+		var integers: PackedInt32Array = frame["integers"]
+		for offset in range(0,descriptors.size(),5):
+			if descriptors[offset] != 3: continue
+			for row in range(descriptors[offset+1]):
+				var base: int = descriptors[offset+2] + row*3
+				test.check(expected[integers[base+1]] == runtime._native_fixture_uuids_by_id[integers[base]], "Indexed Color owner matches canonical fixture after import/reload")
+		owner_check_pending = false
 	if not (frame.get("descriptors", PackedInt32Array()) as PackedInt32Array).is_empty():
 		runtime._sectioned_visual_frame_applier.apply_snapshot(frame, app, service, 0.016, runtime, runtime._native_fixture_uuids_by_id, runtime._fixture_nodes)
 	await process_frame
@@ -135,6 +149,26 @@ func _run() -> void:
 	test.check(counts["renderer_outputs_processed"] == 20 and counts["native_dirty_outputs"] == 1000,
 		"One shared Color tick crosses the production boundary as 20 render rows rather than 1000 physical rows")
 	test.check(counts["packed_buffer_bytes"] == 20 * 56, "The 1000-output application's packed payload is renderer-sized")
+	test.check(counts["physical_color_outputs"] == 1000 and counts["beam_topology_rebuilt"] == 0 and counts["optics_apply_calls"] == 0 and counts["beam_visibility_writes"] == 0,
+		"Dynamic Color changes 1000 physical states without optics, topology or visibility mutations")
+	print("COLOR_AUDIT_ONE_TICK ", JSON.stringify(counts))
+	var native_before: Dictionary = runtime._native_visual_runtime.get_stats()
+	var timing_totals: Dictionary = {}
+	for tick in range(60):
+		for f in range(20): dmx[f*16+4] = 20 + tick * 3
+		await _apply()
+		var sample: Dictionary = adapter.consume_diagnostics()
+		for key in ["native_physical_us", "native_reduction_us", "native_material_us", "compatibility_adapter_us", "actual_lens_material_renderer_writes", "lens_rids_affected", "renderer_outputs_processed"]:
+			timing_totals[key] = int(timing_totals.get(key, 0)) + int(sample[key])
+	print("COLOR_AUDIT_60_TICKS ", JSON.stringify(timing_totals))
+	var native_interval: Dictionary = runtime._native_visual_runtime.get_stats()
+	for key in ["color_evaluation_us", "color_composition_us", "color_inputs_evaluated", "color_targets_cooked", "color_rows"]: native_interval[key] -= native_before[key]
+	print("COLOR_AUDIT_NATIVE_60_TICKS ", JSON.stringify(native_interval))
+	app._visual_settings["enable_realtime_spotlights"] = true
+	adapter.refresh_renderer()
+	var fallback: Dictionary = adapter.diagnostics()
+	test.check(fallback["godot_accepted_aggregates"] == 0 and fallback["godot_rejected_aggregates"] == 20 and fallback["godot_binding_rejections"].get("renderer_policy",0) == 20 and fallback["final_render_rows"] == 1000,
+		"Explicit realtime policy reports Godot-only rejection and safely restores individual rows")
 	app._clear_scene()
 	app.queue_free()
 	service = null

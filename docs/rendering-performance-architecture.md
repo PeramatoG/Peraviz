@@ -109,13 +109,99 @@ matching emission scale share a RID; different, overridden, multipass or unknown
 static materials remain separate. Independent pixel lenses remain independent.
 The native core itself remains Godot-free and trivially copyable where practical.
 
-One `[peraviz-render-groups]` startup line reports physical/control/render counts,
-large-group membership, bounded fallback reasons and allocated/visible member and
-aggregate shafts. Initial visible counts may be zero before DMX. The existing
-trace samples actual current visible counts at its report boundary. No new owner
-mode is needed. Normal trace-off validation remains one chase: all effects, stop
-Color, stop Wash Dimmer; record the three FPS values. No Windows FPS improvement
-is claimed without owner measurements.
+One `[peraviz-render-groups]` startup line separates native optical classification
+from Godot binding rejection, with bounded reason counts. It reports canonical and
+projected outputs, candidate buckets (at least three compatible members), native
+accepted groups, Godot accepted/rejected aggregates, final rows, aggregated members,
+allocated/visible shafts, unique lens RIDs, renderer/settings, compact payload bytes,
+`presentation_contract_revision=3` and the extension compilation timestamp.
+`native_rejected_physical` counts disjoint physical fallback outcomes; Godot rejection
+counts measure groups. `compatible_peers` includes singleton/undersized compatibility
+buckets; specific lineage/Zoom/profile/direction splits are reported when observed
+while classifying siblings. These are outcomes, not counts of every failed pairwise
+comparison. Initial visible counts may be zero before DMX; the existing trace samples
+current visibility at its report boundary, without a per-frame resource scan.
+
+### Dynamic Color audit (PR #105)
+
+The latest owner GUI measurements are approximately **23 FPS** with Pan/Tilt,
+Color and Dimmer running; **60 FPS** after stopping only Wash Color; and **75 FPS**
+after also stopping Pan/Tilt. Dimmer continues in this new sequence. The older
+24/46/75 sequence stopped Wash Dimmer in its third state. Conditions are not matched,
+so neither a Windows improvement nor a 75 FPS hardware limit is established.
+
+The production path retains target-local Color input evaluation/cooking, ordered
+wheel composition, exact physical fanout and per-changed-member aggregate reduction.
+Shared source programs are still evaluated for each affected Color target. Repeated
+identical relevant bytes are skipped; cooked equivalent values emit no Color row,
+and equivalent presentation values emit no renderer row or material setter. Physical
+pixels remain authoritative. A confirmed quadratic peer scan for each changed Color
+row's fixture owner is replaced with a setup-time target-to-fixture index. Zoom-only
+changes no longer traverse lens RIDs. No broader semantic optimization is inferred.
+
+Lens emission is separate from shaft aggregation. Sharing still requires proven
+Control Group authority, source/static material identity, emission scale and a safe
+single-pass appearance. Independent pixels, overrides, multipass and unknown materials
+retain separate RIDs. One Color update may issue one RGB setter **and** an energy
+setter if Color gain changes. Aggregating shafts does not eliminate these lens calls.
+
+Opt-in trace now separates `native_physical_us`, `native_reduction_us`,
+`native_material_us`, payload conversion and GDScript application time. Native stats
+add cumulative `color_evaluation_us` (input evaluation plus cooking) and
+`color_composition_us` (final wheel composition, comparison and Color row collection).
+Use interval differences for cumulative native stats; dense presentation fields reset
+at the report boundary. Work counters include physical Color outputs, unique lens RIDs
+affected/unchanged, actual setters, avoided shared setters and actual shaft mutations.
+These CPU elapsed times measure API submission; they do not measure asynchronous GPU
+completion. Compare existing `render_setup_cpu_ms`, `viewport_cpu_ms` and
+`viewport_gpu_ms` separately. Do not add overlapping stage times together.
+
+A deterministic 1,000-output, 20-render-row headless RID workload compares 20 compatible
+shared lens RIDs against 1,000 independent RIDs. Over 60 changing RGB ticks it issues
+1,200 versus 60,000 actual material setters, avoiding 58,800 setters with sharing.
+Its dummy RenderingServer CPU timings establish workload scaling only; they are not
+Windows, Forward+ or GPU evidence. One local Linux Debug/Godot 4.7.1 run measured
+0.094 ms/tick for shared lens submission and 0.238 ms/tick for independent submission.
+The generated MVR has no lens model, so its import benchmark cannot establish production
+lens cost. In its separate 60-tick Color-only run (1,000 physical targets, 20 shaft rows),
+mean CPU times were:
+
+| Stage | Local headless ms/tick |
+| --- | ---: |
+| Native Color input evaluation + cooking | 2.142 |
+| Final Color composition + row collection | 1.473 |
+| Physical presentation composition | 0.316 |
+| Incremental render reduction | 0.246 |
+| GDScript presentation application | 0.430 |
+
+These are illustrative elapsed timings with tracing enabled, not thresholds or matched
+before/after measurements. Color produced 20 shaft dynamic writes per tick, zero optics,
+topology or visibility writes, and no lens setters in this model-free generated scene. The owner's reference MVR/GDTFs are
+not available in this checkout; real grouping activation and the dominant production
+stage remain unmeasured until its startup summary/trace are supplied.
+
+Normal owner validation stays trace-off in the GUI: load the reference MVR, use the
+same chase, record all-effects FPS, stop only Wash Color, then also stop Pan/Tilt;
+copy the startup summary. Match `native_accepted_aggregates` against
+`godot_accepted_aggregates`, check the rejection dictionaries, and verify final rows
+and contract revision before attributing performance to grouping.
+
+If one further diagnostic run is needed, start the Godot GUI with
+`PERAVIZ_DIAGNOSTIC_SKIP_LENS_WRITES=1` inherited by the game and enable the existing
+`--peraviz-perf-trace` option in editor run arguments. In that **diagnostic-only**
+session, retain Pan/Tilt and Dimmer and alternate the same Wash Color chase on/off.
+Trace must show `diagnostic_skip_lens_writes_active=true`. Native physical state and
+shaft presentation remain exact; lens RID writes are suppressed and their appearance
+is intentionally stale. The flag has no effect with tracing disabled. Leaving isolation
+replays held lens state without a fresh DMX packet. Exclude its FPS from normal product
+claims. A reduced Color gap implicates lens submission/rendering; a remaining gap
+requires comparing native CPU and viewport GPU timings, not assuming CPU causality.
+
+Do not start generic parallel evaluation or MultiMesh from correlation alone. Use the
+real summary first to fix any demonstrated binding/classification defect within current
+safety policy. Then prioritize compatible lens resource sharing if its RID workload
+is large, compiled shared-source Color evaluation if native stage times dominate, or
+transparent rendering if viewport GPU time dominates.
 
 MultiMesh, LOD and C++ threading remain deferred. Future high-count INSTANCED
 buffer generation can use contiguous native buffers, optionally prepared in C++,

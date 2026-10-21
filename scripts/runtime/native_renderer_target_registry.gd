@@ -25,6 +25,7 @@ var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
 var _renderer_generation: int = 0
 var _render_emitter_groups: Array = []
 var _control_group_fallbacks: Dictionary = {}
+var _render_group_diagnostics: Dictionary = {}
 
 func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
@@ -56,6 +57,7 @@ func clear_renderer_targets() -> void:
 	_lens_material_cache.clear()
 	_render_emitter_groups.clear()
 	_control_group_fallbacks.clear()
+	_render_group_diagnostics.clear()
 	_summary = _new_summary()
 	_renderer_generation += 1
 	_gobo_resources.clear_renderer_targets()
@@ -98,6 +100,7 @@ func install_manifest(renderer_manifest: Array) -> void:
 		var row: Dictionary = item
 		_render_emitter_groups.append_array(row.get("render_emitter_groups", []))
 		_control_group_fallbacks.merge(row.get("control_group_fallbacks", {}), true)
+		_render_group_diagnostics.merge(row.get("render_group_diagnostics", {}), true)
 		var targets: Array = row.get("targets", [])
 		if not targets.is_empty():
 			for target_item in targets:
@@ -898,7 +901,7 @@ func get_dense_presentation_bindings() -> Dictionary:
 		var bound: Dictionary = descriptor.duplicate(false)
 		bound["anchor"] = _geometry_targets_by_key.get(str(descriptor.get("anchor_geometry_key", "")))
 		render_groups.append(bound)
-	return {"ids": ids, "scales": scales, "routes": routes, "authority_routes": authority_routes, "outputs": outputs, "render_groups": render_groups, "control_fallbacks": _control_group_fallbacks}
+	return {"ids": ids, "scales": scales, "routes": routes, "authority_routes": authority_routes, "outputs": outputs, "render_groups": render_groups, "control_fallbacks": _control_group_fallbacks, "render_diagnostics": _render_group_diagnostics}
 
 # Presentation policy never resets selected gobo assets or their monotonic motion clocks.
 func set_presentation_enabled(enabled: bool) -> void:

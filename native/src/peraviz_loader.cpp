@@ -418,7 +418,10 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             renderer_targets.push_back(target);
         }
         entry["render_emitter_groups"] = peraviz::presentation::serialize_render_groups(render_groups, fixture.fixture_id);
-        if (fixture_index == 0) entry["control_group_fallbacks"] = peraviz::presentation::serialize_control_fallbacks(control_analysis.fallbacks);
+        if (fixture_index == 0) {
+            entry["control_group_fallbacks"] = peraviz::presentation::serialize_control_fallbacks(control_analysis.fallbacks);
+            entry["render_group_diagnostics"] = peraviz::presentation::serialize_render_group_diagnostics(render_groups);
+        }
         entry["capability_flags"] = capability_flags;
         entry["targets"] = targets;
         manifest[fixture_index] = entry;

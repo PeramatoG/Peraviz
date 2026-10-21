@@ -95,9 +95,12 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
         d.origin=relative.origin;
         // Main's emitter anchor is rotated -90 degrees around X: its -Z light axis is local -Y.
         d.direction=normalized(rotate(relative,{0,-1,0}));
-        d.reliable=rigid && beam.valid && beam.has_projected_beam && (beam.beam_type=="Wash" || beam.beam_type=="Spot") &&
-            beam.beam_radius_source=="explicit" && std::isfinite(d.aperture_radius) && d.aperture_radius>0 &&
-            std::isfinite(d.nominal_flux) && d.nominal_flux>0 && !has_projector_dependency(scene,beam) && !has_wheel_dependency(scene,beam);
+        d.rejection_reason = !rigid ? "nonrigid_geometry" : !beam.valid ? "invalid_optical_profile" :
+            !beam.has_projected_beam ? "emission_only" : (beam.beam_type!="Wash" && beam.beam_type!="Spot") ? "beam_type" :
+            (beam.beam_radius_source!="explicit" || !std::isfinite(d.aperture_radius) || d.aperture_radius<=0) ? "beam_radius_provenance" :
+            (!std::isfinite(d.nominal_flux) || d.nominal_flux<=0) ? "nominal_flux" :
+            has_projector_dependency(scene,beam) ? "projector_dependency" : has_wheel_dependency(scene,beam) ? "wheel_dependency" : "";
+        d.reliable=d.rejection_reason.empty();
         out.push_back(d);
     }
     return out;
@@ -105,7 +108,7 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
 // Classifies compact co-directional sources once; separated cells and ambiguous geometry stay individual.
 std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
         const SceneModel &model, const std::vector<PresentationControlGroup> &controls) {
-    const auto descriptors=compile_emitter_spatial_descriptors(scene,model);
+    auto descriptors=compile_emitter_spatial_descriptors(scene,model);
     std::unordered_map<int32_t,int32_t> control_by_id;
     for (const auto &c:controls) for (int32_t id:c.physical_ids) control_by_id[id]=c.id;
     std::vector<std::vector<size_t>> candidates;
@@ -113,7 +116,16 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
         bool joined=false;
         if (descriptors[i].reliable) for (auto &candidate:candidates) {
             bool fits=true;
-            for (size_t member:candidate) if (!compatible(scene,scene.beam_profiles[member],scene.beam_profiles[i],descriptors[member],descriptors[i])) { fits=false; break; }
+            for (size_t member:candidate) if (!compatible(scene,scene.beam_profiles[member],scene.beam_profiles[i],descriptors[member],descriptors[i])) {
+                fits=false;
+                if (descriptors[member].fixture_id==descriptors[i].fixture_id && descriptors[member].reliable) {
+                    const auto &a=scene.beam_profiles[member], &b=scene.beam_profiles[i];
+                    descriptors[i].rejection_reason=descriptors[member].anchor_geometry_key!=descriptors[i].anchor_geometry_key || descriptors[member].axis_lineage!=descriptors[i].axis_lineage ? "axis_lineage" :
+                        zoom_authority(scene,a)!=zoom_authority(scene,b) ? "zoom_authority" :
+                        dot(descriptors[member].direction,descriptors[i].direction)<std::cos(AggregationPolicy::maximum_direction_spread_degrees*3.141592653589793/180.0) ? "direction_spread" : "optical_profile";
+                }
+                break;
+            }
             if (fits) { candidate.push_back(i); joined=true; break; }
         }
         if (!joined) candidates.push_back({i});
@@ -122,6 +134,7 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
     for (const auto &candidate:candidates) {
         RenderEmitterGroup group;
         const auto &first=descriptors[candidate.front()];
+        group.candidate_members=candidate.size();
         group.fixture_id=first.fixture_id; group.anchor_geometry_key=first.anchor_geometry_key;
         group.beam_angle=scene.beam_profiles[candidate.front()].beam_angle_deg;
         group.field_angle=scene.beam_profiles[candidate.front()].field_angle_deg;
@@ -152,6 +165,11 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
             out.push_back(std::move(group));
         } else for (size_t i:candidate) {
             RenderEmitterGroup single;
+            single.candidate_members=i==candidate.front()?candidate.size():0;
+            single.rejection_reason=!descriptors[i].reliable?descriptors[i].rejection_reason:
+                candidate.size()<AggregationPolicy::minimum_members?(descriptors[i].rejection_reason.empty()?"compatible_peers":descriptors[i].rejection_reason):
+                group.packing_density<AggregationPolicy::minimum_packing_density?"packing_density":
+                group.aperture_radius>largest_radius*AggregationPolicy::maximum_radius_ratio?"enclosure_radius":"axial_depth";
             single.id=int32_t(out.size()+1); single.fixture_id=descriptors[i].fixture_id;
             single.physical_ids={descriptors[i].physical_id}; single.control_group_ids={control_by_id[descriptors[i].physical_id]};
             out.push_back(std::move(single));

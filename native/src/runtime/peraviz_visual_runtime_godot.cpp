@@ -146,6 +146,7 @@ Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::Vis
     out["color_offset_fanout_17_64"] = static_cast<int64_t>(stats.color_offset_fanout_17_64);
     out["color_offset_fanout_65_plus"] = static_cast<int64_t>(stats.color_offset_fanout_65_plus);
     out["color_offset_fanout_max"] = static_cast<int64_t>(stats.color_offset_fanout_max);
+    out["color_evaluation_us"]=int64_t(stats.color_evaluation_us); out["color_composition_us"]=int64_t(stats.color_composition_us);
     out["color_dirty_candidates"] = static_cast<int64_t>(stats.color_dirty_candidates);
     out["color_composed_unchanged"] = static_cast<int64_t>(stats.color_composed_unchanged);
     out["color_delta_sum_microunits"] = static_cast<int64_t>(stats.color_delta_sum_microunits);

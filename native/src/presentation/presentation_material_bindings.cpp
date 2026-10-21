@@ -2,7 +2,7 @@
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <cmath>
-#include <unordered_set>
+#include "runtime/visual_runtime_types.h"
 
 namespace godot {
 // Installs renderer-owned material resources and exact physical inverse routes once per generation.
@@ -18,7 +18,7 @@ bool PresentationMaterialBindings::install(size_t count, const Array &rids, cons
     return true;
 }
 // Releases RIDs and scene-sized routes before their owning Godot resources are retired.
-void PresentationMaterialBindings::clear() { decltype(bindings_)().swap(bindings_); decltype(routes_)().swap(routes_); decltype(dirty_)().swap(dirty_); writes_=avoided_=0; }
+void PresentationMaterialBindings::clear() { decltype(bindings_)().swap(bindings_); decltype(routes_)().swap(routes_); decltype(dirty_)().swap(dirty_); writes_=avoided_=color_outputs_=unchanged_=0; }
 // Suppression preserves physical held values; enabling forces current material values to replay.
 size_t PresentationMaterialBindings::set_enabled(bool enabled) {
     size_t writes=0;
@@ -32,18 +32,27 @@ size_t PresentationMaterialBindings::set_enabled(bool enabled) {
 // Invalidates cached renderer mutations without changing native semantic or material ownership.
 void PresentationMaterialBindings::invalidate() { for (auto &b:bindings_) b.red=b.green=b.blue=b.energy=-1; }
 // Coalesces shared lens RIDs in native main-thread glue; independent pixel lenses remain exact.
-void PresentationMaterialBindings::apply(const peraviz::presentation::DensePresentationState &physical) {
+void PresentationMaterialBindings::apply(const peraviz::presentation::DensePresentationState &physical, bool suppress_writes) {
     using namespace peraviz::presentation;
-    writes_=avoided_=0; dirty_.clear();
+    writes_=avoided_=color_outputs_=unchanged_=0; dirty_.clear();
     if (!enabled_) return;
-    for (uint32_t index:physical.dirty_indices()) if (index<routes_.size()) for (uint32_t material:routes_[index]) {
-        auto &b=bindings_[material]; if (!b.dirty) { b.dirty=true; dirty_.push_back(material); }
+    for (uint32_t index:physical.dirty_indices()) {
+        const uint32_t mask=physical.pending_mask(index);
+        if (mask & peraviz::runtime::VisualChangeColor) ++color_outputs_;
+        // Zoom alone cannot change lens emission; retain topology invalidation and held-state replay.
+        if (!(mask & (peraviz::runtime::VisualChangeColor | peraviz::runtime::VisualChangeDimmer |
+                peraviz::runtime::VisualChangeMaterial | peraviz::runtime::VisualChangeBeamTopology))) continue;
+        if (index<routes_.size()) for (uint32_t material:routes_[index]) {
+            auto &b=bindings_[material]; if (!b.dirty) { b.dirty=true; dirty_.push_back(material); }
+        }
     }
     auto *server=RenderingServer::get_singleton();
     for (uint32_t index:dirty_) {
         auto &b=bindings_[index]; b.dirty=false;
+        if (suppress_writes) continue;
         const auto v=physical.render_values(b.owner);
         const float energy=v[MaterialEnergy]*b.scale;
+        const size_t before=writes_;
         if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
             server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));
             b.red=v[Red]; b.green=v[Green]; b.blue=v[Blue]; ++writes_; avoided_+=b.users>0?b.users-1:0;
@@ -52,6 +61,7 @@ void PresentationMaterialBindings::apply(const peraviz::presentation::DensePrese
             server->material_set_param(b.rid,energy_,energy); b.energy=energy;
             ++writes_; avoided_+=b.users>0?b.users-1:0;
         }
+        if (writes_==before) ++unchanged_;
     }
 }
 // Cold renderer-boundary inspection works with headless/dummy drivers that cannot read material RIDs back.

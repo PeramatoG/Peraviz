@@ -177,6 +177,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         UniverseState &universe = universes_[target_universe];
         const int color_target_index = static_cast<int>(universe.color_targets.size());
         universe.color_targets.push_back(runtime_target);
+        universe.color_fixture_by_target.emplace(target.beam_render_target_id,target.fixture_id);
         for (const ColorInputRuntime &input : runtime_target.inputs) {
             const CompiledDmxSourceProgram &program = source_programs_by_id_[input.binding.source_program_id].program;
             for (const CompiledDmxByteSource &source : program.sources) {
@@ -199,6 +200,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         UniverseState &universe = universes_[program_it->second.program.sources.front().universe_id];
         const int wheel_index = static_cast<int>(universe.wheel_bindings.size());
         universe.wheel_bindings.push_back({binding});
+        universe.color_fixture_by_target.emplace(binding.beam_render_target_id,binding.fixture_id);
         const int64_t physical_key = wheel_physical_key(binding.beam_render_target_id, binding.wheel_renderer_id);
         universe.wheel_binding_indices_by_target[binding.beam_render_target_id].push_back(wheel_index);
         universe.wheel_binding_indices_by_physical_key[physical_key].push_back(wheel_index);
@@ -562,6 +564,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             apply_semantic_value(state, program.parameter, semantic_value);
         }
 
+        const auto color_start=performance_trace_enabled_?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
         for (int target_index : color_target_indices) {
             if (target_index < 0 || target_index >= static_cast<int>(universe.color_targets.size())) continue;
             ColorTargetRuntime &target = universe.color_targets[static_cast<size_t>(target_index)];
@@ -589,6 +592,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         }
 
 
+        if (performance_trace_enabled_) stats_.color_evaluation_us+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-color_start).count();
         std::set<int64_t> dirty_physical_wheels;
         for (int wheel_index : wheel_binding_indices) {
             if (wheel_index < 0 || wheel_index >= static_cast<int>(universe.wheel_bindings.size())) continue;
@@ -709,6 +713,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
             rows.push_back({binding.fixture_id, binding.beam_render_target_id, VisualChangeColor, {}, cooked, binding.wheel_renderer_id, slot_a->slot_index, slot_b->slot_index, normalized_phase, split_fraction, boundary_angle_degrees, binding.mode, previous.revision, true});
         }
 
+        const auto composition_start=performance_trace_enabled_?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
         std::set<int32_t> dirty_color_targets;
         for (int target_index : color_target_indices) {
             if (target_index >= 0 && target_index < static_cast<int>(universe.color_targets.size())) dirty_color_targets.insert(universe.color_targets[static_cast<size_t>(target_index)].target.beam_render_target_id);
@@ -736,14 +741,15 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
                 else if (useful_delta < 0.01f) ++stats_.color_delta_small;
                 else ++stats_.color_delta_visible;
             }
-            int fixture_id = 0;
-            for (const ColorTargetRuntime &target : universe.color_targets) if (target.target.beam_render_target_id == beam_target_id) { fixture_id = target.target.fixture_id; break; }
-            if (fixture_id == 0) for (const WheelBindingRuntime &wheel : universe.wheel_bindings) if (wheel.binding.beam_render_target_id == beam_target_id) { fixture_id = wheel.binding.fixture_id; break; }
+            // Canonical owner lookup is setup-indexed; dynamic Color must not scan every peer target.
+            const auto owner=universe.color_fixture_by_target.find(beam_target_id);
+            const int fixture_id=owner==universe.color_fixture_by_target.end()?0:owner->second;
             add_visual_mask_stats(VisualChangeColor);
             ++stats_.fixtures_dirty;
             ++stats_.color_rows;
             rows.push_back({fixture_id, beam_target_id, VisualChangeColor, {}, composed});
         }
+        if (performance_trace_enabled_) stats_.color_composition_us+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-composition_start).count();
         for (auto &[fixture_id, next_state] : pending_transform_by_fixture) {
             const auto params_it = render_params_by_fixture_.find(fixture_id);
             cook_render_state(next_state, params_it != render_params_by_fixture_.end() ? params_it->second : FixtureRenderParams());

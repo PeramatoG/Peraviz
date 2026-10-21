@@ -1,4 +1,5 @@
 #include "presentation/presentation_state_godot.h"
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <chrono>
 #include <algorithm>
@@ -58,6 +59,7 @@ bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membe
 // Binds existing prepared lens resources without creating per-frame material objects or dictionaries.
 bool PeravizPresentationState::install_materials(const Array &rids, const PackedInt32Array &owners,
         const PackedFloat32Array &scales, const PackedInt32Array &routes) {
+    diagnostic_skip_lens_writes_=OS::get_singleton()->get_environment("PERAVIZ_DIAGNOSTIC_SKIP_LENS_WRITES")=="1";
     return materials_.install(state_.bindings().size(),rids,owners,scales,routes);
 }
 // Applies presentation suppression without changing held native physical Color/Dimmer.
@@ -83,11 +85,18 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
         const PackedInt32Array &integers, const PackedFloat32Array &values, bool trace) {
     Dictionary result;
     state_.set_trace_enabled(trace);
+    const bool suppress_lenses=trace && diagnostic_skip_lens_writes_;
+    // Leaving diagnostic isolation replays exact held values without another DMX packet.
+    if (lens_writes_suppressed_ && !suppress_lenses) state_.invalidate_renderer();
+    lens_writes_suppressed_=suppress_lenses;
     const int64_t start=trace?now_us():0;
     if (projection_.member_count()!=state_.bindings().size() || !state_.compose_sections(uint64_t(generation),descriptors.ptr(),size_t(descriptors.size()),
             integers.ptr(),size_t(integers.size()),values.ptr(),size_t(values.size()))) { result["valid"]=false; return result; }
+    const int64_t physical_us=trace?now_us()-start:0;
+    const int64_t projection_start=trace?now_us():0;
     projection_.prepare(state_);
-    const int64_t compose_us=trace?now_us()-start:0;
+    const int64_t projection_us=trace?now_us()-projection_start:0;
+    const int64_t compose_us=physical_us+projection_us;
     const int64_t copy_start=trace?now_us():0;
     auto *indices=indices_masks_.ptrw(); auto *packed=values_.ptrw();
     int64_t count=0;
@@ -98,17 +107,21 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
     const int64_t conversion_us=trace?now_us()-copy_start:0;
     // Godot boundary work is main-thread-only and addresses cached material RIDs, never nodes.
     const int64_t material_start=trace?now_us():0;
-    materials_.apply(state_);
+    materials_.apply(state_,suppress_lenses);
     const int64_t material_us=trace?now_us()-material_start:0;
     const size_t dirty_count=state_.dirty_indices().size();
     result["valid"]=true; result["generation"]=generation; result["unresolved_rows"]=int64_t(state_.unresolved_rows());
     result["count"]=count; result["indices_masks"]=indices_masks_; result["values"]=values_;
     if (trace) {
         result["physical_dynamic_candidates"]=int64_t(dirty_count);
+        result["native_physical_us"]=physical_us; result["native_reduction_us"]=projection_us;
         result["native_compose_us"]=compose_us; result["payload_conversion_us"]=conversion_us;
         result["dirty_count"]=int64_t(dirty_count); result["candidates"]=int64_t(std::max(state_.candidates(),dirty_count));
         result["signature_skipped"]=int64_t(dirty_count)-count;
+        result["diagnostic_skip_lens_writes"]=diagnostic_skip_lens_writes_;
         result["native_material_us"]=material_us;
+        result["physical_color_outputs"]=int64_t(materials_.color_outputs());
+        result["lens_rids_affected"]=int64_t(materials_.affected()); result["lens_rids_unchanged"]=int64_t(materials_.unchanged());
         result["lens_material_writes"]=int64_t(materials_.writes()); result["lens_writes_avoided"]=int64_t(materials_.avoided());
     }
     state_.finish_snapshot(uint64_t(generation));
@@ -117,6 +130,11 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
 // Reports physical native capacities separately from genuinely renderer-sized packed storage.
 Dictionary PeravizPresentationState::get_sizes() const {
     Dictionary sizes;
+    sizes["diagnostic_skip_lens_writes_active"]=lens_writes_suppressed_;
+    sizes["diagnostic_skip_lens_writes_requested"]=diagnostic_skip_lens_writes_;
+    sizes["presentation_contract_revision"]=3;
+    sizes["extension_build"]=String(__DATE__ " " __TIME__);
+    sizes["unique_lens_material_rids"]=int64_t(materials_.size());
     sizes["physical_outputs"]=int64_t(state_.bindings().size()); sizes["render_rows"]=int64_t(projection_.row_count());
     sizes["state_capacity"]=int64_t(state_.state_capacity()); sizes["dirty_capacity"]=int64_t(state_.dirty_capacity());
     sizes["dirty_high_water"]=int64_t(state_.high_water()); sizes["native_buffer_bytes"]=int64_t(state_.buffer_bytes()+projection_.buffer_bytes());

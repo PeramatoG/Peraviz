@@ -24,6 +24,22 @@ godot::Array serialize_render_groups(const std::vector<RenderEmitterGroup> &grou
     }
     return out;
 }
+// Reports classification outcomes with disjoint physical rejection counts and bucket-counted candidates.
+godot::Dictionary serialize_render_group_diagnostics(const std::vector<RenderEmitterGroup> &groups) {
+    godot::Dictionary out, rejected;
+    int64_t candidates=0, accepted=0, members=0;
+    for (const auto &group:groups) {
+        if (group.candidate_members>=AggregationPolicy::minimum_members) ++candidates;
+        if (group.presentation==RenderPresentationClass::Aggregated) { ++accepted; members+=group.physical_ids.size(); }
+        else {
+            const godot::String key(group.rejection_reason.c_str());
+            rejected[key]=int64_t(rejected.get(key,0))+int64_t(group.physical_ids.size());
+        }
+    }
+    out["native_aggregate_candidates"]=candidates; out["native_accepted_aggregates"]=accepted;
+    out["native_aggregated_members"]=members; out["native_rejected_physical"]=rejected;
+    return out;
+}
 // Exposes bounded reason counts once at setup rather than fixture/output logs in playback.
 godot::Dictionary serialize_control_fallbacks(const ControlGroupFallbacks &f) {
     godot::Dictionary d;

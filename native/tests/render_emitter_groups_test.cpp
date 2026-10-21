@@ -87,7 +87,9 @@ int main() {
     auto optics=make_rig(); optics.scene.beam_profiles[0].beam_angle_deg=40;
     check(groups(optics).size()==2,"Incompatible optical angles stay in separate renderer sources");
     auto uncertain=make_rig(); uncertain.scene.beam_profiles[0].beam_radius_source="fallback";
-    check(groups(uncertain).size()==2,"An unproven aperture remains individual without disabling reliable peers");
+    const auto uncertain_groups=groups(uncertain);
+    check(uncertain_groups.size()==2 && uncertain_groups[0].rejection_reason=="beam_radius_provenance","An unproven aperture is reported without disabling reliable peers");
+    check(groups(bar)[0].rejection_reason=="packing_density","Separated apertures report the native compactness rejection");
     auto projector=make_rig(); CompiledGoboSelectionBinding gobo; gobo.fixture_id=1; gobo.beam_render_target_id=1;
     projector.scene.gobo_bindings.push_back(gobo);
     check(compile_control_groups(projector.scene).size()==2 && groups(projector).size()==2,"Exact gobo ownership vetoes only the affected output");

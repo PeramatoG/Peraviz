@@ -15,10 +15,14 @@ public:
     void clear();
     size_t set_enabled(bool enabled);
     void invalidate();
-    void apply(const peraviz::presentation::DensePresentationState &physical);
+    void apply(const peraviz::presentation::DensePresentationState &physical, bool suppress_writes = false);
     PackedFloat32Array values(const RID &rid) const;
     // Reports actual material setters in the last applied batch.
     size_t writes() const { return writes_; }
+    size_t size() const { return bindings_.size(); }
+    size_t color_outputs() const { return color_outputs_; }
+    size_t affected() const { return dirty_.size(); }
+    size_t unchanged() const { return unchanged_; }
     // Reports redundant shared-RID setters avoided in that batch.
     size_t avoided() const { return avoided_; }
 private:
@@ -26,7 +30,7 @@ private:
     std::vector<Binding> bindings_;
     std::vector<std::vector<uint32_t>> routes_;
     std::vector<uint32_t> dirty_;
-    size_t writes_=0, avoided_=0;
+    size_t writes_=0, avoided_=0, color_outputs_=0, unchanged_=0;
     bool enabled_=true;
     const StringName emission_{"emission"}, energy_{"emission_energy_multiplier"};
 };

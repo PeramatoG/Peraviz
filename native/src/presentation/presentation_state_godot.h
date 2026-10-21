@@ -28,6 +28,7 @@ private:
     peraviz::presentation::DensePresentationState state_;
     peraviz::presentation::RenderGroupProjection projection_;
     PresentationMaterialBindings materials_;
+    bool diagnostic_skip_lens_writes_=false, lens_writes_suppressed_=false;
     // Exactly renderer-row-sized borrowed buffers; no physical/group duplicate payloads.
     PackedInt32Array indices_masks_;
     PackedFloat32Array values_;

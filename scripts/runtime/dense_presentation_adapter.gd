@@ -104,7 +104,7 @@ const MUTATION_COUNTERS: PackedStringArray = [
 var _totals: Dictionary = {
 	"native_compose_us": 0, "payload_conversion_us": 0, "semantic_payload_conversion_us": 0,
 	"compatibility_adapter_us": 0, "renderer_mutation_us": 0,
-	"native_dirty_outputs": 0, "native_material_us": 0,
+	"native_physical_us": 0, "native_reduction_us": 0, "physical_color_outputs": 0, "lens_rids_affected": 0, "lens_rids_unchanged": 0, "native_dirty_outputs": 0, "native_material_us": 0,
 }
 
 func _disconnect_handle(handle: LightHandle) -> void:
@@ -221,6 +221,16 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	var summary: Dictionary = {"physical_outputs": _outputs.size(), "control_groups": _totals["presentation_control_groups"],
 		"grouped_outputs": _totals["grouped_physical_outputs"], "individual_outputs": _totals["individual_physical_outputs"],
 		"largest_control_group": _totals["largest_group"]}
+	summary.merge(_native.get_sizes())
+	summary.merge(bindings.get("render_diagnostics", {}))
+	var settings: Dictionary = _loader.get("_visual_settings")
+	summary["renderer_class"] = _renderer.get_script().resource_path if _renderer != null else "none"
+	summary["rendering_method"] = RenderingServer.get_current_rendering_method()
+	summary["beam_presentation"] = settings.get("beam_presentation", 1)
+	summary["realtime_spotlights"] = settings.get("enable_realtime_spotlights", false)
+	summary["debug_optics"] = settings.get("beam_debug_optics", false)
+	summary["render_diagnostic_mode"] = _mode
+	summary["diagnostic_open_surface_lights"] = _diagnostic_open_surface_lights
 	summary.merge(_control_fallbacks)
 	summary.merge(_render_bindings.counts(self))
 	if not _outputs.is_empty(): print("[peraviz-render-groups] ", JSON.stringify(summary))
@@ -254,6 +264,7 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 		_totals["actual_lens_material_renderer_writes"] += material_writes
 		_totals["lens_material_writes_avoided"] += int(_payload.get("lens_writes_avoided", 0))
 		_record_mutation(&"material_parameter_writes", material_writes)
+		for key in ["native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]: _totals[key] += int(_payload.get(key, 0))
 		_totals["native_material_us"] += int(_payload.get("native_material_us", 0))
 		_totals["renderer_mutation_us"] += int(_payload.get("native_material_us", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
@@ -565,7 +576,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us"]:
+	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:

@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Render Group startup diagnostics now distinguish native optical fallback from Godot resource rejection and identify the compact-row extension build. Dynamic Color tracing separates physical composition, reduction and lens RID submission, with a trace-only lens isolation option. Color row ownership uses a setup index, Zoom skips unaffected lens materials, and two GDScript warnings are resolved.
+
 Changes since the previous Peraviz release.
 
 ## Highlights
