@@ -18,6 +18,7 @@ const TOPOLOGY: int = 1 << 9
 class MaterialHandle:
 	var material: BaseMaterial3D
 	var rid: RID
+	var shared_users: int = 1
 	var scale: float = 1.0
 	var color: Color = Color(-1, -1, -1)
 	var energy: float = -1.0
@@ -50,7 +51,19 @@ class LightHandle:
 	var bound_state: RefCounted = BoundBeamStateScript.Cache.new()
 	var compatibility_state: Dictionary = {}
 
+class ControlGroup:
+	var members: Array = []
+	var material: ShaderMaterial
+	var materials: Array[MaterialHandle] = []
+	var dynamic: Color = Color(-1, -1, -1, -1)
+	var visible: bool = false
+	var initialized: bool = false
+	var desired_visible: bool = false
+	var values: PackedFloat32Array = PackedFloat32Array()
+	var lens_copies: int = 0
+
 class OutputHandle:
+	var index: int
 	var canonical_id: int
 	var surface_profile_count: int = 0
 	var lights: Array[LightHandle] = []
@@ -59,6 +72,9 @@ class OutputHandle:
 var _native: Object
 var _generation: int = -1
 var _outputs: Array[OutputHandle] = []
+var _groups: Array = []
+var _binding_records: Array = []
+var _route_signatures: Array = []
 var _lights_by_id: Dictionary = {} # Setup-only lookup for cold gobo/diagnostic bridges.
 var _payload: Dictionary = {}
 var _loader: Node
@@ -74,9 +90,12 @@ var _mutation_serial: int = 0
 var _renderer_visibility_seen: int = 0
 var _renderer_shader_seen: int = 0
 var _renderer_debug_seen: int = 0
+var _renderer_dynamic_seen: int = 0
 var _diagnostic_open_surface_lights: bool = false
 var _surface_counts = SurfacePolicy.Counters.new()
 const MUTATION_COUNTERS: PackedStringArray = [
+	"physical_dynamic_candidates", "control_group_dynamic_updates", "beam_instance_writes_avoided",
+	"lens_material_writes_avoided", "actual_beam_dynamic_renderer_writes", "actual_lens_material_renderer_writes",
 	"spot_node_visibility_writes", "spot_rid_visibility_writes", "beam_visibility_writes",
 	"debug_axis_visibility_writes", "beam_shader_parameter_writes", "material_parameter_writes",
 	"beam_initialization_succeeded", "beam_initialization_failed", "beam_resource_rebounds", "beam_topology_rebuilt",
@@ -98,6 +117,9 @@ func clear() -> void:
 				if handle.light.tree_entered.is_connected(handle.visibility_callback): handle.light.tree_entered.disconnect(handle.visibility_callback)
 			# The bound Callable contains this RefCounted handle; break that self-reference.
 			handle.visibility_callback = Callable()
+	_retire_groups()
+	_binding_records = []
+	_route_signatures.clear()
 	_payload = {}
 	if _native != null:
 		_native.clear()
@@ -126,10 +148,22 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	_renderer_visibility_seen = _renderer.renderer_visibility_writes if _renderer != null else 0
 	_renderer_shader_seen = _renderer.renderer_shader_parameter_writes if _renderer != null else 0
 	_renderer_debug_seen = _renderer.renderer_debug_visibility_writes if _renderer != null else 0
+	_renderer_dynamic_seen = _renderer.renderer_dynamic_parameter_writes if _renderer != null else 0
 	_native = ClassDB.instantiate("PeravizPresentationState")
 	var bindings: Dictionary = registry.get_dense_presentation_bindings()
+	_binding_records = bindings["outputs"]
+	for i in range(_binding_records.size()): _route_signatures.append([[], 0, []])
+	var routes: PackedInt32Array = bindings["routes"]
+	for i in range(0, routes.size(), 3):
+		var signature: Array = _route_signatures[routes[i+2]]
+		if routes[i] == 3: signature[1] += 1
+		else: signature[0 if routes[i] == 2 else 2].append(routes[i+1])
+	for signature in _route_signatures:
+		signature[0].sort()
+		signature[2].sort()
 	for record in bindings["outputs"]:
 		var output := OutputHandle.new()
+		output.index = _outputs.size()
 		output.canonical_id = int(record["beam_render_target_id"])
 		_outputs.append(output)
 		if service._has_projected_beam(record.get("beam_optical_profile", {})):
@@ -174,6 +208,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			output.lights.append(handle)
 			_lights_by_id[light.get_instance_id()] = handle
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
+	_install_groups()
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
 	print("[peraviz-surfaces] startup ", JSON.stringify(_surface_counts.snapshot()), " diagnostic_open=", _diagnostic_open_surface_lights)
@@ -202,6 +237,8 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 		_warned_unresolved = true
 		push_warning("Dense presentation has unresolved renderer control rows in this binding generation.")
 	if trace:
+		_totals["physical_dynamic_candidates"] += int(_payload.get("physical_dynamic_candidates", 0))
+		_totals["control_group_dynamic_updates"] += int(_payload.get("control_group_dynamic_updates", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
 		_totals["native_compose_us"] += int(_payload["native_compose_us"])
 		_totals["payload_conversion_us"] += int(_payload["payload_conversion_us"])
@@ -229,6 +266,10 @@ func apply() -> void:
 		var before: int = _mutation_serial
 		_apply_output(_outputs[indices[row * 2]], values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
 		if _trace and _mutation_serial != before: changed += 1
+	var group_indices: PackedInt32Array = _payload.get("group_indices_masks", PackedInt32Array())
+	var group_values: PackedFloat32Array = _payload.get("group_values", PackedFloat32Array())
+	for row in range(int(_payload.get("group_count", 0))):
+		_apply_group(_groups[group_indices[row * 2]], group_values, row * STRIDE, group_indices[row * 2 + 1], realtime, presentation)
 	if _trace:
 		_totals["renderer_mutation_us"] += Time.get_ticks_usec() - mutation_start
 		var service: RefCounted = _service.get_ref()
@@ -245,19 +286,30 @@ func apply() -> void:
 		_totals["compatibility_adapter_us"] += Time.get_ticks_usec() - start
 	_payload = {}
 
-func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
+func _apply_materials(materials: Array[MaterialHandle], v: PackedFloat32Array, b: int, mask: int) -> void:
 	var color := Color(v[b+1], v[b+2], v[b+3], 1.0)
 	if mask & (DIMMER | COLOR | MATERIAL):
-		for material in output.materials:
+		for material in materials:
 			var energy: float = v[b+7] * material.scale
 			if material.color != color:
 				RenderingServer.material_set_param(material.rid, "emission", color)
 				material.color = color
 				_record_mutation(&"material_parameter_writes")
+				if _trace:
+					_totals["actual_lens_material_renderer_writes"] += 1
+					_totals["lens_material_writes_avoided"] += material.shared_users - 1
 			if not is_equal_approx(material.energy, energy):
 				RenderingServer.material_set_param(material.rid, "emission_energy_multiplier", energy)
 				material.energy = energy
 				_record_mutation(&"material_parameter_writes")
+				if _trace:
+					_totals["actual_lens_material_renderer_writes"] += 1
+					_totals["lens_material_writes_avoided"] += material.shared_users - 1
+
+func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
+	var color := Color(v[b+1], v[b+2], v[b+3], 1.0)
+	if _groups.is_empty() or _groups[output.index] == null:
+		_apply_materials(output.materials, v, b, mask)
 	for handle in output.lights:
 		if not is_instance_valid(handle.light): continue
 		handle.color = color
@@ -429,6 +481,8 @@ func _capture_renderer_mutations() -> void:
 	_record_mutation(&"beam_visibility_writes", _renderer.renderer_visibility_writes - _renderer_visibility_seen)
 	_record_mutation(&"beam_shader_parameter_writes", _renderer.renderer_shader_parameter_writes - _renderer_shader_seen)
 	_record_mutation(&"debug_axis_visibility_writes", _renderer.renderer_debug_visibility_writes - _renderer_debug_seen)
+	if _trace: _totals["actual_beam_dynamic_renderer_writes"] += _renderer.renderer_dynamic_parameter_writes - _renderer_dynamic_seen
+	_renderer_dynamic_seen = _renderer.renderer_dynamic_parameter_writes
 	_renderer_visibility_seen = _renderer.renderer_visibility_writes
 	_renderer_shader_seen = _renderer.renderer_shader_parameter_writes
 	_renderer_debug_seen = _renderer.renderer_debug_visibility_writes
@@ -480,6 +534,11 @@ func light_state(light: SpotLight3D) -> Dictionary:
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	if handle == null:
 		return {}
+	var group: ControlGroup = _groups[handle.output_index] if handle.output_index < _groups.size() else null
+	if group != null and not group.values.is_empty():
+		handle.color = Color(group.values[1], group.values[2], group.values[3])
+		handle.energy = group.values[5] if group.values[5] > 0.0 else group.values[4]
+		handle.visible = group.desired_visible
 	handle.compatibility_state["energy"] = handle.energy
 	handle.compatibility_state["angle"] = handle.projection.half_angle_deg
 	handle.compatibility_state["color"] = handle.color
@@ -491,7 +550,8 @@ func active_ids() -> Dictionary:
 	var ids: Dictionary = {}
 	for output in _outputs:
 		for handle in output.lights:
-			if handle.visible: ids[handle.light.get_instance_id()] = true
+			var group: ControlGroup = _groups[handle.output_index] if handle.output_index < _groups.size() else null
+			if (group.desired_visible if group != null else handle.visible): ids[handle.light.get_instance_id()] = true
 	return ids
 
 func diagnostics() -> Dictionary:
@@ -523,8 +583,11 @@ func consume_diagnostics() -> Dictionary:
 	return result
 
 # Setup/control-boundary refresh after a renderer, settings or gobo resource replacement.
-func rebind_light(light: SpotLight3D) -> void:
+func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
+	if rebuild_groups and handle != null and handle.output_index < _groups.size() and _groups[handle.output_index] != null:
+		refresh_renderer()
+		return
 	if handle != null:
 		handle.params = light.get_meta("peraviz_beam_last_params", {})
 		_refresh_surface_profile_count(handle)
@@ -539,21 +602,146 @@ func rebind_light(light: SpotLight3D) -> void:
 func refresh_renderer() -> void:
 	if not is_installed(): return
 	_capture_renderer_mutations()
+	_retire_groups()
 	var renderer: BeamRendererBase = _loader.get("_active_beam_renderer") as BeamRendererBase
 	if renderer != _renderer:
 		_renderer = renderer
 		_renderer_visibility_seen = renderer.renderer_visibility_writes if renderer != null else 0
 		_renderer_shader_seen = renderer.renderer_shader_parameter_writes if renderer != null else 0
 		_renderer_debug_seen = renderer.renderer_debug_visibility_writes if renderer != null else 0
+		_renderer_dynamic_seen = renderer.renderer_dynamic_parameter_writes if renderer != null else 0
 	for output in _outputs:
 		for handle in output.lights:
 			if is_instance_valid(handle.light):
-				rebind_light(handle.light)
+				rebind_light(handle.light, false)
 				handle.realtime_visibility_known = false
 				handle.properties_dirty = true
 				handle.bound_state.invalidate()
 			handle.initialization_failed = false
+	_install_groups()
 	if _trace: _totals["forced_replays"] += 1
 	_native.invalidate_renderer()
 	compose(PackedInt32Array(), PackedInt32Array(), PackedFloat32Array(), _trace, _mode)
 	apply()
+
+# Retires every setup-generation resource reference, including renderer-only replacement.
+func _retire_groups() -> void:
+	for representative in range(_groups.size()):
+		var group: ControlGroup = _groups[representative]
+		if group == null or group.members[0] != representative: continue
+		for index in group.members:
+			for light in _outputs[index].lights:
+				if _renderer != null and _renderer.has_method("unbind_control_group"):
+					_renderer.unbind_control_group(light.beam)
+	_groups.clear()
+	for output in _outputs:
+		for material in output.materials:
+			material.shared_users = 1
+			material.color = Color(-1, -1, -1)
+			material.energy = -1
+
+# Native IDs prove control authority. This cold pass additionally proves actual resource compatibility.
+func _install_groups() -> void:
+	_groups.resize(_outputs.size())
+	_groups.fill(null)
+	var representatives := PackedInt32Array()
+	representatives.resize(_outputs.size())
+	representatives.fill(-1)
+	var candidates: Dictionary = {}
+	var settings: Dictionary = _loader.get("_visual_settings")
+	var can_share: bool = _renderer != null and _renderer.has_method("bind_control_group") and not _diagnostic_open_surface_lights and not bool(settings.get("enable_realtime_spotlights", false)) and not bool(settings.get("beam_debug_optics", false))
+	for index in range(_outputs.size()):
+		var id: int = int(_binding_records[index].get("presentation_control_group", 0))
+		if can_share and id > 0:
+			if not candidates.has(id): candidates[id] = []
+			candidates[id].append(index)
+	var grouped: int = 0
+	var largest: int = 1 if not _outputs.is_empty() else 0
+	var shared_lenses: int = 0
+	var shared_beams: int = 0
+	for members in candidates.values():
+		if members.size() < 2: continue
+		var beams: Array = []
+		var safe: bool = true
+		for index in members:
+			if _outputs[index].lights.size() != 1: safe = false; break
+			var light: LightHandle = _outputs[index].lights[0]
+			if not light.projected or light.has_gobo or not is_instance_valid(light.beam): safe = false; break
+			if is_instance_valid(light.debug_axis): safe = false; break
+			if light.params.get("intensity_visibility_threshold", 0.015) != 0.015: safe = false; break
+			if _route_signatures[index] != _route_signatures[members[0]]: safe = false; break
+			if _route_signatures[index][0].size() != 1: safe = false; break
+			beams.append(light.beam)
+		if not safe: continue
+		var material: ShaderMaterial = _renderer.bind_control_group(beams)
+		if material == null: continue
+		var group := ControlGroup.new()
+		group.members = members
+		group.material = material
+		var lens_cache: Dictionary = {}
+		for index in members:
+			representatives[index] = int(members[0])
+			_groups[index] = group
+			var entries: Array = _binding_records[index].get("lens_material_targets", [])
+			for lens_index in range(_outputs[index].materials.size()):
+				var handle: MaterialHandle = _outputs[index].materials[lens_index]
+				handle.shared_users = 1
+				var entry: Variant = entries[lens_index]
+				var source: Material = entry.get("source_material") if entry is Dictionary else null
+				# Unknown materials remain distinct subgroups; source identity preserves static appearance.
+				var key: Array = [source, handle.scale]
+				if source is BaseMaterial3D and source.next_pass == null and entry.get("mesh") != null and entry["mesh"].material_override == null and lens_cache.has(key):
+					var shared: MaterialHandle = lens_cache[key]
+					shared.shared_users += 1
+					handle.material = shared.material
+					handle.rid = shared.rid
+					entry["material"] = shared.material
+					entry["mesh"].set_surface_override_material(int(entry["surface"]), shared.material)
+					group.lens_copies += 1
+				else:
+					group.materials.append(handle)
+					if source is BaseMaterial3D and source.next_pass == null and entry.get("mesh") != null and entry["mesh"].material_override == null: lens_cache[key] = handle
+			grouped += 1
+		largest = maxi(largest, members.size())
+		shared_beams += 1
+		if group.lens_copies > 0: shared_lenses += 1
+	if not _native.install_groups(representatives):
+		# A rejected actual binding must leave a fully independent renderer path.
+		_retire_groups()
+		_groups.resize(_outputs.size())
+		_groups.fill(null)
+		representatives.fill(-1)
+		_native.install_groups(representatives)
+		grouped = 0
+		shared_beams = 0
+		shared_lenses = 0
+		largest = 1 if not _outputs.is_empty() else 0
+	_totals["physical_outputs"] = _outputs.size()
+	_totals["presentation_control_groups"] = _outputs.size() - grouped + shared_beams
+	_totals["grouped_physical_outputs"] = grouped
+	_totals["individual_physical_outputs"] = _outputs.size() - grouped
+	_totals["largest_group"] = largest
+	_totals["shared_beam_material_groups"] = shared_beams
+	_totals["shared_lens_material_groups"] = shared_lenses
+
+# One material mutation per shared dynamic state; physical visibility changes only at transitions.
+func _apply_group(group: ControlGroup, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
+	if group == null: return
+	group.values.resize(STRIDE)
+	for i in range(STRIDE): group.values[i] = v[b+i]
+	group.desired_visible = v[b+11] > 0.0 and (v[b+5] > 0.0 or v[b+4] > 0.0)
+	_apply_materials(group.materials, v, b, mask)
+	var dynamic := Color(v[b+1], v[b+2], v[b+3], v[b+6] * _shaft_multiplier)
+	if dynamic != group.dynamic:
+		group.material.set_shader_parameter("control_group_dynamic_state", dynamic)
+		group.dynamic = dynamic
+		_record_mutation(&"beam_shader_parameter_writes")
+		if _trace:
+			_totals["actual_beam_dynamic_renderer_writes"] += 1
+			_totals["beam_instance_writes_avoided"] += group.members.size() - 1
+	var visible: bool = _mode == "full" and dynamic.a > 0.015
+	if not group.initialized or group.visible != visible:
+		group.visible = visible
+		group.initialized = true
+		for index in group.members:
+			_apply_output(_outputs[index], v, b, mask & ~(DIMMER | COLOR | MATERIAL), realtime, presentation)

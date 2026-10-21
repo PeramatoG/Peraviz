@@ -1,6 +1,6 @@
 # Rendering and performance architecture decisions
 
-**Status:** Stable foundation; future scalability proposals remain deferred
+**Status:** Shared dynamic Control Groups implemented; optical Render Groups remain future work
 
 **Date:** 2026-09-03
 
@@ -10,18 +10,52 @@ This document records presentation and performance decisions that complement the
 
 ## Current roadmap and evidence
 
-[Performance foundation](performance-foundation.md) is the single current roadmap:
-**PERFORMANCE FOUNDATION STABLE**, not scalability solved. The owner reports a
-stable 24–25 FPS / 40–42 ms full run after warmup on the canonical RTX 3070 scene.
-That is the current reference, not the final target. Native dense state and
-progressive-collapse correction are complete; batching/instancing/grouping remain
-deferred. Prove about 1,000 genuinely independent outputs with batched apertures
-before batched beams or later topology-based grouping. The next active branch is
-Vector Gobo Prism visual correctness; closure implements none of it.
+The owner’s newer controlled Windows chase isolates the immediate bottleneck:
 
-The detailed proposals below retain investigation history and do not implement or
-reorder future milestones. Use application flags only after Godot's `--`, and
-verify the explicit startup diagnostic before comparing modes.
+| Same chase; Pan/Tilt continuously moving | Owner-observed FPS |
+| --- | ---: |
+| Pan/Tilt + Color + Dimmer effects | ~24 |
+| Pan/Tilt + Dimmer, Color effects stopped | ~46 |
+| Pan/Tilt, Color and Wash Dimmer effects stopped | ~75 |
+
+These are owner observations, not CI guarantees. High-frequency Color/Dimmer
+presentation fan-out is the immediate priority. Shared Control Group dynamic
+presentation precedes optical aggregation/MultiMesh; independent-output batching
+remains valuable future work. Pan/Tilt keeps main’s normal transform ownership.
+
+## Implemented first Control Group layer
+
+`presentation/control_groups.*` derives setup-generation groups from the compiled
+selected DMXMode. Immutable source-program identity proves Color input, DMX-byte,
+ChannelFunction/ModeMaster and emitter/filter ownership; Color target IDs and
+instantaneous values never establish equivalence. Dimmer/Zoom property ownership,
+input order, optical profile, projected/emission scales and fixture scope must
+match. Only open projected Wash/Spot outputs are eligible. Wheel/gobo ownership,
+ambiguous controls, unsupported profiles or missing actual renderer routes fall
+back to individual presentation. Explicit realtime spotlights and debug beams
+also retain the individual renderer path.
+
+All canonical physical outputs and independently addressable native states remain
+intact. Native dirty projection emits one dynamic row per compatible group before
+the Godot boundary, while optical/topology rows remain physical. Each group binds
+one Vector Prism ShaderMaterial dynamic uniform; static optical uniforms and all
+physical shaft meshes remain individual. Source-identical BaseMaterial3D lenses
+with matching emission scale share a prepared material; unknown, overridden or
+multipass appearances retain separate material subgroups. No shaft aggregation,
+beam-angle multiplication, scale averaging or photometric change is performed.
+
+Latest native RGB, Color gain, intensity, material energy and optics survive dark
+updates and renderer replay. Scene retirement releases membership, resources and
+binding generations. Group and physical lookup remain linked by canonical IDs.
+The existing opt-in trace reports setup group sizes and bounded interval physical
+candidates, group updates, actual beam/lens writes and avoided writes. Trace-off
+remains the production benchmark; no new diagnostic mode is required.
+
+Owner validation uses one normal trace-off executable run of the same chase:
+all effects, stop Color, then stop Wash Dimmer. Record those three FPS readings;
+success is removal of per-emitter dynamic mutation scaling, not a fixed FPS.
+Automated native and headless renderer regressions verify the 50-member path;
+headless tests do not measure the owner’s Windows GPU workload.
 
 ## Core rule: authoritative semantics and presentation
 

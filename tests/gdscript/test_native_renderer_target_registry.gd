@@ -228,6 +228,8 @@ func _run() -> void:
 		var key: String = "fixture-q/Base/Beam%02d" % i
 		quantum_harness.add_geometry(key, true, false)
 		quantum_targets.append(_target("fixture-q", "beam_profile", 500 + i, key, {"beam_type": "Wash", "has_projected_beam": true, "effective_luminous_flux_lm": 320.0, "projected_lumen_scale": 0.032, "emission_lumen_scale": 0.032, "luminous_flux_source": "explicit"}))
+		quantum_targets[-1]["presentation_control_group"] = 12
+		quantum_targets.append(_target("fixture-q", "color", 500 + i, key))
 	quantum_harness.add_geometry("fixture-q/Base/Aura", true, false)
 	quantum_targets.append(_target("fixture-q", "beam_profile", 700, "fixture-q/Base/Aura", {"beam_type": "None", "has_projected_beam": false, "effective_luminous_flux_lm": 900.0, "projected_lumen_scale": 0.0, "emission_lumen_scale": 0.09, "luminous_flux_source": "explicit"}))
 	quantum_targets.append(_target("fixture-q", "dimmer", 800, "fixture-q/Base"))
@@ -235,6 +237,11 @@ func _run() -> void:
 	quantum_registry.install_manifest([{"fixture_uuid": "fixture-q", "targets": quantum_targets}])
 	var quantum_record: Dictionary = quantum_registry.get_dimmer_target_record(800)
 	test.check(quantum_record.get("beam_instances", []).size() == 50, "Registry contract check failed near source line 205")
+	var quantum_dense: Dictionary = quantum_registry.get_dense_presentation_bindings()
+	test.check(quantum_dense["ids"].size() == 51, "Control Group metadata never removes canonical physical output bindings")
+	for output in quantum_dense["outputs"]:
+		var projected: bool = bool(output["has_projected_beam"])
+		test.check(int(output.get("presentation_control_group", 0)) == (12 if projected else 0), "Native group membership survives registry binding; Aura remains independent")
 	var quantum_sum: float = 0.0
 	for quantum_record_item in quantum_record.get("emitter_records", []):
 		quantum_sum += float((quantum_record_item as Dictionary).get("projected_lumen_scale", 0.0))

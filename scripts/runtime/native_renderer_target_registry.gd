@@ -369,6 +369,7 @@ func _index_beam_profiles(renderer_manifest: Array) -> void:
 				continue
 			var profile: Dictionary = target.get("beam_optical_profile", {})
 			profile["geometry_key"] = geometry_key
+			profile["presentation_control_group"] = int(target.get("presentation_control_group", 0))
 			profile["beam_render_target_id"] = int(target.get("render_target_id", target.get("target_id", 0)))
 			_beam_profiles_by_geometry_key[geometry_key] = profile
 			_increment_counter("beam_profiles_indexed")
@@ -442,6 +443,7 @@ func _resolve_beam_output_record(fixture_uuid: String, emitter_node: Node3D, fal
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
 	var output_record: Dictionary = {
 		"beam_render_target_id": beam_render_target_id,
+		"presentation_control_group": int(profile.get("presentation_control_group", 0)),
 		"fixture_uuid": fixture_uuid,
 		"geometry_key": geometry_key,
 		"owner_geometry_key": geometry_key,
@@ -717,7 +719,7 @@ func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_t
 		if prepared == null:
 			continue
 		mesh_instance.set_surface_override_material(surface_index, prepared)
-		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "geometry_key": str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")), "beam_optical_profile": _profile_for_geometry_key(str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")))})
+		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "source_material": material, "geometry_key": str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")), "beam_optical_profile": _profile_for_geometry_key(str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")))})
 
 func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
 	var prepared: BaseMaterial3D = null

@@ -50,6 +50,7 @@ struct PreparedOutput {
 class DensePresentationState {
 public:
     bool install(const std::vector<OutputBinding> &outputs, const std::vector<TargetBinding> &targets);
+    bool install_groups(const std::vector<int32_t> &representatives);
     void clear();
     void invalidate_renderer();
     // Returns the current process-unique scene binding token.
@@ -63,6 +64,8 @@ public:
     void prepare_snapshot();
     // Borrows the current contiguous render deltas until snapshot completion.
     const std::vector<PreparedOutput> &prepared() const { return prepared_; }
+    const std::vector<PreparedOutput> &prepared_groups() const { return prepared_groups_; }
+    size_t dynamic_candidates() const { return dynamic_candidates_; }
     RenderValues render_values(uint32_t index) const;
     uint32_t effective_mask(uint32_t index, const RenderValues &values);
     void finish_snapshot(uint64_t generation);
@@ -89,6 +92,10 @@ private:
     std::vector<uint32_t> dirty_;
     std::vector<PreparedOutput> prepared_;
     std::unordered_map<uint64_t, std::vector<uint32_t>> routes_;
+    std::vector<int32_t> representatives_;
+    std::vector<uint32_t> group_masks_;
+    std::vector<PreparedOutput> prepared_groups_;
+    size_t dynamic_candidates_ = 0;
     size_t high_water_ = 0;
     size_t candidates_ = 0;
     size_t unresolved_rows_ = 0;

@@ -227,6 +227,7 @@ func _store_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) 
 	beam.set_meta(DYNAMIC_STATE_META_KEY, Color(color.r, color.g, color.b, intensity))
 
 func _apply_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) -> void:
+	if beam.has_meta(&"peraviz_control_group_material"): return
 	var dynamic_state := Color(color.r, color.g, color.b, intensity)
 	if beam.has_meta(BoundBeamStateScript.META_KEY):
 		var bound := BoundBeamStateScript.resolve(beam)
@@ -236,6 +237,7 @@ func _apply_dynamic_state(beam: MeshInstance3D, color: Color, intensity: float) 
 		if beam.get_meta(DYNAMIC_STATE_APPLIED_META_KEY, Color(-1.0, -1.0, -1.0, -1.0)) == dynamic_state: return
 		beam.set_meta(DYNAMIC_STATE_APPLIED_META_KEY, dynamic_state)
 	_set_bound_shader_parameter(beam, "beam_dynamic_state", dynamic_state)
+	renderer_dynamic_parameter_writes += 1
 	_last_parameter_write_count += 1
 
 func _apply_intensity_max(beam: MeshInstance3D, intensity_max: float) -> void:
@@ -393,8 +395,36 @@ func update_bound_intensity(light: SpotLight3D, beam: MeshInstance3D, params: Di
 		_set_bound_shader_parameter(beam, "intensity_max", intensity_max)
 		state.applied_max = intensity_max
 		_last_parameter_write_count += 1
-	if state.applied_dynamic != dynamic:
+	if not beam.has_meta(&"peraviz_control_group_material") and state.applied_dynamic != dynamic:
 		_set_bound_shader_parameter(beam, "beam_dynamic_state", dynamic)
+		renderer_dynamic_parameter_writes += 1
 		state.applied_dynamic = dynamic
 		_last_parameter_write_count += 1
 	return INTENSITY_CHANGED if _last_visibility_write_count + _last_parameter_write_count > 0 else INTENSITY_UNCHANGED
+
+# Setup-only resource binding. Geometry and all static optical instance uniforms stay physical.
+func bind_control_group(beams: Array) -> ShaderMaterial:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM or beams.size() < 2: return null
+	for beam in beams:
+		if not is_instance_valid(beam) or not beam.material_override is ShaderMaterial: return null
+		if beam.material_override.shader != _beam_material_template.shader: return null
+		if beam.material_override.next_pass != null: return null
+		if beam.material_override.render_priority != beams[0].material_override.render_priority: return null
+		if beam.material_override.get_shader_parameter("has_gobo_energy") == true: return null
+		if beam.material_override.get_shader_parameter("gobo_coverage") != null: return null
+		if beam.material_override.get_shader_parameter("gobo_mask") != null: return null
+	var material: ShaderMaterial = beams[0].material_override.duplicate(false)
+	material.set_shader_parameter("use_control_group_state", true)
+	for beam in beams:
+		beam.material_override = material
+		beam.set_meta(&"peraviz_control_group_material", material)
+	return material
+
+# Retires sharing before renderer/settings replacement; normal independent APIs remain valid.
+func unbind_control_group(beam: MeshInstance3D) -> void:
+	if not is_instance_valid(beam) or not beam.has_meta(&"peraviz_control_group_material"): return
+	var material: ShaderMaterial = beam.material_override.duplicate(false)
+	material.set_shader_parameter("use_control_group_state", false)
+	beam.material_override = material
+	beam.remove_meta(&"peraviz_control_group_material")
+	BoundBeamStateScript.invalidate_resource(beam)

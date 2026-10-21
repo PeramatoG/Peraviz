@@ -5,8 +5,9 @@
 This closes the performance-foundation milestone, not performance work. Native
 dense state, bounded dirty tracking and guarded renderer compatibility mutations
 provide a stable base for later rendering changes. Vector Gobo Prism remains the
-reference renderer. The next active workstream is its visual correctness; this
-closure implements none of the visual follow-ups below.
+reference renderer. The subsequent shared dynamic Control Group correction is documented in
+[rendering-performance architecture](rendering-performance-architecture.md);
+this historical closure implements none of the visual follow-ups below.
 
 ## Current canonical evidence
 
@@ -41,14 +42,13 @@ Completed / stable foundation:
 - Cold-cache/runtime correctness, tested diagnostic modes and explicit resource
   retirement during scene replacement and application exit.
 
-Deferred performance scalability retains the established order: prove batched
-aperture presentation first, then high-throughput batched beam presentation.
-RenderingServer/MultiMesh-style submission remains an implementation avenue to
-investigate, not an implemented backend. Mode-aware Control Groups, Render Groups
-and RenderEmitterGrouping are later optimizations based on valid control topology;
-spatial/optical aggregation is allowed only where presentation-equivalent.
-LOD/adaptive quality and further experimental shader beam proxy work remain open.
-No batching, instancing, grouping, LOD or renderer replacement belongs to closure.
+Newer owner-controlled Windows measurements (~24 FPS all effects, ~46 with Color
+stopped, ~75 with Color/Wash Dimmer stopped while Pan/Tilt continues) establish
+dynamic Color/Dimmer presentation fan-out as the immediate bottleneck. Shared
+Control Group dynamic materials are now implemented ahead of optical aggregation
+and MultiMesh. Full Render Groups/RenderEmitterGrouping, independent-output
+batching, LOD and renderer replacement remain future work. The historical
+foundation closure itself did not implement these changes.
 
 The first batching benchmark must sustain about **1,000 genuinely independent
 color/intensity outputs**. Grouping cannot substitute for that result. Every

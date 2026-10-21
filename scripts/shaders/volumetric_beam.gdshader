@@ -1,6 +1,9 @@
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
+uniform bool use_control_group_state = false;
+uniform vec4 control_group_dynamic_state : source_color = vec4(1.0, 1.0, 1.0, 0.0);
+
 instance uniform vec4 beam_dynamic_state : source_color = vec4(1.0, 0.95, 0.85, 0.0);
 instance uniform float intensity_max = 100.0;
 instance uniform float cone_height = 75.0;
@@ -46,7 +49,7 @@ void vertex() {
 		vec4 mask = textureLod(gobo_mask, camera_point * 0.5 + 0.5, 0.0);
 		inside_volume = dot(mask.rgb, vec3(0.299, 0.587, 0.114)) * mask.a >= 0.5 ? 1.0 : 0.0;
 	}
-	float intensity = max(beam_dynamic_state.a, 0.0);
+	float intensity = max((use_control_group_state ? control_group_dynamic_state : beam_dynamic_state).a, 0.0);
 	intensity_response = intensity / 20.0;
 }
 
@@ -101,7 +104,7 @@ void fragment() {
 	// Additive blending multiplies emission by alpha; split density equally so
 	// the displayed radial envelope retains the shared photometric anchors.
 	float response = sqrt(max(density, 0.0));
-	ALBEDO = beam_dynamic_state.rgb * response;
+	ALBEDO = (use_control_group_state ? control_group_dynamic_state : beam_dynamic_state).rgb * response;
 	EMISSION = ALBEDO;
 	ALPHA = clamp(response, 0.0, 1.0);
 }

@@ -11,6 +11,7 @@
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/gdtf_geometry_identity.h"
 #include "runtime/visual_runtime_types.h"
+#include "presentation/control_groups.h"
 #endif
 
 #include <godot_cpp/variant/array.hpp>
@@ -293,6 +294,10 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         item["subject"] = String(diagnostic.subject.c_str());
         diagnostics[index] = item;
     }
+    std::unordered_map<int32_t, int32_t> control_group_by_physical_id;
+    for (const auto &group : peraviz::presentation::compile_control_groups(scene))
+        if (group.physical_ids.size() > 1)
+            for (int32_t id : group.physical_ids) control_group_by_physical_id[id] = group.id;
     Array manifest;
     manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
     Array renderer_targets;
@@ -404,6 +409,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             optical["color_temperature"] = profile.color_temperature;
             optical["has_projected_beam"] = profile.has_projected_beam;
             optical["valid"] = profile.valid;
+            target["presentation_control_group"] = control_group_by_physical_id[profile.render_target_id];
             target["beam_optical_profile"] = optical;
             targets.push_back(target);
             renderer_targets.push_back(target);

@@ -6,6 +6,7 @@ var _last_visibility_write_count: int = 0
 # Constant-size cumulative call counts; the adapter only exports them when tracing.
 var renderer_visibility_writes: int = 0
 var renderer_shader_parameter_writes: int = 0
+var renderer_dynamic_parameter_writes: int = 0
 var renderer_debug_visibility_writes: int = 0
 
 const INTENSITY_UNRESOLVED: int = 0

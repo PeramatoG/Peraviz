@@ -5,15 +5,23 @@
 [performance foundation](performance-foundation.md). The native ownership details
 below remain current; regression measurements and acceptance plans are historical.
 Earlier mode runs were all full because user arguments were not consumed. They
-do not establish a no-beams/transforms-only A/B. Batching/grouping remain open.
+do not establish a no-beams/transforms-only A/B. Optical aggregation and independent-output batching remain open.
 
 The main-thread presentation service in `native/src/presentation/` stores one
 independent state per canonical physical renderer output. This is internal
 Peraviz runtime data. It does not change MVR, GDTF, selected DMXMode, channel
-ownership, geometry keys, or canonical output IDs. No grouping or batching is
-implemented. The existing sectioned semantic visual-frame protocol remains the
+ownership, geometry keys, or canonical output IDs. Compatible open Wash/Spot outputs now share dynamic presentation Control Groups;
+physical state remains exact. Optical aggregation and batching are not implemented. The existing sectioned semantic visual-frame protocol remains the
 input contract; the dense render-value buffer is a presentation boundary, not a
 revival of the removed universal fixture row.
+
+The setup compiler proves groups from immutable selected-mode source authority,
+not target-local Color IDs or current values. Native `prepare_snapshot()` projects
+physical dynamic dirtiness into one grouped payload, retaining separate physical
+optics/topology deltas. Godot binds one shared shaft material and compatible lens
+material subgroups; no mesh or canonical identity is merged. See the compact
+[Control Group contract](rendering-performance-architecture.md#implemented-first-control-group-layer)
+for conservative fallbacks, counters and owner validation.
 
 ## Ownership and lifetime
 

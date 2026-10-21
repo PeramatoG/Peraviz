@@ -152,6 +152,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
+        src/presentation/control_groups.cpp
         src/presentation/dense_presentation_state.cpp
         src/presentation/presentation_state_godot.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
@@ -207,8 +208,17 @@ if(PERAVIZ_BUILD_GDEXTENSION AND WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_control_group_tests
+        tests/presentation_control_groups_test.cpp
+        src/presentation/control_groups.cpp
+        src/presentation/dense_presentation_state.cpp
+    )
+    target_include_directories(peraviz_native_control_group_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME peraviz_native_control_group_tests COMMAND peraviz_native_control_group_tests)
+
     add_executable(peraviz_native_dense_presentation_tests
         tests/dense_presentation_state_test.cpp
+        src/presentation/control_groups.cpp
         src/presentation/dense_presentation_state.cpp
     )
     target_include_directories(peraviz_native_dense_presentation_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -341,6 +351,8 @@ if(BUILD_TESTING)
     )
     add_test(NAME peraviz_native_dmx_e2e_tests COMMAND peraviz_native_dmx_e2e_tests)
     add_executable(peraviz_native_visual_runtime_tests
+        tests/control_group_compiler_test.cpp
+        src/presentation/control_groups.cpp
         tests/visual_runtime_core_test.cpp
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp

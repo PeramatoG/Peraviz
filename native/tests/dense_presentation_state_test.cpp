@@ -124,5 +124,25 @@ int main() {
     check(state.prepared().size() == 1 && (state.prepared()[0].mask & VisualChangeBeamTopology), "Renderer replacement replays held state without semantic reset");
     state.clear();
     check(state.state_capacity() == 0 && state.dirty_capacity() == 0 && !state.update(next_gen,0,2,2,intensity), "Stop/clear retires state and buffers");
+    std::vector<OutputBinding> shared_outputs;
+    std::vector<TargetBinding> shared_targets;
+    for (uint32_t i = 0; i < 50; ++i) {
+        shared_outputs.push_back({int32_t(2000+i), 1.0f});
+        shared_targets.push_back({2, 99, i});
+        shared_targets.push_back({3, 100, i});
+    }
+    check(state.install(shared_outputs, shared_targets) && state.install_groups(std::vector<int32_t>(50, 0)), "Shared projection installs");
+    state.update_target(state.generation(), 2, 99, VisualChangeDimmer, intensity);
+    state.prepare_snapshot();
+    state.finish_snapshot(state.generation());
+    const size_t shared_bytes = state.buffer_bytes(), shared_allocations = allocations;
+    for (int tick = 0; tick < 400; ++tick) {
+        const float rgb[] = {float(tick % 20)/20, 0.2f, 0.7f, 0.5f};
+        state.update_target(state.generation(), 3, 100, VisualChangeColor, rgb);
+        state.prepare_snapshot();
+        check(state.prepared().empty() && state.prepared_groups().size() == 1, "Warmed dynamic state crosses as one group only");
+        state.finish_snapshot(state.generation());
+    }
+    check(allocations == shared_allocations && state.buffer_bytes() == shared_bytes, "Warmed grouped projection allocates nothing and retains bounded buffers");
     std::cout << "Dense presentation: 1095 independent outputs, 400 snapshots, no warmed allocations\n";
 }
