@@ -1,5 +1,8 @@
 # Peraviz v0.x.x
 
+- Restored coherent renderer-resource installation in one main-thread turn: individual, shared and aggregate bindings finish before rendering can consume an intermediate configuration. Native preparation remains asynchronous; model construction and initial light defaults remain budgeted.
+- Hidden fixture inspectors now defer row Controls, and visible tables build eight fixture rows per frame with revision-safe replacement. Finalization phases have distinct labels. Fixed unused-signal/integer-division warnings and added `--peraviz-load-trace` as an alternative to the telemetry environment variable.
+
 - Corrected render-readiness failure propagation and misleading activation completion. Loading now distinguishes activation from final render acknowledgment, defers explicitly for an unavailable window, and fails missing acknowledgments while drawable without publishing an incomplete scene. Opt-in bounded breadcrumbs locate engine-draw versus callback/continuation stalls; the owner Windows first-render blocker remains unconfirmed.
 
 - Split initial graphics activation into batches of at most 16 visual instances, with visible progress, to avoid submitting the full hidden scene at once. Original visibility, transforms, shared resources and DMX generation gating are preserved, including cancellation.

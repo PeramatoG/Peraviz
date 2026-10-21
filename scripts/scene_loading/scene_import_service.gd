@@ -103,15 +103,30 @@ func import_scene(path: String,
 		fixture_row_provider.set_loaded_nodes(nodes)
 	phases["fixture_registration_ms"] = (Time.get_ticks_usec() - phase_start) / 1000.0
 	phase_start = Time.get_ticks_usec()
-	if budget != null: budget.phase = "patch_binding"
-	var registered: Variant = await refresh_dmx_fixture_bindings.call(budget)
+	if budget != null:
+		budget.phase = "patch_binding"
+		# Present feedback before the main-thread resource transaction starts.
+		await budget.checkpoint(true)
+		await budget.checkpoint(true)
+		if not budget.valid(): return {"ok": false, "error": "scene import cancelled", "node_count": 0}
+		budget.breadcrumb("renderer_binding_transaction_begin")
+	# Match main's resource publication order: individual materials, shared control
+	# materials, aggregate handles and native RID bindings commit in one turn.
+	# Rendering intermediate resources across frames can prepare materials which
+	# are immediately replaced/suppressed. Native CPU preparation is already done.
+	var binding_started := Time.get_ticks_usec()
+	var registered: Variant = await refresh_dmx_fixture_bindings.call(null)
+	phases["renderer_binding_transaction_ms"] = (Time.get_ticks_usec() - binding_started) / 1000.0
+	if budget != null: budget.breadcrumb("renderer_binding_transaction_end")
 	if registered is bool and not registered:
 		return {"ok": false, "error": "renderer target installation failed", "node_count": 0}
 	if budget != null and not await budget.checkpoint(true):
 		return {"ok": false, "error": "scene import cancelled", "node_count": 0}
 	phases["runtime_registration_ms"] = (Time.get_ticks_usec() - phase_start) / 1000.0
 	phase_start = Time.get_ticks_usec()
-	if budget != null: budget.phase = "finalize"
+	if budget != null:
+		budget.phase = "finalize"
+		budget.breadcrumb("scene_navigation_begin")
 	populate_fixture_list.call()
 	sync_selection_state.call("scene_reload")
 	rebuild_debug_gizmos.call()
@@ -119,7 +134,14 @@ func import_scene(path: String,
 	if debug_asset_cache_enabled:
 		_print_asset_cache_summary(asset_cache)
 	update_debug_legend.call()
-	refresh_emitter_light_scalars.call()
+	if budget != null:
+		budget.phase = "final_light_defaults"
+		budget.breadcrumb("scene_light_defaults_begin")
+		if not await refresh_emitter_light_scalars.call(budget):
+			return {"ok": false, "error": "scene import cancelled", "node_count": 0}
+		budget.breadcrumb("scene_light_defaults_end")
+	else:
+		refresh_emitter_light_scalars.call()
 	phases["finalize_ms"] = (Time.get_ticks_usec() - phase_start) / 1000.0
 	phases["total_ms"] = (Time.get_ticks_usec() - load_start) / 1000.0
 	phases.merge(loader.get_load_metrics())

@@ -60,7 +60,7 @@ func prepare_scene(scene: Node3D, budget: SceneLoadBudget) -> bool:
 		# First, midpoint and final batch only; never per-node logging.
 		var trace_batch: bool = cursor >= next_breadcrumb or end == visuals.size()
 		if trace_batch:
-			next_breadcrumb = end + maxi(1, visuals.size() / 2)
+			next_breadcrumb = end + maxi(1, (visuals.size() >> 1))
 			budget.breadcrumb("render_batch_activate_begin", metrics)
 		while cursor < end:
 			if is_instance_valid(visuals[cursor]): visuals[cursor].show()
@@ -76,7 +76,7 @@ func prepare_scene(scene: Node3D, budget: SceneLoadBudget) -> bool:
 		metrics["max_render_activation_batch_ms"] = maxf(metrics["max_render_activation_batch_ms"], batch_ms)
 		if require_draw_ack: metrics["render_batches_acknowledged"] += 1
 		else: metrics["render_headless_batches"] += 1
-		budget.render_progress_changed.emit(cursor, visuals.size())
+		budget.report_render_progress(cursor, visuals.size())
 		if trace_batch: budget.breadcrumb("render_batch_ack", metrics)
 	var ready: bool = budget.valid() and error_message.is_empty()
 	if ready:

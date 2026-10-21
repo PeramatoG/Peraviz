@@ -70,11 +70,26 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		if not budget.valid():
 			import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
 	if bool(import_result.get("ok", false)):
-		app._refresh_fixture_inspection_panel()
+		budget.phase = "fixture_inspector"
+		budget.breadcrumb("fixture_inspector_begin")
+		await budget.checkpoint(true)
+		if budget.valid():
+			app._refresh_fixture_inspection_panel()
+			if is_instance_valid(app._fixture_inspection_panel):
+				await app._fixture_inspection_panel.finish_visible_refresh(budget)
+		budget.breadcrumb("fixture_inspector_end")
+		if not budget.valid():
+			import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
+	if bool(import_result.get("ok", false)) and remember_loaded_file:
+		budget.phase = "save_preferences"
+		budget.breadcrumb("session_preferences_begin")
+		await budget.checkpoint(true)
+		if budget.valid(): app._remember_loaded_file(path, loaded_file_type)
+		else: import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
+		budget.breadcrumb("session_preferences_end")
+	if bool(import_result.get("ok", false)):
 		app._loaded_mvr_path = path
 		app._last_loaded_file_type = loaded_file_type
-		if remember_loaded_file:
-			app._remember_loaded_file(path, loaded_file_type)
 		if app._status_presenter != null:
 			app._status_presenter.set_scene_state_loaded(int(import_result.get("node_count", 0)))
 	else:
@@ -88,7 +103,11 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	var metrics: Dictionary = import_result.get("load_metrics", {})
 	metrics.merge(render_readiness.metrics)
 	metrics["first_render_ms"] = first_render_ms
+	budget.phase = "resource_summary"
+	budget.breadcrumb("scene_resources_sample_begin")
 	metrics.merge(app._scene_setup_resource_metrics)
+	if is_instance_valid(app._fixture_inspection_panel):
+		metrics["inspector_row_controls"] = app._fixture_inspection_panel._row_labels.size()
 	if app._fixture_light_apply_service.is_dense_presentation_active():
 		var counts: Dictionary = app._fixture_light_apply_service._dense_adapter.diagnostics()
 		for key in ["physical_outputs", "final_render_rows", "allocated_member_shafts", "aggregate_shaft_resources", "unique_lens_material_rids"]:

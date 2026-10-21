@@ -559,12 +559,14 @@ func _cleanup_light_beam_renderers(light: SpotLight3D) -> void:
 		if renderer is BeamRendererBase:
 			renderer.cleanup_beam(light)
 
-func _refresh_emitter_light_scalars() -> void:
+func _refresh_emitter_light_scalars(budget: SceneLoadBudget = null) -> bool:
 	for fixture_uuid in _fixture_emitter_light_cache.keys():
 		var lights: Array = _fixture_emitter_light_cache.get(fixture_uuid, [])
 		for light in lights:
+			if budget != null and not await budget.checkpoint(): return false
 			if light is SpotLight3D and is_instance_valid(light):
 				_apply_light_scalars_to_light(light)
+	return true
 
 func _refresh_existing_beam_material_scalars() -> void:
 	for fixture_uuid in _fixture_emitter_light_cache.keys():

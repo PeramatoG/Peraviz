@@ -22,7 +22,7 @@ var _previous_frame_us: int = 0
 var _observing: bool = false
 var max_block_phase: String = "loading_feedback"
 var frame_budget_us: int = 8000
-var trace_enabled: bool = OS.get_environment("PERAVIZ_LOAD_TELEMETRY") == "1"
+var trace_enabled: bool = OS.get_environment("PERAVIZ_LOAD_TELEMETRY") == "1" or OS.get_cmdline_user_args().has("--peraviz-load-trace")
 var _gap_breadcrumbs: int = 0
 
 func valid() -> bool:
@@ -71,3 +71,7 @@ func breadcrumb(event: String, values: Dictionary = {}) -> void:
 	var record: Dictionary = {"event": event, "phase": phase, "monotonic_ms": Time.get_ticks_msec()}
 	record.merge(values)
 	print("[peraviz-load-progress] ", JSON.stringify(record))
+
+# Keep signal emission local so the script compiler can verify the declaration.
+func report_render_progress(completed: int, total: int) -> void:
+	render_progress_changed.emit(completed, total)

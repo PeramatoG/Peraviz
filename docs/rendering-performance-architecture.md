@@ -77,6 +77,24 @@ that five independent Vector Prism materials share one external Shader resource;
 deep-copying materials does not imply five shader compilations in Godot 4.7.1.
 Member shaft/material allocation remains a separate lifecycle optimization.
 
+The later Windows report showed “Finishing scene setup”, a caption previously
+shared by pre-render navigation/defaults and post-render publication. Its supplied
+log did not contain telemetry, so that screenshot alone cannot identify the call.
+Those phases now have distinct captions and inspector/preferences/resource markers;
+`-- --peraviz-load-trace` enables the same bounded trace without environment setup.
+
+Compared with main, renderer binding had gained yields between individual material
+creation, Control Group sharing, aggregate binding and final native RID installation.
+Those intermediate configurations can reach graphics preparation before replacement.
+Binding now runs in one main-thread transaction as on main, preserving the same
+resources and groups. The one-fixture graphical probe completed that transaction
+in about 63–90 ms; this is not a Windows prediction. Larger transactions remain a
+responsiveness tradeoff, recorded as `renderer_binding_transaction_ms`; no hard
+8 ms cap is claimed. Hidden inspectors allocate zero row Labels (rather than 656
+for 82 fixtures); visible tables build eight rows per turn and retire stale rebuilds.
+The Windows scene-specific stall still requires owner validation; successful group
+counts alone do not prove graphics preparation is cheap.
+
 Runtime registration previously included synchronous classification. It now follows
 CPU preparation; phase times include yielded waits, so nested phase rows must not
 be added. Warm means a same-content reload in the same process, not a persistent

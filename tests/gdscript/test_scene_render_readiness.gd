@@ -4,8 +4,10 @@ const TestCase = preload("res://tests/gdscript/headless_test_case.gd")
 const Readiness = preload("res://scripts/scene_loading/scene_render_readiness.gd")
 const Budget = preload("res://scripts/scene_loading/scene_load_budget.gd")
 var test = TestCase.new()
+var _binding_transaction_frames: int = 0
 
 class LostDraws extends RefCounted:
+	@warning_ignore("unused_signal")
 	signal acknowledged
 
 func _initialize() -> void:
@@ -25,18 +27,57 @@ func _scene() -> Node3D:
 	for i in range(33):
 		var visual := MeshInstance3D.new()
 		visual.mesh = mesh
-		visual.position = Vector3(i % 6, 0, i / 6)
+		visual.position = Vector3(i % 6, 0, float(i) / 6.0)
 		scene.add_child(visual)
 	return scene
 
+func _inspector_contract() -> void:
+	var panel := preload("res://scripts/ui/fixture_inspection_panel.gd").new()
+	panel.hide()
+	root.add_child(panel)
+	var rows: Array = []
+	for i in range(82): rows.append({"fixture_uuid": str(i), "fixture_name": "Generic fixture " + str(i)})
+	panel.refresh(rows)
+	test.check(panel._row_labels.is_empty() and panel._pending_rows.size() == 82, "Hidden inspector stores all fixture data without allocating row Controls")
+	panel.show()
+	test.check(panel._row_labels.size() == 64, "Visible inspector constructs only eight rows before yielding")
+	await process_frame
+	panel.refresh([{"fixture_name": "Replacement"}])
+	await process_frame
+	test.check(panel._row_labels.size() == 8 and not panel._dirty, "A replacement generation cancels old UI batches without stale rows")
+	panel.refresh(rows)
+	panel.hide()
+	await process_frame
+	test.check(not panel._building and panel._dirty, "Hiding the inspector interrupts construction safely")
+	panel.show()
+	var budget := _budget({"valid": true})
+	test.check(await panel.finish_visible_refresh(budget), "Import can await all visible details through the normal event loop")
+	test.check(panel._row_labels.size() == 656 and not panel._dirty, "All 82 fixtures retain their eight final inspection fields")
+	var retained_label: Label = panel._row_labels[0]
+	panel.hide()
+	panel.show()
+	test.check(panel._row_labels[0] == retained_label and not panel._dirty, "Reopening completed inspection data reuses existing Controls")
+	panel.queue_free()
+	await process_frame
+
 func _run() -> void:
+	await _inspector_contract()
 	# Normal production import, graphical when launched without --headless.
 	var path := ProjectSettings.globalize_path("user://generated_readiness.mvr")
 	test.check(OS.execute("python3", PackedStringArray([ProjectSettings.globalize_path("res://tests/integration/generate_render_group_fixture.py"), path, "--instances=1", "--wheel=basic", "--mode=BasicControls"])) == 0, "Generate one generic production fixture")
 	var app: Node = load("res://test.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
+	var observe_binding: Callable = func() -> void:
+		for child in app.get_children():
+			if child.get_script() == preload("res://scripts/scene_loading/scene_loading_overlay.gd"):
+				if child._phase_label.text in ["Preparing renderer bindings…", "Preparing lights and lenses…", "Binding lighting resources…", "Preparing shared materials…", "Preparing combined beams…", "Installing fixture controls…"]:
+					_binding_transaction_frames += 1
+	process_frame.connect(observe_binding)
 	var result: Dictionary = await app._load_mvr_scene(path, "mvr", false)
+	process_frame.disconnect(observe_binding)
+	# Only the two explicit feedback turns and the post-commit checkpoint yield.
+	test.check(_binding_transaction_frames <= 4, "Renderer resources commit without yielding intermediate grouping/material state")
 	var metrics: Dictionary = result.get("load_metrics", {})
 	test.check(result.get("ok", false) and not app._scene_loading and not app._scene_load_failed, "Normal graphical scene readiness completes")
 	test.check(metrics.get("physical_outputs", 0) == 51 and metrics.get("aggregate_shaft_resources", 0) == 1 and metrics.get("final_render_rows", 0) == 2, "Readiness preserves aggregate and physical bindings")

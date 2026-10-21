@@ -6,9 +6,14 @@ const EMPTY_VALUE: String = "—"
 var _grid: GridContainer
 var _empty_label: Label
 var _row_labels: Array[Label] = []
+var _pending_rows: Array = []
+var _revision: int = 0
+var _dirty: bool = true
+var _building: bool = false
 
 func _ready() -> void:
-	build_ui()
+	visibility_changed.connect(_visibility_updated)
+	_visibility_updated()
 
 func build_ui() -> void:
 	if _grid != null:
@@ -43,17 +48,50 @@ func build_ui() -> void:
 	scroll.add_child(_grid)
 	_add_headers()
 
+# Hidden inspectors retain data only; they do not allocate hundreds of Labels.
 func refresh(rows: Array) -> void:
-	build_ui()
+	_revision += 1
+	_pending_rows = rows.duplicate(true)
+	_dirty = true
+	_building = false
 	_clear_rows()
-	_empty_label.visible = rows.is_empty()
-	if rows.is_empty():
+	if is_inside_tree(): _visibility_updated()
+
+func _visibility_updated() -> void:
+	if not is_visible_in_tree():
+		if _building:
+			_revision += 1
+			_dirty = true
+			_building = false
 		return
+	if _dirty and not _building: _build_pending_rows()
+
+# Each row has eight cells. Spread visible UI construction across event-loop turns.
+func _build_pending_rows() -> void:
+	build_ui()
+	var revision: int = _revision
+	var rows: Array = _pending_rows
+	_building = true
+	_clear_rows()
+	_empty_label.text = "Preparing fixture details…" if not rows.is_empty() else "Load an MVR or PVZ scene to inspect fixtures."
+	_empty_label.show()
+	var count: int = 0
 	for row_value in rows:
-		if row_value is not Dictionary:
-			continue
-		var row: Dictionary = row_value
-		_add_row(row)
+		if revision != _revision or not is_visible_in_tree(): return
+		if row_value is Dictionary:
+			_add_row(row_value)
+			count += 1
+		if count > 0 and count % 8 == 0: await get_tree().process_frame
+	if revision == _revision:
+		_dirty = false
+		_building = false
+		_empty_label.visible = rows.is_empty()
+
+# Loading waits only for visible details; hidden details are prepared on opening.
+func finish_visible_refresh(budget: SceneLoadBudget) -> bool:
+	while _dirty and is_visible_in_tree():
+		if not await budget.checkpoint(true): return false
+	return budget.valid()
 
 func _add_headers() -> void:
 	for header_text in ["Name", "ID / No.", "Type", "Universe", "Address", "Patch / Binding", "Position", "Rotation"]:

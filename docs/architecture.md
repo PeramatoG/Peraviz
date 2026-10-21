@@ -18,7 +18,14 @@ geometry expansion, selected-mode compilation and Control/Render Group classific
 Generation-scoped geometry templates retain model leases and rebind UUIDs/keys per
 instance; scene replacement retires them. Setup indexes follow actual fixture/resource
 ownership. Godot transfers the completed data, builds nodes/targets in frame-budgeted
-batches. The completed scene activates at most 16 visual instances per rendered batch
+batches. Renderer target/material/group installation is a single main-thread
+transaction, matching main’s publication order: no rendering turn consumes
+individual resources before their final sharing/aggregate bindings. CPU preparation
+is already complete. This transaction is not subject to the 8 ms construction
+budget; its wall time is recorded separately. Initial light defaults yield, and
+hidden fixture-inspection tables retain data without allocating row Controls;
+visible tables build eight rows per frame with generation-safe replacement.
+The completed scene activates at most 16 visual instances per rendered batch
 behind an opaque modal shield before its removal. This avoids exposing the whole
 hidden scene to the graphics backend in one frame and restores exact local
 visibility, transforms and resource identity; cancellation hides the retired

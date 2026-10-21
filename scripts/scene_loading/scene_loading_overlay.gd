@@ -9,7 +9,7 @@ const PHASE_LABELS: Dictionary = {
 	"node_payload": "Preparing scene data…",
 	"node_resources": "Building scene models…",
 	"fixture_registration": "Preparing fixture selection…",
-	"patch_binding": "Binding DMX controls…",
+	"patch_binding": "Binding lighting resources…",
 	"runtime_payload_and_manifest": "Preparing renderer bindings…",
 	"godot_targets": "Preparing lights and lenses…",
 	"dense_binding": "Binding lighting resources…",
@@ -18,11 +18,15 @@ const PHASE_LABELS: Dictionary = {
 	"final_runtime_install": "Installing fixture controls…",
 	"native_runtime_install": "Installing fixture controls…",
 	"fixture_prewarm": "Preparing lighting…",
-	"finalize": "Finishing scene setup…",
+	"finalize": "Preparing scene navigation…",
+	"final_light_defaults": "Applying initial light settings…",
+	"fixture_inspector": "Preparing fixture details…",
+	"save_preferences": "Saving session preferences…",
+	"resource_summary": "Checking scene resources…",
 	"first_render": "Activating scene visuals…",
 	"render_completion": "Waiting for first rendered frames…",
 	"render_window_deferred": "Restore the window to finish preparing the scene…",
-	"publish_scene": "Finishing scene setup…",
+	"publish_scene": "Publishing the prepared scene…",
 }
 var _phase_label: Label
 
