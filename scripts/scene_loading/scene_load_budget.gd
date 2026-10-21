@@ -9,6 +9,7 @@ var slice_start: int = Time.get_ticks_usec()
 var max_block_us: int = 0
 var yields: int = 0
 signal phase_changed(value: String)
+signal render_progress_changed(completed: int, total: int)
 
 var phase: String = "loading_feedback":
 	set(value):

@@ -59,7 +59,51 @@ func _equivalence(path: String) -> void:
 	efficient.free()
 	reference.free()
 
+
+func _render_activation_contract() -> void:
+	var scene := Node3D.new()
+	root.add_child(scene)
+	scene.hide()
+	var shared_mesh := BoxMesh.new()
+	var originals: Dictionary = {}
+	for i in range(39):
+		var mesh := MeshInstance3D.new()
+		mesh.mesh = shared_mesh
+		mesh.position = Vector3(i, i * 0.1, 0)
+		mesh.visible = i != 2
+		scene.add_child(mesh)
+		originals[mesh] = {"visible": mesh.visible, "transform": mesh.transform, "mesh": mesh.mesh}
+	var hidden_parent := Node3D.new()
+	hidden_parent.hide()
+	scene.add_child(hidden_parent)
+	var nested := MeshInstance3D.new()
+	nested.mesh = shared_mesh
+	hidden_parent.add_child(nested)
+	originals[nested] = {"visible": true, "transform": nested.transform, "mesh": nested.mesh}
+	var budget := SceneLoadBudget.new()
+	budget.tree = self
+	var generation := {"valid": true}
+	budget.current = func() -> bool: return generation.valid
+	var steps: Array[int] = []
+	budget.render_progress_changed.connect(func(completed: int, _total: int) -> void: steps.append(completed))
+	var readiness := preload("res://scripts/scene_loading/scene_render_readiness.gd").new()
+	test.check(await readiness.prepare_scene(scene, budget), "Staged graphics activation completes")
+	test.check(steps == [16, 32, 39] and readiness.metrics.render_activation_batches == 3, "Actual visual resources activate in bounded batches")
+	for node in originals:
+		var state: Dictionary = originals[node]
+		test.check(node.visible == state.visible and node.transform == state.transform and node.mesh == state.mesh, "Activation preserves exact local visibility, transform and resource identity")
+	test.check(not hidden_parent.visible and not nested.is_visible_in_tree(), "Originally hidden ancestors remain hidden")
+	scene.hide()
+	budget.render_progress_changed.connect(func(_completed: int, _total: int) -> void: generation.valid = false)
+	readiness = preload("res://scripts/scene_loading/scene_render_readiness.gd").new()
+	test.check(not await readiness.prepare_scene(scene, budget) and not scene.visible, "Mid-activation cancellation hides the retired scene")
+	for node in originals:
+		test.check(node.visible == originals[node].visible, "Cancellation restores local visibility before generation cleanup")
+	scene.queue_free()
+	await process_frame
+
 func _run() -> void:
+	await _render_activation_contract()
 	var path: String = ProjectSettings.globalize_path("user://generated_scene_setup.mvr")
 	_generate(path)
 	await _equivalence(path)

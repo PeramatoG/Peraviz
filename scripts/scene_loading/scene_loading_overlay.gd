@@ -66,3 +66,7 @@ func _input(event: InputEvent) -> void:
 func set_phase(value: String) -> void:
 	if _phase_label != null:
 		_phase_label.text = str(PHASE_LABELS.get(value, "Preparing scene…"))
+
+func set_render_progress(completed: int, total: int) -> void:
+	if _phase_label != null:
+		_phase_label.text = "%s %d / %d" % [PHASE_LABELS["first_render"], completed, total]

@@ -56,7 +56,8 @@ This does not promise driver/GPU completion or eliminate first-use shader stalls
 `first_render_ms` and `max_event_loop_gap_ms` (plus phase) expose that remaining
 boundary separately from `max_main_thread_block_ms`, which measures import chunks.
 
-Bounded graphical probe, generated 20 × 50 outputs, Forward+ Vulkan, Linux software
+Earlier render-gated probe (before staged activation), generated 20 × 50 outputs,
+Forward+ Vulkan, Linux software
 GPU (llvmpipe), 320 × 240. Driver cache state is uncontrolled: these observations
 check the readiness boundary, not a hardware speedup or Windows latency estimate.
 
@@ -68,9 +69,22 @@ check the readiness boundary, not a hardware speedup or Windows latency estimate
 | Physical outputs / renderer rows / actual aggregates | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
 
 Long first-use shader/driver stalls can still block the event loop during loading.
-If Windows retains the minute-long delay in the named first-render phase, graphics
-warmup requires its own measured follow-up; do not add threads around SceneTree or
-RenderingServer calls. This PR corrects premature readiness and records those gaps.
+The next Windows validation confirmed the minute-long freeze during the named
+first-render phase, after all control/group setup logs completed. Keeping the modal
+shield alone did not fix it. Initial activation now hides locally visible visual
+instances while the root is hidden, then restores at most 16 per actual rendered
+batch. This bounds the number of new instances entering the backend per frame,
+without changing official data, resources, local visibility or final render rows.
+Cancellation restores flags beneath the hidden retired root. The phase label shows
+activation progress, and summary metrics include instance count, batch count and
+maximum full batch wall time. Individual shader/driver operations are still atomic;
+this is not a guaranteed millisecond cap or a claim that Windows is already fixed.
+A bounded graphical staging probe retained 1,000 outputs, 20 rows and 20 aggregates;
+2,020 locally visible visual instances were activated in 127 batches. Software-GPU
+batch wall time reached 0.76 s; the animation/event loop advanced between batches.
+Staging adds frame overhead (especially on software rendering), so total import
+time is not expected to improve just by adding render boundaries. The objective
+here is to reduce one large activation stall without weakening scene readiness.
 
 Runtime registration previously included synchronous classification. It now follows
 CPU preparation; phase times include yielded waits, so nested phase rows must not

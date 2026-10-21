@@ -17,6 +17,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	var budget := SceneLoadBudget.new()
 	budget.tree = app.get_tree()
 	budget.phase_changed.connect(loading_overlay.set_phase)
+	budget.render_progress_changed.connect(loading_overlay.set_render_progress)
 	budget.observe_frames()
 	budget.current = Callable(app, "_is_scene_load_current").bind(generation)
 	# Two event-loop turns let the loading status draw before CPU preparation starts.
@@ -47,15 +48,14 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		budget,
 		app._dmx_controller.get_universe_offset()
 	)
+	var render_readiness := preload("res://scripts/scene_loading/scene_render_readiness.gd").new()
 	var first_render_started := Time.get_ticks_usec()
 	if bool(import_result.get("ok", false)) and budget.valid():
 		budget.phase = "first_render"
 		# Draw this phase before exposing a large scene to the rendering backend.
 		await budget.checkpoint(true)
 		await budget.checkpoint(true)
-		# Submit the completed scene behind feedback, before publishing readiness.
-		if budget.valid(): app.proxies_root.show()
-		await preload("res://scripts/scene_loading/scene_render_readiness.gd").new().wait_for_initial_frames(budget)
+		if budget.valid(): await render_readiness.prepare_scene(app.proxies_root, budget)
 	var first_render_ms := (Time.get_ticks_usec() - first_render_started) / 1000.0
 	if not budget.valid():
 		import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
@@ -78,6 +78,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	budget.finish()
 	app._scene_loading = false
 	var metrics: Dictionary = import_result.get("load_metrics", {})
+	metrics.merge(render_readiness.metrics)
 	metrics["first_render_ms"] = first_render_ms
 	metrics["max_event_loop_gap_phase"] = budget.max_event_loop_gap_phase
 	metrics["max_event_loop_gap_ms"] = budget.max_event_loop_gap_us / 1000.0
