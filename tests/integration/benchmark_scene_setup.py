@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--instances', type=int, nargs='+', default=[1, 20, 100, 250])
     parser.add_argument('--reference', action='store_true', help='Disable template reuse and native/Godot setup indexes; can be substantially slower.')
+    parser.add_argument('--rendered', action='store_true', help='Use a real Forward+ window; requires a graphical display and measures post-ready interaction gaps.')
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[2]
     records = []
@@ -29,15 +30,16 @@ def main() -> None:
         for count in args.instances:
             source = Path(directory) / 'generated.mvr'
             generate(source, sources=count, emission=False, wheel='basic', selected_mode='BasicControls', transforms=True)
-            command = [args.godot, '--headless', '--audio-driver', 'Dummy', '--rendering-method', 'gl_compatibility',
+            graphics = ['--windowed', '--resolution', '640x360', '--rendering-method', 'forward_plus'] if args.rendered else ['--headless', '--rendering-method', 'gl_compatibility']
+            command = [args.godot, *graphics, '--audio-driver', 'Dummy',
                        '--path', str(project), '--script', 'res://tests/integration/scene_setup_benchmark.gd', '--', str(source)]
-            result = subprocess.run(command, env=environment, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120, check=True)
+            result = subprocess.run(command, env=environment, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300 if args.rendered else 120, check=True)
             for line in result.stdout.splitlines():
                 if 'SCRIPT ERROR' in line or line.startswith('ERROR:'):
                     raise RuntimeError(line)
                 if line.startswith('SETUP_BENCHMARK '):
                     record = json.loads(line.removeprefix('SETUP_BENCHMARK '))
-                    record.update(instances=count, reference=args.reference)
+                    record.update(instances=count, reference=args.reference, rendered=args.rendered)
                     records.append(record)
                     print(json.dumps(record), flush=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)

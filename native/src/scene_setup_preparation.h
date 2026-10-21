@@ -1,5 +1,7 @@
 #pragma once
 #include "scene_model.h"
+#include <atomic>
+#include <memory>
 #ifdef PERAVIZ_ENABLE_DMX
 #include "runtime/visual_runtime_types.h"
 #include "presentation/render_emitter_groups.h"
@@ -17,5 +19,8 @@ struct SceneSetupPreparation {
     std::vector<presentation::RenderEmitterGroup> groups;
 #endif
 };
-SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset);
+// Progress is setup-only and monotonic; the main thread polls without sharing mutable scene data.
+enum class SceneSetupPhase : int32_t { ArchiveGeometry = 0, CompileMode, ControlGroups, RenderGroups, Complete };
+using SceneSetupProgress = std::shared_ptr<std::atomic<SceneSetupPhase>>;
+SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress = {});
 }

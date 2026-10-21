@@ -13,8 +13,12 @@ geometry expansion, selected-mode compilation and Control/Render Group classific
 Generation-scoped geometry templates retain model leases and rebind UUIDs/keys per
 instance; scene replacement retires them. Setup indexes follow actual fixture/resource
 ownership. Godot transfers the completed data, builds nodes/targets in frame-budgeted
-batches, and publishes readiness after binding. A modal loading indicator gates edits
-and DMX application against partial targets. Cancellation drains the task and clears
+batches, and publishes readiness after binding and three actual rendered frame
+submissions (`frame_post_draw`, with a process-frame fallback only in headless mode).
+The completed scene renders behind an opaque modal shield before its removal;
+process-frame yields alone do not prove graphical readiness. Phase text reports
+native preparation through an atomic token and Godot setup on the main thread.
+The loading indicator gates edits and DMX application against partial targets. Cancellation drains the task and clears
 partial resources; native code never mutates the SceneTree from that task.
 
 Legacy fixture bindings and Godot-side semantic helpers remain in limited compatibility, inspection, or transitional areas. They are not authoritative for native-supported live attributes.

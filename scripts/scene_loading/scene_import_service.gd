@@ -70,6 +70,7 @@ func import_scene(path: String,
 		if not loader.begin_load_mvr(native_path, universe_offset):
 			return {"ok": false, "error": "native import already running", "node_count": 0}
 		while not loader.is_load_mvr_ready():
+			budget.phase = loader.get_load_phase()
 			await budget.checkpoint(true)
 		# Drain the owned task even after cancellation, before another load can begin.
 		budget.phase = "node_payload"
@@ -110,6 +111,7 @@ func import_scene(path: String,
 		return {"ok": false, "error": "scene import cancelled", "node_count": 0}
 	phases["runtime_registration_ms"] = (Time.get_ticks_usec() - phase_start) / 1000.0
 	phase_start = Time.get_ticks_usec()
+	if budget != null: budget.phase = "finalize"
 	populate_fixture_list.call()
 	sync_selection_state.call("scene_reload")
 	rebuild_debug_gizmos.call()

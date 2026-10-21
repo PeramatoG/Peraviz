@@ -1,6 +1,7 @@
 # Peraviz v0.x.x
 
-- Scene loading now shows animated feedback before preparation, performs CPU parsing/classification in one owned native task, and batches main-thread node/target construction. Partial scenes remain hidden and DMX application waits for registration; cancellation/reload retires the setup generation.
+- Fixed premature loading completion: an opaque loading shield now remains over the completed scene during initial graphics submission. Load telemetry distinguishes import chunks from full event-loop/render gaps. Shader/driver stalls during loading remain measurable; headless timing is not a Windows responsiveness guarantee.
+- Scene loading now shows animated feedback before preparation, performs CPU parsing/classification in one owned native task, and batches main-thread node/target construction. Phase labels identify the current operation. Partial scenes remain hidden and DMX application waits for registration and actual initial rendered frames; cancellation/reload retires the setup generation.
 
 - Repeated fixtures reuse immutable selected-mode geometry templates and spectral preparation. Native classification and Godot descendant binding use setup indexes; opt-in phase summaries and reference switches support deterministic comparisons. Physical outputs, mechanical transforms and PR #105 aggregation remain unchanged.
 

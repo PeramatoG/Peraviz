@@ -26,6 +26,7 @@ public:
     Dictionary load_3ds_mesh_data(const String &path) const;
     bool begin_load_mvr(const String &path, int universe_offset = -1);
     bool is_load_mvr_ready() const;
+    String get_load_phase() const;
     Array finish_load_mvr();
     Dictionary get_load_metrics() const;
     Array get_fixtures_patch() const;
@@ -40,6 +41,7 @@ public:
 
 private:
     Array serialize_scene_nodes(bool baseline_debug, bool coords_debug);
+    peraviz::SceneSetupProgress load_progress_;
     std::future<peraviz::SceneSetupPreparation> preparation_;
     std::optional<peraviz::SceneSetupPreparation> prepared_;
     peraviz::SceneModel last_scene_model_;

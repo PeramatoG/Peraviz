@@ -37,11 +37,40 @@ observations, not CI thresholds or Windows predictions.
 | Godot node/model resources | 50 / 90 | 57 / 54 |
 | Physical fixture registration | 50 / 64 | 60 / 57 |
 | Runtime/target/resource registration | 1,754 / 1,787 | 599 / 559 |
-| Total import / visible-frame acknowledgement | 2,122 / 2,242 | 1,208 / 1,246 |
-| Main-thread uninterrupted span | 2,122 / 2,242 | 46 / 38 |
+| Total headless import | 2,122 / 2,242 | 1,208 / 1,246 |
+| Main-thread import chunk (headless) | 2,122 / 2,242 | 46 / 38 |
 | Geometry definitions / template hits | 20 / 0 | 1 / 19 |
 | Physical nodes / outputs / final rows | 1,140 / 1,000 / 20 | 1,140 / 1,000 / 20 |
 | Member shafts / actual aggregate shafts / lens material RIDs | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
+
+Headless runs do not submit a real Forward+ frame and cannot establish GUI readiness.
+The first Windows follow-up on this branch reported a minute-long hang after the
+loading indicator disappeared and about 30 FPS during playback; this is not an
+accepted Windows responsiveness or playback result. The supplied log still retained
+1,095 physical outputs, 20 aggregate resources and 115 renderer rows. A real graphical
+Linux probe reproduced expensive rendering after the former readiness boundary;
+starting the DMX receiver itself took about 1 ms. No button/focus handler performs
+fixture compilation. The completed scene now renders behind opaque loading feedback
+for three `frame_post_draw` submissions before DMX/input readiness is published.
+This does not promise driver/GPU completion or eliminate first-use shader stalls.
+`first_render_ms` and `max_event_loop_gap_ms` (plus phase) expose that remaining
+boundary separately from `max_main_thread_block_ms`, which measures import chunks.
+
+Bounded graphical probe, generated 20 × 50 outputs, Forward+ Vulkan, Linux software
+GPU (llvmpipe), 320 × 240. Driver cache state is uncontrolled: these observations
+check the readiness boundary, not a hardware speedup or Windows latency estimate.
+
+| Observation | Previous readiness | Render-gated readiness |
+| --- | ---: | ---: |
+| Import return, including new render wait | 34.4 s | 36.4 s |
+| Largest observed post-ready gap before first light activation | 4.59 s | < 0.25 s |
+| DMX receiver start call | 1.05 ms | 0.81 ms |
+| Physical outputs / renderer rows / actual aggregates | 1,000 / 20 / 20 | 1,000 / 20 / 20 |
+
+Long first-use shader/driver stalls can still block the event loop during loading.
+If Windows retains the minute-long delay in the named first-render phase, graphics
+warmup requires its own measured follow-up; do not add threads around SceneTree or
+RenderingServer calls. This PR corrects premature readiness and records those gaps.
 
 Runtime registration previously included synchronous classification. It now follows
 CPU preparation; phase times include yielded waits, so nested phase rows must not
@@ -75,6 +104,8 @@ Developer comparisons are centralized at setup boundaries:
 Godot descendant scans. They never enter canonical scene data or live frame loops.
 Run `python3 tests/integration/benchmark_scene_setup.py --godot "$GODOT_BIN" --output work/setup.json`
 for generated 1/20/100/250 cases (add `--reference --instances 20` for a bounded A/B).
+Add `--rendered --instances 20` on a graphical machine for actual Forward+ loading,
+first focused click and DMX-start observations (including cold/reload frame gaps).
 Native and normal-import regressions compare exact ordered identities, transforms,
 controls, optics, resources, groups and rejection reasons, including selected modes,
 references, multiple wheels, unresolved authority, cancellation and scene revision.

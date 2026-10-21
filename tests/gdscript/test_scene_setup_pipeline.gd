@@ -5,7 +5,10 @@ var test = TestCase.new()
 var app: Node
 var loading_frames: int = 0
 var cancel_after: int = -1
+var cancel_during_render: bool = false
 var rejected_overlap: bool = false
+var observed_phases: Dictionary = {}
+var rendering_kept_gated: bool = true
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -13,6 +16,14 @@ func _initialize() -> void:
 func _heartbeat() -> void:
 	if not is_instance_valid(app) or not app._scene_loading: return
 	loading_frames += 1
+	for child in app.get_children():
+		if child.get_script() == preload("res://scripts/scene_loading/scene_loading_overlay.gd"):
+			observed_phases[child._phase_label.text] = true
+			if child._phase_label.text == "Preparing first rendered frames…":
+				rendering_kept_gated = rendering_kept_gated and app._scene_loading and child.get_child(0).color.a == 1.0
+				if cancel_during_render:
+					cancel_during_render = false
+					app._clear_scene()
 	if cancel_after > 0 and loading_frames >= cancel_after:
 		cancel_after = -1
 		app._clear_scene()
@@ -37,6 +48,7 @@ func _equivalence(path: String) -> void:
 	test.check(efficient.begin_load_mvr(path, -1), "CPU preparation starts exactly once")
 	test.check(not efficient.begin_load_mvr(path, -1), "Concurrent task on one native loader is rejected")
 	while not efficient.is_load_mvr_ready(): await process_frame
+	test.check(efficient.get_load_phase() == "node_payload", "Completed native worker exposes final atomic progress phase")
 	var nodes: Array = efficient.finish_load_mvr()
 	var compiled: Dictionary = efficient.compile_visual_runtime_scene(-1)
 	test.check(nodes == reference_nodes, "Exact scene graph, transforms, optics, models and UUIDs match reference")
@@ -61,6 +73,9 @@ func _run() -> void:
 	test.check(loading_frames >= 10 and result["load_metrics"]["yielded_frames"] >= 10, "Main event loop processes frames throughout import")
 	test.check(result["load_metrics"]["physical_outputs"] == 1020 and result["load_metrics"]["final_render_rows"] == 40, "Physical projected and emission-only outputs survive normal aggregate binding")
 	test.check(app.proxies_root.visible and not app._scene_loading, "Ready scene becomes visible only after registration")
+	test.check(observed_phases.size() >= 3 and observed_phases.has("Preparing first rendered frames…"), "Loading feedback names changing setup and graphics phases")
+	test.check(rendering_kept_gated and result["load_metrics"]["first_render_ms"] > 0, "Rendering prepares behind modal feedback before DMX readiness")
+	test.check(result["load_metrics"]["max_event_loop_gap_ms"] > 0, "Telemetry includes complete render/event-loop intervals")
 	var registry: RefCounted = app._native_target_registry
 	for key in registry._geometry_targets_by_key:
 		registry._indexed_setup = true
@@ -74,6 +89,9 @@ func _run() -> void:
 	cancel_after = 5
 	result = await app._load_mvr_scene(path, "mvr", false)
 	test.check(not result.get("ok", true) and app._node_index.is_empty(), "Cancellation drains CPU preparation and retires partial targets")
+	cancel_during_render = true
+	result = await app._load_mvr_scene(path, "mvr", false)
+	test.check(not result.get("ok", true) and not app._scene_loading and app._node_index.is_empty(), "Cancellation during initial rendering retires partial resources and releases loading gate")
 	_generate(path, "BrokenControls")
 	await _equivalence(path)
 	result = await app._load_mvr_scene(path, "mvr", false)

@@ -123,6 +123,7 @@ namespace godot {
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("begin_load_mvr", "path", "universe_offset"), &PeravizLoader::begin_load_mvr, DEFVAL(-1));
+    ClassDB::bind_method(D_METHOD("get_load_phase"), &PeravizLoader::get_load_phase);
     ClassDB::bind_method(D_METHOD("is_load_mvr_ready"), &PeravizLoader::is_load_mvr_ready);
     ClassDB::bind_method(D_METHOD("finish_load_mvr"), &PeravizLoader::finish_load_mvr);
     ClassDB::bind_method(D_METHOD("get_load_metrics"), &PeravizLoader::get_load_metrics);
@@ -155,8 +156,9 @@ bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
 #endif
     prepared_.reset();
     load_metrics_.clear();
-    preparation_=std::async(std::launch::async, [native_path, universe_offset] {
-        return peraviz::prepare_scene_setup(native_path,universe_offset);
+    load_progress_ = std::make_shared<std::atomic<peraviz::SceneSetupPhase>>(peraviz::SceneSetupPhase::ArchiveGeometry);
+    preparation_=std::async(std::launch::async, [native_path, universe_offset, progress=load_progress_] {
+        return peraviz::prepare_scene_setup(native_path,universe_offset,progress);
     });
     return true;
 }
@@ -164,6 +166,19 @@ bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
 // Polls completion without waiting or touching the worker-owned result.
 bool PeravizLoader::is_load_mvr_ready() const {
     return preparation_.valid() && preparation_.wait_for(std::chrono::seconds(0))==std::future_status::ready;
+}
+
+// Reports only an atomic phase token; worker-owned fixture data remains inaccessible until transfer.
+String PeravizLoader::get_load_phase() const {
+    if (!load_progress_) return "loading_feedback";
+    switch (load_progress_->load(std::memory_order_relaxed)) {
+        case peraviz::SceneSetupPhase::ArchiveGeometry: return "native_mvr";
+        case peraviz::SceneSetupPhase::CompileMode: return "mode_compile";
+        case peraviz::SceneSetupPhase::ControlGroups: return "control_groups";
+        case peraviz::SceneSetupPhase::RenderGroups: return "render_groups";
+        case peraviz::SceneSetupPhase::Complete: return "node_payload";
+    }
+    return "loading_feedback";
 }
 
 // Transfers completed immutable CPU data exactly once; engine data stays on this thread.
