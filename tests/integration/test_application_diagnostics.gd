@@ -110,7 +110,7 @@ func verify_resources(mode: String) -> Dictionary:
 	var lens_energy: float = 0.0
 	for output in service._dense_adapter._outputs:
 		test.check(not output.materials.is_empty(), "Real lens material is bound")
-		for material in output.materials: lens_energy += material.energy
+		for material in output.materials: lens_energy += service._dense_adapter._native.material_values(material.rid)[3]
 		for handle in output.lights:
 			if handle.beam != null and handle.beam.is_visible_in_tree(): visible_beams += 1
 			if handle.realtime_visible: visible_spots += 1

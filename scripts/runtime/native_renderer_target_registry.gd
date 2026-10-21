@@ -11,6 +11,7 @@ var _pan_targets: Dictionary = {}
 var _tilt_targets: Dictionary = {}
 var _dimmer_targets: Dictionary = {}
 var _optics_targets: Dictionary = {}
+var _zoom_authority_targets: Dictionary = {}
 var _color_targets: Dictionary = {}
 var _target_resolution_failures: Dictionary = {}
 var _geometry_targets_by_key: Dictionary = {}
@@ -22,6 +23,9 @@ var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
 var _renderer_generation: int = 0
+var _render_emitter_groups: Array = []
+var _control_group_fallbacks: Dictionary = {}
+var _render_group_diagnostics: Dictionary = {}
 
 func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
@@ -42,6 +46,7 @@ func clear_renderer_targets() -> void:
 	_tilt_targets.clear()
 	_dimmer_targets.clear()
 	_optics_targets.clear()
+	_zoom_authority_targets.clear()
 	_color_targets.clear()
 	_target_resolution_failures.clear()
 	_geometry_targets_by_key.clear()
@@ -50,6 +55,9 @@ func clear_renderer_targets() -> void:
 	_beam_output_records_by_geometry_key.clear()
 	_beam_output_records_by_id.clear()
 	_lens_material_cache.clear()
+	_render_emitter_groups.clear()
+	_control_group_fallbacks.clear()
+	_render_group_diagnostics.clear()
 	_summary = _new_summary()
 	_renderer_generation += 1
 	_gobo_resources.clear_renderer_targets()
@@ -90,6 +98,9 @@ func install_manifest(renderer_manifest: Array) -> void:
 		if item is not Dictionary:
 			continue
 		var row: Dictionary = item
+		_render_emitter_groups.append_array(row.get("render_emitter_groups", []))
+		_control_group_fallbacks.merge(row.get("control_group_fallbacks", {}), true)
+		_render_group_diagnostics.merge(row.get("render_group_diagnostics", {}), true)
 		var targets: Array = row.get("targets", [])
 		if not targets.is_empty():
 			for target_item in targets:
@@ -285,6 +296,7 @@ func _register_renderer_target(target: Dictionary) -> void:
 	elif semantic == "color":
 		_register_color_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 	elif semantic == "zoom" or semantic == "beam_profile":
+		if semantic == "zoom": _zoom_authority_targets[int(target.get("render_target_id", target.get("target_id", 0)))] = true
 		_register_optics_target(target, int(target.get("render_target_id", target.get("target_id", 0))), fixture_uuid, geometry_key)
 
 func _new_summary() -> Dictionary:
@@ -369,6 +381,7 @@ func _index_beam_profiles(renderer_manifest: Array) -> void:
 				continue
 			var profile: Dictionary = target.get("beam_optical_profile", {})
 			profile["geometry_key"] = geometry_key
+			profile["presentation_control_group"] = int(target.get("presentation_control_group", 0))
 			profile["beam_render_target_id"] = int(target.get("render_target_id", target.get("target_id", 0)))
 			_beam_profiles_by_geometry_key[geometry_key] = profile
 			_increment_counter("beam_profiles_indexed")
@@ -442,6 +455,7 @@ func _resolve_beam_output_record(fixture_uuid: String, emitter_node: Node3D, fal
 	var beam_instances: Array = _prepare_beam_instances(emitter_anchors)
 	var output_record: Dictionary = {
 		"beam_render_target_id": beam_render_target_id,
+		"presentation_control_group": int(profile.get("presentation_control_group", 0)),
 		"fixture_uuid": fixture_uuid,
 		"geometry_key": geometry_key,
 		"owner_geometry_key": geometry_key,
@@ -717,7 +731,7 @@ func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_t
 		if prepared == null:
 			continue
 		mesh_instance.set_surface_override_material(surface_index, prepared)
-		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "geometry_key": str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")), "beam_optical_profile": _profile_for_geometry_key(str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")))})
+		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "source_material": material, "geometry_key": str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")), "beam_optical_profile": _profile_for_geometry_key(str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")))})
 
 func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
 	var prepared: BaseMaterial3D = null
@@ -859,6 +873,7 @@ func get_dense_presentation_bindings() -> Dictionary:
 	var ids := PackedInt32Array()
 	var scales := PackedFloat32Array()
 	var routes := PackedInt32Array()
+	var authority_routes := PackedInt32Array()
 	var outputs: Array = []
 	var canonical_ids: Array = _beam_output_records_by_id.keys()
 	canonical_ids.sort()
@@ -877,8 +892,16 @@ func get_dense_presentation_bindings() -> Dictionary:
 			for record in target_map[target_id].get("beam_output_records", []):
 				var canonical_id: int = int(record.get("beam_render_target_id", 0))
 				if indices.has(canonical_id):
-					routes.append_array(PackedInt32Array([section, int(target_id), int(indices[canonical_id])]))
-	return {"ids": ids, "scales": scales, "routes": routes, "outputs": outputs}
+					var route := PackedInt32Array([section, int(target_id), int(indices[canonical_id])])
+					routes.append_array(route)
+					# Static per-Beam profiles are routes, never independent selected-mode Zoom authority.
+					if section != 4 or _zoom_authority_targets.has(target_id): authority_routes.append_array(route)
+	var render_groups: Array = []
+	for descriptor in _render_emitter_groups:
+		var bound: Dictionary = descriptor.duplicate(false)
+		bound["anchor"] = _geometry_targets_by_key.get(str(descriptor.get("anchor_geometry_key", "")))
+		render_groups.append(bound)
+	return {"ids": ids, "scales": scales, "routes": routes, "authority_routes": authority_routes, "outputs": outputs, "render_groups": render_groups, "control_fallbacks": _control_group_fallbacks, "render_diagnostics": _render_group_diagnostics}
 
 # Presentation policy never resets selected gobo assets or their monotonic motion clocks.
 func set_presentation_enabled(enabled: bool) -> void:

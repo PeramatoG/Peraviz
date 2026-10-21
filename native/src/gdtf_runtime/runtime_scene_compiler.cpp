@@ -432,12 +432,14 @@ runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene 
     out.media_file_name = slot.media_file_name;
     out.provenance = slot.provenance;
     WheelTransmissionCook cooked;
+    bool known_color_data=slot.filter_resource_id==0 && (slot.color.valid || slot.provenance=="default_white");
     if (slot.filter_resource_id > 0) {
         bool found_filter = false;
         for (const PhysicalFilterResource &filter : fixture_type.filters) {
             if (filter.id != slot.filter_resource_id) continue;
             found_filter = true;
             const PhysicalColorMeasurement *measurement = select_filter_measurement(filter);
+            known_color_data=filter.color.valid || (measurement && measurement->transmission_state==ParsedNumericState::Valid);
             if (measurement != nullptr) {
                 std::vector<runtime::SpectralSample> samples;
                 for (const PhysicalSpectralPoint &point : measurement->spectral_points) samples.push_back({point.wavelength_nm, point.energy});
@@ -485,6 +487,7 @@ runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene 
         cooked = cook_transmission_from_cie(scene, patch, "slot=" + std::to_string(slot.slot_index), slot.color, true);
         cooked.gain = clamp_passive_filter_gain(scene, patch, "slot=" + std::to_string(slot.slot_index), cooked.gain);
     }
+    out.uniform_color_presentation=known_color_data && cooked.valid && !slot.has_unproven_presentation && slot.media_file_name.empty();
     if (!cooked.valid) {
         scene.diagnostics.push_back({"PVZ-GDTF-WHEEL-SLOT-COOK-FALLBACK", "warning", "Wheel Slot color cooked to invalid RGB; using identity fallback.", patch.fixture_uuid + " slot=" + std::to_string(slot.slot_index)});
         cooked.shape = {1.0, 1.0, 1.0};
@@ -502,17 +505,52 @@ runtime::CompiledWheelPaletteSlot cook_wheel_slot(runtime::CompiledRuntimeScene 
 }
 
 
-// Classifies GDTF color-wheel attributes into the supported native wheel runtime modes.
+// Distinguishes seated Color selection from indexed, temporal and unproven wheel attributes.
 runtime::CompiledWheelMode classify_wheel_mode(const std::string &attribute_name) {
     const std::string lower = dmx::lower_ascii(dmx::trim_ascii(attribute_name));
     if (lower.find("wheelaudio") != std::string::npos) return runtime::CompiledWheelMode::AudioUnsupported;
     if (lower.find("wheelrandom") != std::string::npos) return runtime::CompiledWheelMode::Random;
     if (lower.find("wheelspin") != std::string::npos) return runtime::CompiledWheelMode::Spin;
     if (lower.find("wheelindex") != std::string::npos) return runtime::CompiledWheelMode::Index;
-    return runtime::CompiledWheelMode::Select;
+    const bool numbered_color=lower.size()>5 && lower.rfind("color",0)==0 &&
+        std::all_of(lower.begin()+5,lower.end(),[](unsigned char c) { return c>='0' && c<='9'; });
+    if (numbered_color || lower=="colorwheel" || lower=="colorselect") return runtime::CompiledWheelMode::Select;
+    return runtime::CompiledWheelMode::OtherUnsupported;
 }
 
-// Appends color-wheel palettes and exact Beam target bindings for seated selection.
+// Recognizes wheel-owning Color identities, without classifying unrelated Color controls as wheels.
+bool color_attribute_requires_wheel(const AttributeIdentity &attribute) {
+    if (attribute.known_official && attribute.canonical_family == "Color") return true;
+    if (attribute.name == "ColorWheel" || attribute.name == "ColorSelect") return true;
+    const size_t suffix = attribute.name.find("Wheel");
+    if (suffix == std::string::npos) return false;
+    const auto selection = normalize_attribute_identity(0, attribute.name.substr(0, suffix));
+    if (!selection.known_official || selection.canonical_family != "Color") return false;
+    const std::string operation = attribute.name.substr(suffix);
+    return operation == "WheelIndex" || operation == "WheelSpin" || operation == "WheelRandom" || operation == "WheelAudio";
+}
+
+// Retains unsupported FX source bytes, ranges and activation without claiming a live evaluator.
+int32_t retain_unsupported_color_source(runtime::CompiledRuntimeScene &scene, const SceneModel::FixturePatch &patch,
+        const ChannelProgram &parser_program, const std::unordered_map<int32_t,const GeometryInstance*> &geometries,
+        int universe, int32_t &next_program_id) {
+    runtime::CompiledDmxSourceProgram program;
+    program.program_id=next_program_id++;
+    program.sources=make_sources(scene,patch,parser_program,universe);
+    program.dmx_from=parser_program.dmx_from; program.dmx_to=parser_program.dmx_to;
+    program.physical_from=parser_program.physical_from; program.physical_to=parser_program.physical_to;
+    program.attribute_name=parser_program.attribute_name; program.function_name=parser_program.function_name;
+    program.geometry_id=parser_program.geometry_instance_id;
+    const auto geometry=geometries.find(program.geometry_id);
+    if (geometry!=geometries.end()) program.geometry_name=geometry->second->path;
+    program.parser_program_id=parser_program.id; program.dmx_channel_id=parser_program.dmx_channel_id;
+    program.activation=parser_program.mode_master;
+    const int32_t id=program.program_id;
+    scene.source_programs.push_back(std::move(program));
+    return id;
+}
+
+// Retains exact Color-wheel bindings and separates unsupported effects from missing resources.
 void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
                           const SceneModel::FixturePatch &patch,
                           const CompiledGdtfFixtureType &fixture_type,
@@ -558,7 +596,46 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         scene.wheel_palettes.push_back(palette);
     }
     for (const ChannelProgram &parser_program : fixture_type.channel_programs) {
-        if (parser_program.wheel_id <= 0) continue;
+        // Retains effect status separately from resolved Color and optical presentation compatibility.
+        auto record_color_presentation=[&](runtime::ColorPresentationStatus reason,const char *code,const char *message) {
+            auto geometry=geometries_by_id.find(parser_program.geometry_instance_id);
+            for (auto &beam:scene.beam_profiles) if (beam.fixture_id==fixture_id &&
+                    (geometry==geometries_by_id.end() || color_channel_controls_beam(*geometry->second,beam)) &&
+                    beam.color_presentation_status!=runtime::ColorPresentationStatus::MissingWheelResource) beam.color_presentation_status=reason;
+            scene.diagnostics.push_back({code,"warning",message,patch.fixture_uuid+" attribute="+parser_program.attribute_name});
+        };
+        const std::string lower_attribute=dmx::lower_ascii(parser_program.attribute_name);
+        if (lower_attribute.rfind("coloreffects",0)==0) {
+            record_color_presentation(runtime::ColorPresentationStatus::UnsupportedEffectApproximation,"PVZ-COLOR-EFFECT-UNSUPPORTED",
+                "Selected-mode ColorEffects retains source bytes, ranges and activation but has no evaluator; visualization uses first-slot Color when linked, otherwise unchanged base Color, and may aggregate compatible emitters.");
+            const int32_t source=retain_unsupported_color_source(scene,patch,parser_program,geometries_by_id,artnet_universe,next_program_id);
+            const auto geometry=geometries_by_id.find(parser_program.geometry_instance_id);
+            for (auto &beam:scene.beam_profiles) if (beam.fixture_id==fixture_id &&
+                    (geometry==geometries_by_id.end() || color_channel_controls_beam(*geometry->second,beam))) {
+                beam.approximated_color_source_programs.push_back(source);
+                const auto palette=renderer_id_by_wheel.find(parser_program.wheel_id);
+                if (palette!=renderer_id_by_wheel.end()) {
+                    runtime::CompiledWheelTargetBinding binding;
+                    binding.binding_id=stable_id(patch.fixture_uuid,"wheel:binding:"+std::to_string(parser_program.id)+":"+beam.geometry_path);
+                    binding.fixture_id=fixture_id; binding.beam_render_target_id=beam.render_target_id;
+                    binding.wheel_renderer_id=palette->second; binding.source_program_id=source;
+                    binding.mode=runtime::CompiledWheelMode::OtherUnsupported; binding.snap=parser_program.snap;
+                    for (const auto &set:parser_program.wheel_channel_sets) binding.channel_sets.push_back({set.declared_dmx_from,set.effective_dmx_to,set.wheel_slot_index,set.name,set.physical_from,set.physical_to});
+                    scene.wheel_bindings.push_back(std::move(binding));
+                }
+            }
+            if (!parser_program.wheel_reference.empty() && renderer_id_by_wheel.find(parser_program.wheel_id)==renderer_id_by_wheel.end())
+                record_color_presentation(runtime::ColorPresentationStatus::MissingWheelResource,"PVZ-COLOR-WHEEL-RESOURCE-MISSING",
+                    "Selected-mode ColorEffects explicitly references an unresolved or empty Wheel; affected outputs remain individual.");
+            continue;
+        }
+        if (parser_program.wheel_id<=0) {
+            const auto attribute=attributes_by_id.find(parser_program.attribute_id);
+            if (!parser_program.wheel_reference.empty() || (attribute!=attributes_by_id.end() && color_attribute_requires_wheel(*attribute->second)))
+                record_color_presentation(runtime::ColorPresentationStatus::MissingWheelResource,"PVZ-COLOR-WHEEL-RESOURCE-MISSING",
+                    "Selected-mode wheel-owning function lacks a resolved Wheel resource; affected outputs remain individual.");
+            continue;
+        }
         const runtime::CompiledWheelMode wheel_mode = classify_wheel_mode(parser_program.attribute_name);
         if (wheel_mode == runtime::CompiledWheelMode::Index) scene.diagnostics.push_back({"PVZ-WHEEL-INDEX-AGGREGATE-FALLBACK", "info", "Color wheel index uses PeravizIndexedWheelAggregateFallback until spatial split rendering is implemented.", patch.fixture_uuid + " attribute=" + parser_program.attribute_name});
         auto attribute_it = attributes_by_id.find(parser_program.attribute_id);
@@ -642,6 +719,13 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         }
         if (wheel_mode == runtime::CompiledWheelMode::Select && parser_program.wheel_channel_sets.empty()) continue;
         if (attribute_it->second->canonical_family != "Color" && dmx::lower_ascii(parser_program.attribute_name).find("color") == std::string::npos) continue;
+        if (!renderer_id_by_wheel.count(parser_program.wheel_id)) {
+            record_color_presentation(runtime::ColorPresentationStatus::MissingWheelResource,"PVZ-COLOR-WHEEL-RESOURCE-MISSING",
+                "Selected-mode Color wheel has no compiled palette; affected outputs remain individual.");
+            continue;
+        }
+        if (wheel_mode!=runtime::CompiledWheelMode::Select && wheel_mode!=runtime::CompiledWheelMode::Index)
+            scene.diagnostics.push_back({"PVZ-WHEEL-TEMPORAL-UNSUPPORTED","warning","Color wheel Spin/Random/Audio/unknown modes retain their source and mode but currently display the first palette slot; temporal behavior is unsupported; compatible emitters may aggregate the resolved physical Color approximation.",patch.fixture_uuid+" attribute="+parser_program.attribute_name});
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;
         runtime_program.semantic = runtime::CompiledSemantic::Unknown;

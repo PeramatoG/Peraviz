@@ -1,8 +1,18 @@
 # Peraviz v0.x.x
 
+- Fixed false missing-palette rejection from unrelated GDTF ColorMixReset/ColorCalibrationMode controls. Wheel requirements now follow parsed Color selection/motion identity or explicit links; unlinked unsupported ColorEffects retains approximation status, while genuinely unresolved references keep conservative fallback.
+
+- Color-wheel presentation now permits combined shafts for compatible compact emitters, including explicitly approximate Spin/FX behavior, while preserving canonical physical state and control authority. Gobo/projector and incompatible optical dependencies retain individual fallback; unsupported effect fidelity remains explicitly diagnosed. Startup presentation revision is 4.
+
+- Render Group startup diagnostics now distinguish native optical fallback from Godot resource rejection and identify the compact-row extension build. Dynamic Color tracing separates physical composition, reduction and lens RID submission, with a trace-only lens isolation option. Color row ownership uses a setup index, Zoom skips unaffected lens materials, and two GDScript warnings are resolved.
+
 Changes since the previous Peraviz release.
 
 ## Highlights
+
+- Added native compact-source Render Emitter Groups: compatible multi-emitter heads retain physical lenses and exact DMX state while rendering one Vector Prism shaft. Aggregates mix independent pixel colors in linear light, keep static origins, use incremental native accumulation and publish renderer-sized payloads. Exact wheel/gobo ownership and one startup summary expose conservative fallbacks; separated cells, bars, divergent emitters and different mechanical lineages remain individual. Shared Control Groups are retained; no Windows FPS improvement is claimed without measurement.
+
+- Added selected-DMXMode presentation Control Groups for compatible open Wash/Spot outputs. Shared Color/Dimmer shaft and source-compatible lens materials avoid redundant renderer mutations while retaining every physical Beam, canonical identity, Color gain, held state and normal Pan/Tilt transform. Wheel/gobo, ambiguous controls, differing scales and explicit realtime/debug light paths remain individual.
 
 - Added a native, target-oriented GDTF runtime for Dimmer, Pan, Tilt, Zoom, physical color, seated color-wheel selection, and bounded static seated gobos.
 - Added a reproducible Linux Debug CI workflow covering native, architecture, and headless Godot tests.

@@ -11,6 +11,8 @@
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/gdtf_geometry_identity.h"
 #include "runtime/visual_runtime_types.h"
+#include "presentation/control_groups.h"
+#include "presentation/render_group_manifest.h"
 #endif
 
 #include <godot_cpp/variant/array.hpp>
@@ -293,6 +295,12 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         item["subject"] = String(diagnostic.subject.c_str());
         diagnostics[index] = item;
     }
+    const auto control_analysis = peraviz::presentation::analyze_control_groups(scene);
+    const auto render_groups = peraviz::presentation::compile_render_emitter_groups(scene, last_scene_model_, control_analysis.groups);
+    std::unordered_map<int32_t, int32_t> control_group_by_physical_id;
+    for (const auto &group : control_analysis.groups)
+        if (group.physical_ids.size() > 1)
+            for (int32_t id : group.physical_ids) control_group_by_physical_id[id] = group.id;
     Array manifest;
     manifest.resize(static_cast<int64_t>(scene.fixtures.size()));
     Array renderer_targets;
@@ -404,9 +412,15 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             optical["color_temperature"] = profile.color_temperature;
             optical["has_projected_beam"] = profile.has_projected_beam;
             optical["valid"] = profile.valid;
+            target["presentation_control_group"] = control_group_by_physical_id[profile.render_target_id];
             target["beam_optical_profile"] = optical;
             targets.push_back(target);
             renderer_targets.push_back(target);
+        }
+        entry["render_emitter_groups"] = peraviz::presentation::serialize_render_groups(render_groups, fixture.fixture_id);
+        if (fixture_index == 0) {
+            entry["control_group_fallbacks"] = peraviz::presentation::serialize_control_fallbacks(control_analysis.fallbacks);
+            entry["render_group_diagnostics"] = peraviz::presentation::serialize_render_group_diagnostics(render_groups);
         }
         entry["capability_flags"] = capability_flags;
         entry["targets"] = targets;

@@ -77,7 +77,7 @@ func _run() -> void:
 		test.check(loader.renderer.get_beam_resource(loader.anchors[i]).visible, "Dark-start projected output activates")
 	test.check(not loader.renderer.get_beam_resource(loader.anchors[2]).visible, "Emission-only output never becomes a projected beam")
 	test.check(is_equal_approx(loader.anchors[0].light_energy,8.0) and is_equal_approx(loader.anchors[0].spot_angle,10.0), "SpotLight energy and half-angle retain canonical values")
-	test.check(is_equal_approx(service._dense_adapter._outputs[0].materials[0].energy,3.0), "Pre-bound material RID receives scaled emission energy")
+	test.check(is_equal_approx(service._dense_adapter._native.material_values(service._dense_adapter._outputs[0].materials[0].rid)[3],3.0), "Pre-bound material RID receives scaled emission energy")
 	var sizes_before: Dictionary = service._dense_adapter.diagnostics()
 	for iteration in range(100):
 		frame["floats"][0] = float(iteration % 10) / 10.0

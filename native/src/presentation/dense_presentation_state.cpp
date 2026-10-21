@@ -45,6 +45,20 @@ bool DensePresentationState::install(const std::vector<OutputBinding> &outputs, 
     routes_ = std::move(routes);
     return true;
 }
+// Installs renderer-validated sharing once per generation, retaining physical inverse membership.
+bool DensePresentationState::install_groups(const std::vector<int32_t> &representatives) {
+    if (representatives.size() != states_.size()) return false;
+    for (size_t i = 0; i < representatives.size(); ++i) {
+        const int32_t r = representatives[i];
+        if (r < -1 || r >= int32_t(states_.size()) || (r >= 0 &&
+                (representatives[r] != r || bindings_[i].projected_scale != bindings_[r].projected_scale))) return false;
+    }
+    representatives_ = representatives;
+    group_masks_.assign(states_.size(), 0);
+    prepared_groups_.reserve(states_.size());
+    invalidate_renderer();
+    return true;
+}
 // Retires every index and releases scene-sized allocations, including on empty rebuilds.
 void DensePresentationState::clear() {
     generation_ = ++next_generation;
@@ -53,6 +67,10 @@ void DensePresentationState::clear() {
     std::vector<uint32_t>().swap(dirty_);
     std::vector<PreparedOutput>().swap(prepared_);
     decltype(routes_)().swap(routes_);
+    decltype(representatives_)().swap(representatives_);
+    decltype(group_masks_)().swap(group_masks_);
+    decltype(prepared_groups_)().swap(prepared_groups_);
+    dynamic_candidates_ = 0;
     high_water_ = candidates_ = unresolved_rows_ = 0;
 }
 // Replays held state after a renderer-only replacement without changing semantic ownership.
@@ -155,10 +173,31 @@ uint32_t DensePresentationState::effective_mask(uint32_t index, const RenderValu
 void DensePresentationState::prepare_snapshot() {
     if (trace_enabled_) high_water_ = std::max(high_water_, dirty_.size());
     prepared_.clear();
+    prepared_groups_.clear();
+    dynamic_candidates_ = 0;
+    constexpr uint32_t dynamic_mask = VisualChangeDimmer | VisualChangeColor | VisualChangeMaterial;
     for (uint32_t index : dirty_) {
         const auto values = render_values(index);
-        const auto mask = effective_mask(index, values);
+        auto mask = effective_mask(index, values);
+        if (mask & dynamic_mask) ++dynamic_candidates_;
+        if (!representatives_.empty() && representatives_[index] >= 0) {
+            const auto representative = uint32_t(representatives_[index]);
+            if (mask & dynamic_mask) {
+                group_masks_[representative] |= mask & dynamic_mask;
+            }
+            mask &= ~dynamic_mask;
+        }
         if (mask) prepared_.push_back({index, mask, values});
+    }
+    // The representative's final held values win even if only another member was dirty.
+    for (uint32_t index : dirty_) {
+        if (representatives_.empty() || representatives_[index] < 0) continue;
+        const auto representative = uint32_t(representatives_[index]);
+        auto &mask = group_masks_[representative];
+        if (mask) {
+            prepared_groups_.push_back({representative, mask, render_values(representative)});
+            mask = 0;
+        }
     }
 }
 // Clears only touched membership bits and reuses all snapshot capacity.
@@ -168,9 +207,10 @@ void DensePresentationState::finish_snapshot(uint64_t generation) {
     dirty_.clear();
     prepared_.clear();
     candidates_ = 0;
+    prepared_groups_.clear();
 }
 // Reports retained contiguous buffer bytes without walking per-output state.
 size_t DensePresentationState::buffer_bytes() const {
-    return bindings_.capacity() * sizeof(OutputBinding) + states_.capacity() * sizeof(OutputState) + dirty_.capacity() * sizeof(uint32_t) + prepared_.capacity() * sizeof(PreparedOutput);
+    return representatives_.capacity() * sizeof(int32_t) + group_masks_.capacity() * sizeof(uint32_t) + prepared_groups_.capacity() * sizeof(PreparedOutput) + bindings_.capacity() * sizeof(OutputBinding) + states_.capacity() * sizeof(OutputState) + dirty_.capacity() * sizeof(uint32_t) + prepared_.capacity() * sizeof(PreparedOutput);
 }
 } // namespace peraviz::presentation

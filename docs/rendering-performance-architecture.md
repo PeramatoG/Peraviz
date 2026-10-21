@@ -1,6 +1,6 @@
 # Rendering and performance architecture decisions
 
-**Status:** Stable foundation; future scalability proposals remain deferred
+**Status:** Native Control Groups and first AGGREGATED/INDIVIDUAL Render Emitter Groups implemented
 
 **Date:** 2026-09-03
 
@@ -10,18 +10,225 @@ This document records presentation and performance decisions that complement the
 
 ## Current roadmap and evidence
 
-[Performance foundation](performance-foundation.md) is the single current roadmap:
-**PERFORMANCE FOUNDATION STABLE**, not scalability solved. The owner reports a
-stable 24–25 FPS / 40–42 ms full run after warmup on the canonical RTX 3070 scene.
-That is the current reference, not the final target. Native dense state and
-progressive-collapse correction are complete; batching/instancing/grouping remain
-deferred. Prove about 1,000 genuinely independent outputs with batched apertures
-before batched beams or later topology-based grouping. The next active branch is
-Vector Gobo Prism visual correctness; closure implements none of it.
+The owner’s newer controlled Windows chase isolates the immediate bottleneck:
 
-The detailed proposals below retain investigation history and do not implement or
-reorder future milestones. Use application flags only after Godot's `--`, and
-verify the explicit startup diagnostic before comparing modes.
+| Same chase; Pan/Tilt continuously moving | Owner-observed FPS |
+| --- | ---: |
+| Pan/Tilt + Color + Dimmer effects | ~24 |
+| Pan/Tilt + Dimmer, Color effects stopped | ~46 |
+| Pan/Tilt, Color and Wash Dimmer effects stopped | ~75 |
+
+These are owner observations, not CI guarantees. The owner subsequently measured
+no appreciable FPS improvement with the shared Control Group branch. This is not
+a proven performance win: sharing one ShaderMaterial reduces parameter writes,
+but does not batch 50 MeshInstance3D objects, submissions, overlapping transparent
+surfaces or fragment workloads. The old fixture-wide wheel/gobo veto could also
+suppress otherwise valid groups. It is now exact-output scoped; unresolved
+ownership remains conservative. The real-import regression also exposed a second
+veto: static per-Beam profile routes were being compared as independent Zoom
+controls. Registry setup now separates those routes from actual selected-mode
+Zoom authority. A normal MVR import proves the 50-member Control Group forms. Actual production membership is reported in one
+startup summary. Pan/Tilt retains main’s normal transform ownership.
+
+## Implemented first Control Group layer
+
+`presentation/control_groups.*` derives setup-generation groups from the compiled
+selected DMXMode. Immutable source-program identity proves Color input, DMX-byte,
+ChannelFunction/ModeMaster and emitter/filter ownership; Color target IDs and
+instantaneous values never establish equivalence. Dimmer/Zoom property ownership,
+input order, optical profile, projected/emission scales and fixture scope must
+match. Only open projected Wash/Spot outputs are eligible. Unproven wheel effects,
+gobo ownership, ambiguous controls, unsupported profiles or missing actual renderer routes fall
+back to individual presentation. Explicit realtime spotlights and debug beams
+also retain the individual renderer path.
+
+All canonical physical outputs and native values remain exact. Control Groups
+still share dynamic shaft materials and source-compatible lens materials, but
+are distinct from optical Render Groups. A separated two-cell source can share
+one Control Group while retaining two INDIVIDUAL shafts. A compact pixel head can
+have many Control Groups and one AGGREGATED shaft.
+
+## First production Render Emitter Groups
+
+Typed native `RenderEmitterGroup` records preserve inverse physical IDs and Control
+Group IDs. `INDIVIDUAL` keeps existing presentation, `AGGREGATED` owns one Vector
+Prism shaft, and `INSTANCED` is reserved. No aggregation is written into GDTF/MVR,
+no physical IDs change and no selected DMXMode changes. Physical lenses remain
+separate, including independently controlled pixels; lens glow is a later task.
+
+Setup descriptors derive origins, directions, static local transforms and Axis
+lineage from SceneModel. The anchor is the nearest mechanical ancestor, so normal
+Pan/Tilt inheritance carries the aggregate. Reliable explicit BeamRadius, rigid
+transforms, open Wash/Spot type, matching optical family/angle provenance and Zoom
+authority, proven uniform Color-wheel transmission where present, and no relevant
+gobo/spatial/temporal shaping dependency are required. Ambiguous
+geometry, non-rigid scales, unsupported profiles/backends, explicit realtime
+spotlights and debug beams use INDIVIDUAL presentation.
+
+Centralized Peraviz heuristics in `AggregationPolicy` require at least 3 members,
+direction spread at most 2 degrees, Beam/Field-angle differences at most 0.25
+degrees, source-area/enclosing-aperture-area density at least 0.45, enclosing radius
+at most 12 times the largest member radius, and axial depth within one member
+radius. The area ratio uses the sum of squared reliable member radii divided by
+the squared enclosing radius. Long bars, widely separated two-cell sources,
+divergent emitters and different mechanical lineages stay individual. These are
+presentation approximation thresholds, not GDTF rules; false negatives are safe.
+
+Nominal projected flux fixes the static centroid and mean direction. The aperture
+radius encloses every member origin plus its radius; nominal flux sums, while
+BeamAngle/FieldAngle remain the compatible common profile. Origins never move
+with animated pixel values. At setup all member shafts are made non-rendering;
+only the aggregate shaft follows live visibility. Member anchors retain zero
+open-light RID ownership, and the aggregate's anchor light has zero light energy
+and cull mask. Surface footprint backends are not changed.
+
+`RenderGroupProjection` retains POD member contributions and contiguous row sums.
+Each changed member subtracts its previous contribution and adds its new one;
+there is no per-frame membership rescan, allocation or SceneTree access. Physical
+beam energy already includes projected flux scaling, Dimmer and physical Color
+gain, so it supplies the color weight without applying flux/gain twice. Decode
+boundary sRGB to linear light, accumulate `linear_rgb * physical_beam_energy`,
+divide by total positive energy, then encode once for the existing shader API.
+Sum existing perceptually scaled physical beam intensities and clamp to the
+existing 0..50 visual range. Dark pixels add zero energy and cannot erase active
+members. This is an explicit realtime optical approximation, not a change to
+physical pixel state or photometry semantics.
+
+The Godot boundary publishes exactly one renderer-sized PackedInt32Array of
+row-index/mask pairs, one renderer-sized PackedFloat32Array of 12 scalars and one
+valid count. Physical/group duplicate packed arrays are removed; borrowed arrays
+are released before native writes, with no per-frame slices or per-row
+Dictionaries. Prepared rows contain AGGREGATED or INDIVIDUAL render sources only.
+For 20 compact 50-member heads, native state retains 1,000 physical outputs while
+there are 20 shaft rows and 20 dirty rows for a shared dynamic tick.
+
+Prepared lens material RIDs are separately bound at setup. Native **Godot boundary
+code on the main thread** coalesces those cached RIDs and applies their exact
+physical Color/emission values, avoiding physical lens rows in the shaft payload.
+It never discovers nodes. Source-identical, single-pass lens appearances with
+matching emission scale share a RID; different, overridden, multipass or unknown
+static materials remain separate. Independent pixel lenses remain independent.
+The native core itself remains Godot-free and trivially copyable where practical.
+
+One `[peraviz-render-groups]` startup line separates native optical classification
+from Godot binding rejection, with bounded reason counts. It reports canonical and
+projected outputs, candidate buckets (at least three compatible members), native
+accepted groups, Godot accepted/rejected aggregates, final rows, aggregated members,
+allocated/visible shafts, unique lens RIDs, renderer/settings, compact payload bytes,
+`presentation_contract_revision=4` and the extension compilation timestamp.
+`native_rejected_physical` counts disjoint physical fallback outcomes; Godot rejection
+counts measure groups. `compatible_peers` includes singleton/undersized compatibility
+buckets; specific lineage/Zoom/profile/direction splits are reported when observed
+while classifying siblings. These are outcomes, not counts of every failed pairwise
+comparison. Initial visible counts may be zero before DMX; the existing trace samples
+current visibility at its report boundary, without a per-frame resource scan.
+
+### Dynamic Color instrumentation
+
+Opt-in tracing separates native Color input evaluation/cooking and final composition
+(cumulative native stats), physical presentation, aggregate reduction, lens RID
+submission, payload conversion and GDScript application (interval counters). Work
+counts include physical Color candidates, affected/unchanged unique lens RIDs, actual
+setters and shaft mutations. Existing viewport CPU/GPU measurements remain separate;
+API submission timing does not measure asynchronous GPU completion, and overlapping
+stage times must not be added together.
+
+Earlier Linux Debug/headless generated tests measured about 2.142 ms/tick for Color
+evaluation/cooking, 1.473 ms composition, 0.316 ms physical presentation, 0.246 ms
+reduction and 0.430 ms GDScript application. A 60-tick lens-only comparison issued
+1,200 versus 60,000 setters for 20 shared versus 1,000 independent RIDs. These are
+illustrative synthetic CPU results, not Windows or GPU performance claims. The
+trace-gated `PERAVIZ_DIAGNOSTIC_SKIP_LENS_WRITES=1` option remains available for
+other workloads; it preserves physical state, is inactive trace-off and replays held
+lens values on exit. The production evidence below has zero lens RIDs, so that
+isolation is not the next owner test.
+
+### Production wheel eligibility and efficient default
+
+The owner's Windows revision-3 run confirmed 1,095 physical outputs, 1,075 projected
+outputs, 1,095 control/render groups and zero native candidates. Native fallback
+counts were 1,000 wheel dependencies, 23 projector dependencies, 20 emission-only,
+16 axis-lineage and 36 compatible peers; Godot rejected no aggregates. During Color
+activity the owner measured ~24–25 FPS, ~1,032 Color rows/applied frame, ~23,000 shaft
+setters/s and ~12 ms GDScript application/frame; stopping Color gave ~74–75 FPS.
+Native lens RID bindings/writes were zero. The all-wheel veto was an upstream blocker;
+these measurements do not establish the entire CPU/GPU split or a new FPS improvement.
+
+The subsequent revision-4 Windows run at `bd902d1` still had zero aggregates,
+1,095 rows, and exactly 1,000 `wheel_missing_palette` rejections (~23 FPS with Color
+active). Native compilation had incorrectly treated Base-level ColorMixReset and
+ColorCalibrationMode as wheel owners through a broad Color-prefix check. The focused
+correction uses parsed Color selection/motion identity and explicit Wheel references;
+unlinked unsupported ColorEffects remains approximate. Missing references take priority
+over approximation regardless of channel order. A generic 37-slot Basic-style regression
+includes both Base controls, Spin, and unlinked FX, with a matching broken-link fallback
+case. Geometry safeguards and live presentation policy are unchanged.
+
+**Default policy:** compatible compact emitters contribute to one combined volumetric
+shaft through their resolved physical Color/energy, even when colors differ. An
+unsupported macro does not justify retaining fifty shafts when those shafts cannot
+render it faithfully either. Classification is static selected-mode/setup data; entering
+Spin/FX ranges never reclassifies groups or rebuilds their resources.
+
+Keep four contracts distinct: canonical GDTF/DMX capabilities and physical identity;
+implemented native evaluation; implemented visual presentation; and explicitly labeled
+approximation. Canonical physical state, source programs, activation/ModeMaster, resource
+ownership and inverse membership remain independent of shaft resolution. No grouping
+or presentation approximation is written into GDTF/MVR.
+
+The replacement native proof accepts exact fixture/output ownership, immutable source
+and activation, valid uniform palette data and unambiguous function/slot mappings.
+Control signatures include wheel source/palette/mode, snap/placement, exact ChannelSets
+and retained unsupported FX source identity. Different RGB, pixel, ring or FX authority
+splits Control Groups. Render Groups can still combine those independent contributions.
+Media, unrecognized Slot payload, missing resources/ownership, gobo/projector dependencies
+and genuine optical incompatibilities retain individual fallback. Known uniform Color-
+wheel modes use the currently implemented resolved-color contract:
+
+| Capability | Current native/display behavior | Compatible optical aggregation |
+| --- | --- | --- |
+| Seated Color selection | Exact supported slot transmission composed into physical RGB/gain | Allowed |
+| Color-wheel Index | Existing adjacent-slot uniform color approximation; no spatial split display | Allowed as approximation |
+| Spin / Random / Audio / other unsupported wheel modes | Existing deterministic first-palette-slot display; no faithful temporal phase | Allowed as approximation |
+| ColorEffects without an evaluator | Preserve source bytes/ranges/activation; first-slot Color when linked, otherwise unchanged base Color | Allowed as approximation |
+| Supported spatial/gobo/projector presentation | Existing distinct spatial resource/ownership contract | Individual fallback |
+
+Unsupported effects remain unsupported: sharing their resolved approximation neither
+implements animation nor claims phase/FX fidelity. NoFeature removes the wheel layer
+and restores held base Color. Native diagnostics retain explicit unsupported-effect
+messages; the startup summary adds `native_approximate_projected_color_outputs` and
+presentation revision 4. Uniform-slot proof is setup-only Peraviz data, defaults absent
+after semantic-only decoding, and does not expand GDTF capability coverage.
+
+Normal-import tests verify twenty generated Basic-style sources with selection plus
+potentially active Spin/FX ranges: **1,000 physical outputs → 20 render rows and actual
+combined shafts**, with member shafts hidden. Independently authored 14/16/20-ring
+geometry resolves through native SceneModel transforms to ~0.142 m enclosure, ~0.80
+density and ~7.89 radius ratio while retaining 28°/43.75° Beam/Field angles. Tests cover
+live supported selection, exact Color/gain and slot metadata, independently addressed
+pixels/rings, real existing lens-material bindings, Dimmer/wheel blackout, CTC, Zoom,
+Pan/Tilt, mode/renderer replacement and persistent aggregate resources across Spin/FX.
+No private assets or fixture-model conditions are included.
+
+Physical lens detail and volumetric shaft resolution remain independent. Existing
+compatible lens sharing and independent material state are preserved; a future lens
+visualizer may expose each LED while one shaft combines their contributions. A future
+spatial fidelity renderer can be more expensive and use a separate capability contract.
+This PR adds neither lens visualization nor a quality UI, missing effect evaluation,
+threads, MultiMesh or GPU compute.
+
+Owner validation requires one rebuilt normal trace-off GUI run of the reference MVR
+and chase: copy `[peraviz-render-groups]` (revision 4), record Color-active and stopped
+FPS, and compare native candidates/accepted groups with actual final rows. If all twenty
+eligible heads aggregate and other outputs remain individual, ~115 rows is a conditional
+expectation, not a guarantee or a policy threshold. Real activation and Windows FPS
+still require owner measurement; automated tests qualify this change for GUI validation.
+
+MultiMesh, LOD and C++ threading remain deferred. Future high-count INSTANCED
+buffer generation can use contiguous native buffers, optionally prepared in C++,
+then one `RenderingServer.multimesh_set_buffer()` submission. No worker thread
+may access SceneTree nodes. The broader Render Group proposals below remain
+future work beyond this first compact-source implementation.
 
 ## Core rule: authoritative semantics and presentation
 

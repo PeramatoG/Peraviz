@@ -101,6 +101,7 @@ struct ParsedWheelSlot {
     std::string media_file_name;
     std::string extracted_media_path;
     std::string provenance;
+    bool has_unproven_presentation = false; // Retain unsupported Slot payload for presentation safety.
 };
 
 struct ParsedWheel {
@@ -145,6 +146,7 @@ struct ChannelProgram {
     std::string mode_from_source;
     std::string mode_to_source;
     std::vector<ParsedWheelChannelSet> wheel_channel_sets;
+    std::string wheel_reference; // Original ChannelFunction link, including unresolved references.
 };
 
 struct ParsedDmxChannel {

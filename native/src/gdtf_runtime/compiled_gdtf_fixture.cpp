@@ -358,6 +358,11 @@ void parse_wheels(tinyxml2::XMLElement *root, CompiledGdtfFixtureType &fixture) 
             int32_t slot_index = 1;
             for (tinyxml2::XMLElement *slot_node : dmx::collect_direct_children_by_name(wheel_node, "slot")) {
                 ParsedWheelSlot slot;
+                slot.has_unproven_presentation = slot_node->FirstChildElement() != nullptr;
+                for (const tinyxml2::XMLAttribute *attribute=slot_node->FirstAttribute();attribute;attribute=attribute->Next()) {
+                    const std::string name=dmx::lower_ascii(attribute->Name());
+                    if (name!="name" && name!="color" && name!="filter" && name!="mediafilename") slot.has_unproven_presentation=true;
+                }
                 slot.slot_index = slot_index++;
                 slot.name = dmx::trim_ascii(read_attr(slot_node, "Name", "name"));
                 slot.media_file_name = dmx::trim_ascii(read_attr(slot_node, "MediaFileName", "mediafilename"));
@@ -665,6 +670,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 program.filter_resource_id = resolve_physical_resource_link(fixture.filters, dmx::trim_ascii(read_attr(fn, "Filter", "filter")));
                 program.color_space_name = dmx::trim_ascii(read_attr(fn, "ColorSpace", "colorspace"));
                 program.wheel_id = resolved_wheel_id > 0 ? resolved_wheel_id : 0;
+                program.wheel_reference = wheel_link;
                 program.wheel_family_number = normalize_attribute_identity(0, attribute_name).primary_index;
                 const ParsedGoboSemantic gobo_semantic = parse_gobo_semantic(attribute_name);
                 if (gobo_semantic.recognized && gobo_semantic.kind != GoboSemanticKind::Selection && program.wheel_id == 0) {

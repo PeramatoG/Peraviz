@@ -1276,7 +1276,11 @@ bool test_realtime_stability();
 int run_realtime_dmx_load_harness(int argc, char **argv);
 int run_realtime_dmx_udp_load_harness(int argc, char **argv);
 
+bool test_control_group_compiler_inheritance();
+
+// Runs the full native semantic and presentation-compiler regression suite.
 int main(int argc, char **argv) {
+    if (!test_control_group_compiler_inheritance()) return 1;
     if (argc > 1 && std::string(argv[1]) == "--benchmark") return run_realtime_dmx_load_harness(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--udp-benchmark") return run_realtime_dmx_udp_load_harness(argc, argv);
     if (test_compiled_scene_e2e() != 0) return 1;

@@ -132,6 +132,7 @@ private:
     struct UniverseState {
         std::vector<CompiledPropertyProgram> properties;
         std::vector<ColorTargetRuntime> color_targets;
+        std::unordered_map<int32_t, int32_t> color_fixture_by_target;
         std::unordered_map<int, std::vector<int>> property_indices_by_offset;
         std::unordered_map<int, std::vector<int>> color_target_indices_by_offset;
         std::vector<WheelBindingRuntime> wheel_bindings;
