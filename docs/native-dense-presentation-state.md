@@ -5,23 +5,21 @@
 [performance foundation](performance-foundation.md). The native ownership details
 below remain current; regression measurements and acceptance plans are historical.
 Earlier mode runs were all full because user arguments were not consumed. They
-do not establish a no-beams/transforms-only A/B. Optical aggregation and independent-output batching remain open.
+do not establish a no-beams/transforms-only A/B. Compact-source aggregation is now implemented; independent-output batching remains open.
 
 The main-thread presentation service in `native/src/presentation/` stores one
 independent state per canonical physical renderer output. This is internal
 Peraviz runtime data. It does not change MVR, GDTF, selected DMXMode, channel
 ownership, geometry keys, or canonical output IDs. Compatible open Wash/Spot outputs now share dynamic presentation Control Groups;
-physical state remains exact. Optical aggregation and batching are not implemented. The existing sectioned semantic visual-frame protocol remains the
+physical state remains exact. Compact optical Render Emitter Groups now reduce shaft resources; independent-output batching is not implemented. The existing sectioned semantic visual-frame protocol remains the
 input contract; the dense render-value buffer is a presentation boundary, not a
 revival of the removed universal fixture row.
 
-The setup compiler proves groups from immutable selected-mode source authority,
-not target-local Color IDs or current values. Native `prepare_snapshot()` projects
-physical dynamic dirtiness into one grouped payload, retaining separate physical
-optics/topology deltas. Godot binds one shared shaft material and compatible lens
-material subgroups; no mesh or canonical identity is merged. See the compact
-[Control Group contract](rendering-performance-architecture.md#implemented-first-control-group-layer)
-for conservative fallbacks, counters and owner validation.
+Control Groups prove immutable selected-mode authority. A separate native optical
+classifier builds AGGREGATED/INDIVIDUAL Render Emitter Groups from retained
+SceneModel geometry, reliable apertures and mechanical lineage. See the compact
+[Render Group contract](rendering-performance-architecture.md#first-production-render-emitter-groups)
+for thresholds, radiometric approximation, conservative fallbacks and diagnostics.
 
 ## Ownership and lifetime
 
@@ -62,19 +60,21 @@ The installed dense path handles Intensity, Color and BeamOptics in one native
 integer routes fan out each semantic row; per-output access uses only dense
 indices. The first update appends an index to a reserved dirty vector. Its
 nonzero pending mask is the membership bit. Later updates OR masks and replace
-held values. Dirty, prepared-render, state and packed-output capacities are
-bounded by physical-output count and reused after each snapshot. Clearing dirty
+held values. Physical state and dirty capacities remain bounded by physical-output count.
+Render row and published packed capacities follow renderer-source count. Clearing dirty
 state visits only touched indices and does not release capacity.
 
 Native composition preserves physical color gain for beam/spot energy and lens
 emission, the existing perceptual wheel gain for beam intensity, and the existing
-double intensity clamp around projected-output scaling. Signature filtering
-publishes a mask and render-ready scalars. The adapter receives two reused
-physical-output-sized packed arrays with a valid prefix count: index/mask pairs
-and 12 render floats (dimmer, RGB, beam/spot energy, beam intensity, material
-energy, half/full angles, physical gain, projected visibility). It releases its
-shared packed views after application and before the next native write, avoiding
-copy-on-write allocations proportional to output count.
+double intensity clamp around projected-output scaling. `RenderGroupProjection` incrementally subtracts/adds changed POD member
+contributions, mixes in linear light and emits one row per dirty renderer source.
+The adapter receives one reused row-index/mask array and one 12-scalar array sized
+to render rows, never physical outputs. There is one count and no duplicated
+physical/control payload. Borrowed arrays are released before native writes;
+no live slices, COW churn or per-member visibility visits are needed by aggregates.
+Cached prepared lens RIDs are updated separately by main-thread native Godot glue
+from exact physical values, including independent pixels, without physical lens
+rows or SceneTree traversal. Core accumulation remains Godot-independent.
 
 There is one fixed-shape result Dictionary per snapshot. No per-output result
 Dictionary, pending commit Dictionary, target-state Dictionary, fixture UUID
@@ -174,13 +174,14 @@ Trace ON adds `dense_presentation` to `[peraviz-stability]`:
 | `semantic_payload_conversion_us` | Interval total for the preceding native semantic section-to-packed conversion |
 | `payload_conversion_us` | Interval total for copying prepared native deltas into reused packed buffers, including any buffer detachment |
 | `compatibility_adapter_us` | Interval inclusive adapter/apply time, including final object mutation |
-| `renderer_mutation_us` | Interval duration of the complete mutation loop, using one clock pair for all outputs; not GPU submission completion |
+| `renderer_mutation_us` | Interval total of cached native lens RID updates plus the Godot shaft/light mutation loop; not GPU submission completion |
+| `native_material_us` | Native main-thread lens RID mutation time, already included in renderer mutation time |
 | `native_dirty_outputs` | Interval sum of unique dirty physical outputs per snapshot, before signature filtering |
 | `spot_node_visibility_writes`, `spot_rid_visibility_writes` | Interval actual adapter Node/RID visibility setter calls, separately counted; Godot-internal inherited notifications are not API calls by the adapter |
 | `beam_visibility_writes`, `debug_axis_visibility_writes` | Interval actual beam/debug Node visibility setter calls |
 | `beam_shader_parameter_writes` | Interval actual beam instance/material shader setters through retained renderer/proxy helpers, including optics and initialization |
 | `material_parameter_writes` | Interval actual aperture emission color/energy RenderingServer setter calls |
-| `renderer_outputs_processed`, `renderer_outputs_changed`, `renderer_outputs_unchanged` | Dirty output visits versus outputs causing actual mutations; native signature skips count as unchanged, suppressed scalar holding alone does not count as mutation |
+| `renderer_outputs_processed`, `renderer_outputs_changed`, `renderer_outputs_unchanged` | Emitted shaft-row visits versus rows causing Godot mutations; native no-ops emit zero rows, while native lens writes have separate actual counters |
 | `forced_replays`, `mode_transition_replays` | Explicit renderer/settings and diagnostic-mode replay counts |
 | `visibility_resyncs`, `projector_refresh_calls`, `optics_apply_calls`, `beam_initializations`, `spot_property_writes` | Auxiliary interval boundary and mutation counts |
 | `last_dirty_outputs` | Unique dirty physical outputs in the latest traced snapshot |
@@ -274,8 +275,8 @@ argument boundary still needs new mode-specific hardware measurements. Use the
 [current acceptance sequence](performance-foundation.md#exact-windows-acceptance-commands)
 and its explicit startup diagnostics rather than treating historical rows as a
 valid A/B. Native/headless results do not establish Windows GPU performance.
-Batched apertures with about 1,000 independent outputs remain the next deferred
-scalability milestone; beam batching and grouping are later work.
+Independent-output batching remains deferred; the first compact-source optical
+aggregation is now implemented without MultiMesh or worker threads.
 
 ### Deferred performance acceptance commands (corrected argument syntax)
 

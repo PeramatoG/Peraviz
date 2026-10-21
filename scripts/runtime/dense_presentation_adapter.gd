@@ -4,6 +4,7 @@ const VisualSettingsMigration = preload("res://scripts/visual_settings_migration
 const OpticalProjectionScript = preload("res://scripts/runtime/optical_projection_state.gd")
 
 const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_state.gd")
+const RenderBindings = preload("res://scripts/runtime/render_emitter_bindings.gd")
 const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 
 # Temporary milestone-1 renderer bridge. Native state owns composition; these
@@ -20,8 +21,6 @@ class MaterialHandle:
 	var rid: RID
 	var shared_users: int = 1
 	var scale: float = 1.0
-	var color: Color = Color(-1, -1, -1)
-	var energy: float = -1.0
 
 class LightHandle:
 	var light: SpotLight3D
@@ -56,10 +55,6 @@ class ControlGroup:
 	var material: ShaderMaterial
 	var materials: Array[MaterialHandle] = []
 	var dynamic: Color = Color(-1, -1, -1, -1)
-	var visible: bool = false
-	var initialized: bool = false
-	var desired_visible: bool = false
-	var values: PackedFloat32Array = PackedFloat32Array()
 	var lens_copies: int = 0
 
 class OutputHandle:
@@ -74,6 +69,9 @@ var _generation: int = -1
 var _outputs: Array[OutputHandle] = []
 var _groups: Array = []
 var _binding_records: Array = []
+var _render_bindings: RefCounted = RenderBindings.new()
+var _render_descriptors: Array = []
+var _control_fallbacks: Dictionary = {}
 var _route_signatures: Array = []
 var _lights_by_id: Dictionary = {} # Setup-only lookup for cold gobo/diagnostic bridges.
 var _payload: Dictionary = {}
@@ -106,17 +104,21 @@ const MUTATION_COUNTERS: PackedStringArray = [
 var _totals: Dictionary = {
 	"native_compose_us": 0, "payload_conversion_us": 0, "semantic_payload_conversion_us": 0,
 	"compatibility_adapter_us": 0, "renderer_mutation_us": 0,
-	"native_dirty_outputs": 0,
+	"native_dirty_outputs": 0, "native_material_us": 0,
 }
 
+func _disconnect_handle(handle: LightHandle) -> void:
+	if is_instance_valid(handle.light) and handle.visibility_callback.is_valid():
+		if handle.light.visibility_changed.is_connected(handle.visibility_callback): handle.light.visibility_changed.disconnect(handle.visibility_callback)
+		if handle.light.tree_entered.is_connected(handle.visibility_callback): handle.light.tree_entered.disconnect(handle.visibility_callback)
+	handle.visibility_callback = Callable()
+
 func clear() -> void:
+	_render_bindings.clear(self)
+	_render_descriptors = []
+	_control_fallbacks = {}
 	for output in _outputs:
-		for handle in output.lights:
-			if is_instance_valid(handle.light) and handle.visibility_callback.is_valid():
-				if handle.light.visibility_changed.is_connected(handle.visibility_callback): handle.light.visibility_changed.disconnect(handle.visibility_callback)
-				if handle.light.tree_entered.is_connected(handle.visibility_callback): handle.light.tree_entered.disconnect(handle.visibility_callback)
-			# The bound Callable contains this RefCounted handle; break that self-reference.
-			handle.visibility_callback = Callable()
+		for handle in output.lights: _disconnect_handle(handle)
 	_retire_groups()
 	_binding_records = []
 	_route_signatures.clear()
@@ -152,8 +154,12 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 	_native = ClassDB.instantiate("PeravizPresentationState")
 	var bindings: Dictionary = registry.get_dense_presentation_bindings()
 	_binding_records = bindings["outputs"]
+	_render_descriptors = bindings.get("render_groups", [])
+	_control_fallbacks = {"split_dimmer_authority": 0, "split_color_authority": 0, "split_optics": 0,
+		"split_projector_gobo": 0, "split_wheel": 0, "split_scaling": 0, "split_ambiguous": 0}
+	_control_fallbacks.merge(bindings.get("control_fallbacks", {}), true)
 	for i in range(_binding_records.size()): _route_signatures.append([[], 0, []])
-	var routes: PackedInt32Array = bindings["routes"]
+	var routes: PackedInt32Array = bindings.get("authority_routes", bindings["routes"])
 	for i in range(0, routes.size(), 3):
 		var signature: Array = _route_signatures[routes[i+2]]
 		if routes[i] == 3: signature[1] += 1
@@ -209,9 +215,15 @@ func install(loader: Node, service: RefCounted, registry: RefCounted) -> bool:
 			_lights_by_id[light.get_instance_id()] = handle
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
 	_install_groups()
+	if not _install_render_bindings(): return false
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
-	print("[peraviz-surfaces] startup ", JSON.stringify(_surface_counts.snapshot()), " diagnostic_open=", _diagnostic_open_surface_lights)
+	var summary: Dictionary = {"physical_outputs": _outputs.size(), "control_groups": _totals["presentation_control_groups"],
+		"grouped_outputs": _totals["grouped_physical_outputs"], "individual_outputs": _totals["individual_physical_outputs"],
+		"largest_control_group": _totals["largest_group"]}
+	summary.merge(_control_fallbacks)
+	summary.merge(_render_bindings.counts(self))
+	if not _outputs.is_empty(): print("[peraviz-render-groups] ", JSON.stringify(summary))
 	return _generation >= 0
 
 func is_installed() -> bool:
@@ -238,7 +250,12 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 		push_warning("Dense presentation has unresolved renderer control rows in this binding generation.")
 	if trace:
 		_totals["physical_dynamic_candidates"] += int(_payload.get("physical_dynamic_candidates", 0))
-		_totals["control_group_dynamic_updates"] += int(_payload.get("control_group_dynamic_updates", 0))
+		var material_writes: int = int(_payload.get("lens_material_writes", 0))
+		_totals["actual_lens_material_renderer_writes"] += material_writes
+		_totals["lens_material_writes_avoided"] += int(_payload.get("lens_writes_avoided", 0))
+		_record_mutation(&"material_parameter_writes", material_writes)
+		_totals["native_material_us"] += int(_payload.get("native_material_us", 0))
+		_totals["renderer_mutation_us"] += int(_payload.get("native_material_us", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
 		_totals["native_compose_us"] += int(_payload["native_compose_us"])
 		_totals["payload_conversion_us"] += int(_payload["payload_conversion_us"])
@@ -264,12 +281,12 @@ func apply() -> void:
 	var mutation_start: int = Time.get_ticks_usec() if _trace else 0
 	for row in range(int(_payload["count"])):
 		var before: int = _mutation_serial
-		_apply_output(_outputs[indices[row * 2]], values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
+		var render_row = _render_bindings.rows[indices[row * 2]]
+		if render_row.presentation_class == 0:
+			var group: ControlGroup = _groups[render_row.output.index] if not _groups.is_empty() else null
+			if group != null: _apply_control_material(group, values, row * STRIDE)
+		_apply_output(render_row.output, values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
 		if _trace and _mutation_serial != before: changed += 1
-	var group_indices: PackedInt32Array = _payload.get("group_indices_masks", PackedInt32Array())
-	var group_values: PackedFloat32Array = _payload.get("group_values", PackedFloat32Array())
-	for row in range(int(_payload.get("group_count", 0))):
-		_apply_group(_groups[group_indices[row * 2]], group_values, row * STRIDE, group_indices[row * 2 + 1], realtime, presentation)
 	if _trace:
 		_totals["renderer_mutation_us"] += Time.get_ticks_usec() - mutation_start
 		var service: RefCounted = _service.get_ref()
@@ -280,36 +297,14 @@ func apply() -> void:
 		counters["emitter_output_commits"] += int(_payload["count"])
 		counters["emitter_output_commits_signature_skipped"] += int(_payload["signature_skipped"])
 		counters["emitter_output_commit_usec"] += Time.get_ticks_usec() - start
-		_totals["renderer_outputs_processed"] += int(_payload["dirty_count"])
+		_totals["renderer_outputs_processed"] += int(_payload["count"])
 		_totals["renderer_outputs_changed"] += changed
-		_totals["renderer_outputs_unchanged"] += int(_payload["dirty_count"]) - changed
+		_totals["renderer_outputs_unchanged"] += int(_payload["count"]) - changed
 		_totals["compatibility_adapter_us"] += Time.get_ticks_usec() - start
 	_payload = {}
 
-func _apply_materials(materials: Array[MaterialHandle], v: PackedFloat32Array, b: int, mask: int) -> void:
-	var color := Color(v[b+1], v[b+2], v[b+3], 1.0)
-	if mask & (DIMMER | COLOR | MATERIAL):
-		for material in materials:
-			var energy: float = v[b+7] * material.scale
-			if material.color != color:
-				RenderingServer.material_set_param(material.rid, "emission", color)
-				material.color = color
-				_record_mutation(&"material_parameter_writes")
-				if _trace:
-					_totals["actual_lens_material_renderer_writes"] += 1
-					_totals["lens_material_writes_avoided"] += material.shared_users - 1
-			if not is_equal_approx(material.energy, energy):
-				RenderingServer.material_set_param(material.rid, "emission_energy_multiplier", energy)
-				material.energy = energy
-				_record_mutation(&"material_parameter_writes")
-				if _trace:
-					_totals["actual_lens_material_renderer_writes"] += 1
-					_totals["lens_material_writes_avoided"] += material.shared_users - 1
-
 func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
 	var color := Color(v[b+1], v[b+2], v[b+3], 1.0)
-	if _groups.is_empty() or _groups[output.index] == null:
-		_apply_materials(output.materials, v, b, mask)
 	for handle in output.lights:
 		if not is_instance_valid(handle.light): continue
 		handle.color = color
@@ -445,13 +440,7 @@ func _set_structural_visibility(handle: LightHandle, visible: bool) -> void:
 		_record_mutation(&"spot_node_visibility_writes")
 
 func _suppress_presentation_handles() -> void:
-	for output in _outputs:
-		if _mode == "transforms-only":
-			for material in output.materials:
-				if material.energy != 0.0:
-					RenderingServer.material_set_param(material.rid, "emission_energy_multiplier", 0.0)
-					material.energy = 0.0
-					_record_mutation(&"material_parameter_writes")
+	for output in _outputs + _render_bindings.aggregate_outputs():
 		for handle in output.lights:
 			handle.realtime_requested = false
 			handle.owns_realtime_surface_light = false
@@ -516,6 +505,10 @@ func apply_light_state(light: SpotLight3D) -> int:
 
 # Mode changes replay held native state immediately, even without another DMX packet.
 func _sync_presentation_policy() -> void:
+	if _native != null:
+		var writes: int = _native.set_materials_enabled(_mode != "transforms-only")
+		_record_mutation(&"material_parameter_writes", writes)
+		if _trace: _totals["actual_lens_material_renderer_writes"] += writes
 	if _loader.has_method("_set_native_presentation_enabled"):
 		_loader._set_native_presentation_enabled(_mode == "full")
 
@@ -534,13 +527,14 @@ func light_state(light: SpotLight3D) -> Dictionary:
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	if handle == null:
 		return {}
-	var group: ControlGroup = _groups[handle.output_index] if handle.output_index < _groups.size() else null
-	if group != null and not group.values.is_empty():
-		handle.color = Color(group.values[1], group.values[2], group.values[3])
-		handle.energy = group.values[5] if group.values[5] > 0.0 else group.values[4]
-		handle.visible = group.desired_visible
+	var physical: PackedFloat32Array = _native.physical_values(handle.output_index)
+	if not physical.is_empty():
+		handle.color = Color(physical[1], physical[2], physical[3])
+		handle.energy = physical[5] if physical[5] > 0.0 else physical[4]
+		handle.visible = physical[11] > 0.0 and handle.energy > 0.0 and handle.projected
 	handle.compatibility_state["energy"] = handle.energy
-	handle.compatibility_state["angle"] = handle.projection.half_angle_deg
+	var render_row: int = _render_bindings.membership[handle.output_index]
+	handle.compatibility_state["angle"] = physical[8] if _render_bindings.rows[render_row].presentation_class == 1 else handle.projection.half_angle_deg
 	handle.compatibility_state["color"] = handle.color
 	handle.compatibility_state["visible"] = handle.visible
 	handle.compatibility_state["applied_realtime_visible"] = handle.realtime_visible
@@ -550,8 +544,8 @@ func active_ids() -> Dictionary:
 	var ids: Dictionary = {}
 	for output in _outputs:
 		for handle in output.lights:
-			var group: ControlGroup = _groups[handle.output_index] if handle.output_index < _groups.size() else null
-			if (group.desired_visible if group != null else handle.visible): ids[handle.light.get_instance_id()] = true
+			var physical: PackedFloat32Array = _native.physical_values(handle.output_index)
+			if physical[11] > 0.0: ids[handle.light.get_instance_id()] = true
 	return ids
 
 func diagnostics() -> Dictionary:
@@ -561,6 +555,9 @@ func diagnostics() -> Dictionary:
 	result["surface_lights"] = _surface_counts.snapshot()
 	result["diagnostic_open_surface_lights"] = _diagnostic_open_surface_lights
 	if _native != null: result.merge(_native.get_sizes())
+	result.merge(_render_bindings.counts(self))
+	result["control_groups"] = _totals.get("presentation_control_groups", _outputs.size())
+	result.merge(_control_fallbacks)
 	return result
 
 # Only the once-per-report trace sampler resets these bounded interval counters.
@@ -568,7 +565,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs"]:
+	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:
@@ -578,6 +575,7 @@ func consume_diagnostics() -> Dictionary:
 			for handle in output.lights:
 				beams += 1 if is_instance_valid(handle.beam) and handle.beam.is_visible_in_tree() else 0
 				spots += 1 if handle.realtime_visible and handle.light.is_visible_in_tree() else 0
+		beams += int(_render_bindings.counts(self)["visible_aggregate_shafts"])
 		service._visual_apply_counters["beam_visible_count"] = beams
 		service._visual_apply_counters["spotlight_visible_count"] = spots
 	return result
@@ -585,7 +583,8 @@ func consume_diagnostics() -> Dictionary:
 # Setup/control-boundary refresh after a renderer, settings or gobo resource replacement.
 func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
-	if rebuild_groups and handle != null and handle.output_index < _groups.size() and _groups[handle.output_index] != null:
+	var aggregated: bool = handle != null and handle.output_index < _render_bindings.membership.size() and _render_bindings.rows[_render_bindings.membership[handle.output_index]].presentation_class == 1
+	if rebuild_groups and handle != null and (aggregated or (handle.output_index < _groups.size() and _groups[handle.output_index] != null)):
 		refresh_renderer()
 		return
 	if handle != null:
@@ -602,6 +601,7 @@ func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 func refresh_renderer() -> void:
 	if not is_installed(): return
 	_capture_renderer_mutations()
+	_render_bindings.clear(self)
 	_retire_groups()
 	var renderer: BeamRendererBase = _loader.get("_active_beam_renderer") as BeamRendererBase
 	if renderer != _renderer:
@@ -619,6 +619,7 @@ func refresh_renderer() -> void:
 				handle.bound_state.invalidate()
 			handle.initialization_failed = false
 	_install_groups()
+	if not _install_render_bindings(): return
 	if _trace: _totals["forced_replays"] += 1
 	_native.invalidate_renderer()
 	compose(PackedInt32Array(), PackedInt32Array(), PackedFloat32Array(), _trace, _mode)
@@ -637,8 +638,6 @@ func _retire_groups() -> void:
 	for output in _outputs:
 		for material in output.materials:
 			material.shared_users = 1
-			material.color = Color(-1, -1, -1)
-			material.energy = -1
 
 # Native IDs prove control authority. This cold pass additionally proves actual resource compatibility.
 func _install_groups() -> void:
@@ -667,7 +666,7 @@ func _install_groups() -> void:
 			if _outputs[index].lights.size() != 1: safe = false; break
 			var light: LightHandle = _outputs[index].lights[0]
 			if not light.projected or light.has_gobo or not is_instance_valid(light.beam): safe = false; break
-			if is_instance_valid(light.debug_axis): safe = false; break
+			if is_instance_valid(light.debug_axis) and light.debug_axis.visible: safe = false; break
 			if light.params.get("intensity_visibility_threshold", 0.015) != 0.015: safe = false; break
 			if _route_signatures[index] != _route_signatures[members[0]]: safe = false; break
 			if _route_signatures[index][0].size() != 1: safe = false; break
@@ -724,24 +723,74 @@ func _install_groups() -> void:
 	_totals["shared_beam_material_groups"] = shared_beams
 	_totals["shared_lens_material_groups"] = shared_lenses
 
-# One material mutation per shared dynamic state; physical visibility changes only at transitions.
-func _apply_group(group: ControlGroup, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
-	if group == null: return
-	group.values.resize(STRIDE)
-	for i in range(STRIDE): group.values[i] = v[b+i]
-	group.desired_visible = v[b+11] > 0.0 and (v[b+5] > 0.0 or v[b+4] > 0.0)
-	_apply_materials(group.materials, v, b, mask)
+# Shared Control Groups still perform one material write, even across separated individual shafts.
+func _apply_control_material(group: ControlGroup, v: PackedFloat32Array, b: int) -> void:
 	var dynamic := Color(v[b+1], v[b+2], v[b+3], v[b+6] * _shaft_multiplier)
-	if dynamic != group.dynamic:
-		group.material.set_shader_parameter("control_group_dynamic_state", dynamic)
-		group.dynamic = dynamic
-		_record_mutation(&"beam_shader_parameter_writes")
-		if _trace:
-			_totals["actual_beam_dynamic_renderer_writes"] += 1
-			_totals["beam_instance_writes_avoided"] += group.members.size() - 1
-	var visible: bool = _mode == "full" and dynamic.a > 0.015
-	if not group.initialized or group.visible != visible:
-		group.visible = visible
-		group.initialized = true
-		for index in group.members:
-			_apply_output(_outputs[index], v, b, mask & ~(DIMMER | COLOR | MATERIAL), realtime, presentation)
+	if dynamic == group.dynamic: return
+	group.dynamic = dynamic
+	group.material.set_shader_parameter("control_group_dynamic_state", dynamic)
+	_record_mutation(&"beam_shader_parameter_writes")
+	if _trace:
+		_totals["control_group_dynamic_updates"] += 1
+		_totals["actual_beam_dynamic_renderer_writes"] += 1
+		_totals["beam_instance_writes_avoided"] += group.members.size() - 1
+
+# Setup once per renderer generation; lenses retain independent native physical routes.
+func _install_render_bindings() -> bool:
+	if not _render_bindings.install(self, _render_descriptors): return false
+	var rids: Array = []
+	var owners := PackedInt32Array()
+	var scales := PackedFloat32Array()
+	var routes := PackedInt32Array()
+	var indices: Dictionary = {}
+	for output in _outputs:
+		for material in output.materials:
+			if not indices.has(material.rid):
+				indices[material.rid] = rids.size()
+				rids.append(material.rid)
+				owners.append(output.index)
+				scales.append(material.scale)
+			routes.append_array(PackedInt32Array([output.index, int(indices[material.rid])]))
+	return _native.install_materials(rids, owners, scales, routes)
+
+# Setup consumes native optical descriptors; this never classifies geometry or mixes live pixels.
+func _create_aggregate_output(descriptor: Dictionary, representative: int) -> OutputHandle:
+	var parent: Node3D = descriptor["anchor"] as Node3D
+	if parent == null: return null
+	var light := SpotLight3D.new()
+	light.name = "PeravizAggregateEmitter"
+	light.position = descriptor["origin"]
+	var direction: Vector3 = descriptor["direction"]
+	light.basis = Basis.looking_at(direction, Vector3.UP if absf(direction.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD)
+	light.light_energy = 0.0
+	light.light_cull_mask = 0
+	light.shadow_enabled = false
+	parent.add_child(light)
+	var params: Dictionary = _outputs[representative].lights[0].params.duplicate(true)
+	params["lens_radius"] = float(descriptor["aperture_radius"])
+	params["render_near_radius_m"] = float(descriptor["aperture_radius"])
+	params["official_beam_radius_m"] = float(descriptor["aperture_radius"])
+	params["beam_angle"] = float(descriptor["beam_angle"])
+	params["field_angle"] = float(descriptor["field_angle"])
+	params["scaled_intensity"] = 0.0
+	params["beam_intensity"] = 0.0
+	params["normalized_dimmer"] = 0.0
+	light.set_meta("peraviz_beam_last_params", params)
+	_renderer.update_beam(light, params)
+	var output := OutputHandle.new()
+	output.index = -1
+	var handle := LightHandle.new()
+	handle.light = light
+	handle.rid = light.get_instance()
+	handle.projected = true
+	handle.output_index = representative
+	handle.params = params
+	handle.projection = OpticalProjectionScript.resolve(light)
+	handle.beam = _renderer.get_beam_resource(light)
+	if is_instance_valid(handle.beam): handle.bound_state = BoundBeamStateScript.resolve(handle.beam)
+	handle.visibility_callback = Callable(self, "_restore_spot_visibility").bind(handle)
+	light.visibility_changed.connect(handle.visibility_callback)
+	light.tree_entered.connect(handle.visibility_callback)
+	_set_spot_rid(handle, false)
+	output.lights.append(handle)
+	return output

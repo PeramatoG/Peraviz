@@ -4,6 +4,8 @@ Changes since the previous Peraviz release.
 
 ## Highlights
 
+- Added native compact-source Render Emitter Groups: compatible multi-emitter heads retain physical lenses and exact DMX state while rendering one Vector Prism shaft. Aggregates mix independent pixel colors in linear light, keep static origins, use incremental native accumulation and publish renderer-sized payloads. Exact wheel/gobo ownership and one startup summary expose conservative fallbacks; separated cells, bars, divergent emitters and different mechanical lineages remain individual. Shared Control Groups are retained; no Windows FPS improvement is claimed without measurement.
+
 - Added selected-DMXMode presentation Control Groups for compatible open Wash/Spot outputs. Shared Color/Dimmer shaft and source-compatible lens materials avoid redundant renderer mutations while retaining every physical Beam, canonical identity, Color gain, held state and normal Pan/Tilt transform. Wheel/gobo, ambiguous controls, differing scales and explicit realtime/debug light paths remain individual.
 
 - Added a native, target-oriented GDTF runtime for Dimmer, Pan, Tilt, Zoom, physical color, seated color-wheel selection, and bounded static seated gobos.

@@ -1,6 +1,6 @@
 # Rendering and performance architecture decisions
 
-**Status:** Shared dynamic Control Groups implemented; optical Render Groups remain future work
+**Status:** Native Control Groups and first AGGREGATED/INDIVIDUAL Render Emitter Groups implemented
 
 **Date:** 2026-09-03
 
@@ -18,10 +18,17 @@ The owner’s newer controlled Windows chase isolates the immediate bottleneck:
 | Pan/Tilt + Dimmer, Color effects stopped | ~46 |
 | Pan/Tilt, Color and Wash Dimmer effects stopped | ~75 |
 
-These are owner observations, not CI guarantees. High-frequency Color/Dimmer
-presentation fan-out is the immediate priority. Shared Control Group dynamic
-presentation precedes optical aggregation/MultiMesh; independent-output batching
-remains valuable future work. Pan/Tilt keeps main’s normal transform ownership.
+These are owner observations, not CI guarantees. The owner subsequently measured
+no appreciable FPS improvement with the shared Control Group branch. This is not
+a proven performance win: sharing one ShaderMaterial reduces parameter writes,
+but does not batch 50 MeshInstance3D objects, submissions, overlapping transparent
+surfaces or fragment workloads. The old fixture-wide wheel/gobo veto could also
+suppress otherwise valid groups. It is now exact-output scoped; unresolved
+ownership remains conservative. The real-import regression also exposed a second
+veto: static per-Beam profile routes were being compared as independent Zoom
+controls. Registry setup now separates those routes from actual selected-mode
+Zoom authority. A normal MVR import proves the 50-member Control Group forms. Actual production membership is reported in one
+startup summary. Pan/Tilt retains main’s normal transform ownership.
 
 ## Implemented first Control Group layer
 
@@ -35,27 +42,86 @@ ambiguous controls, unsupported profiles or missing actual renderer routes fall
 back to individual presentation. Explicit realtime spotlights and debug beams
 also retain the individual renderer path.
 
-All canonical physical outputs and independently addressable native states remain
-intact. Native dirty projection emits one dynamic row per compatible group before
-the Godot boundary, while optical/topology rows remain physical. Each group binds
-one Vector Prism ShaderMaterial dynamic uniform; static optical uniforms and all
-physical shaft meshes remain individual. Source-identical BaseMaterial3D lenses
-with matching emission scale share a prepared material; unknown, overridden or
-multipass appearances retain separate material subgroups. No shaft aggregation,
-beam-angle multiplication, scale averaging or photometric change is performed.
+All canonical physical outputs and native values remain exact. Control Groups
+still share dynamic shaft materials and source-compatible lens materials, but
+are distinct from optical Render Groups. A separated two-cell source can share
+one Control Group while retaining two INDIVIDUAL shafts. A compact pixel head can
+have many Control Groups and one AGGREGATED shaft.
 
-Latest native RGB, Color gain, intensity, material energy and optics survive dark
-updates and renderer replay. Scene retirement releases membership, resources and
-binding generations. Group and physical lookup remain linked by canonical IDs.
-The existing opt-in trace reports setup group sizes and bounded interval physical
-candidates, group updates, actual beam/lens writes and avoided writes. Trace-off
-remains the production benchmark; no new diagnostic mode is required.
+## First production Render Emitter Groups
 
-Owner validation uses one normal trace-off executable run of the same chase:
-all effects, stop Color, then stop Wash Dimmer. Record those three FPS readings;
-success is removal of per-emitter dynamic mutation scaling, not a fixed FPS.
-Automated native and headless renderer regressions verify the 50-member path;
-headless tests do not measure the owner’s Windows GPU workload.
+Typed native `RenderEmitterGroup` records preserve inverse physical IDs and Control
+Group IDs. `INDIVIDUAL` keeps existing presentation, `AGGREGATED` owns one Vector
+Prism shaft, and `INSTANCED` is reserved. No aggregation is written into GDTF/MVR,
+no physical IDs change and no selected DMXMode changes. Physical lenses remain
+separate, including independently controlled pixels; lens glow is a later task.
+
+Setup descriptors derive origins, directions, static local transforms and Axis
+lineage from SceneModel. The anchor is the nearest mechanical ancestor, so normal
+Pan/Tilt inheritance carries the aggregate. Reliable explicit BeamRadius, rigid
+transforms, open Wash/Spot type, matching optical family/angle provenance and Zoom
+authority, and no relevant wheel/gobo/shaping dependency are required. Ambiguous
+geometry, non-rigid scales, unsupported profiles/backends, explicit realtime
+spotlights and debug beams use INDIVIDUAL presentation.
+
+Centralized Peraviz heuristics in `AggregationPolicy` require at least 3 members,
+direction spread at most 2 degrees, Beam/Field-angle differences at most 0.25
+degrees, source-area/enclosing-aperture-area density at least 0.45, enclosing radius
+at most 12 times the largest member radius, and axial depth within one member
+radius. The area ratio uses the sum of squared reliable member radii divided by
+the squared enclosing radius. Long bars, widely separated two-cell sources,
+divergent emitters and different mechanical lineages stay individual. These are
+presentation approximation thresholds, not GDTF rules; false negatives are safe.
+
+Nominal projected flux fixes the static centroid and mean direction. The aperture
+radius encloses every member origin plus its radius; nominal flux sums, while
+BeamAngle/FieldAngle remain the compatible common profile. Origins never move
+with animated pixel values. At setup all member shafts are made non-rendering;
+only the aggregate shaft follows live visibility. Member anchors retain zero
+open-light RID ownership, and the aggregate's anchor light has zero light energy
+and cull mask. Surface footprint backends are not changed.
+
+`RenderGroupProjection` retains POD member contributions and contiguous row sums.
+Each changed member subtracts its previous contribution and adds its new one;
+there is no per-frame membership rescan, allocation or SceneTree access. Physical
+beam energy already includes projected flux scaling, Dimmer and physical Color
+gain, so it supplies the color weight without applying flux/gain twice. Decode
+boundary sRGB to linear light, accumulate `linear_rgb * physical_beam_energy`,
+divide by total positive energy, then encode once for the existing shader API.
+Sum existing perceptually scaled physical beam intensities and clamp to the
+existing 0..50 visual range. Dark pixels add zero energy and cannot erase active
+members. This is an explicit realtime optical approximation, not a change to
+physical pixel state or photometry semantics.
+
+The Godot boundary publishes exactly one renderer-sized PackedInt32Array of
+row-index/mask pairs, one renderer-sized PackedFloat32Array of 12 scalars and one
+valid count. Physical/group duplicate packed arrays are removed; borrowed arrays
+are released before native writes, with no per-frame slices or per-row
+Dictionaries. Prepared rows contain AGGREGATED or INDIVIDUAL render sources only.
+For 20 compact 50-member heads, native state retains 1,000 physical outputs while
+there are 20 shaft rows and 20 dirty rows for a shared dynamic tick.
+
+Prepared lens material RIDs are separately bound at setup. Native **Godot boundary
+code on the main thread** coalesces those cached RIDs and applies their exact
+physical Color/emission values, avoiding physical lens rows in the shaft payload.
+It never discovers nodes. Source-identical, single-pass lens appearances with
+matching emission scale share a RID; different, overridden, multipass or unknown
+static materials remain separate. Independent pixel lenses remain independent.
+The native core itself remains Godot-free and trivially copyable where practical.
+
+One `[peraviz-render-groups]` startup line reports physical/control/render counts,
+large-group membership, bounded fallback reasons and allocated/visible member and
+aggregate shafts. Initial visible counts may be zero before DMX. The existing
+trace samples actual current visible counts at its report boundary. No new owner
+mode is needed. Normal trace-off validation remains one chase: all effects, stop
+Color, stop Wash Dimmer; record the three FPS values. No Windows FPS improvement
+is claimed without owner measurements.
+
+MultiMesh, LOD and C++ threading remain deferred. Future high-count INSTANCED
+buffer generation can use contiguous native buffers, optionally prepared in C++,
+then one `RenderingServer.multimesh_set_buffer()` submission. No worker thread
+may access SceneTree nodes. The broader Render Group proposals below remain
+future work beyond this first compact-source implementation.
 
 ## Core rule: authoritative semantics and presentation
 

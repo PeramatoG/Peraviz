@@ -11,111 +11,116 @@ int64_t now_us() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 }
-// Exposes batched setup and snapshot operations; no per-output Godot calls exist.
+// Exposes setup-only physical/resource binding and a single renderer-oriented snapshot contract.
 void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("install", "ids", "scales", "routes"), &PeravizPresentationState::install);
     ClassDB::bind_method(D_METHOD("invalidate_renderer"), &PeravizPresentationState::invalidate_renderer);
     ClassDB::bind_method(D_METHOD("install_groups", "representatives"), &PeravizPresentationState::install_groups);
+    ClassDB::bind_method(D_METHOD("install_render_rows", "membership", "classes"), &PeravizPresentationState::install_render_rows);
+    ClassDB::bind_method(D_METHOD("install_materials", "rids", "owners", "scales", "routes"), &PeravizPresentationState::install_materials);
+    ClassDB::bind_method(D_METHOD("set_materials_enabled", "enabled"), &PeravizPresentationState::set_materials_enabled);
+    ClassDB::bind_method(D_METHOD("material_values", "rid"), &PeravizPresentationState::material_values);
+    ClassDB::bind_method(D_METHOD("physical_values", "index"), &PeravizPresentationState::physical_values);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizPresentationState::clear);
     ClassDB::bind_method(D_METHOD("compose", "generation", "descriptors", "integers", "values", "trace"), &PeravizPresentationState::compose);
     ClassDB::bind_method(D_METHOD("get_sizes"), &PeravizPresentationState::get_sizes);
 }
-// Resolves setup-only packed binding data into immutable native routes and dense indices.
+// Installs canonical physical routes; renderer-sized buffers are allocated only after render setup.
 int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const PackedFloat32Array &scales, const PackedInt32Array &routes) {
-    if (ids.size() != scales.size() || routes.size() % 3 != 0) return -1;
+    if (ids.size()!=scales.size() || routes.size()%3!=0) return -1;
     std::vector<OutputBinding> outputs;
     std::vector<TargetBinding> targets;
-    outputs.reserve(ids.size()); targets.reserve(routes.size() / 3);
-    for (int64_t i = 0; i < ids.size(); ++i) outputs.push_back({ids[i], scales[i]});
-    for (int64_t i = 0; i < routes.size(); i += 3) targets.push_back({routes[i], routes[i+1], uint32_t(routes[i+2])});
-    if (!state_.install(outputs, targets)) return -1;
-    indices_masks_.resize(ids.size() * 2);
-    values_.resize(ids.size() * ValueCount);
+    outputs.reserve(ids.size()); targets.reserve(routes.size()/3);
+    for (int64_t i=0;i<ids.size();++i) outputs.push_back({ids[i],scales[i]});
+    for (int64_t i=0;i<routes.size();i+=3) targets.push_back({routes[i],routes[i+1],uint32_t(routes[i+2])});
+    if (!state_.install(outputs,targets)) return -1;
+    projection_.clear(); materials_.clear(); indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
     return int64_t(state_.generation());
 }
-// Accepts only setup-time renderer-compatible physical membership.
+// Retains native Control Group membership as an input to renderer/resource setup.
 bool PeravizPresentationState::install_groups(const PackedInt32Array &representatives) {
     std::vector<int32_t> mapping;
     mapping.reserve(representatives.size());
-    for (int64_t i = 0; i < representatives.size(); ++i) mapping.push_back(representatives[i]);
-    if (!state_.install_groups(mapping)) return false;
-    group_indices_masks_.resize(representatives.size() * 2);
-    group_values_.resize(representatives.size() * ValueCount);
+    for (int64_t i=0;i<representatives.size();++i) mapping.push_back(representatives[i]);
+    return state_.install_groups(mapping);
+}
+// Allocates the only published arrays to the actual renderer-row count, never physical count.
+bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membership, const PackedInt32Array &classes) {
+    if (size_t(membership.size())!=state_.bindings().size()) return false;
+    std::vector<uint32_t> mapping; std::vector<RenderPresentationClass> modes;
+    for (int64_t i=0;i<membership.size();++i) mapping.push_back(uint32_t(membership[i]));
+    for (int64_t i=0;i<classes.size();++i) modes.push_back(RenderPresentationClass(classes[i]));
+    if (!projection_.install(mapping,modes)) return false;
+    indices_masks_.resize(classes.size()*2); values_.resize(classes.size()*ValueCount);
+    state_.invalidate_renderer();
     return true;
 }
-// Invalidates all borrowed indices and releases packed binding-generation capacity.
+// Binds existing prepared lens resources without creating per-frame material objects or dictionaries.
+bool PeravizPresentationState::install_materials(const Array &rids, const PackedInt32Array &owners,
+        const PackedFloat32Array &scales, const PackedInt32Array &routes) {
+    return materials_.install(state_.bindings().size(),rids,owners,scales,routes);
+}
+// Applies presentation suppression without changing held native physical Color/Dimmer.
+int64_t PeravizPresentationState::set_materials_enabled(bool enabled) { return int64_t(materials_.set_enabled(enabled)); }
+// Supports cold inspection/inverse lookup; never used by the renderer's live row loop.
+PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) const {
+    PackedFloat32Array result;
+    if (index<0 || size_t(index)>=state_.bindings().size()) return result;
+    result.resize(ValueCount); const auto values=state_.render_values(uint32_t(index));
+    std::copy(values.begin(),values.end(),result.ptrw()); return result;
+}
+// Reads the cached values committed to a prepared material RID for cold inspection/tests.
+PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
+// Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
-    state_.clear();
-    indices_masks_ = PackedInt32Array(); values_ = PackedFloat32Array();
-    group_indices_masks_ = PackedInt32Array(); group_values_ = PackedFloat32Array();
+    state_.clear(); projection_.clear(); materials_.clear();
+    indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
 }
-// Requests a forced replay while preserving current native control values.
-void PeravizPresentationState::invalidate_renderer() {
-    state_.invalidate_renderer();
-}
-// Composes one complete semantic snapshot and copies only dirty values into reused packed buffers.
+// Replays renderer resources and lens RIDs from exact held physical state.
+void PeravizPresentationState::invalidate_renderer() { state_.invalidate_renderer(); projection_.invalidate(); }
+// Accumulates changed physical contributions natively and copies only compact dirty renderer rows.
 Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt32Array &descriptors,
         const PackedInt32Array &integers, const PackedFloat32Array &values, bool trace) {
     Dictionary result;
     state_.set_trace_enabled(trace);
-    const int64_t start = trace ? now_us() : 0;
-    if (!state_.compose_sections(uint64_t(generation), descriptors.ptr(), size_t(descriptors.size()),
-            integers.ptr(), size_t(integers.size()), values.ptr(), size_t(values.size()))) {
-        result["valid"] = false;
-        return result;
+    const int64_t start=trace?now_us():0;
+    if (projection_.member_count()!=state_.bindings().size() || !state_.compose_sections(uint64_t(generation),descriptors.ptr(),size_t(descriptors.size()),
+            integers.ptr(),size_t(integers.size()),values.ptr(),size_t(values.size()))) { result["valid"]=false; return result; }
+    projection_.prepare(state_);
+    const int64_t compose_us=trace?now_us()-start:0;
+    const int64_t copy_start=trace?now_us():0;
+    auto *indices=indices_masks_.ptrw(); auto *packed=values_.ptrw();
+    int64_t count=0;
+    for (const auto &row:projection_.prepared()) {
+        indices[count*2]=int32_t(row.index); indices[count*2+1]=int32_t(row.mask);
+        std::copy(row.values.begin(),row.values.end(),packed+count*ValueCount); ++count;
     }
-    state_.prepare_snapshot();
-    const int64_t compose_us = trace ? now_us() - start : 0;
-    const int64_t copy_start = trace ? now_us() : 0;
-    const size_t dirty_count = state_.dirty_indices().size();
-    int32_t *indices = indices_masks_.ptrw();
-    float *packed = values_.ptrw();
-    int64_t count = 0;
-    for (const auto &output : state_.prepared()) {
-        indices[count * 2] = int32_t(output.index);
-        indices[count * 2 + 1] = int32_t(output.mask);
-        std::copy(output.values.begin(), output.values.end(), packed + count * ValueCount);
-        ++count;
-    }
-    int64_t group_count = 0;
-    if (!state_.prepared_groups().empty()) {
-        auto *group_indices = group_indices_masks_.ptrw();
-        auto *group_values = group_values_.ptrw();
-        for (const auto &group : state_.prepared_groups()) {
-            group_indices[group_count * 2] = int32_t(group.index);
-            group_indices[group_count * 2 + 1] = int32_t(group.mask);
-            std::copy(group.values.begin(), group.values.end(), group_values + group_count * ValueCount);
-            ++group_count;
-        }
-    }
-    result["group_count"] = group_count;
-    result["group_indices_masks"] = group_indices_masks_;
-    result["group_values"] = group_values_;
-    const int64_t conversion_us = trace ? now_us() - copy_start : 0;
-    result["valid"] = true; result["generation"] = generation;
-    result["unresolved_rows"] = int64_t(state_.unresolved_rows());
-    result["count"] = count; result["indices_masks"] = indices_masks_; result["values"] = values_;
+    const int64_t conversion_us=trace?now_us()-copy_start:0;
+    // Godot boundary work is main-thread-only and addresses cached material RIDs, never nodes.
+    const int64_t material_start=trace?now_us():0;
+    materials_.apply(state_);
+    const int64_t material_us=trace?now_us()-material_start:0;
+    const size_t dirty_count=state_.dirty_indices().size();
+    result["valid"]=true; result["generation"]=generation; result["unresolved_rows"]=int64_t(state_.unresolved_rows());
+    result["count"]=count; result["indices_masks"]=indices_masks_; result["values"]=values_;
     if (trace) {
-        result["physical_dynamic_candidates"] = int64_t(state_.dynamic_candidates());
-        result["control_group_dynamic_updates"] = group_count;
-        result["native_compose_us"] = compose_us;
-        result["payload_conversion_us"] = conversion_us;
-        result["dirty_count"] = int64_t(dirty_count);
-        result["candidates"] = int64_t(std::max(state_.candidates(), dirty_count));
-        result["signature_skipped"] = int64_t(dirty_count) - count;
+        result["physical_dynamic_candidates"]=int64_t(dirty_count);
+        result["native_compose_us"]=compose_us; result["payload_conversion_us"]=conversion_us;
+        result["dirty_count"]=int64_t(dirty_count); result["candidates"]=int64_t(std::max(state_.candidates(),dirty_count));
+        result["signature_skipped"]=int64_t(dirty_count)-count;
+        result["native_material_us"]=material_us;
+        result["lens_material_writes"]=int64_t(materials_.writes()); result["lens_writes_avoided"]=int64_t(materials_.avoided());
     }
     state_.finish_snapshot(uint64_t(generation));
     return result;
 }
-// Samples fixed native capacities only at the trace report boundary.
+// Reports physical native capacities separately from genuinely renderer-sized packed storage.
 Dictionary PeravizPresentationState::get_sizes() const {
     Dictionary sizes;
-    sizes["physical_outputs"] = int64_t(state_.bindings().size());
-    sizes["state_capacity"] = int64_t(state_.state_capacity());
-    sizes["dirty_capacity"] = int64_t(state_.dirty_capacity());
-    sizes["dirty_high_water"] = int64_t(state_.high_water());
-    sizes["native_buffer_bytes"] = int64_t(state_.buffer_bytes());
-    sizes["packed_buffer_bytes"] = (indices_masks_.size() + group_indices_masks_.size()) * int64_t(sizeof(int32_t)) + (values_.size() + group_values_.size()) * int64_t(sizeof(float));
+    sizes["physical_outputs"]=int64_t(state_.bindings().size()); sizes["render_rows"]=int64_t(projection_.row_count());
+    sizes["state_capacity"]=int64_t(state_.state_capacity()); sizes["dirty_capacity"]=int64_t(state_.dirty_capacity());
+    sizes["dirty_high_water"]=int64_t(state_.high_water()); sizes["native_buffer_bytes"]=int64_t(state_.buffer_bytes()+projection_.buffer_bytes());
+    sizes["packed_buffer_bytes"]=indices_masks_.size()*int64_t(sizeof(int32_t))+values_.size()*int64_t(sizeof(float));
     return sizes;
 }
 } // namespace godot

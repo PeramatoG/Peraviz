@@ -44,10 +44,11 @@ Completed / stable foundation:
 
 Newer owner-controlled Windows measurements (~24 FPS all effects, ~46 with Color
 stopped, ~75 with Color/Wash Dimmer stopped while Pan/Tilt continues) establish
-dynamic Color/Dimmer presentation fan-out as the immediate bottleneck. Shared
-Control Group dynamic materials are now implemented ahead of optical aggregation
-and MultiMesh. Full Render Groups/RenderEmitterGrouping, independent-output
-batching, LOD and renderer replacement remain future work. The historical
+dynamic Color/Dimmer presentation fan-out as the immediate bottleneck. The shared Control Group branch alone produced no appreciable owner-measured FPS
+improvement. Exact-output fallback auditing and first compact-source AGGREGATED /
+INDIVIDUAL Render Emitter Groups now target actual transparent shaft count.
+MultiMesh, broader RenderEmitterGrouping, independent-output batching, LOD and
+renderer replacement remain future work. The historical
 foundation closure itself did not implement these changes.
 
 The first batching benchmark must sustain about **1,000 genuinely independent

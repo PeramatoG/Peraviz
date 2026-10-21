@@ -46,7 +46,7 @@ func run() -> void:
 	apply(service,first)
 	var identical: Dictionary = adapter.consume_diagnostics()
 	check_zero(identical,WRITE_KEYS,"Identical 1095-output replay has zero renderer writes")
-	test.check(identical["renderer_outputs_changed"] == 0 and identical["renderer_outputs_unchanged"] == 1095,"Processed outputs are distinct from mutated outputs")
+	test.check(identical["renderer_outputs_changed"] == 0 and identical["renderer_outputs_processed"] == 0 and identical["native_dirty_outputs"] == 1095,"Physical no-ops emit no renderer rows while retaining exact native dirty accounting")
 	test.check(loader.notification_count() == before_notifications,"Unchanged playback sends no Node visibility notification")
 	for i in range(1095):
 		test.check(adapter._outputs[i].canonical_id == 40000+i,"Every independent output identity survives")

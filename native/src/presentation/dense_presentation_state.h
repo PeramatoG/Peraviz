@@ -67,6 +67,8 @@ public:
     const std::vector<PreparedOutput> &prepared_groups() const { return prepared_groups_; }
     size_t dynamic_candidates() const { return dynamic_candidates_; }
     RenderValues render_values(uint32_t index) const;
+    // Borrows domain dirtiness for downstream native render projection.
+    uint32_t pending_mask(uint32_t index) const { return states_.at(index).mask; }
     uint32_t effective_mask(uint32_t index, const RenderValues &values);
     void finish_snapshot(uint64_t generation);
     // Borrows the deduplicated touched-output prefix.

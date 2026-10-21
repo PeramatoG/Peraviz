@@ -49,11 +49,14 @@ preserving canonical output IDs. Generation checks retire stale indices; native
 pending masks deduplicate a bounded dirty-index vector. One packed delta crosses
 to an indexed adapter with pre-bound light, beam and material handles. Normal
 lighting playback bypasses the old per-output Dictionary commit/state pipeline.
-Godot keeps the existing physical presentation objects. Compatible open projected
-Wash/Spot controls now project native physical dirtiness into one dynamic Control
-Group payload and shared shaft/lens materials. Canonical outputs, selected-mode
+Godot keeps physical lenses and fallback objects. Compatible controls retain
+shared shaft/lens material ownership in Control Groups. Canonical outputs, selected-mode
 ownership, physical native state and normal Pan/Tilt transforms remain exact;
-optical aggregation, MultiMesh and independent-output batching remain future work. See [dense presentation state](native-dense-presentation-state.md)
+compact-source native Render Emitter Groups now accumulate physical members into
+AGGREGATED or INDIVIDUAL shaft rows. Exactly one renderer-sized integer/float
+payload pair crosses to Godot. Main-thread native Godot glue updates cached lens
+RIDs from exact physical values, separately from optical shaft mixing. MultiMesh,
+independent-output batching and C++ threading remain future work. See [dense presentation state](native-dense-presentation-state.md)
 for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
 ## Renderer ownership

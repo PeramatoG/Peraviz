@@ -91,7 +91,7 @@ func _run() -> void:
 	var instance_writes: int = loader.renderer.renderer_shader_parameter_writes
 	_snapshot(adapter, PackedFloat32Array(), PackedFloat32Array([0.7, 0.3, 0.1, 1]))
 	var counters: Dictionary = adapter.consume_diagnostics()
-	test.check(counters["physical_dynamic_candidates"] == 50 and counters["control_group_dynamic_updates"] == 1, "Physical fan-out is coalesced before the GDScript boundary")
+	test.check(counters["physical_dynamic_candidates"] == 50 and counters["control_group_dynamic_updates"] == 1, "Shared Control Group resources still receive one dynamic mutation across individual render rows")
 	test.check(counters["actual_beam_dynamic_renderer_writes"] == 1 and loader.renderer.renderer_shader_parameter_writes == instance_writes, "Color change writes one group uniform and zero per-instance uniforms")
 	test.check(counters["actual_lens_material_renderer_writes"] == 1, "RGB change writes one lens material RID")
 	var dynamic: Color = shared.get_shader_parameter("control_group_dynamic_state")
@@ -102,7 +102,7 @@ func _run() -> void:
 	_snapshot(adapter, PackedFloat32Array([0.8, 20, 16, 30, 4]), PackedFloat32Array())
 	dynamic = shared.get_shader_parameter("control_group_dynamic_state")
 	test.check(is_equal_approx(dynamic.r, 0.3) and dynamic.a > 0, "Dark-to-visible restores latest held RGB and Color gain without another Color packet")
-	test.check(is_equal_approx(group.materials[0].energy, 2.0), "Latest held gain scales lens material emission exactly")
+	test.check(is_equal_approx(adapter._native.material_values(group.materials[0].rid)[3], 2.0), "Latest held gain scales lens material emission exactly")
 	for i in range(50):
 		test.check(loader.renderer.get_beam_resource(loader.anchors[i]).visible, "All 50 physical shafts remain rendered")
 		test.check(is_equal_approx(adapter.light_state(loader.anchors[i])["color"].r, 0.3), "Inverse physical lookup resolves current grouped held Color")
@@ -112,7 +112,7 @@ func _run() -> void:
 	_snapshot(adapter, PackedFloat32Array([0.9, 22, 18, 35, 5]), PackedFloat32Array())
 	test.check(adapter._groups[0].dynamic.a == 0, "Dimmer changes remain dark under zero Color gain")
 	_snapshot(adapter, PackedFloat32Array(), PackedFloat32Array([0.3, 0.5, 0.2, 1]))
-	test.check(adapter._groups[0].dynamic.a == 35 and adapter._groups[0].materials[0].energy == 5, "Reopening Color restores latest held Dimmer/intensity/material energy without another Dimmer packet")
+	test.check(adapter._groups[0].dynamic.a == 35 and adapter._native.material_values(adapter._groups[0].materials[0].rid)[3] == 5, "Reopening Color restores latest held Dimmer/intensity/material energy without another Dimmer packet")
 	adapter.set_mode("no-beams")
 	test.check(adapter.light_state(loader.anchors[0])["visible"], "Suppression preserves canonical desired visibility for physical inverse lookup")
 	adapter.set_mode("full")

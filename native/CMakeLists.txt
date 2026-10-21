@@ -154,6 +154,10 @@ if(PERAVIZ_ENABLE_DMX)
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/presentation/control_groups.cpp
         src/presentation/dense_presentation_state.cpp
+        src/presentation/render_emitter_groups.cpp
+        src/presentation/render_group_projection.cpp
+        src/presentation/render_group_manifest.cpp
+        src/presentation/presentation_material_bindings.cpp
         src/presentation/presentation_state_godot.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
     )
@@ -208,6 +212,16 @@ if(PERAVIZ_BUILD_GDEXTENSION AND WIN32)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(peraviz_native_render_emitter_group_tests
+        tests/render_emitter_groups_test.cpp
+        src/presentation/control_groups.cpp
+        src/presentation/render_emitter_groups.cpp
+        src/presentation/render_group_projection.cpp
+        src/presentation/dense_presentation_state.cpp
+    )
+    target_include_directories(peraviz_native_render_emitter_group_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME peraviz_native_render_emitter_group_tests COMMAND peraviz_native_render_emitter_group_tests)
+
     add_executable(peraviz_native_control_group_tests
         tests/presentation_control_groups_test.cpp
         src/presentation/control_groups.cpp

@@ -30,10 +30,12 @@ bool controls(const std::string &ancestor, const std::string &beam) {
 }
 // Proves open projected sharing from compiled selected-mode authorities; ambiguous
 // overlap, any wheel/gobo ownership and unsupported profiles remain individual.
-std::vector<PresentationControlGroup> compile_control_groups(const runtime::CompiledRuntimeScene &scene) {
+ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene &scene) {
     using namespace runtime;
     std::map<ControlSignature, size_t> signatures;
-    std::vector<PresentationControlGroup> groups;
+    ControlGroupAnalysis analysis;
+    auto &groups = analysis.groups;
+    std::map<int32_t, ControlSignature> first_signature;
     for (const auto &beam : scene.beam_profiles) {
         ControlSignature s;
         s.fixture = beam.fixture_id;
@@ -45,10 +47,8 @@ std::vector<PresentationControlGroup> compile_control_groups(const runtime::Comp
                 beam.throw_ratio, beam.rectangle_ratio, beam.color_temperature, beam.luminous_flux,
                 beam.effective_luminous_flux_lm, beam.projected_lumen_scale, beam.emission_lumen_scale})
             if (!std::isfinite(value)) safe = false;
-        // Wheel palettes and projector materials need a later, richer compatibility contract.
-        for (const auto &b : scene.wheel_bindings) if (b.fixture_id == beam.fixture_id) safe = false;
-        for (const auto &b : scene.gobo_bindings) if (b.fixture_id == beam.fixture_id) safe = false;
-        for (const auto &b : scene.gobo_motion_bindings) if (b.fixture_id == beam.fixture_id) safe = false;
+        if (has_projector_dependency(scene, beam)) { safe = false; ++analysis.fallbacks.projector_gobo; }
+        if (has_wheel_dependency(scene, beam)) { safe = false; ++analysis.fallbacks.wheel; }
         for (const auto &property : scene.properties) {
             if (property.fixture_id != beam.fixture_id || !controls(property.geometry_name, beam.geometry_path)) continue;
             if (property.semantic == CompiledSemantic::Dimmer || property.semantic == CompiledSemantic::Zoom) {
@@ -77,6 +77,19 @@ std::vector<PresentationControlGroup> compile_control_groups(const runtime::Comp
             }
         }
         safe = safe && color_targets <= 1;
+        const auto first = first_signature.find(beam.fixture_id);
+        if (first == first_signature.end()) first_signature.emplace(beam.fixture_id, s);
+        else {
+            if (s.dimmer != first->second.dimmer) ++analysis.fallbacks.dimmer;
+            if (s.color != first->second.color || s.additive != first->second.additive) ++analysis.fallbacks.color;
+            if (s.optics != first->second.optics || s.zoom != first->second.zoom) ++analysis.fallbacks.optics;
+        }
+        if (!safe && !has_projector_dependency(scene, beam) && !has_wheel_dependency(scene, beam)) ++analysis.fallbacks.ambiguous;
+        if (first != first_signature.end()) {
+            // Photometric splits are distinct from optical-family splits in the startup audit.
+            const auto &base = *std::find_if(scene.beam_profiles.begin(), scene.beam_profiles.end(), [&](const auto &p) { return p.fixture_id == beam.fixture_id; });
+            if (base.projected_lumen_scale != beam.projected_lumen_scale || base.emission_lumen_scale != beam.emission_lumen_scale) ++analysis.fallbacks.scaling;
+        }
         // Preserve contributor/input order because native composition order is authoritative.
         if (safe) {
             const auto found = signatures.find(s);
@@ -85,6 +98,24 @@ std::vector<PresentationControlGroup> compile_control_groups(const runtime::Comp
         }
         groups.push_back({int32_t(groups.size() + 1), {beam.render_target_id}});
     }
-    return groups;
+    return analysis;
+}
+// Retains the focused control-group API for native consumers needing only membership.
+std::vector<PresentationControlGroup> compile_control_groups(const runtime::CompiledRuntimeScene &scene) {
+    return analyze_control_groups(scene).groups;
+}
+// Checks exact compiled Beam ownership; unresolved fixture-local ownership stays conservative.
+bool has_projector_dependency(const runtime::CompiledRuntimeScene &scene, const runtime::CompiledBeamOpticalProfile &beam) {
+    for (const auto &b : scene.gobo_bindings)
+        if ((b.fixture_id <= 0 || b.fixture_id == beam.fixture_id) && (b.beam_render_target_id <= 0 || b.beam_render_target_id == beam.render_target_id)) return true;
+    for (const auto &b : scene.gobo_motion_bindings)
+        if ((b.fixture_id <= 0 || b.fixture_id == beam.fixture_id) && (b.beam_render_target_id <= 0 || b.beam_render_target_id == beam.render_target_id)) return true;
+    return false;
+}
+// Checks the selected-mode wheel's exact output route, including ambiguous unresolved routes.
+bool has_wheel_dependency(const runtime::CompiledRuntimeScene &scene, const runtime::CompiledBeamOpticalProfile &beam) {
+    for (const auto &b : scene.wheel_bindings)
+        if ((b.fixture_id <= 0 || b.fixture_id == beam.fixture_id) && (b.beam_render_target_id <= 0 || b.beam_render_target_id == beam.render_target_id)) return true;
+    return false;
 }
 } // namespace peraviz::presentation
