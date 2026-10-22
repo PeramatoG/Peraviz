@@ -38,7 +38,7 @@ struct SymdefGeometry {
 std::string lower_ascii(std::string text) {
 // Applies lowercase conversion to each character in the string.
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
+        return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
     });
     return text;
 }
@@ -646,7 +646,9 @@ int append_single_geometry(SceneModel &scene, tinyxml2::XMLElement *geo,
     geo_node.local_transform = peraviz::coordinate_mapper::to_godot_transform(local);
     const std::string model_name = normalize_geometry_file_name(parse_model_filename(geo));
     if (!model_name.empty()) {
+        geo_node.asset_reference = model_name;
         geo_node.asset_path = mvr_cache.ensure_mvr_model_extracted(model_name);
+        if (geo_node.asset_path.empty()) geo_node.asset_error = mvr_cache.last_error();
     }
     geo_node.asset_kind = infer_asset_kind_from_path(geo_node.asset_path);
     scene.nodes.push_back(std::move(geo_node));
@@ -695,7 +697,9 @@ void append_geometry_children(SceneModel &scene, tinyxml2::XMLElement *node, con
                     symbol_node.local_transform = peraviz::coordinate_mapper::to_godot_transform(local);
 
                     if (!sym_geo.file_name.empty()) {
+                        symbol_node.asset_reference = sym_geo.file_name;
                         symbol_node.asset_path = mvr_cache.ensure_mvr_model_extracted(sym_geo.file_name);
+                        if (symbol_node.asset_path.empty()) symbol_node.asset_error = mvr_cache.last_error();
                     }
                     symbol_node.asset_kind = infer_asset_kind_from_path(symbol_node.asset_path);
                     scene.nodes.push_back(std::move(symbol_node));
@@ -717,7 +721,9 @@ void append_geometry_children(SceneModel &scene, tinyxml2::XMLElement *node, con
                 symbol_node.node_class = "model_part";
                 symbol_node.local_transform =
                     peraviz::coordinate_mapper::to_godot_transform(symbol_local);
+                symbol_node.asset_reference = fallback_model;
                 symbol_node.asset_path = mvr_cache.ensure_mvr_model_extracted(fallback_model);
+                if (symbol_node.asset_path.empty()) symbol_node.asset_error = mvr_cache.last_error();
                 symbol_node.asset_kind = infer_asset_kind_from_path(symbol_node.asset_path);
                 scene.nodes.push_back(std::move(symbol_node));
                 ++appended_count;
@@ -746,7 +752,9 @@ void append_geometry_children(SceneModel &scene, tinyxml2::XMLElement *node, con
             node_model.node_class = "model_part";
             node_model.local_transform =
                 peraviz::coordinate_mapper::to_godot_transform(MatrixUtils::Identity());
+            node_model.asset_reference = direct_model;
             node_model.asset_path = mvr_cache.ensure_mvr_model_extracted(direct_model);
+            if (node_model.asset_path.empty()) node_model.asset_error = mvr_cache.last_error();
             node_model.asset_kind = infer_asset_kind_from_path(node_model.asset_path);
             scene.nodes.push_back(std::move(node_model));
         }
@@ -768,6 +776,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
     const bool reuse_templates = options.fixture_templates && !peraviz_debug_coords;
     FixtureGeometryTemplates templates;
     SceneModel model;
+    model.source_path = path;
     model.runtime_tables = peraviz::table_model::create_perastage_runtime_tables();
     if (!std::filesystem::exists(std::filesystem::u8path(path))) {
         return model;
@@ -836,7 +845,14 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                 node.is_fixture = true;
                 append_scene_node(model, node);
 
+                const size_t fixture_node_index = model.nodes.size() - 1;
                 const SceneModel::FixturePatch fixture_patch = parse_fixture_patch(child, id, mvr_cache);
+                if (fixture_patch.gdtf_path.empty()) {
+                    if (const char *spec = child_text_ci(child, "gdtfspec"); spec && *spec) {
+                        model.nodes[fixture_node_index].asset_reference = spec;
+                        model.nodes[fixture_node_index].asset_error = mvr_cache.last_error();
+                    }
+                }
                 model.fixture_patches.push_back(fixture_patch);
                 append_fixture_table_row(model, child, id, node.name, local_transform, fixture_patch);
 
@@ -851,6 +867,10 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                         : build_fixture_geometry_nodes(request, id, node_world, model.extracted_asset_count);
                     model.geometry_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - geometry_start).count();
                     if (!reuse_templates) ++model.geometry_definitions;
+                    if (!fixture_geometry.error.empty()) {
+                        model.nodes[fixture_node_index].asset_reference = gdtf_path;
+                        model.nodes[fixture_node_index].asset_error = fixture_geometry.error;
+                    }
                     model.asset_leases.retain(fixture_geometry.cache_lease);
                     model.nodes.insert(model.nodes.end(), fixture_geometry.nodes.begin(), fixture_geometry.nodes.end());
                 }

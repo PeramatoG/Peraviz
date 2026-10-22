@@ -46,6 +46,8 @@ struct SceneNode {
     std::string node_class;
     std::string asset_kind;
     std::string asset_path;
+    std::string asset_reference;
+    std::string asset_error;
     std::string primitive_type;
     std::string gdtf_geometry_key;
     std::string gdtf_geometry_path;
@@ -105,6 +107,7 @@ struct SceneModel {
     int object_count = 0;
     int support_count = 0;
     int extracted_asset_count = 0;
+    std::string source_path;
     std::string cache_path;
     runtime_storage::RuntimeDirectoryLease cache_lease;
     SceneAssetLeaseSet asset_leases;

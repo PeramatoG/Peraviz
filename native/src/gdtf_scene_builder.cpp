@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <fstream>
+#include <iterator>
 #include <unordered_map>
 #include <vector>
 
@@ -23,7 +25,7 @@ using peraviz::SceneNode;
 std::string lower_ascii(std::string text) {
 // Applies lowercase conversion to each character in the string.
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
+        return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
     });
     return text;
 }
@@ -187,11 +189,16 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
     result.cache_path = gdtf_cache.cache_dir().u8string();
     const std::string description_path = gdtf_cache.ensure_archive_file_extracted("description.xml");
     if (description_path.empty()) {
+        result.error = gdtf_cache.last_error();
         return result;
     }
 
+    // Open UTF-8 paths through the native filesystem API, including on Windows.
+    std::ifstream description(std::filesystem::u8path(description_path), std::ios::binary);
+    const std::string xml((std::istreambuf_iterator<char>(description)), std::istreambuf_iterator<char>());
     tinyxml2::XMLDocument doc;
-    if (doc.LoadFile(description_path.c_str()) != tinyxml2::XML_SUCCESS) {
+    if (!description || doc.Parse(xml.data(), xml.size()) != tinyxml2::XML_SUCCESS) {
+        result.error = !description ? "description_open_failed" : "invalid_gdtf_xml";
         return result;
     }
 
@@ -203,6 +210,7 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
         fixture_type = doc.FirstChildElement("FixtureType");
     }
     if (!fixture_type) {
+        result.error = "missing_gdtf_fixture_type";
         return result;
     }
 
@@ -296,6 +304,7 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
 
     tinyxml2::XMLElement *geometries = fixture_type->FirstChildElement("Geometries");
     if (!geometries) {
+        result.error = "missing_gdtf_geometries";
         return result;
     }
 
@@ -323,6 +332,7 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
     }
 
     if (!root_geometry) {
+        result.error = "missing_gdtf_root_geometry";
         return result;
     }
 
@@ -439,7 +449,9 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
             auto model_it = model_visual_by_name.find(lower_ascii(model_name));
             if (model_it != model_visual_by_name.end()) {
                 if (!model_it->second.file.empty()) {
+                    node.asset_reference = model_it->second.file;
                     node.asset_path = gdtf_cache.ensure_gdtf_model_extracted(model_it->second.file);
+                    if (node.asset_path.empty()) node.asset_error = gdtf_cache.last_error();
                 }
                 node.primitive_type = model_it->second.primitive_type;
                 node.primitive_size_x = std::max(model_it->second.size_x, 0.001F);

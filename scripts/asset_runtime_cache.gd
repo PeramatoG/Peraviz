@@ -91,10 +91,18 @@ func store_material(asset_path: String, material: Material) -> void:
 		return
 	_material_cache[asset_path] = material
 
-func mark_failed(asset_path: String) -> void:
+func is_failed(asset_path: String) -> bool:
+	return _failed_paths.has(asset_path)
+
+func failure_reason(asset_path: String) -> String:
+	return str(_failed_paths.get(asset_path, ""))
+
+func mark_failed(asset_path: String, reason: String = "resource_load_failed") -> void:
 	if asset_path.is_empty():
 		return
-	_failed_paths[asset_path] = true
+	if not _failed_paths.has(asset_path):
+		print("[Peraviz] Asset failure reason=", reason, " path=", asset_path)
+	_failed_paths[asset_path] = reason
 
 func debug_summary() -> Dictionary:
 	return {
@@ -104,6 +112,7 @@ func debug_summary() -> Dictionary:
 		"misses_by_kind": _miss_by_kind.duplicate(true),
 		"unique_resources": _mesh_cache.size() + _scene_cache.size() + _material_cache.size(),
 		"mesh_unique": _mesh_cache.size(),
+		"failed_unique": _failed_paths.size(),
 		"scene_unique": _scene_cache.size(),
 		"material_unique": _material_cache.size(),
 	}

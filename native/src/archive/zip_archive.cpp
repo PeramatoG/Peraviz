@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <sstream>
+#include <unordered_set>
 
 #include <zip.h>
 
@@ -16,7 +18,7 @@ namespace {
 // Converts ASCII text to lowercase for archive path comparisons.
 std::string lower_ascii(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
+        return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
     });
     return value;
 }
@@ -39,6 +41,9 @@ ZipArchive::~ZipArchive() {
 // Moves ownership of an archive handle into this wrapper.
 ZipArchive::ZipArchive(ZipArchive &&other) noexcept
     : archive_(other.archive_), writable_(other.writable_) {
+    other.index_ready_ = false;
+    other.entries_.clear();
+    other.folded_entries_.clear();
     other.archive_ = nullptr;
     other.writable_ = false;
 }
@@ -49,6 +54,9 @@ ZipArchive &ZipArchive::operator=(ZipArchive &&other) noexcept {
         reset();
         archive_ = other.archive_;
         writable_ = other.writable_;
+        other.index_ready_ = false;
+        other.entries_.clear();
+        other.folded_entries_.clear();
         other.archive_ = nullptr;
         other.writable_ = false;
     }
@@ -85,23 +93,9 @@ std::vector<std::string> ZipArchive::list_files() const {
         return files;
     }
 
-    const zip_int64_t count = zip_get_num_entries(archive_, 0);
-    if (count <= 0) {
-        return files;
-    }
-
-    files.reserve(static_cast<std::size_t>(count));
-    for (zip_uint64_t i = 0; i < static_cast<zip_uint64_t>(count); ++i) {
-        const char *name = zip_get_name(archive_, i, ZIP_FL_ENC_GUESS);
-        if (!name) {
-            continue;
-        }
-        const std::string normalized = normalize_path(name);
-        if (normalized.empty() || is_directory_entry(normalized)) {
-            continue;
-        }
-        files.push_back(normalized);
-    }
+    build_index();
+    for (const auto &entry : entries_) files.push_back(entry.first);
+    std::sort(files.begin(), files.end());
     return files;
 }
 
@@ -149,11 +143,9 @@ std::vector<std::uint8_t> ZipArchive::read_file(const std::string &archive_path)
         }
         offset += static_cast<std::size_t>(bytes);
     }
-    zip_fclose(file);
+    const int close_result = zip_fclose(file);
 
-    if (offset != data.size()) {
-        data.resize(offset);
-    }
+    if (offset != data.size() || close_result != 0) data.clear();
     return data;
 }
 
@@ -166,9 +158,11 @@ std::string ZipArchive::read_text_file(const std::string &archive_path) const {
 // Extracts an archive file to the requested output path.
 bool ZipArchive::extract_file(const std::string &archive_path, const std::filesystem::path &output_path) const {
     const std::vector<std::uint8_t> data = read_file(archive_path);
-    if (data.empty() && !file_exists(archive_path)) {
-        return false;
-    }
+    const auto entry = find_entry_name(archive_path);
+    zip_stat_t stat;
+    zip_stat_init(&stat);
+    if (entry.empty() || zip_stat(archive_, entry.c_str(), ZIP_FL_ENC_GUESS, &stat) != 0 ||
+        stat.size != data.size()) return false;
 
     std::error_code ec;
     const std::filesystem::path parent = output_path.parent_path();
@@ -186,7 +180,10 @@ bool ZipArchive::extract_file(const std::string &archive_path, const std::filesy
     if (!data.empty()) {
         output.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
     }
-    return output.good();
+    output.close();
+    if (output.good()) return true;
+    std::filesystem::remove(output_path, ec);
+    return false;
 }
 
 // Adds or replaces a binary file in a writable archive.
@@ -221,6 +218,7 @@ bool ZipArchive::write_file(const std::string &archive_path, const std::vector<s
         zip_source_free(source);
         return false;
     }
+    index_ready_ = false;
     return true;
 }
 
@@ -250,14 +248,27 @@ bool ZipArchive::close() {
 std::string ZipArchive::normalize_path(const std::string &archive_path) {
     std::string normalized = archive_path;
     std::replace(normalized.begin(), normalized.end(), '\\', '/');
-    while (!normalized.empty() && (normalized.front() == '/' || normalized.front() == '.')) {
-        normalized.erase(normalized.begin());
+    while (normalized.rfind("./", 0) == 0) normalized.erase(0, 2);
+    if (normalized.empty() || normalized.front() == '/' || normalized.find(':') != std::string::npos)
+        return {};
+    std::string result;
+    std::istringstream parts(normalized);
+    std::string part;
+    while (std::getline(parts, part, '/')) {
+        if (part == "..") return {};
+        if (part.empty() || part == ".") continue;
+        if (!result.empty()) result += '/';
+        result += part;
     }
-    return normalized;
+    if (!result.empty() && normalized.back() == '/') result += '/';
+    return result;
 }
 
 // Discards an open archive handle without committing changes.
 void ZipArchive::reset() {
+    index_ready_ = false;
+    entries_.clear();
+    folded_entries_.clear();
     if (archive_) {
         zip_discard(archive_);
         archive_ = nullptr;
@@ -265,36 +276,41 @@ void ZipArchive::reset() {
     writable_ = false;
 }
 
-// Finds the canonical archive entry name for a normalized path.
-std::string ZipArchive::find_entry_name(const std::string &archive_path) const {
-    if (!archive_) {
-        return {};
-    }
-
-    const std::string target = lower_ascii(normalize_path(archive_path));
-    if (target.empty()) {
-        return {};
-    }
-
+// Indexes normalized identities while retaining original ZIP spellings for reads.
+void ZipArchive::build_index() const {
+    if (index_ready_ || !archive_) return;
+    entries_.clear();
+    folded_entries_.clear();
+    std::unordered_set<std::string> ambiguous;
     const zip_int64_t count = zip_get_num_entries(archive_, 0);
-    if (count <= 0) {
-        return {};
+    for (zip_int64_t i = 0; i < count; ++i) {
+        const char *raw = zip_get_name(archive_, static_cast<zip_uint64_t>(i), ZIP_FL_ENC_GUESS);
+        if (!raw) continue;
+        const std::string normalized = normalize_path(raw);
+        if (normalized.empty() || is_directory_entry(normalized)) continue;
+        const std::string folded = lower_ascii(normalized);
+        if (ambiguous.count(folded)) continue;
+        const auto prior = folded_entries_.find(folded);
+        if (prior != folded_entries_.end()) {
+            entries_.erase(prior->second);
+            folded_entries_.erase(prior);
+            ambiguous.insert(folded);
+            continue;
+        }
+        entries_.emplace(normalized, raw);
+        folded_entries_.emplace(folded, normalized);
     }
+    index_ready_ = true;
+}
 
-    for (zip_uint64_t i = 0; i < static_cast<zip_uint64_t>(count); ++i) {
-        const char *name = zip_get_name(archive_, i, ZIP_FL_ENC_GUESS);
-        if (!name) {
-            continue;
-        }
-        const std::string normalized = normalize_path(name);
-        if (is_directory_entry(normalized)) {
-            continue;
-        }
-        if (lower_ascii(normalized) == target) {
-            return normalized;
-        }
-    }
-    return {};
+// Prefers exact identities, then an unambiguous ASCII case-insensitive match.
+std::string ZipArchive::find_entry_name(const std::string &archive_path) const {
+    build_index();
+    const std::string target = normalize_path(archive_path);
+    const auto exact = entries_.find(target);
+    if (exact != entries_.end()) return exact->second;
+    const auto folded = folded_entries_.find(lower_ascii(target));
+    return folded == folded_entries_.end() ? std::string{} : entries_.at(folded->second);
 }
 
 } // namespace peraviz::archive

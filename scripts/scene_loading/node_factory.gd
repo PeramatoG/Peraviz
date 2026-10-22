@@ -2,11 +2,15 @@ extends RefCounted
 class_name NodeFactory
 
 var _missing_cache_roots_reported: Dictionary = {}
+var asset_load_summary: Dictionary = {}
+var _resolution_failures_reported: Dictionary = {}
 
 func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, budget: SceneLoadBudget = null) -> bool:
 	var constructed: Array[Node3D] = []
 	node_index.clear()
 	_missing_cache_roots_reported.clear()
+	_resolution_failures_reported.clear()
+	asset_load_summary = {"success": 0, "failure": 0, "fallback": 0}
 	for item in nodes:
 		if budget != null and not await budget.checkpoint():
 			_discard_unattached_nodes(constructed)
@@ -37,6 +41,7 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 	_apply_mesh_orientation_corrections(proxies_root, false, loader, asset_cache)
 	_remove_redundant_dummy_meshes(proxies_root)
 	rebuild_loaded_bounds.call()
+	print("[Peraviz] Scene geometry summary success=", asset_load_summary.success, " failure=", asset_load_summary.failure, " fallback=", asset_load_summary.fallback)
 	return true
 
 func _discard_unattached_nodes(constructed: Array[Node3D]) -> void:
@@ -239,21 +244,35 @@ func _reparent_fixture_visual_children(geometry_node: Node3D, model_root: Node3D
 func _build_visual_node(data: Dictionary, item_type: String, item_class: String, is_fixture: bool, visual_scale_hint: float, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, flip_orientation: bool = false) -> Node3D:
 	var asset_path: String = str(data.get("asset_path", ""))
 	var asset_kind: String = _extract_asset_kind(data, asset_path)
+	var asset_failed: bool = false
 	if not asset_path.is_empty():
 		var loaded: Variant = _load_3d_asset(asset_path, loader, asset_cache, asset_kind, flip_orientation)
 		if loaded is Node3D:
 			var loaded_node: Node3D = loaded
+			asset_load_summary["success"] = int(asset_load_summary.get("success", 0)) + 1
 			_force_double_sided_materials(loaded_node)
 			return loaded_node
-		print("[Peraviz] Asset fallback for missing/invalid model: ", asset_path, " type=", item_type, " class=", item_class, " asset_kind=", asset_kind)
+		asset_load_summary["failure"] = int(asset_load_summary.get("failure", 0)) + 1
+		asset_failed = true
+	elif not str(data.get("asset_error", "")).is_empty():
+		asset_load_summary["failure"] = int(asset_load_summary.get("failure", 0)) + 1
+		asset_failed = true
+		var key: String = str(data.get("asset_reference", "")) + ":" + str(data.asset_error)
+		if not _resolution_failures_reported.has(key):
+			_resolution_failures_reported[key] = true
+			print("[Peraviz] Resource failure reason=", data.asset_error, " reference=", data.get("asset_reference", ""))
 
 	if item_type == "fixture" or item_type == "fixture_geometry":
 		if asset_kind == "primitive":
+			if asset_failed:
+				asset_load_summary["fallback"] = int(asset_load_summary.get("fallback", 0)) + 1
 			var primitive_mesh: Node3D = _create_gdtf_primitive_mesh(data)
 			_force_double_sided_materials(primitive_mesh)
 			return primitive_mesh
 		return null
 
+	if asset_failed:
+		asset_load_summary["fallback"] = int(asset_load_summary.get("fallback", 0)) + 1
 	var dummy_mesh: Node3D = _create_dummy_mesh(is_fixture, visual_scale_hint, asset_cache)
 	_force_double_sided_materials(dummy_mesh)
 	return dummy_mesh
@@ -327,6 +346,8 @@ func _extract_visual_scale_hint(data: Dictionary) -> float:
 	return max(average_scale, 0.0001)
 
 func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, asset_kind_hint: String = "", flip_orientation: bool = false) -> Variant:
+	if asset_cache.is_failed(asset_path):
+		return null
 	var resolved_asset_kind: String = asset_kind_hint.to_lower()
 	if resolved_asset_kind.is_empty() or resolved_asset_kind == "none":
 		resolved_asset_kind = _infer_asset_kind_from_extension(asset_path)
@@ -345,11 +366,11 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			return cached_mesh_instance
 		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
 		if not bool(mesh_data.get("ok", false)):
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, str(mesh_data.get("error", "invalid_3ds")))
 			return null
 		var mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation)
 		if mesh == null:
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, "mesh_construction_failed")
 			return null
 		asset_cache.store_mesh(mesh_cache_key, mesh)
 		var mesh_instance := MeshInstance3D.new()
@@ -367,16 +388,16 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			if not _missing_cache_roots_reported.has(cache_root):
 				_missing_cache_roots_reported[cache_root] = true
 				push_error("path_missing_before_godot_load: fixture asset cache is missing: %s" % cache_root)
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, "file_missing")
 			return null
 		var gltf := GLTFDocument.new()
 		var state := GLTFState.new()
 		var err: int = gltf.append_from_file(asset_path, state)
 		if err != OK:
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, "scene_parse_failed:%d" % err)
 			return null
 		var generated: Node = gltf.generate_scene(state)
-		if generated is Node3D:
+		if generated is Node3D and _has_renderable_mesh(generated):
 			var packed_scene := PackedScene.new()
 			if packed_scene.pack(generated) == OK:
 				asset_cache.store_scene(asset_path, packed_scene)
@@ -384,7 +405,7 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 				return asset_cache.instantiate_scene(asset_path)
 		if generated != null:
 			generated.free()
-		asset_cache.mark_failed(asset_path)
+		asset_cache.mark_failed(asset_path, "no_renderable_geometry")
 		return null
 	var scene_instance: Node3D = asset_cache.instantiate_scene(asset_path)
 	if scene_instance != null:
@@ -395,6 +416,14 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		return asset_cache.instantiate_scene(asset_path)
 	asset_cache.mark_failed(asset_path)
 	return null
+
+func _has_renderable_mesh(node: Node) -> bool:
+	if node is MeshInstance3D and node.mesh != null and node.mesh.get_surface_count() > 0:
+		return true
+	for child in node.get_children():
+		if _has_renderable_mesh(child):
+			return true
+	return false
 
 func _runtime_cache_workspace_for_path(asset_path: String) -> String:
 	var normalized: String = asset_path.replace("\\", "/")
@@ -456,6 +485,8 @@ func _build_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false) -> A
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var array_mesh := ArrayMesh.new()
 	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	if array_mesh.get_surface_count() == 0:
+		return null
 	if not texture_path.is_empty() and texcoords.size() == vertices.size():
 		var image := Image.new()
 		var image_error: Error = image.load(texture_path)

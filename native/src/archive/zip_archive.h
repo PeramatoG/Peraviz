@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 struct zip;
 
@@ -38,6 +39,10 @@ private:
     zip *archive_ = nullptr;
     bool writable_ = false;
 
+    mutable bool index_ready_ = false;
+    mutable std::unordered_map<std::string, std::string> entries_;
+    mutable std::unordered_map<std::string, std::string> folded_entries_;
+    void build_index() const;
     void reset();
     std::string find_entry_name(const std::string &archive_path) const;
 };

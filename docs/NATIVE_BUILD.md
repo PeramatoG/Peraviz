@@ -53,3 +53,23 @@ ctest --preset win-x64-debug-ninja --output-on-failure
 ```
 
 Use the Visual Studio presets only with `native/` as the CMake source directory. See [Windows export](WINDOWS_EXPORT.md) for packaging and dependency verification.
+
+## Importer mesh and Unicode regression
+
+After building the extension and importing the project with the pinned Godot version, run:
+
+```bash
+python3 tests/integration/run_importer_unicode_smoke.py --godot "$GODOT_BIN"
+```
+
+The runner creates only synthetic temporary assets. It checks equivalent ASCII, `ñ`, and accented/non-Latin source paths; Unicode model/texture/GDTF entries and temporary extraction parents; multi-object 3DS vertex/index data; real 3DS/GLB surfaces; shared meshes; explicit corrupt/empty/missing errors; repeated-failure summaries; runtime compilation; scene replacement; and final lease cleanup. It compares scene identities between source variants and rejects engine errors as well as nonzero exits. Native resolution/collision regressions run within `peraviz_native_scene_asset_lifetime_tests`.
+
+CI currently runs on Linux. Windows Unicode filesystem behavior must additionally be verified on Windows, using the existing native build/test presets above and a matching Godot executable:
+
+```powershell
+# From the repository root, after building and placing the extension in bin/:
+& $godot --headless --editor --path . --quit
+python tests/integration/run_importer_unicode_smoke.py --godot $godot
+```
+
+Both commands must succeed without script/engine errors. Confirm that all three source variants report five real asset instances and zero fallbacks for the valid scene; the separate deliberate corrupt-model test must report two failures/fallbacks but one unique asset error. The direct Unicode model test exercises the Windows native-path stream, independently of ASCII cache naming. Run from a Unicode checkout or use a Unicode `TEMP` directory as an additional check of native XML and extraction parents. Windows execution cannot be replaced by Linux results.
