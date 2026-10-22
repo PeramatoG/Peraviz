@@ -1,4 +1,6 @@
 #include "archive/zip_archive.h"
+#include "asset_cache.h"
+#include <zip.h>
 #include "dmx/fixture_dmx_binding.h"
 #include "dmx/gdtf_control_offsets_resolver.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
@@ -101,8 +103,8 @@ int test_scene_lease_set_deduplication() {
     std::filesystem::path path;
     peraviz::SceneAssetLeaseSet owner;
     {
-        auto first = peraviz::runtime_storage::acquire_session_cache_directory("lease-set @ ä");
-        auto second = peraviz::runtime_storage::acquire_session_cache_directory("lease-set @ ä");
+        auto first = peraviz::runtime_storage::acquire_session_cache_directory(u8"lease-set @ \u00e4");
+        auto second = peraviz::runtime_storage::acquire_session_cache_directory(u8"lease-set @ \u00e4");
         path = first.path();
         std::ofstream(path / "marker") << "owned";
         owner.retain(first);
@@ -117,9 +119,9 @@ int test_scene_lease_set_deduplication() {
 
 // Verifies fixture models and gobos remain alive through every active-scene setup boundary.
 int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
-    const std::filesystem::path source = root / "source with spaces @ ü";
+    const std::filesystem::path source = root / std::filesystem::u8path(u8"source with spaces @ \u00fc");
     std::filesystem::create_directories(source);
-    const std::filesystem::path first_gdtf = source / "Fixture @ long ü name.gdtf";
+    const std::filesystem::path first_gdtf = source / std::filesystem::u8path(u8"Fixture @ long \u00fc name.gdtf");
     const std::filesystem::path first_mvr = source / "Scene one.mvr";
     if (!write_gdtf(first_gdtf, "one") || !write_mvr(first_mvr, first_gdtf)) return fail("Failed to create the first lifetime fixture archives");
 
@@ -165,6 +167,7 @@ int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
 }
 
 #include "fixture_geometry_templates_test.h"
+#include "archive_resource_resolution_test.h"
 
 } // namespace
 
@@ -172,10 +175,11 @@ int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
 int main() {
     const std::filesystem::path root = std::filesystem::temp_directory_path() / "peraviz_scene_asset_lifetime_test";
     std::filesystem::remove_all(root);
-    peraviz::runtime_storage::set_runtime_root_for_tests(root / "runtime");
+    peraviz::runtime_storage::set_runtime_root_for_tests(root / std::filesystem::u8path(u8"runtime\u00f1\u6a21\u578b"));
     if (const int result = test_scene_lease_set_deduplication(); result != 0) return result;
     if (const int result = test_mvr_gdtf_active_scene_lifetime(root); result != 0) return result;
     if (const int result = test_fixture_geometry_templates(root); result != 0) return result;
+    if (const int result = test_archive_resource_resolution(root); result != 0) return result;
     peraviz::runtime_storage::cleanup_current_session();
     peraviz::runtime_storage::reset_runtime_root_for_tests();
     std::filesystem::remove_all(root);

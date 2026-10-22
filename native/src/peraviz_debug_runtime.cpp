@@ -109,9 +109,9 @@ void log_coordinate_debug_event(const std::string &event,
         return;
     }
 
-    godot::UtilityFunctions::print("[PeravizCoordDebug] event=", godot::String(event.c_str()),
-                                   " scope=", godot::String(scope.c_str()),
-                                   " detail=", godot::String(detail.c_str()));
+    godot::UtilityFunctions::print("[PeravizCoordDebug] event=", godot::String::utf8(event.c_str()),
+                                   " scope=", godot::String::utf8(scope.c_str()),
+                                   " detail=", godot::String::utf8(detail.c_str()));
 }
 
 void log_baseline_transform_comparison(const std::string &context,
@@ -121,7 +121,7 @@ void log_baseline_transform_comparison(const std::string &context,
         return;
     }
 
-    godot::UtilityFunctions::print("[PeravizBaseline] context=", godot::String(context.c_str()),
+    godot::UtilityFunctions::print("[PeravizBaseline] context=", godot::String::utf8(context.c_str()),
                                    " source_local=", matrix_to_string(source_local),
                                    " mapped=", scene_transform_to_string(mapped_transform));
 }
@@ -136,8 +136,8 @@ void log_transform_adjustment(const std::string &context,
 
     godot::UtilityFunctions::print(
         "[PeravizCoordDebug] event=transform_adjustment"
-        " context=", godot::String(context.c_str()),
-        " reason=", godot::String(reason.c_str()),
+        " context=", godot::String::utf8(context.c_str()),
+        " reason=", godot::String::utf8(reason.c_str()),
         " before=", matrix_to_string(before),
         " after=", matrix_to_string(after));
 }

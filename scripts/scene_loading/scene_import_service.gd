@@ -151,6 +151,8 @@ func import_scene(path: String,
 		"ok": true,
 		"error": "",
 		"node_count": nodes.size(),
+		"geometry_summary": node_factory.asset_load_summary.duplicate(true),
+		"asset_failures": node_factory.asset_diagnostics.failure_groups(),
 	}
 
 func _print_asset_cache_summary(asset_cache: PeravizRuntimeAssetCache) -> void:

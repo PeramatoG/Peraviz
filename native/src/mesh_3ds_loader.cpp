@@ -213,7 +213,7 @@ void compute_normals(MeshData &mesh) {
 std::string to_lower_ascii(std::string value) {
 // Applies lowercase conversion to each character in the string.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
+        return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
     });
     return value;
 }
@@ -237,6 +237,7 @@ bool filename_equals_insensitive(const std::filesystem::path &a,
            to_lower_ascii(b.filename().u8string());
 }
 
+// Finds only unique companion basenames within a bounded local search.
 bool find_texture_by_filename(const std::filesystem::path &root,
                               const std::filesystem::path &target_name,
                               std::filesystem::path &out_path) {
@@ -251,6 +252,7 @@ bool find_texture_by_filename(const std::filesystem::path &root,
 
     std::error_code ec;
     size_t scanned_entries = 0;
+    bool matched = false;
     for (std::filesystem::recursive_directory_iterator it(
              root, std::filesystem::directory_options::skip_permission_denied, ec);
          it != std::filesystem::recursive_directory_iterator();
@@ -278,18 +280,18 @@ bool find_texture_by_filename(const std::filesystem::path &root,
             continue;
         }
         if (filename_equals_insensitive(it->path(), target_name)) {
+            if (matched) return false;
             out_path = it->path();
-            return true;
+            matched = true;
         }
 
         ++scanned_entries;
-        if (scanned_entries >= k_max_scanned_entries) {
-            break;
-        }
+        if (scanned_entries >= k_max_scanned_entries) return false;
     }
-    return false;
+    return matched;
 }
 
+// Resolves companion textures using native Unicode paths.
 bool resolve_texture_path(const std::filesystem::path &model_dir,
                           const std::string &texture_reference,
                           std::filesystem::path &out_path) {
@@ -486,18 +488,76 @@ void parse_mesh_chunk(std::ifstream &file, std::streampos mesh_end, MeshData &me
     }
 }
 
+// Validates chunk bounds and typed payload sizes before the existing geometry parser runs.
+bool validate_chunks(std::ifstream &file, std::streampos end, int depth = 0) {
+    if (depth > 64) return false;
+    uint16_t vertex_count = 0;
+    uint32_t maximum_index = 0;
+    bool has_faces = false;
+    while (file.good() && file.tellg() < end) {
+        const auto start = file.tellg();
+        Chunk chunk;
+        if (end - start < 6 || !read_chunk(file, chunk) || chunk.length < 6 ||
+            static_cast<std::streamoff>(chunk.length) > end - start) return false;
+        const auto next = start + static_cast<std::streamoff>(chunk.length);
+        const auto payload = chunk.length - 6U;
+        if (chunk.id == 0x4000 || chunk.id == 0xA000 || chunk.id == 0xA300 || chunk.id == 0x4130) {
+            bool terminated = false;
+            char ch = 0;
+            while (file.tellg() < next && file.read(&ch, 1)) {
+                if (ch == 0) { terminated = true; break; }
+            }
+            if (!terminated) return false;
+        }
+        if (chunk.id == 0x4110 || chunk.id == 0x4120 || chunk.id == 0x4140 || chunk.id == 0x4130) {
+            uint16_t count = 0;
+            const auto remaining = next - file.tellg();
+            if (remaining < 2 || !file.read(reinterpret_cast<char *>(&count), 2)) return false;
+            const size_t stride = chunk.id == 0x4110 ? 12 : chunk.id == 0x4130 ? 2 : 8;
+            if (static_cast<size_t>(remaining - 2) < static_cast<size_t>(count) * stride) return false;
+            if (chunk.id == 0x4110) vertex_count = count;
+            if (chunk.id == 0x4120) {
+                for (uint16_t face = 0; face < count; ++face) {
+                    uint16_t indices[4] = {};
+                    file.read(reinterpret_cast<char *>(indices), sizeof(indices));
+                    maximum_index = std::max(maximum_index, static_cast<uint32_t>(std::max({indices[0], indices[1], indices[2]})));
+                }
+                has_faces = count > 0;
+            } else file.seekg(static_cast<std::streamoff>(count * stride), std::ios::cur);
+            if (chunk.id == 0x4120 && !validate_chunks(file, next, depth + 1)) return false;
+        } else if (chunk.id == 0x3D3D || chunk.id == 0x4000 || chunk.id == 0x4100 ||
+                   chunk.id == 0xAFFF || chunk.id == 0xA020 || chunk.id == 0xA200) {
+            if (!validate_chunks(file, next, depth + 1)) return false;
+        } else if (((chunk.id == 0x0010 || chunk.id == 0x0013) && payload < 12) ||
+                   ((chunk.id == 0x0011 || chunk.id == 0x0012) && payload < 3)) return false;
+        file.seekg(next);
+    }
+    return file.good() && file.tellg() == end && (!has_faces || maximum_index < vertex_count);
+}
+
 // Loads and parses a 3DS file into mesh structures.
-bool load_3ds(const std::string &path, MeshData &mesh) {
-    std::ifstream file(path, std::ios::binary);
+bool load_3ds(const std::string &path, MeshData &mesh, std::string &error) {
+    const auto native_path = std::filesystem::u8path(path);
+    std::error_code ec;
+    if (!std::filesystem::exists(native_path, ec) && !ec) { error = "file_missing"; return false; }
+    std::ifstream file(native_path, std::ios::binary);
     if (!file.is_open()) {
+        error = "file_open_failed";
         return false;
     }
 
     Chunk root;
-    if (!read_chunk(file, root) || root.id != 0x4D4D) {
+    error = "invalid_3ds";
+    file.seekg(0, std::ios::end);
+    const auto file_end = file.tellg();
+    file.seekg(0);
+    if (!read_chunk(file, root) || root.id != 0x4D4D || root.length < 6 ||
+        static_cast<std::streamoff>(root.length) > file_end ||
+        !validate_chunks(file, static_cast<std::streamoff>(root.length))) {
         return false;
     }
 
+    file.seekg(6);
     std::string texture_filename;
     FaceColorAccum color_accum;
     std::unordered_map<std::string, MaterialInfo> materials;
@@ -557,8 +617,19 @@ bool load_3ds(const std::string &path, MeshData &mesh) {
     }
 
     if (mesh.vertices.empty() || mesh.indices.empty()) {
+        error = "no_renderable_geometry";
         return false;
     }
+    for (float value : mesh.vertices) if (!std::isfinite(value)) return false;
+    for (uint32_t index : mesh.indices) if (index >= mesh.vertices.size() / 3) return false;
+    bool renderable = false;
+    for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+        const auto a = mesh.indices[i] * 3, b = mesh.indices[i + 1] * 3, c = mesh.indices[i + 2] * 3;
+        const double ux = mesh.vertices[b] - mesh.vertices[a], uy = mesh.vertices[b + 1] - mesh.vertices[a + 1], uz = mesh.vertices[b + 2] - mesh.vertices[a + 2];
+        const double vx = mesh.vertices[c] - mesh.vertices[a], vy = mesh.vertices[c + 1] - mesh.vertices[a + 1], vz = mesh.vertices[c + 2] - mesh.vertices[a + 2];
+        if (std::abs(uy * vz - uz * vy) + std::abs(uz * vx - ux * vz) + std::abs(ux * vy - uy * vx) > 0) renderable = true;
+    }
+    if (!renderable) { error = "no_renderable_geometry"; return false; }
 
     const size_t vertex_count = mesh.vertices.size() / 3U;
     if (!mesh.texcoords.empty()) {
@@ -595,6 +666,7 @@ bool load_3ds(const std::string &path, MeshData &mesh) {
 
 namespace peraviz {
 
+// Decodes a Godot path to UTF-8 and returns validated packed mesh data or a stable failure reason.
 bool load_3ds_mesh_data(const godot::String &path,
                         godot::PackedVector3Array &out_vertices,
                         godot::PackedVector3Array &out_normals,
@@ -606,8 +678,9 @@ bool load_3ds_mesh_data(const godot::String &path,
                         godot::String &out_error) {
     MeshData mesh;
     const std::string utf8_path(path.utf8().get_data());
-    if (!load_3ds(utf8_path, mesh)) {
-        out_error = godot::String("Failed to parse 3DS mesh");
+    std::string error;
+    if (!load_3ds(utf8_path, mesh, error)) {
+        out_error = godot::String::utf8(error.c_str());
         return false;
     }
 
@@ -643,7 +716,7 @@ bool load_3ds_mesh_data(const godot::String &path,
         out_texcoords.set(i, godot::Vector2(mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]));
     }
 
-    out_texture_path = godot::String(mesh.texture_path.c_str());
+    out_texture_path = godot::String::utf8(mesh.texture_path.c_str());
     out_has_material_base_color = mesh.has_material_base_color;
     out_material_base_color = godot::Vector3(mesh.material_base_color[0],
                                              mesh.material_base_color[1],

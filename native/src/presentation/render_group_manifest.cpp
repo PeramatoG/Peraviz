@@ -15,7 +15,7 @@ godot::Array serialize_render_groups(const std::vector<RenderEmitterGroup> &grou
         for (int32_t id:group.physical_ids) physical.push_back(id);
         for (int32_t id:group.control_group_ids) controls.push_back(id);
         d["physical_ids"]=physical; d["control_group_ids"]=controls;
-        d["anchor_geometry_key"]=godot::String(group.anchor_geometry_key.c_str());
+        d["anchor_geometry_key"]=godot::String::utf8(group.anchor_geometry_key.c_str());
         d["origin"]=godot::Vector3(group.origin[0],group.origin[1],group.origin[2]);
         d["direction"]=godot::Vector3(group.direction[0],group.direction[1],group.direction[2]);
         d["aperture_radius"]=group.aperture_radius; d["nominal_flux"]=group.nominal_flux;

@@ -23,6 +23,7 @@ struct GdtfGeometryBuildResult {
     std::vector<SceneNode> nodes;
     runtime_storage::RuntimeDirectoryLease cache_lease;
     std::string cache_path;
+    std::string error;
 };
 
 GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &request,

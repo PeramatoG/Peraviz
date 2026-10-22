@@ -39,11 +39,11 @@ godot::Array serialize_fixture_patches(const peraviz::SceneModel &model) {
     int64_t index = 0;
     for (const auto &patch : model.fixture_patches) {
         godot::Dictionary d;
-        d["fixture_uuid"] = godot::String(patch.fixture_uuid.c_str());
+        d["fixture_uuid"] = godot::String::utf8(patch.fixture_uuid.c_str());
         d["mvr_universe"] = patch.mvr_universe;
         d["mvr_address"] = patch.mvr_address;
-        d["dmx_mode"] = godot::String(patch.dmx_mode.c_str());
-        d["gdtf_path"] = godot::String(patch.gdtf_path.c_str());
+        d["dmx_mode"] = godot::String::utf8(patch.dmx_mode.c_str());
+        d["gdtf_path"] = godot::String::utf8(patch.gdtf_path.c_str());
         out[index++] = d;
     }
     return out;
@@ -57,7 +57,7 @@ godot::Variant to_variant(const peraviz::table_model::RuntimeCellValue &value) {
         if constexpr (std::is_same_v<T, std::monostate>) {
             return godot::Variant();
         } else if constexpr (std::is_same_v<T, std::string>) {
-            return godot::String(cell.c_str());
+            return godot::String::utf8(cell.c_str());
         } else {
             return cell;
         }
@@ -86,7 +86,7 @@ peraviz::table_model::RuntimeCellValue from_variant(const godot::Variant &value)
 godot::Dictionary serialize_runtime_table_schema(const peraviz::table_model::RuntimeTable &table) {
     godot::Dictionary out;
     const auto &schema = table.schema();
-    out["table_id"] = godot::String(schema.table_id.c_str());
+    out["table_id"] = godot::String::utf8(schema.table_id.c_str());
     out["schema_version"] = schema.schema_version;
     out["column_count"] = schema.column_count();
     godot::Array columns;
@@ -95,7 +95,7 @@ godot::Dictionary serialize_runtime_table_schema(const peraviz::table_model::Run
         const auto *column = schema.column_at(index);
         godot::Dictionary item;
         item["index"] = column->index;
-        item["name"] = godot::String(column->name.c_str());
+        item["name"] = godot::String::utf8(column->name.c_str());
         item["value_kind"] = godot::String(peraviz::table_model::to_string(column->value_kind));
         columns[index] = item;
     }
@@ -106,7 +106,7 @@ godot::Dictionary serialize_runtime_table_schema(const peraviz::table_model::Run
 // Serializes one runtime table row for Godot scripts.
 godot::Dictionary serialize_runtime_table_row(const std::string &row_uuid, const peraviz::table_model::RuntimeTableRow &row) {
     godot::Dictionary out;
-    out["row_uuid"] = godot::String(row_uuid.c_str());
+    out["row_uuid"] = godot::String::utf8(row_uuid.c_str());
     godot::Array cells;
     cells.resize(static_cast<int64_t>(row.size()));
     for (int64_t index = 0; index < static_cast<int64_t>(row.size()); ++index) {
@@ -230,23 +230,31 @@ Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool per
                             " objects=", last_scene_model_.object_count,
                             " supports=", last_scene_model_.support_count,
                             " extracted_assets=", last_scene_model_.extracted_asset_count,
-                            " cache=", String(last_scene_model_.cache_path.c_str()));
+                            " source=", String::utf8(last_scene_model_.source_path.c_str()),
+                            " cache=", String::utf8(last_scene_model_.cache_path.c_str()));
 
     Array out;
     out.resize(static_cast<int64_t>(last_scene_model_.nodes.size()));
     int index = 0;
     for (const auto &node : last_scene_model_.nodes) {
         Dictionary d;
-        d["node_id"] = String(node.node_id.c_str());
-        d["parent_id"] = String(node.parent_id.c_str());
-        d["name"] = String(node.name.c_str());
-        d["type"] = String(node.type.c_str());
-        d["class"] = String(node.node_class.c_str());
-        d["asset_kind"] = String(node.asset_kind.c_str());
-        d["asset_path"] = String(node.asset_path.c_str());
-        d["primitive_type"] = String(node.primitive_type.c_str());
-        d["gdtf_geometry_key"] = String(node.gdtf_geometry_key.c_str());
-        d["gdtf_geometry_path"] = String(node.gdtf_geometry_path.c_str());
+        d["node_id"] = String::utf8(node.node_id.c_str());
+        d["parent_id"] = String::utf8(node.parent_id.c_str());
+        d["name"] = String::utf8(node.name.c_str());
+        d["type"] = String::utf8(node.type.c_str());
+        d["class"] = String::utf8(node.node_class.c_str());
+        d["asset_kind"] = String::utf8(node.asset_kind.c_str());
+        d["asset_path"] = String::utf8(node.asset_path.c_str());
+        d["asset_reference"] = String::utf8(node.asset_reference.c_str());
+        d["asset_error"] = String::utf8(node.asset_error.c_str());
+        d["gdtf_source"] = String::utf8(node.gdtf_source.c_str());
+        d["gdtf_fixture_type"] = String::utf8(node.gdtf_fixture_type.c_str());
+        d["gdtf_fixture_uuid"] = String::utf8(node.gdtf_fixture_uuid.c_str());
+        d["gdtf_model_name"] = String::utf8(node.gdtf_model_name.c_str());
+        d["model_dimensions"] = Vector3(node.model_dimensions.x, node.model_dimensions.y, node.model_dimensions.z);
+        d["primitive_type"] = String::utf8(node.primitive_type.c_str());
+        d["gdtf_geometry_key"] = String::utf8(node.gdtf_geometry_key.c_str());
+        d["gdtf_geometry_path"] = String::utf8(node.gdtf_geometry_path.c_str());
         d["primitive_size_x"] = node.primitive_size_x;
         d["primitive_size_y"] = node.primitive_size_y;
         d["primitive_size_z"] = node.primitive_size_z;
@@ -266,7 +274,7 @@ Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool per
         d["has_beam_radius"] = node.has_beam_radius;
         d["beam_radius"] = node.beam_radius;
         d["has_beam_type"] = node.has_beam_type;
-        d["beam_type"] = String(node.beam_type.c_str());
+        d["beam_type"] = String::utf8(node.beam_type.c_str());
         d["has_throw_ratio"] = node.has_throw_ratio;
         d["throw_ratio"] = node.throw_ratio;
         d["has_rectangle_ratio"] = node.has_rectangle_ratio;
@@ -359,9 +367,9 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         item["gobo_asset_id"] = asset.gobo_asset_id;
         item["wheel_id"] = asset.wheel_id;
         item["slot_index"] = asset.slot_index;
-        item["source_media_reference"] = String(asset.source_media_reference.c_str());
-        item["extracted_media_path"] = String(asset.extracted_media_path.c_str());
-        item["extraction_provenance"] = String(asset.extraction_provenance.c_str());
+        item["source_media_reference"] = String::utf8(asset.source_media_reference.c_str());
+        item["extracted_media_path"] = String::utf8(asset.extracted_media_path.c_str());
+        item["extraction_provenance"] = String::utf8(asset.extraction_provenance.c_str());
         item["source_width"] = asset.source_width;
         item["source_height"] = asset.source_height;
         item["open_slot"] = asset.open_slot;
@@ -373,10 +381,10 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     for (int64_t index = 0; index < static_cast<int64_t>(scene.diagnostics.size()); ++index) {
         const peraviz::runtime::CompiledRuntimeDiagnostic &diagnostic = scene.diagnostics[static_cast<size_t>(index)];
         Dictionary item;
-        item["code"] = String(diagnostic.code.c_str());
-        item["severity"] = String(diagnostic.severity.c_str());
-        item["message"] = String(diagnostic.message.c_str());
-        item["subject"] = String(diagnostic.subject.c_str());
+        item["code"] = String::utf8(diagnostic.code.c_str());
+        item["severity"] = String::utf8(diagnostic.severity.c_str());
+        item["message"] = String::utf8(diagnostic.message.c_str());
+        item["subject"] = String::utf8(diagnostic.subject.c_str());
         diagnostics[index] = item;
     }
     load_metrics_["runtime_payload_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - contract_start).count();
@@ -408,9 +416,9 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
         const peraviz::runtime::CompiledFixtureInstance &fixture = scene.fixtures[static_cast<size_t>(fixture_index)];
         Dictionary entry;
         entry["fixture_id"] = fixture.fixture_id;
-        entry["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
-        entry["gdtf_path"] = String(fixture.fixture_type_name.c_str());
-        entry["dmx_mode"] = String(fixture.dmx_mode_name.c_str());
+        entry["fixture_uuid"] = String::utf8(fixture.fixture_uuid.c_str());
+        entry["gdtf_path"] = String::utf8(fixture.fixture_type_name.c_str());
+        entry["dmx_mode"] = String::utf8(fixture.dmx_mode_name.c_str());
         entry["universe_id"] = fixture.universe_id;
         entry["start_address"] = fixture.start_address;
         int32_t capability_flags = 0;
@@ -444,16 +452,16 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             }
             Dictionary target;
             target["fixture_id"] = fixture.fixture_id;
-            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["fixture_uuid"] = String::utf8(fixture.fixture_uuid.c_str());
             target["property_id"] = property.property_id;
             target["component_id"] = property.component_id;
             target["render_target_id"] = property.render_target_id;
             target["target_id"] = target_id;
             target["semantic"] = semantic;
             target["geometry_id"] = property.geometry_id;
-            target["geometry_name"] = String(property.geometry_name.c_str());
-            target["geometry_key"] = String(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
-            target["geometry_path"] = String(property.geometry_name.c_str());
+            target["geometry_name"] = String::utf8(property.geometry_name.c_str());
+            target["geometry_key"] = String::utf8(peraviz::gdtf_runtime::make_fixture_geometry_key(fixture.fixture_uuid, property.geometry_name).c_str());
+            target["geometry_path"] = String::utf8(property.geometry_name.c_str());
             targets.push_back(target);
             renderer_targets.push_back(target);
         }
@@ -465,16 +473,16 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             capability_flags |= 16;
             Dictionary target;
             target["fixture_id"] = fixture.fixture_id;
-            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["fixture_uuid"] = String::utf8(fixture.fixture_uuid.c_str());
             target["property_id"] = color_target.color_target_id;
             target["component_id"] = 0;
             target["render_target_id"] = color_target.beam_render_target_id;
             target["target_id"] = color_target.beam_render_target_id;
             target["semantic"] = "color";
             target["geometry_id"] = color_target.geometry_id;
-            target["geometry_name"] = String(color_target.geometry_name.c_str());
-            target["geometry_key"] = String(color_target.geometry_key.c_str());
-            target["geometry_path"] = String(color_target.geometry_name.c_str());
+            target["geometry_name"] = String::utf8(color_target.geometry_name.c_str());
+            target["geometry_key"] = String::utf8(color_target.geometry_key.c_str());
+            target["geometry_path"] = String::utf8(color_target.geometry_name.c_str());
             targets.push_back(target);
             renderer_targets.push_back(target);
         }
@@ -485,31 +493,31 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
             }
             Dictionary target;
             target["fixture_id"] = fixture.fixture_id;
-            target["fixture_uuid"] = String(fixture.fixture_uuid.c_str());
+            target["fixture_uuid"] = String::utf8(fixture.fixture_uuid.c_str());
             target["property_id"] = 0;
             target["component_id"] = 0;
             target["render_target_id"] = profile.render_target_id;
             target["target_id"] = profile.render_target_id;
             target["semantic"] = "beam_profile";
             target["geometry_id"] = profile.geometry_instance_id;
-            target["geometry_name"] = String(profile.geometry_path.c_str());
-            target["geometry_key"] = String(profile.geometry_key.c_str());
-            target["geometry_path"] = String(profile.geometry_path.c_str());
+            target["geometry_name"] = String::utf8(profile.geometry_path.c_str());
+            target["geometry_key"] = String::utf8(profile.geometry_key.c_str());
+            target["geometry_path"] = String::utf8(profile.geometry_path.c_str());
             Dictionary optical;
-            optical["beam_type"] = String(profile.beam_type.c_str());
+            optical["beam_type"] = String::utf8(profile.beam_type.c_str());
             optical["beam_type_explicit"] = profile.beam_type_explicit;
             optical["beam_angle_explicit"] = profile.beam_angle_explicit;
             optical["field_angle_explicit"] = profile.field_angle_explicit;
             optical["beam_angle"] = profile.beam_angle_deg;
             optical["field_angle"] = profile.field_angle_deg;
             optical["official_beam_radius_m"] = profile.beam_radius_m;
-            optical["beam_radius_source"] = String(profile.beam_radius_source.c_str());
+            optical["beam_radius_source"] = String::utf8(profile.beam_radius_source.c_str());
             optical["throw_ratio"] = profile.throw_ratio;
             optical["rectangle_ratio"] = profile.rectangle_ratio;
             optical["luminous_flux"] = profile.luminous_flux;
             optical["raw_luminous_flux"] = profile.raw_luminous_flux;
             optical["effective_luminous_flux_lm"] = profile.effective_luminous_flux_lm;
-            optical["luminous_flux_source"] = String(profile.luminous_flux_source.c_str());
+            optical["luminous_flux_source"] = String::utf8(profile.luminous_flux_source.c_str());
             optical["projected_lumen_scale"] = profile.projected_lumen_scale;
             optical["emission_lumen_scale"] = profile.emission_lumen_scale;
             optical["color_temperature"] = profile.color_temperature;
@@ -599,9 +607,9 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     for (int64_t patch_index = 0; patch_index < static_cast<int64_t>(last_scene_model_.fixture_patches.size()); ++patch_index) {
         const auto &patch = last_scene_model_.fixture_patches[static_cast<size_t>(patch_index)];
         Dictionary result;
-        result["fixture_uuid"] = String(patch.fixture_uuid.c_str());
-        result["gdtf_path"] = String(patch.gdtf_path.c_str());
-        result["dmx_mode"] = String(patch.dmx_mode.c_str());
+        result["fixture_uuid"] = String::utf8(patch.fixture_uuid.c_str());
+        result["gdtf_path"] = String::utf8(patch.gdtf_path.c_str());
+        result["dmx_mode"] = String::utf8(patch.dmx_mode.c_str());
         result["mvr_universe"] = patch.mvr_universe;
         result["mvr_address"] = patch.mvr_address;
         const int32_t fixture_id = fixture_ids[patch.fixture_uuid];
@@ -708,7 +716,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
     int64_t binding_index = 0;
     for (const auto &binding : result.bindings) {
         Dictionary item;
-        item["fixture_uuid"] = String(binding.fixture_uuid.c_str());
+        item["fixture_uuid"] = String::utf8(binding.fixture_uuid.c_str());
         item["artnet_universe_id"] = binding.artnet_universe_id;
         item["dimmer_channel_index_0"] = binding.dimmer.coarse_dmx_channel_index_0;
         item["dimmer_fine_channel_index_0"] = binding.dimmer.fine_dmx_channel_index_0;
@@ -741,12 +749,12 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
         item["gobo_rotation_fine_channel_index_0"] = binding.gobo_rotation.fine_dmx_channel_index_0;
         item["gobo_rotation_ultra_fine_channel_index_0"] = binding.gobo_rotation.ultra_fine_dmx_channel_index_0;
         item["gobo_wheel_number"] = binding.gobo_wheel_number;
-        item["gobo_wheel_name"] = String(binding.gobo_wheel_name.c_str());
+        item["gobo_wheel_name"] = String::utf8(binding.gobo_wheel_name.c_str());
 
         item["gobo1_channel_index_0"] = binding.gobo.coarse_dmx_channel_index_0;
         item["gobo1_fine_channel_index_0"] = binding.gobo.fine_dmx_channel_index_0;
         item["gobo1_ultra_fine_channel_index_0"] = binding.gobo.ultra_fine_dmx_channel_index_0;
-        item["gobo1_wheel_name"] = String(binding.gobo_wheel_name.c_str());
+        item["gobo1_wheel_name"] = String::utf8(binding.gobo_wheel_name.c_str());
 
         Array gobo_slots;
         gobo_slots.resize(static_cast<int64_t>(binding.gobo_slots.size()));
@@ -754,7 +762,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
             const auto &slot = binding.gobo_slots[static_cast<size_t>(slot_index)];
             Dictionary slot_item;
             slot_item["slot_index"] = slot.slot_index;
-            slot_item["image_path"] = String(slot.image_path.c_str());
+            slot_item["image_path"] = String::utf8(slot.image_path.c_str());
             gobo_slots[slot_index] = slot_item;
         }
         item["gobo_slots"] = gobo_slots;
@@ -782,7 +790,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
             const auto &wheel = binding.gobo_wheels[static_cast<size_t>(wheel_index)];
             Dictionary wheel_item;
             wheel_item["wheel_number"] = wheel.wheel_number;
-            wheel_item["wheel_name"] = String(wheel.wheel_name.c_str());
+            wheel_item["wheel_name"] = String::utf8(wheel.wheel_name.c_str());
             wheel_item["channel_index_0"] = wheel.channel.coarse_dmx_channel_index_0;
             wheel_item["fine_channel_index_0"] = wheel.channel.fine_dmx_channel_index_0;
             wheel_item["ultra_fine_channel_index_0"] = wheel.channel.ultra_fine_dmx_channel_index_0;
@@ -854,7 +862,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
                 const auto &slot = wheel.slots[static_cast<size_t>(slot_index)];
                 Dictionary slot_item;
                 slot_item["slot_index"] = slot.slot_index;
-                slot_item["image_path"] = String(slot.image_path.c_str());
+                slot_item["image_path"] = String::utf8(slot.image_path.c_str());
                 wheel_slots[slot_index] = slot_item;
             }
             wheel_item["slots"] = wheel_slots;
@@ -889,8 +897,8 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
     int64_t unbound_index = 0;
     for (const auto &item : result.unbound) {
         Dictionary d;
-        d["fixture_uuid"] = String(item.fixture_uuid.c_str());
-        d["reason"] = String(item.reason.c_str());
+        d["fixture_uuid"] = String::utf8(item.fixture_uuid.c_str());
+        d["reason"] = String::utf8(item.reason.c_str());
         unbound[unbound_index++] = d;
     }
 
@@ -900,8 +908,8 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
     for (const auto &warning : result.warnings) {
         Dictionary warning_item;
         warning_item["code"] = String("PVZ-GDTF-GOBO-MEDIA-MISSING");
-        warning_item["fixture_uuid"] = String(warning.fixture_uuid.c_str());
-        warning_item["detail"] = String(warning.reason.c_str());
+        warning_item["fixture_uuid"] = String::utf8(warning.fixture_uuid.c_str());
+        warning_item["detail"] = String::utf8(warning.reason.c_str());
         warnings.push_back(warning_item);
     }
     out["warnings"] = warnings;

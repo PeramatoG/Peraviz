@@ -233,6 +233,11 @@ jobs:
         run: |
           python3 .github/scripts/run_gdscript_tests.py --godot "$GODOT_BIN" --project "${{ github.workspace }}" --output "$LOG_DIR/gdscript" --timeout 60
 
+      - name: Verify importer meshes and Unicode paths
+        if: env.CACHE_WARMING != 'true'
+        run: |
+          python3 tests/integration/run_importer_unicode_smoke.py --godot "$GODOT_BIN" 2>&1 | tee "$LOG_DIR/importer-unicode-smoke.log"
+
       - name: Summarize cache behavior
         if: always() && steps.compiler.outcome == 'success' && steps.sccache-stats.outcome == 'success'
         run: |

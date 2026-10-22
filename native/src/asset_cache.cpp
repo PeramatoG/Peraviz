@@ -6,7 +6,7 @@
 #include <cctype>
 #include <cstdint>
 #include <fstream>
-#include <optional>
+#include <iomanip>
 #include <sstream>
 #include <vector>
 
@@ -17,7 +17,7 @@ namespace {
 std::string to_lower_ascii(std::string value) {
 // Applies lowercase conversion to each character in the string.
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
+        return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
     });
     return value;
 }
@@ -73,7 +73,7 @@ std::filesystem::path cache_safe_relative_path(const std::string &normalized_arc
 // Trims ASCII whitespace from both ends of a string.
 std::string trim_ascii(std::string value) {
     const auto is_space = [](unsigned char c) {
-        return std::isspace(c) != 0;
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
     };
 
     while (!value.empty() && is_space(static_cast<unsigned char>(value.front()))) {
@@ -85,24 +85,10 @@ std::string trim_ascii(std::string value) {
     return value;
 }
 
-// Returns the lowercase stem of a filesystem path.
-std::string path_stem_lower(const std::string &normalized_path) {
-    const std::filesystem::path path = std::filesystem::u8path(normalized_path);
-    return to_lower_ascii(path.stem().u8string());
-}
-
 // Returns the lowercase extension of a filesystem path.
 std::string path_extension_lower(const std::string &normalized_path) {
     const std::filesystem::path path = std::filesystem::u8path(normalized_path);
     return to_lower_ascii(path.extension().u8string());
-}
-
-// Returns whether a file extension is supported as a model.
-bool is_supported_model_extension(const std::string &extension_lower) {
-    return extension_lower == ".3ds" || extension_lower == ".glb" ||
-           extension_lower == ".gltf" || extension_lower == ".obj" ||
-           extension_lower == ".dae" || extension_lower == ".fbx" ||
-           extension_lower == ".stl";
 }
 
 // Returns whether an extension is a supported model dependency.
@@ -115,27 +101,7 @@ bool is_supported_texture_or_scene_dependency_extension(const std::string &exten
            extension_lower == ".mtl" || extension_lower == ".bin";
 }
 
-// Builds a normalized lookup key for GDTF resources.
-std::string gdtf_lookup_key(const std::string &archive_path) {
-    const std::string normalized = trim_ascii(normalize_archive_path(archive_path));
-    if (normalized.empty()) {
-        return {};
-    }
-
-    std::filesystem::path path = std::filesystem::u8path(normalized);
-    std::string stem = trim_ascii(path.stem().u8string());
-    std::string extension = to_lower_ascii(path.extension().u8string());
-    if (extension.empty()) {
-        extension = ".gdtf";
-    }
-    if (extension != ".gdtf") {
-        return {};
-    }
-
-    return to_lower_ascii(stem + extension);
-}
-
-// Computes a stable hash from file contents.
+// Computes a stable 128-bit non-cryptographic content fingerprint plus byte length.
 std::string hash_file_contents(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
@@ -144,16 +110,22 @@ std::string hash_file_contents(const std::filesystem::path &path) {
 
     std::uint64_t hash = 1469598103934665603ULL;
     constexpr std::uint64_t prime = 1099511628211ULL;
+    std::uint64_t second_hash = 7809847782465536322ULL;
+    std::uint64_t size = 0;
     char buffer[4096];
     while (input.read(buffer, sizeof(buffer)) || input.gcount() > 0) {
         for (std::streamsize i = 0; i < input.gcount(); ++i) {
             hash ^= static_cast<unsigned char>(buffer[i]);
             hash *= prime;
+            second_hash ^= static_cast<unsigned char>(buffer[i]);
+            second_hash *= 14029467366897019727ULL;
+            ++size;
         }
     }
 
     std::ostringstream ss;
-    ss << std::hex << hash;
+    ss << std::hex << std::setfill('0') << std::setw(16) << hash
+       << std::setw(16) << second_hash << "_" << size;
     return ss.str();
 }
 
@@ -175,355 +147,155 @@ std::string parent_archive_dir(const std::string &normalized_path) {
 
 namespace peraviz {
 
-// Creates a session-owned extraction cache for one archive.
+// Creates one content-keyed workspace and indexes its source archive once.
 ZipAssetCache::ZipAssetCache(std::string source_path)
     : source_path_(std::filesystem::u8path(source_path)) {
-    const std::string source_name = sanitize_path_component_for_fs(source_path_.filename().u8string());
-    const std::string cache_key = source_name + "_" + hash_file_contents(source_path_);
+    const std::string cache_key = "archive_" + hash_file_contents(source_path_);
     cache_lease_ = runtime_storage::acquire_session_cache_directory(cache_key);
     cache_dir_ = cache_lease_.path();
+    if (archive_.open_read(source_path_)) entries_ = archive_.list_files();
+    else last_error_ = "archive_open_failed";
 }
 
 // Returns the directory used to store extracted cache files.
-const std::filesystem::path &ZipAssetCache::cache_dir() const {
-    return cache_dir_;
-}
+const std::filesystem::path &ZipAssetCache::cache_dir() const { return cache_dir_; }
 
 // Returns the shared lease that keeps extracted files available.
-runtime_storage::RuntimeDirectoryLease ZipAssetCache::cache_lease() const {
-    return cache_lease_;
+runtime_storage::RuntimeDirectoryLease ZipAssetCache::cache_lease() const { return cache_lease_; }
+
+// Returns the number of unique assets extracted by this cache owner.
+int ZipAssetCache::extracted_assets() const { return static_cast<int>(extracted_.size()); }
+
+// Returns a stable reason for the most recent resolution/extraction failure.
+const std::string &ZipAssetCache::last_error() const { return last_error_; }
+
+// Resolves exact normalized entries before unambiguous compatibility lookups.
+std::string ZipAssetCache::resolve_entry(const std::string &reference, bool basename_fallback) {
+    if (!archive_.is_open()) { last_error_ = "archive_open_failed"; return {}; }
+    const std::string normalized = normalize_archive_path(reference);
+    if (normalized.empty()) { last_error_ = "invalid_resource_reference"; return {}; }
+    const auto exact = std::find(entries_.begin(), entries_.end(), normalized);
+    if (exact != entries_.end()) return *exact;
+    const std::string folded = to_lower_ascii(normalized);
+    std::string match;
+    for (const auto &entry : entries_) {
+        if (to_lower_ascii(entry) != folded) continue;
+        if (!match.empty()) { last_error_ = "ambiguous_resource_reference"; return {}; }
+        match = entry;
+    }
+    if (!match.empty() || !basename_fallback) return match;
+    const auto filename = to_lower_ascii(std::filesystem::u8path(normalized).filename().u8string());
+    for (const auto &entry : entries_) {
+        if (to_lower_ascii(std::filesystem::u8path(entry).filename().u8string()) != filename) continue;
+        if (!match.empty()) { last_error_ = "ambiguous_resource_reference"; return {}; }
+        match = entry;
+    }
+    return match;
 }
 
-// Returns metadata for assets extracted from the source archive.
-int ZipAssetCache::extracted_assets() const {
-    return static_cast<int>(extracted_.size());
-}
-
-// Extracts texture and scene dependencies that live beside a model entry.
-static void extract_related_model_assets(ZipAssetCache &cache,
-                                         const std::filesystem::path &source_path,
-                                         const std::string &model_archive_path) {
-    const std::string normalized_model_path = normalize_archive_path(model_archive_path);
-    if (normalized_model_path.empty()) {
-        return;
-    }
-
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(source_path)) {
-        return;
-    }
-
-    const std::string model_dir = parent_archive_dir(normalized_model_path);
-    for (const std::string &entry_name : archive.list_files()) {
-        if (entry_name.empty()) {
-            continue;
-        }
-        if (!model_dir.empty()) {
-            if (entry_name.rfind(model_dir, 0) != 0) {
-                continue;
-            }
-        } else if (entry_name.find('/') != std::string::npos) {
-            continue;
-        }
-
-        const std::string extension = path_extension_lower(entry_name);
-        if (!is_supported_texture_or_scene_dependency_extension(extension)) {
-            continue;
-        }
-
-        cache.ensure_extracted(entry_name);
-    }
-}
-
-// Ensures the source archive has been extracted into the cache.
-std::string ZipAssetCache::ensure_extracted(const std::string &archive_relative_path) {
-    if (archive_relative_path.empty()) {
+// Extracts the canonical archive entry without aliasing sanitized filesystem names.
+std::string ZipAssetCache::ensure_extracted(const std::string &reference) {
+    last_error_.clear();
+    const std::string entry = resolve_entry(reference, false);
+    if (entry.empty()) {
+        if (last_error_.empty()) last_error_ = archive_.is_open() ? "resource_not_found" : "archive_open_failed";
         return {};
     }
-
-    const std::string normalized = normalize_archive_path(archive_relative_path);
-    if (normalized.empty()) {
-        return {};
-    }
-
-    const std::filesystem::path safe_relative = cache_safe_relative_path(normalized);
-    if (safe_relative.empty()) {
-        return {};
-    }
-
-    const std::filesystem::path out_path = cache_dir_ / safe_relative;
-    std::error_code ec;
-    std::filesystem::create_directories(out_path.parent_path(), ec);
-    if (std::filesystem::exists(out_path)) {
-        return out_path.u8string();
-    }
-
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(source_path_)) {
-        return {};
-    }
-
-    const std::string target_lower = to_lower_ascii(normalized);
-    for (const std::string &entry_name : archive.list_files()) {
-        if (to_lower_ascii(entry_name) != target_lower) {
-            continue;
-        }
-
-        if (!archive.extract_file(entry_name, out_path)) {
+    if (const auto found = resolved_.find(entry); found != resolved_.end()) return found->second;
+    const auto relative = cache_safe_relative_path(entry);
+    // Reject mappings that collide after Windows filename sanitation on every OS.
+    for (const auto &other : entries_) {
+        if (other != entry && to_lower_ascii(cache_safe_relative_path(other).generic_u8string()) ==
+                              to_lower_ascii(relative.generic_u8string())) {
+            last_error_ = "ambiguous_extraction_path";
             return {};
         }
-
-        extracted_.insert(normalized);
-        return out_path.u8string();
     }
+    const auto output = cache_dir_ / relative;
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(output, ec) && !archive_.extract_file(entry, output)) {
+        last_error_ = "resource_extraction_failed";
+        return {};
+    }
+    extracted_.insert(entry);
+    return resolved_.emplace(entry, output.u8string()).first->second;
+}
 
+// Extracts a named file, accepting a unique nested basename for compatibility.
+std::string ZipAssetCache::ensure_archive_file_extracted(const std::string &reference) {
+    last_error_.clear();
+    const auto entry = resolve_entry(reference, true);
+    if (!entry.empty()) return ensure_extracted(entry);
+    if (last_error_.empty()) last_error_ = "resource_not_found";
     return {};
 }
 
-// Ensures a specific archive entry is extracted to disk.
-std::string ZipAssetCache::ensure_archive_file_extracted(const std::string &file_name) {
-    const std::string normalized_file = to_lower_ascii(trim_ascii(normalize_archive_path(file_name)));
-    if (normalized_file.empty()) {
-        return {};
-    }
+// Resolves explicit GDTF extensions without changing the incoming specification.
+std::string ZipAssetCache::ensure_gdtf_spec_extracted(const std::string &spec) {
+    std::string normalized = trim_ascii(normalize_archive_path(spec));
+    if (std::filesystem::u8path(normalized).extension().empty()) normalized += ".gdtf";
+    return ensure_archive_file_extracted(normalized);
+}
 
-    if (const std::string direct = ensure_extracted(normalized_file); !direct.empty()) {
-        return direct;
+// Extracts companion assets once per model directory while retaining relative paths.
+void ZipAssetCache::extract_model_dependencies(const std::string &entry) {
+    const auto directory = parent_archive_dir(entry);
+    if (!dependencies_extracted_.insert(directory).second) return;
+    for (const auto &dependency : entries_) {
+        if ((!directory.empty() && dependency.rfind(directory, 0) != 0) ||
+            (directory.empty() && dependency.find('/') != std::string::npos)) continue;
+        if (is_supported_texture_or_scene_dependency_extension(path_extension_lower(dependency)))
+            ensure_extracted(dependency);
     }
+}
 
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(source_path_)) {
-        return {};
-    }
-
-    for (const std::string &entry_name : archive.list_files()) {
-        const std::string entry_name_lower = to_lower_ascii(entry_name);
-        if (entry_name_lower != normalized_file &&
-            entry_name_lower.rfind("/" + normalized_file) == std::string::npos) {
-            continue;
+// Resolves models without substituting a different explicit format or ambiguous stem.
+std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, bool gdtf_basename) {
+    last_error_.clear();
+    const auto normalized = normalize_archive_path(reference);
+    if (normalized.empty()) { last_error_ = "invalid_resource_reference"; return {}; }
+    const auto extension = path_extension_lower(normalized);
+    const std::vector<std::string> formats = {".3ds", ".glb", ".gltf", ".obj", ".dae", ".fbx", ".stl"};
+    const bool explicit_format = std::find(formats.begin(), formats.end(), extension) != formats.end();
+    std::vector<std::string> candidates;
+    if (gdtf_basename && explicit_format) candidates.push_back(normalized);
+    if (gdtf_basename) {
+        const auto filename = std::filesystem::u8path(normalized).filename().u8string();
+        // Model.File is an extensionless basename: periods are ordinary name characters.
+        // Known extensions/subfolders are accepted only as compatibility references.
+        for (const auto *folder : {"3ds", "gltf", "3ds_low", "gltf_low", "3ds_high", "gltf_high"}) {
+            const std::string format = std::string(folder).rfind("gltf", 0) == 0 ? ".glb" : ".3ds";
+            if (!explicit_format || extension == format)
+                candidates.push_back("models/" + std::string(folder) + "/" + filename + (explicit_format ? "" : format));
         }
-
-        return ensure_extracted(entry_name);
     }
-
+    if (!gdtf_basename && !extension.empty()) candidates.push_back(normalized);
+    else if (!explicit_format) for (const auto &format : formats) candidates.push_back(normalized + format);
+    // Exact paths across all candidate formats take priority over basename heuristics.
+    for (bool fallback : {false, true}) {
+        for (const auto &candidate : candidates) {
+            const auto entry = resolve_entry(candidate, fallback);
+            if (!last_error_.empty()) return {};
+            if (entry.empty()) continue;
+            const auto extracted = ensure_extracted(entry);
+            if (extracted.empty()) return {};
+            extract_model_dependencies(entry);
+            last_error_.clear();
+            return extracted;
+        }
+    }
+    last_error_ = "resource_not_found";
     return {};
 }
 
-// Ensures the GDTF specification XML is extracted and available.
-std::string ZipAssetCache::ensure_gdtf_spec_extracted(const std::string &gdtf_spec) {
-    const std::string normalized = trim_ascii(normalize_archive_path(gdtf_spec));
-    if (normalized.empty()) {
-        return {};
-    }
-
-    const std::filesystem::path spec_path = std::filesystem::u8path(normalized);
-    const std::string extension = to_lower_ascii(spec_path.extension().u8string());
-
-    std::vector<std::string> candidates;
-    candidates.push_back(normalized);
-    if (extension.empty()) {
-        candidates.push_back(normalized + ".gdtf");
-    }
-
-    for (const std::string &candidate : candidates) {
-        if (const std::string extracted = ensure_extracted(candidate); !extracted.empty()) {
-            return extracted;
-        }
-    }
-
-    const std::string expected_key = gdtf_lookup_key(normalized);
-    const std::string expected_filename =
-        to_lower_ascii(trim_ascii(spec_path.filename().u8string()));
-
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(source_path_)) {
-        return {};
-    }
-
-    std::optional<std::string> key_match;
-    std::optional<std::string> file_name_match;
-
-    for (const std::string &entry_name : archive.list_files()) {
-        if (entry_name.empty()) {
-            continue;
-        }
-
-        const std::filesystem::path entry_path = std::filesystem::u8path(entry_name);
-        const std::string entry_extension = to_lower_ascii(entry_path.extension().u8string());
-        if (entry_extension != ".gdtf") {
-            continue;
-        }
-
-        if (!expected_key.empty() && gdtf_lookup_key(entry_name) == expected_key) {
-            key_match = entry_name;
-            break;
-        }
-
-        if (!expected_filename.empty()) {
-            const std::string entry_file_name =
-                to_lower_ascii(trim_ascii(entry_path.filename().u8string()));
-            if (!file_name_match.has_value() && entry_file_name == expected_filename) {
-                file_name_match = entry_name;
-            }
-        }
-    }
-
-    if (key_match.has_value()) {
-        return ensure_extracted(*key_match);
-    }
-    if (file_name_match.has_value()) {
-        return ensure_extracted(*file_name_match);
-    }
-    return {};
+// Resolves an MVR Geometry3D reference through the shared archive cache.
+std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &reference) {
+    return ensure_model_extracted(reference, false);
 }
 
-// Ensures a model referenced by MVR content is extracted.
-std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &model_reference) {
-    const std::string normalized = normalize_archive_path(model_reference);
-    if (normalized.empty()) {
-        return {};
-    }
-
-    const std::filesystem::path model_path = std::filesystem::u8path(normalized);
-    const std::string stem = model_path.stem().u8string();
-    const std::string ext = path_extension_lower(normalized);
-
-    std::vector<std::string> candidates;
-    if (is_supported_model_extension(ext)) {
-        candidates.push_back(normalized);
-        candidates.push_back("models/" + ext.substr(1) + "/" + stem + ext);
-    } else {
-        candidates.push_back(normalized + ".3ds");
-        candidates.push_back(normalized + ".glb");
-        candidates.push_back(normalized + ".gltf");
-        candidates.push_back(normalized + ".obj");
-        candidates.push_back(normalized + ".dae");
-        candidates.push_back(normalized + ".fbx");
-        candidates.push_back(normalized + ".stl");
-        candidates.push_back("models/3ds/" + stem + ".3ds");
-        candidates.push_back("models/glb/" + stem + ".glb");
-        candidates.push_back("models/gltf/" + stem + ".gltf");
-        candidates.push_back("models/obj/" + stem + ".obj");
-        candidates.push_back("models/dae/" + stem + ".dae");
-        candidates.push_back("models/fbx/" + stem + ".fbx");
-        candidates.push_back("models/stl/" + stem + ".stl");
-    }
-
-    for (const std::string &candidate : candidates) {
-        if (const std::string extracted = ensure_extracted(candidate); !extracted.empty()) {
-            extract_related_model_assets(*this, source_path_, candidate);
-            return extracted;
-        }
-    }
-
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(source_path_)) {
-        return {};
-    }
-
-    const std::string stem_lower = to_lower_ascii(trim_ascii(stem));
-    std::optional<std::string> best_entry;
-    for (const std::string &entry_name : archive.list_files()) {
-        if (path_stem_lower(entry_name) != stem_lower) {
-            continue;
-        }
-
-        const std::string entry_ext = path_extension_lower(entry_name);
-        if (!is_supported_model_extension(entry_ext)) {
-            continue;
-        }
-
-        if (!best_entry.has_value() || entry_ext == ".3ds") {
-            best_entry = entry_name;
-            if (entry_ext == ".3ds") {
-                break;
-            }
-        }
-    }
-
-    if (!best_entry.has_value()) {
-        return {};
-    }
-    extract_related_model_assets(*this, source_path_, *best_entry);
-    return ensure_extracted(*best_entry);
-}
-
-// Ensures a model referenced by GDTF content is extracted.
-std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &model_reference) {
-    if (model_reference.empty()) {
-        return {};
-    }
-
-    const std::string normalized = normalize_archive_path(model_reference);
-    if (normalized.empty()) {
-        return {};
-    }
-
-    const std::filesystem::path model_path = std::filesystem::u8path(normalized);
-    const std::string stem = model_path.stem().u8string();
-    const std::string ext = path_extension_lower(normalized);
-
-    std::vector<std::string> candidates;
-    if (is_supported_model_extension(ext)) {
-        candidates.push_back(normalized);
-        candidates.push_back("models/" + ext.substr(1) + "/" + stem + ext);
-    } else {
-        candidates.push_back(normalized + ".3ds");
-        candidates.push_back(normalized + ".glb");
-        candidates.push_back(normalized + ".gltf");
-        candidates.push_back(normalized + ".obj");
-        candidates.push_back(normalized + ".dae");
-        candidates.push_back(normalized + ".fbx");
-        candidates.push_back(normalized + ".stl");
-        candidates.push_back("models/3ds/" + stem + ".3ds");
-        candidates.push_back("models/glb/" + stem + ".glb");
-        candidates.push_back("models/gltf/" + stem + ".gltf");
-        candidates.push_back("models/obj/" + stem + ".obj");
-        candidates.push_back("models/dae/" + stem + ".dae");
-        candidates.push_back("models/fbx/" + stem + ".fbx");
-        candidates.push_back("models/stl/" + stem + ".stl");
-    }
-
-    for (const std::string &candidate : candidates) {
-        const std::string extracted = ensure_extracted(candidate);
-        if (!extracted.empty()) {
-            extract_related_model_assets(*this, source_path_, candidate);
-            return extracted;
-        }
-    }
-
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(source_path_)) {
-        return {};
-    }
-
-    const std::string stem_lower = to_lower_ascii(stem);
-    std::optional<std::string> best_entry;
-    for (const std::string &entry_name : archive.list_files()) {
-        if (path_stem_lower(entry_name) != stem_lower) {
-            continue;
-        }
-
-        const std::string entry_ext = path_extension_lower(entry_name);
-        const bool supported = is_supported_model_extension(entry_ext);
-        if (!supported) {
-            continue;
-        }
-
-        if (!best_entry.has_value() || entry_ext == ".3ds") {
-            best_entry = entry_name;
-            if (entry_ext == ".3ds") {
-                break;
-            }
-        }
-    }
-
-    if (!best_entry.has_value()) {
-        return {};
-    }
-
-    extract_related_model_assets(*this, source_path_, *best_entry);
-    return ensure_extracted(*best_entry);
+// Resolves GDTF File basenames, including standard models/3ds and models/gltf directories.
+std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &reference) {
+    return ensure_model_extracted(reference, true);
 }
 
 } // namespace peraviz

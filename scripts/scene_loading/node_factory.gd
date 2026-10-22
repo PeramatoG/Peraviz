@@ -2,11 +2,17 @@ extends RefCounted
 class_name NodeFactory
 
 var _missing_cache_roots_reported: Dictionary = {}
+var asset_load_summary: Dictionary = {}
+const ModelGeometry = preload("res://scripts/scene_loading/model_geometry.gd")
+const AssetDiagnostics = preload("res://scripts/scene_loading/scene_asset_diagnostics.gd")
+var asset_diagnostics: RefCounted = AssetDiagnostics.new()
 
 func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, budget: SceneLoadBudget = null) -> bool:
 	var constructed: Array[Node3D] = []
 	node_index.clear()
 	_missing_cache_roots_reported.clear()
+	asset_diagnostics.reset(nodes)
+	asset_load_summary = asset_diagnostics.counts
 	for item in nodes:
 		if budget != null and not await budget.checkpoint():
 			_discard_unattached_nodes(constructed)
@@ -37,6 +43,10 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 	_apply_mesh_orientation_corrections(proxies_root, false, loader, asset_cache)
 	_remove_redundant_dummy_meshes(proxies_root)
 	rebuild_loaded_bounds.call()
+	for item: Dictionary in nodes:
+		var created: Node3D = node_index.get(str(item.get("node_id", "")))
+		if created != null: asset_diagnostics.observe(item, created, asset_cache)
+	asset_diagnostics.finish()
 	return true
 
 func _discard_unattached_nodes(constructed: Array[Node3D]) -> void:
@@ -94,8 +104,7 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	var model_node: Node3D = _build_visual_node(data, item_type, item_class, is_fixture, visual_scale_hint, loader, asset_cache, flip_orientation)
 	if model_node != null:
 		root.add_child(model_node)
-		if item_type == "fixture_geometry":
-			_reparent_fixture_visual_children(root, model_node)
+		root.set_meta("peraviz_model_visual", model_node)
 
 	return root
 
@@ -193,13 +202,15 @@ func _remove_redundant_dummy_meshes(root: Node) -> void:
 	var root_node: Node3D = root
 	var placeholders_to_remove: Array[Node] = []
 	for child in root_node.get_children():
-		if child is MeshInstance3D and bool(child.get_meta("peraviz_dummy_placeholder", false)):
+		if child is MeshInstance3D and bool(child.get_meta("peraviz_dummy_placeholder", false)) and not bool(child.get_meta("peraviz_keep_partial_placeholder", false)):
 			placeholders_to_remove.push_back(child)
 	if placeholders_to_remove.is_empty():
 		return
 	if not _node_has_real_visual_descendants(root_node, placeholders_to_remove):
 		return
 	for placeholder in placeholders_to_remove:
+		if root_node.has_meta("peraviz_model_visual") and root_node.get_meta("peraviz_model_visual") == placeholder:
+			root_node.remove_meta("peraviz_model_visual")
 		placeholder.queue_free()
 
 func _node_has_real_visual_descendants(root: Node, ignored_nodes: Array[Node]) -> bool:
@@ -215,48 +226,52 @@ func _node_has_real_visual_descendants(root: Node, ignored_nodes: Array[Node]) -
 			return true
 	return false
 
-func _reparent_fixture_visual_children(geometry_node: Node3D, model_root: Node3D) -> void:
-	if geometry_node == null or model_root == null:
-		return
-	if model_root is MeshInstance3D:
-		return
-	var model_root_local: Transform3D = model_root.transform
-	var moved_any_child: bool = false
-	for child in model_root.get_children():
-		if child is not Node3D:
-			continue
-		var child_node: Node3D = child
-		var child_local_before: Transform3D = child_node.transform
-		var child_local_after: Transform3D = model_root_local * child_local_before
-		model_root.remove_child(child_node)
-		child_node.owner = null
-		geometry_node.add_child(child_node)
-		child_node.transform = child_local_after
-		moved_any_child = true
-	if moved_any_child:
-		model_root.queue_free()
-
-func _build_visual_node(data: Dictionary, item_type: String, item_class: String, is_fixture: bool, visual_scale_hint: float, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, flip_orientation: bool = false) -> Node3D:
+func _build_visual_node(data: Dictionary, item_type: String, _item_class: String, is_fixture: bool, visual_scale_hint: float, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, flip_orientation: bool = false) -> Node3D:
 	var asset_path: String = str(data.get("asset_path", ""))
 	var asset_kind: String = _extract_asset_kind(data, asset_path)
+	var failed: bool = not str(data.get("asset_error", "")).is_empty()
 	if not asset_path.is_empty():
 		var loaded: Variant = _load_3d_asset(asset_path, loader, asset_cache, asset_kind, flip_orientation)
 		if loaded is Node3D:
-			var loaded_node: Node3D = loaded
-			_force_double_sided_materials(loaded_node)
-			return loaded_node
-		print("[Peraviz] Asset fallback for missing/invalid model: ", asset_path, " type=", item_type, " class=", item_class, " asset_kind=", asset_kind)
-
+			var visual: Node3D = loaded
+			if item_type == "fixture_geometry":
+				var normalized: Dictionary = ModelGeometry.dimension_fixture_model(visual, data.get("model_dimensions", Vector3.ZERO))
+				if normalized.ok:
+					visual = normalized.visual
+				else:
+					visual.free()
+					visual = null
+					# Dimensions belong to this model instance, not to the shared raw resource.
+					data["asset_error"] = normalized.error
+					data["asset_error_stage"] = "mesh_creation"
+			if visual != null:
+				_force_double_sided_materials(visual)
+				return visual
+		failed = true
 	if item_type == "fixture" or item_type == "fixture_geometry":
-		if asset_kind == "primitive":
-			var primitive_mesh: Node3D = _create_gdtf_primitive_mesh(data)
-			_force_double_sided_materials(primitive_mesh)
-			return primitive_mesh
+		var primitive: String = str(data.get("primitive_type", "")).to_lower()
+		var known_primitive: bool = primitive in ["cube", "cylinder", "sphere", "base", "yoke", "head", "scanner", "conventional", "pigtail", "base1_1", "scanner1_1", "conventional1_1"]
+		if known_primitive or failed:
+			var substitute: Node3D = _create_gdtf_primitive_mesh(data)
+			if failed:
+				substitute.set_meta("peraviz_model_fallback", true)
+				substitute.set_meta("peraviz_dummy_placeholder", true)
+				substitute.set_meta("peraviz_keep_partial_placeholder", true)
+				var fallback_material := StandardMaterial3D.new()
+				fallback_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				fallback_material.albedo_color = Color(1.0, 0.55, 0.1, 0.18)
+				fallback_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				fallback_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+				(substitute as MeshInstance3D).material_override = fallback_material
+			_force_double_sided_materials(substitute)
+			return substitute
+		if not primitive.is_empty() and primitive != "undefined":
+			data["asset_error"] = "unsupported_primitive"
 		return null
-
-	var dummy_mesh: Node3D = _create_dummy_mesh(is_fixture, visual_scale_hint, asset_cache)
-	_force_double_sided_materials(dummy_mesh)
-	return dummy_mesh
+	var dummy: Node3D = _create_dummy_mesh(is_fixture, visual_scale_hint, asset_cache)
+	if failed: dummy.set_meta("peraviz_model_fallback", true)
+	_force_double_sided_materials(dummy)
+	return dummy
 
 func _force_double_sided_materials(root: Node) -> void:
 	if root == null:
@@ -327,6 +342,8 @@ func _extract_visual_scale_hint(data: Dictionary) -> float:
 	return max(average_scale, 0.0001)
 
 func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, asset_kind_hint: String = "", flip_orientation: bool = false) -> Variant:
+	if asset_cache.is_failed(asset_path):
+		return null
 	var resolved_asset_kind: String = asset_kind_hint.to_lower()
 	if resolved_asset_kind.is_empty() or resolved_asset_kind == "none":
 		resolved_asset_kind = _infer_asset_kind_from_extension(asset_path)
@@ -345,11 +362,11 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			return cached_mesh_instance
 		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
 		if not bool(mesh_data.get("ok", false)):
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, str(mesh_data.get("error", "invalid_3ds")))
 			return null
 		var mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation)
 		if mesh == null:
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, "mesh_construction_failed", "mesh_creation")
 			return null
 		asset_cache.store_mesh(mesh_cache_key, mesh)
 		var mesh_instance := MeshInstance3D.new()
@@ -367,24 +384,27 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			if not _missing_cache_roots_reported.has(cache_root):
 				_missing_cache_roots_reported[cache_root] = true
 				push_error("path_missing_before_godot_load: fixture asset cache is missing: %s" % cache_root)
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, "file_missing", "decoding")
 			return null
 		var gltf := GLTFDocument.new()
 		var state := GLTFState.new()
 		var err: int = gltf.append_from_file(asset_path, state)
 		if err != OK:
-			asset_cache.mark_failed(asset_path)
+			asset_cache.mark_failed(asset_path, "scene_parse_failed:%d" % err)
 			return null
 		var generated: Node = gltf.generate_scene(state)
-		if generated is Node3D:
+		if generated is Node3D and _has_renderable_mesh(generated):
 			var packed_scene := PackedScene.new()
 			if packed_scene.pack(generated) == OK:
 				asset_cache.store_scene(asset_path, packed_scene)
 				generated.free()
 				return asset_cache.instantiate_scene(asset_path)
+			asset_cache.mark_failed(asset_path, "scene_pack_failed", "scene_instantiation")
+			generated.free()
+			return null
 		if generated != null:
 			generated.free()
-		asset_cache.mark_failed(asset_path)
+		asset_cache.mark_failed(asset_path, "no_renderable_geometry", "scene_instantiation")
 		return null
 	var scene_instance: Node3D = asset_cache.instantiate_scene(asset_path)
 	if scene_instance != null:
@@ -395,6 +415,14 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		return asset_cache.instantiate_scene(asset_path)
 	asset_cache.mark_failed(asset_path)
 	return null
+
+func _has_renderable_mesh(node: Node) -> bool:
+	if node is MeshInstance3D and node.mesh != null and node.mesh.get_surface_count() > 0:
+		return true
+	for child in node.get_children():
+		if _has_renderable_mesh(child):
+			return true
+	return false
 
 func _runtime_cache_workspace_for_path(asset_path: String) -> String:
 	var normalized: String = asset_path.replace("\\", "/")
@@ -456,6 +484,8 @@ func _build_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false) -> A
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var array_mesh := ArrayMesh.new()
 	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	if array_mesh.get_surface_count() == 0:
+		return null
 	if not texture_path.is_empty() and texcoords.size() == vertices.size():
 		var image := Image.new()
 		var image_error: Error = image.load(texture_path)
@@ -511,13 +541,9 @@ func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float, asset_cache:
 func _create_gdtf_primitive_mesh(data: Dictionary) -> Node3D:
 	var primitive_type: String = str(data.get("primitive_type", "")).to_lower()
 	var primitive_shape: String = _classify_gdtf_primitive_shape(primitive_type)
-	var source_size_x: float = max(float(data.get("primitive_size_x", 0.1)), 0.001)
-	var source_size_y: float = max(float(data.get("primitive_size_y", 0.1)), 0.001)
-	var source_size_z: float = max(float(data.get("primitive_size_z", 0.1)), 0.001)
-	var sx: float = source_size_x
-	var sy: float = source_size_z
-	var sz: float = source_size_y
-	var primitive_scale: Vector3 = Vector3(sx, sy, sz)
+	var primitive_scale := Vector3(float(data.get("primitive_size_x", 0.1)), float(data.get("primitive_size_z", 0.1)), float(data.get("primitive_size_y", 0.1)))
+	for axis in range(3):
+		if not is_finite(primitive_scale[axis]) or primitive_scale[axis] <= 0: primitive_scale[axis] = 0.1
 	var mesh_instance := MeshInstance3D.new()
 	if primitive_shape == "sphere":
 		var sphere := SphereMesh.new()
@@ -540,6 +566,11 @@ func _create_gdtf_primitive_mesh(data: Dictionary) -> Node3D:
 		var box := BoxMesh.new()
 		box.size = Vector3.ONE
 		mesh_instance.mesh = box
+	# Primitive tessellation bounds can be slightly smaller than the nominal unit shape.
+	# Fit the actual renderer mesh so declared dimensions remain authoritative.
+	var unit_size: Vector3 = mesh_instance.mesh.get_aabb().size
+	for axis in range(3):
+		if unit_size[axis] > 0: primitive_scale[axis] /= unit_size[axis]
 	mesh_instance.scale = primitive_scale
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color(0.2, 0.2, 0.22, 1.0)
@@ -565,3 +596,34 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 	if normalized in ["base", "base1_1", "conventional", "conventional1_1", "cube"]:
 		return "box"
 	return "box"
+
+# Scene activation and renderer installation may change visibility after resource creation.
+# Keep these observations distinct from decoding/mesh success and from actual pixel coverage.
+func refresh_scene_visibility(node_index: Dictionary, budget: SceneLoadBudget = null) -> bool:
+	var visible: int = 0
+	var attached: int = 0
+	var invalid_bounds: int = 0
+	var visible_fixtures: Dictionary = {}
+	for node: Node3D in node_index.values():
+		if budget != null and not await budget.checkpoint(): return false
+		if not node.has_meta("peraviz_model_visual"): continue
+		var visual: Variant = node.get_meta("peraviz_model_visual")
+		if not is_instance_valid(visual) or visual.get_meta("peraviz_model_fallback", false): continue
+		var report: Dictionary = ModelGeometry.inspect(visual)
+		if report.meshes == 0 or not report.has_bounds: continue
+		if not visual.is_inside_tree(): continue
+		attached += 1
+		var world_bounds: AABB = node.global_transform * report.bounds
+		if not report.valid or not world_bounds.position.is_finite() or not world_bounds.size.is_finite() or world_bounds.size.length_squared() == 0:
+			invalid_bounds += 1
+		elif report.visible_meshes > 0:
+			visible += 1
+			var uuid: String = str(node.get_meta("peraviz_fixture_uuid", ""))
+			if not uuid.is_empty(): visible_fixtures[uuid] = true
+	asset_load_summary["attached"] = attached
+	asset_load_summary["visible"] = visible
+	asset_load_summary["fixtures_visible"] = visible_fixtures.size()
+	asset_load_summary["invalid_world_bounds"] = invalid_bounds
+	asset_load_summary["visibility_audited_after_activation"] = true
+	print("[Peraviz] Activated geometry attached=", attached, " visible=", visible, " fixtures_visible=", visible_fixtures.size(), " invalid_world_bounds=", invalid_bounds)
+	return true
