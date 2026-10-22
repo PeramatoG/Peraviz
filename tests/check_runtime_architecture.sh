@@ -93,6 +93,10 @@ require_pattern 'apply_beam_optics\(loader, fixture_uuid, optics_target_id' 'Bea
 reject_pattern 'VisualChangeZoom \| VisualChangeBeamTopology' 'Zoom-only changes must not be marked as topology rebuilds.' native/src/runtime/peraviz_visual_runtime.cpp scripts/runtime/fixture_light_apply_service.gd
 reject_pattern 'var _native_(pan|tilt|dimmer|geometry)_|var _native_target_resolution|var _native_target_registry_summary|func _register_native_axis_target|func _register_native_dimmer_target|func _build_native_geometry_target_map' 'load_scene.gd must delegate native target registry ownership to the focused service.' scripts/load_scene.gd
 
+require_pattern 'consume_native_snapshot' 'Production playback must use direct native composition.' scripts/dmx_fixture_runtime.gd
+require_pattern 'pipeline_\.consume' 'Presentation must connect directly to the native calculation transaction.' native/src/presentation/presentation_state_godot.cpp
+reject_pattern 'WorkerThreadPool|Thread\.new' 'Runtime evaluation workers belong in native C++.' scripts/runtime scripts/dmx_fixture_runtime.gd
+
 # Milestone 1 must keep composition out of the indexed compatibility mutation loop.
 require_path "native/src/presentation/dense_presentation_state.cpp" file
 require_pattern 'compose_dense_snapshot' 'Sectioned playback must invoke native dense presentation.' scripts/runtime/visual_sections/sectioned_visual_frame_applier.gd

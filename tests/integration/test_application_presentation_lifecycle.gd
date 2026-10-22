@@ -126,9 +126,13 @@ func apply_dmx(dimmer: int, red: int, green: int, blue: int, pan: int, tilt: int
 	for base in [0,16]:
 		for offset in range(8): dmx[base+offset] = [dimmer,red,green,blue,pan,tilt,zoom,gobo][offset]
 	runtime._native_visual_runtime.submit_universe_frame(0,dmx)
-	var frame: Dictionary = runtime._native_visual_runtime.consume_latest_visual_frame()
-	if not (frame.get("descriptors",PackedInt32Array()) as PackedInt32Array).is_empty():
-		runtime._sectioned_visual_frame_applier.apply_snapshot(frame,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+	service.set_performance_trace_enabled(runtime._performance_trace_enabled)
+	var frame: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+	test.check(bool(frame.get("native_presentation", false)), "Direct native transaction accepts the installed generations")
+	var descriptors: PackedInt32Array = frame.get("descriptors", PackedInt32Array())
+	for base in range(0, descriptors.size(), 5):
+		test.check(descriptors[base] not in [2,3,4], "Intermediate lighting scalars stay native")
+	runtime._sectioned_visual_frame_applier.apply_snapshot(frame,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
 	await process_frame
 
 func check_active(context: String, gobo: bool = true) -> void:

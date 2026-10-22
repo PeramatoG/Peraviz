@@ -1278,8 +1278,12 @@ int run_realtime_dmx_udp_load_harness(int argc, char **argv);
 
 bool test_control_group_compiler_inheritance();
 
+bool test_direct_presentation_pipeline();
+
 // Runs the full native semantic and presentation-compiler regression suite.
 int main(int argc, char **argv) {
+    if (argc > 1 && std::string(argv[1]) == "--direct-pipeline") return test_direct_presentation_pipeline() ? 0 : 1;
+    if (!test_direct_presentation_pipeline()) return 1;
     if (!test_control_group_compiler_inheritance()) return 1;
     if (argc > 1 && std::string(argv[1]) == "--benchmark") return run_realtime_dmx_load_harness(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--udp-benchmark") return run_realtime_dmx_udp_load_harness(argc, argv);

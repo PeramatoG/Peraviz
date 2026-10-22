@@ -75,18 +75,23 @@ Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, an
 
 ## Native dense presentation state
 
-The [performance foundation is stable](performance-foundation.md); renderer
-scalability remains open. The current canonical full result is about 24–25 FPS,
-not the final target. User arguments after Godot's `--` select diagnostic policy;
-actual mode/resource integration tests guard that boundary.
+The [performance foundation](performance-foundation.md) remains the baseline;
+renderer scalability is still open. Owner observations on Windows 4.7.1 Forward+
+are approximately 40 FPS with active DMX and 75 FPS while holding illumination.
+Those observations do not attribute the remaining cost or predict this change's FPS.
 
-After sectioned semantic evaluation, `PeravizPresentationState` composes Intensity,
-Color and BeamOptics through setup-only integer routes into a contiguous native
-state per physical output. Scene binding assigns stable dense indices while
-preserving canonical output IDs. Generation checks retire stale indices; native
-pending masks deduplicate a bounded dirty-index vector. One packed delta crosses
-to an indexed adapter with pre-bound light, beam and material handles. Normal
-lighting playback bypasses the old per-output Dictionary commit/state pipeline.
+Production calls `PeravizPresentationState.consume_runtime()` once per logical
+update. `DirectPresentationPipeline` connects native selected-mode evaluation,
+`DensePresentationState` composition and `RenderGroupProjection` reduction using
+borrowed, reusable C++ section buffers. Intensity, Color and BeamOptics scalars
+never cross into Godot for further calculation. The sole authoritative physical
+presentation state remains in `DensePresentationState`; the coordinator owns only
+scratch. Godot receives final renderer deltas and independent sectioned Pan/Tilt,
+wheel, gobo and temporal updates. Schema and binding generations are checked
+before consuming pending DMX. Domain presentation finishes before shaft mutation.
+The explicit packed `compose()` API remains for reference tests and cold held-state
+replay; live playback uses the direct transaction.
+
 Godot keeps physical lenses and fallback objects. Compatible controls retain
 shared shaft/lens material ownership in Control Groups. Canonical outputs, selected-mode
 ownership, physical native state and normal Pan/Tilt transforms remain exact;
