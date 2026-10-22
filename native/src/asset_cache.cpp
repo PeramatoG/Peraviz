@@ -250,15 +250,27 @@ void ZipAssetCache::extract_model_dependencies(const std::string &entry) {
 }
 
 // Resolves models without substituting a different explicit format or ambiguous stem.
-std::string ZipAssetCache::ensure_model_extracted(const std::string &reference) {
+std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, bool gdtf_basename) {
     last_error_.clear();
     const auto normalized = normalize_archive_path(reference);
     if (normalized.empty()) { last_error_ = "invalid_resource_reference"; return {}; }
     const auto extension = path_extension_lower(normalized);
+    const std::vector<std::string> formats = {".3ds", ".glb", ".gltf", ".obj", ".dae", ".fbx", ".stl"};
+    const bool explicit_format = std::find(formats.begin(), formats.end(), extension) != formats.end();
     std::vector<std::string> candidates;
-    if (!extension.empty()) candidates.push_back(normalized);
-    else for (const auto *ext : {".3ds", ".glb", ".gltf", ".obj", ".dae", ".fbx", ".stl"})
-        candidates.push_back(normalized + ext);
+    if (gdtf_basename && explicit_format) candidates.push_back(normalized);
+    if (gdtf_basename) {
+        const auto filename = std::filesystem::u8path(normalized).filename().u8string();
+        // Model.File is an extensionless basename: periods are ordinary name characters.
+        // Known extensions/subfolders are accepted only as compatibility references.
+        for (const auto *folder : {"3ds", "gltf", "3ds_low", "gltf_low", "3ds_high", "gltf_high"}) {
+            const std::string format = std::string(folder).rfind("gltf", 0) == 0 ? ".glb" : ".3ds";
+            if (!explicit_format || extension == format)
+                candidates.push_back("models/" + std::string(folder) + "/" + filename + (explicit_format ? "" : format));
+        }
+    }
+    if (!gdtf_basename && !extension.empty()) candidates.push_back(normalized);
+    else if (!explicit_format) for (const auto &format : formats) candidates.push_back(normalized + format);
     // Exact paths across all candidate formats take priority over basename heuristics.
     for (bool fallback : {false, true}) {
         for (const auto &candidate : candidates) {
@@ -278,12 +290,12 @@ std::string ZipAssetCache::ensure_model_extracted(const std::string &reference) 
 
 // Resolves an MVR Geometry3D reference through the shared archive cache.
 std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &reference) {
-    return ensure_model_extracted(reference);
+    return ensure_model_extracted(reference, false);
 }
 
 // Resolves GDTF File basenames, including standard models/3ds and models/gltf directories.
 std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &reference) {
-    return ensure_model_extracted(reference);
+    return ensure_model_extracted(reference, true);
 }
 
 } // namespace peraviz

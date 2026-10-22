@@ -73,6 +73,13 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		if budget.valid() and not await render_readiness.prepare_scene(app.proxies_root, budget):
 			import_result["ok"] = false
 			import_result["error"] = render_readiness.error_message if not render_readiness.error_message.is_empty() else "scene import cancelled"
+	if bool(import_result.get("ok", false)) and budget.valid():
+		budget.phase = "geometry_visibility_audit"
+		if not await app._node_factory.refresh_scene_visibility(app._node_index, budget):
+			import_result["ok"] = false
+			import_result["error"] = "scene import cancelled"
+		else:
+			import_result["geometry_summary"] = app._node_factory.asset_load_summary.duplicate(true)
 	var first_render_ms := (Time.get_ticks_usec() - first_render_started) / 1000.0
 	if not budget.valid():
 		import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}

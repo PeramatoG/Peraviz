@@ -73,3 +73,14 @@ python tests/integration/run_importer_unicode_smoke.py --godot $godot
 ```
 
 Both commands must succeed without script/engine errors. Confirm that all three source variants report five real asset instances and zero fallbacks for the valid scene; the separate deliberate corrupt-model test must report two failures/fallbacks but one unique asset error. The direct Unicode model test exercises the Windows native-path stream, independently of ASCII cache naming. Run from a Unicode checkout or use a Unicode `TEMP` directory as an additional check of native XML and extraction parents. Windows execution cannot be replaced by Linux results.
+
+The regular GDScript runner also executes `test_gdtf_fixture_geometry.gd`. It generates a public synthetic scene with nested Base/Yoke/Head nodes, a selected DMX root, GeometryReference, shared 3DS models with different dimensions, primitive-only and partially missing fixtures, and both GDTF and MVR GLB models. GLB payloads include large coordinates with embedded scale, rotation, translation and reflection. Assertions independently check mesh identity, final local/world bounds and parent-relative positions after the full application setup/activation path.
+
+For an additional local archive audit (input files and reports must stay outside the repository):
+
+```bash
+godot --headless --path . --script tests/integration/audit_fixture_geometry.gd -- \
+  --full-setup --mvr <local-archive> --report <local-report.json>
+```
+
+The audit fails for missing fixture representation, model failures or dimension mismatches unless `--allow-missing` is explicitly supplied for diagnosis. It reports fixture-family outcomes and non-fixture world bounds for before/after comparison. It does not claim screen-pixel verification. Never commit private input archives, extracted resources, screenshots or audit logs/reports. The independent zero-installed-Dimmer/Pan/Tilt runtime warning still requires separate investigation when reproduced; static model success does not establish live DMX support.

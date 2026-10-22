@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Corrected dotted GDTF model basenames and standard model-directory lookup, and fitted fixture meshes to declared dimensions without losing embedded GLB transforms or changing MVR object/truss scaling. Preserved partial-fixture representation and added staged, source/model-aware diagnostics with affected-instance counts and visibility/bounds checks after scene activation. Regression coverage now checks actual 3DS/GLB meshes and full application geometry setup.
+
 - Fixed Unicode MVR/GDTF paths and metadata at the native/Godot boundary and native Windows model/XML file access. Extraction caches use ASCII content identities while preserving Unicode resources, shared leases and deterministic cleanup. Model lookup now preserves ZIP entry identity and explicit extensions, rejects ambiguous matches, and reports distinct mesh failures once per asset with scene geometry counts. Synthetic integration coverage now requires actual embedded 3DS/GLB surfaces through scene replacement and unload.
 
 - Fixed PVZ project opening performing saved visual restoration after reporting scene readiness. Saved visual settings and universe offset now precede resource construction; saved receiver startup and original PVZ preference publication remain inside the loading generation. Bulk visual changes rebuild dense groups once instead of once per physical member, preventing repeated global resource recreation for aggregated fixtures.

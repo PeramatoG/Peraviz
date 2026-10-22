@@ -48,6 +48,11 @@ struct SceneNode {
     std::string asset_path;
     std::string asset_reference;
     std::string asset_error;
+    std::string gdtf_source;
+    std::string gdtf_fixture_type;
+    std::string gdtf_fixture_uuid;
+    std::string gdtf_model_name;
+    Vec3 model_dimensions; // Authored meters in GDTF X/Y/Z; zero leaves an axis unspecified.
     std::string primitive_type;
     std::string gdtf_geometry_key;
     std::string gdtf_geometry_path;

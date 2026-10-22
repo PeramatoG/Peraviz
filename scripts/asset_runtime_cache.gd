@@ -65,6 +65,7 @@ func instantiate_scene(asset_path: String) -> Node3D:
 		var instance: Node = cached.instantiate()
 		if instance is Node3D:
 			return instance
+		instance.free()
 	_register_miss("scene", asset_path)
 	return null
 
@@ -95,14 +96,14 @@ func is_failed(asset_path: String) -> bool:
 	return _failed_paths.has(asset_path)
 
 func failure_reason(asset_path: String) -> String:
-	return str(_failed_paths.get(asset_path, ""))
+	return str(_failed_paths.get(asset_path, {}).get("reason", ""))
 
-func mark_failed(asset_path: String, reason: String = "resource_load_failed") -> void:
-	if asset_path.is_empty():
-		return
-	if not _failed_paths.has(asset_path):
-		print("[Peraviz] Asset failure reason=", reason, " path=", asset_path)
-	_failed_paths[asset_path] = reason
+func failure_stage(asset_path: String) -> String:
+	return str(_failed_paths.get(asset_path, {}).get("stage", "decoding"))
+
+func mark_failed(asset_path: String, reason: String = "resource_load_failed", stage: String = "decoding") -> void:
+	if not asset_path.is_empty():
+		_failed_paths[asset_path] = {"reason": reason, "stage": stage}
 
 func debug_summary() -> Dictionary:
 	return {

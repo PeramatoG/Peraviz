@@ -58,7 +58,7 @@ func _init() -> void:
 	await factory.build_node_tree([
 		{"node_id": "failure-one", "asset_path": failed_path},
 		{"node_id": "failure-two", "asset_path": failed_path}], failed_root, {}, func() -> void: pass, loader, asset_cache)
-	if factory.asset_load_summary != {"success": 0, "failure": 2, "fallback": 2} or asset_cache.failure_reason(failed_path) != "invalid_3ds":
+	if (factory.asset_load_summary.success != 0 or factory.asset_load_summary.failure != 2 or factory.asset_load_summary.fallback != 2) or asset_cache.failure_reason(failed_path) != "invalid_3ds":
 		push_error("Repeated failures were not aggregated with native reasons")
 		quit(1)
 		return

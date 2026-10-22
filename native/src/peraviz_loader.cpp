@@ -247,6 +247,11 @@ Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool per
         d["asset_path"] = String::utf8(node.asset_path.c_str());
         d["asset_reference"] = String::utf8(node.asset_reference.c_str());
         d["asset_error"] = String::utf8(node.asset_error.c_str());
+        d["gdtf_source"] = String::utf8(node.gdtf_source.c_str());
+        d["gdtf_fixture_type"] = String::utf8(node.gdtf_fixture_type.c_str());
+        d["gdtf_fixture_uuid"] = String::utf8(node.gdtf_fixture_uuid.c_str());
+        d["gdtf_model_name"] = String::utf8(node.gdtf_model_name.c_str());
+        d["model_dimensions"] = Vector3(node.model_dimensions.x, node.model_dimensions.y, node.model_dimensions.z);
         d["primitive_type"] = String::utf8(node.primitive_type.c_str());
         d["gdtf_geometry_key"] = String::utf8(node.gdtf_geometry_key.c_str());
         d["gdtf_geometry_path"] = String::utf8(node.gdtf_geometry_path.c_str());

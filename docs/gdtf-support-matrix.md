@@ -13,6 +13,7 @@ This is the single capability source of truth for GDTF semantics in the active p
 
 | Domain | Status | Current verified scope and limits |
 | --- | --- | --- |
+| Static model geometry | Partial | Selected-mode hierarchy and GeometryReference expansion; dotted/Unicode Model.File basenames; 3DS and GLB resources; declared positive model dimensions fitted to transformed bounds; retained GLB hierarchy and shared raw resources. Named primitive approximations and tagged missing-part placeholders are presentation fallbacks, not exact standard-library meshes. No new animated/deforming-model support is claimed. |
 | Selected DMX mode and patch | Supported (verified scope) | Native selected-mode `DMXChannel`/`LogicalChannel`/`ChannelFunction` compilation, ordered 1–4 byte sources, explicit or inferred ranges, and target IDs. |
 | Dimmer | Supported (verified scope) | Physical/normalized native evaluation and dirty target-oriented Intensity rows, including repeated targets. |
 | Pan / Tilt | Supported (verified scope) | Physical-degree evaluation and component-oriented Transform rows. |

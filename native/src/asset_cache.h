@@ -32,7 +32,7 @@ private:
     std::set<std::string> dependencies_extracted_;
     std::string last_error_;
     std::string resolve_entry(const std::string &reference, bool basename_fallback);
-    std::string ensure_model_extracted(const std::string &reference);
+    std::string ensure_model_extracted(const std::string &reference, bool gdtf_basename);
     void extract_model_dependencies(const std::string &entry);
     std::filesystem::path source_path_;
     std::filesystem::path cache_dir_;

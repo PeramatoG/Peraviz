@@ -7,7 +7,11 @@ bool write_raw_resource_zip(const std::filesystem::path &path) {
     for (const char *name : {u8"./nested\\modelo\u00f1\u6a21\u578b.3ds", "a/shared.3ds", "b/shared.3ds",
                              "a/other.glb", "a/Same.3ds", "a/same.3ds", "../escape.3ds",
                              "a/collision?.3ds", "a/collision*.3ds", u8"nested/fixture\u00f1.gdtf",
-                             ".hidden.3ds"}) {
+                             ".hidden.3ds", "models/3ds/base_1.1.3ds",
+                             "models/3ds/base.v2.1.3ds", "models/gltf/head.v2.1.glb",
+                             u8"models/3ds/base.\u00f1.1.3ds", "unrelated/base_1.1.3ds",
+                             "models/3ds/dual.3ds", "models/gltf/dual.glb",
+                             "preferred/exact.3ds", "models/3ds/exact.3ds"}) {
         auto *source = zip_source_buffer(archive, "geometry", 8, 0);
         if (!source || zip_file_add(archive, name, source, ZIP_FL_ENC_UTF_8) < 0) {
             if (source) zip_source_free(source);
@@ -47,6 +51,18 @@ int test_archive_resource_resolution(const std::filesystem::path &root) {
         if (!cache.ensure_mvr_model_extracted("a/collision?.3ds").empty() || cache.last_error() != "ambiguous_extraction_path")
             return fail("Sanitized extraction aliases were accepted");
         if (cache.ensure_gdtf_spec_extracted(u8"fixture\u00f1").empty()) return fail("Nested GDTF basename lookup failed");
+        for (const char *reference : {"base_1.1", "base.v2.1", "head.v2.1", u8"base.\u00f1.1"}) {
+            const auto resolved = cache.ensure_gdtf_model_extracted(reference);
+            if (resolved.empty() || resolved.find("/models/") == std::string::npos)
+                return fail("Dotted GDTF model basename did not resolve in its standard model directory");
+        }
+        if (cache.ensure_gdtf_model_extracted("base_1.1.3ds").empty())
+            return fail("Explicit GDTF extension compatibility failed");
+        if (cache.ensure_gdtf_model_extracted("dual").find("/3ds/dual.3ds") == std::string::npos ||
+            cache.ensure_gdtf_model_extracted("dual.glb").find("/gltf/dual.glb") == std::string::npos)
+            return fail("Dual-format preference or explicit GLB identity was not preserved");
+        if (cache.ensure_gdtf_model_extracted("preferred/exact.3ds").find("/preferred/exact.3ds") == std::string::npos)
+            return fail("Explicit GDTF compatibility path was substituted by a same-name standard resource");
         const auto copy = directory / "ascii.mvr";
         std::filesystem::copy_file(source, copy);
         peraviz::ZipAssetCache shared(copy.u8string());

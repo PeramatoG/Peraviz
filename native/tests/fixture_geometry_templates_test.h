@@ -4,6 +4,7 @@
 bool same_geometry_node(const peraviz::SceneNode &a, const peraviz::SceneNode &b) {
     const auto fields = [](const peraviz::SceneNode &n) {
         return std::tie(n.node_id,n.parent_id,n.name,n.type,n.node_class,n.asset_kind,n.asset_path,
+            n.gdtf_source,n.gdtf_fixture_type,n.gdtf_fixture_uuid,n.gdtf_model_name,n.model_dimensions.x,n.model_dimensions.y,n.model_dimensions.z,
             n.primitive_type,n.gdtf_geometry_key,n.gdtf_geometry_path,n.primitive_size_x,n.primitive_size_y,n.primitive_size_z,
             n.is_fixture,n.is_axis,n.is_emitter,n.is_lens,n.is_beam,n.has_luminous_flux,n.luminous_flux,
             n.has_color_temperature,n.color_temperature,n.has_beam_angle,n.beam_angle,n.has_field_angle,n.field_angle,
@@ -68,5 +69,8 @@ int test_fixture_geometry_templates(const std::filesystem::path &root) {
     auto isolated=next_generation.instantiate({path.u8string(),"Module","different",""},"different",extracted);
     if (isolated.nodes.back().luminous_flux!=640 || isolated.nodes.back().node_id==revised.nodes.back().node_id)
         return fail("Mutable fixture-local state leaked into immutable template");
+    auto missing_mode = build_fixture_geometry_nodes({path.u8string(),"MissingMode","missing",""},"missing",Matrix{},extracted);
+    if (!missing_mode.nodes.empty() || missing_mode.error != "missing_selected_dmx_mode")
+        return fail("Unknown selected mode silently chose unrelated root geometry");
     return 0;
 }
