@@ -1,7 +1,9 @@
 #pragma once
-#include "presentation/render_group_projection.h"
+#include "presentation/direct_presentation_pipeline.h"
+#include "runtime/peraviz_visual_runtime_godot.h"
 #include "presentation/presentation_material_bindings.h"
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
@@ -23,11 +25,16 @@ public:
     void invalidate_renderer();
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
             const PackedFloat32Array &values, bool trace);
+    Dictionary consume_runtime(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, int32_t schema_generation, bool trace);
     Dictionary get_sizes() const;
 private:
+    void begin_snapshot(bool trace);
+    Dictionary publish(int64_t generation, bool trace, int64_t physical_us, int64_t projection_us);
+    peraviz::presentation::DirectPresentationPipeline pipeline_;
     peraviz::presentation::DensePresentationState state_;
     peraviz::presentation::RenderGroupProjection projection_;
     PresentationMaterialBindings materials_;
+    std::vector<int32_t> fixture_ids_;
     bool diagnostic_skip_lens_writes_=false, lens_writes_suppressed_=false;
     // Exactly renderer-row-sized borrowed buffers; no physical/group duplicate payloads.
     PackedInt32Array indices_masks_;

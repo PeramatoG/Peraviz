@@ -374,6 +374,9 @@ if(BUILD_TESTING)
         src/presentation/control_groups.cpp
         src/presentation/wheel_presentation_eligibility.cpp
         tests/visual_runtime_core_test.cpp
+        tests/direct_presentation_pipeline_test.cpp
+        src/presentation/dense_presentation_state.cpp
+        src/presentation/render_group_projection.cpp
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
         tests/realtime_dmx_coordinator_test.cpp

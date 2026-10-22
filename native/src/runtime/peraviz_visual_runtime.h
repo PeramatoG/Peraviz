@@ -1,4 +1,5 @@
 #pragma once
+#include "runtime/ordered_dirty_indices.h"
 
 #include "runtime/visual_frame_schema.h"
 #include "runtime/visual_runtime_types.h"
@@ -46,6 +47,7 @@ public:
     void install_compiled_scene(const CompiledRuntimeScene &scene);
     void submit_universe_frame(int universe_id, const uint8_t *data, int length);
     SectionedVisualFrame consume_latest_visual_frame();
+    void consume_latest_visual_frame(SectionedVisualFrame &frame);
     const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
     RuntimeStateSizes state_sizes() const;
@@ -130,6 +132,8 @@ private:
     };
 
     struct UniverseState {
+        OrderedDirtyIndices dirty_properties, dirty_colors, dirty_wheels;
+        std::vector<int> changed_offsets;
         std::vector<CompiledPropertyProgram> properties;
         std::vector<ColorTargetRuntime> color_targets;
         std::unordered_map<int32_t, int32_t> color_fixture_by_target;

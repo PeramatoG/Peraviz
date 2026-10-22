@@ -359,12 +359,22 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	var skipped: int = 0
 	var fixtures_considered: int = 0
 	var pending_controls: Array = []
-	var visual_frame: Dictionary = _native_visual_runtime.consume_latest_visual_frame()
+	var visual_frame: Dictionary
+	if light_apply_service != null:
+		light_apply_service.set_performance_trace_enabled(_performance_trace_enabled)
+		light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
+		visual_frame = light_apply_service.consume_native_snapshot(_native_visual_runtime, _sectioned_visual_frame_applier.schema_generation())
+		if not visual_frame.get("native_presentation", false):
+			push_error("Native presentation rejected the scene or renderer binding generation.")
+			return {"updated": 0, "skipped": 1, "universes_changed": submitted_universes, "fixtures_considered": 0, "controls": []}
+	else:
+		# Explicit semantic inspection callers have no installed presentation resources.
+		visual_frame = _native_visual_runtime.consume_latest_visual_frame()
 	var visual_descriptors: PackedInt32Array = visual_frame.get("descriptors", PackedInt32Array())
 	var visual_integers: PackedInt32Array = visual_frame.get("integers", PackedInt32Array())
 	var visual_floats: PackedFloat32Array = visual_frame.get("floats", PackedFloat32Array())
 	_last_visual_frame_size = visual_descriptors.size() + visual_integers.size() + visual_floats.size()
-	if _last_visual_frame_size > 0:
+	if _last_visual_frame_size > 0 or visual_frame.get("native_presentation", false):
 		var compact_result: Dictionary = {}
 		if loader == null or light_apply_service == null:
 			push_error("PeravizVisualRuntime requires the visual-frame light applier for live DMX playback.")

@@ -262,19 +262,38 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 		_native.invalidate_renderer()
 	_payload = {} # Release the borrowed packed buffers before native writes (no COW churn).
 	_payload = _native.compose(_generation, descriptors, integers, values, trace)
+	return _accept_payload()
+
+# Production calculation stays native; only compact rows and independent domains return.
+func consume_runtime(runtime: Object, schema_generation: int) -> Dictionary:
+	_payload = {}
+	var boundary_start: int = Time.get_ticks_usec() if _trace else 0
+	var snapshot: Dictionary = _native.consume_runtime(runtime, _generation, schema_generation, _trace)
+	_payload = snapshot.get("presentation", {})
+	if _trace and not _payload.is_empty():
+		var boundary_us: int = Time.get_ticks_usec() - boundary_start
+		_totals["native_boundary_us"] = int(_totals.get("native_boundary_us", 0)) + boundary_us
+		var measured_us: int = 0
+		for key in ["native_evaluation_us", "native_compose_us", "native_material_us", "payload_conversion_us"]: measured_us += int(_payload.get(key, 0))
+		_totals["boundary_overhead_us"] = int(_totals.get("boundary_overhead_us", 0)) + maxi(0, boundary_us - measured_us)
+	snapshot.erase("presentation")
+	snapshot["native_presentation"] = bool(snapshot.get("valid", false)) and _accept_payload()
+	return snapshot
+
+func _accept_payload() -> bool:
 	if not bool(_payload.get("valid", false)):
 		push_error("Dense presentation rejected an invalid snapshot.")
 		return false
 	if int(_payload.get("unresolved_rows", 0)) > 0 and not _warned_unresolved:
 		_warned_unresolved = true
 		push_warning("Dense presentation has unresolved renderer control rows in this binding generation.")
-	if trace:
+	if _trace:
 		_totals["physical_dynamic_candidates"] += int(_payload.get("physical_dynamic_candidates", 0))
 		var material_writes: int = int(_payload.get("lens_material_writes", 0))
 		_totals["actual_lens_material_renderer_writes"] += material_writes
 		_totals["lens_material_writes_avoided"] += int(_payload.get("lens_writes_avoided", 0))
 		_record_mutation(&"material_parameter_writes", material_writes)
-		for key in ["native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]: _totals[key] += int(_payload.get(key, 0))
+		for key in ["native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]: _totals[key] = int(_totals.get(key, 0)) + int(_payload.get(key, 0))
 		_totals["native_material_us"] += int(_payload.get("native_material_us", 0))
 		_totals["renderer_mutation_us"] += int(_payload.get("native_material_us", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
@@ -308,7 +327,7 @@ func apply() -> void:
 			if group != null: _apply_control_material(group, values, row * STRIDE)
 		_apply_output(render_row.output, values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
 		if _trace and _mutation_serial != before: changed += 1
-	if _trace:
+	if _trace and _payload.has("candidates"):
 		_totals["renderer_mutation_us"] += Time.get_ticks_usec() - mutation_start
 		var service: RefCounted = _service.get_ref()
 		var counters: Dictionary = service._visual_apply_counters
@@ -586,7 +605,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
+	for key in ["native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:

@@ -13,11 +13,12 @@ def channel(offset: int, attribute: str, geometry: str, high: float = 1) -> str:
     return f'<DMXChannel Offset="{offset}" Geometry="{geometry}"><LogicalChannel Attribute="{attribute}"><ChannelFunction Attribute="{attribute}" DMXFrom="0" PhysicalFrom="0" PhysicalTo="{high}"/></LogicalChannel></DMXChannel>'
 
 
-def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False) -> None:
+def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False, independent: bool = False) -> None:
     """Retain fifty physical lenses, one emission-only output and a genuine mechanical chain."""
     geometries = []
+    spacing = 0.5 if independent else 0.018
     for i in range(50):
-        position = f'{{1,0,0}}{{0,1,0}}{{0,0,1}}{{{(i % 10)*0.018},{(i // 10)*0.018},0}}'
+        position = f'{{1,0,0}}{{0,1,0}}{{0,0,1}}{{{(i % 10)*spacing},{(i // 10)*spacing},0}}'
         geometries.append(f'<Beam Name="Emitter{i}" Model="Lens" Position="{position}" LuminousFlux="320" BeamRadius="0.01" BeamAngle="25" FieldAngle="25" BeamType="Wash"/>')
     if wheel == 'basic':
         geometries = []
@@ -35,6 +36,9 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
     common = channel(1, 'Dimmer', 'Root') + channel(2, 'Pan', 'Pan', 180) + channel(3, 'Tilt', 'Tilt', 90) + channel(4, 'Zoom', 'Root', 40)
     global_color = ''.join(channel(5+i, a, 'Root') for i, a in enumerate(['ColorAdd_R', 'ColorAdd_G', 'ColorAdd_B']))
     pixel_color = ''.join(channel(5+i*3+c, a, f'Emitter{i}') for i in range(50) for c, a in enumerate(['ColorAdd_R', 'ColorAdd_G', 'ColorAdd_B']))
+    if independent:
+        common = channel(2, 'Pan', 'Pan', 180) + channel(3, 'Tilt', 'Tilt', 90) + channel(4, 'Zoom', 'Root', 40)
+        pixel_color = ''.join(channel(5+i*4+c, a, f'Emitter{i}') for i in range(50) for c, a in enumerate(['Dimmer', 'ColorAdd_R', 'ColorAdd_G', 'ColorAdd_B']))
     wheel_xml = ''
     if wheel:
         effect = '<PrismFacet/>' if wheel == 'facet' else ''
@@ -80,7 +84,7 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
             if wheel == 'media':
                 gdtf.writestr('wheels/pattern.png', gobo_png())
     mode = selected_mode or ('Basic' if wheel == 'basic' else 'Pixels' if pixels else 'Global')
-    stride = 192 if pixels else 16
+    stride = 256 if independent else 192 if pixels else 16
     fixtures = ''.join(f'<Fixture uuid="source-{i+1}" name="Source" Universe="{1+(stride*i)//512}" Address="{1+(stride*i)%512}">' +
                        (f'<Matrix>{{1,0,0}}{{0,1,0}}{{0,0,1}}{{{i*1000},{i*100},0}}</Matrix>' if transforms else '') +
                        f'<GDTFSpec>source.gdtf</GDTFSpec><GDTFMode>{mode}</GDTFMode></Fixture>' for i in range(sources))
@@ -92,4 +96,4 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
 
 
 if __name__ == '__main__':
-    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv)
+    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv, '--independent' in sys.argv)

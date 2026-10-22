@@ -42,6 +42,9 @@ func install_schema(schema: Dictionary) -> void:
 				"floats": int(section.get("row_stride_floats", 0)),
 			}
 
+func schema_generation() -> int:
+	return int(_schema.get("schema_generation", -1))
+
 func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: FixtureLightApplyService, frame_delta_sec: float, dmx_runtime: Object, fixture_uuids_by_id: Dictionary, scene_fixture_uuids: Dictionary = {}) -> Dictionary:
 	light_apply_service.set_performance_trace_enabled(_performance_trace_enabled)
 	light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
@@ -49,22 +52,34 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 	var integers: PackedInt32Array = snapshot.get("integers", PackedInt32Array())
 	var floats: PackedFloat32Array = snapshot.get("floats", PackedFloat32Array())
 	_native_now_seconds = float(snapshot.get("runtime_now_seconds", 0.0))
-	if descriptors.is_empty() or descriptors.size() % DESCRIPTOR_STRIDE != 0:
+	if (descriptors.is_empty() and not snapshot.get("native_presentation", false)) or descriptors.size() % DESCRIPTOR_STRIDE != 0:
 		return {"updated": 0, "skipped": 0, "fixtures_considered": 0, "visual_mask_counts": {}, "skip_diagnostics": _new_skip_diagnostics()}
 	# Schema generations are independent from renderer binding generations.
 	if snapshot.has("schema_generation") and int(snapshot["schema_generation"]) != int(_schema.get("schema_generation", -1)):
 		return {"updated": 0, "skipped": 1, "fixtures_considered": 0, "skip_diagnostics": {}}
 	light_apply_service.begin_visual_snapshot()
-	var dense_status: int = light_apply_service.compose_dense_snapshot(descriptors, integers, floats, int(snapshot.get("semantic_payload_conversion_us", 0)) if _performance_trace_enabled else 0)
+	var dense_status: int = 1 if snapshot.get("native_presentation", false) else light_apply_service.compose_dense_snapshot(descriptors, integers, floats, int(snapshot.get("semantic_payload_conversion_us", 0)) if _performance_trace_enabled else 0)
 	if dense_status < 0:
 		light_apply_service.end_visual_snapshot()
 		return {"updated": 0, "skipped": 1, "targets_failed": 1, "fixtures_considered": 0, "skip_diagnostics": {}}
 	var dense: bool = dense_status > 0
 	var counts: Dictionary = _new_counts() if _performance_trace_enabled else {}
 	var skip_diagnostics: Dictionary = _new_skip_diagnostics() if _performance_trace_enabled else {"first_failures": []}
+	if _performance_trace_enabled and snapshot.has("lighting_summary"):
+		var summary: PackedInt32Array = snapshot["lighting_summary"]
+		if summary.size() == 9:
+			counts["intensity_rows_generated"] += summary[0]
+			counts["beam_optics_rows_generated"] += summary[2]
+			var mask_keys: PackedStringArray = ["changed_transform_count", "changed_dimmer_count", "changed_color_count", "changed_zoom_count", "changed_gobo_count", "changed_gobo_rotation_count"]
+			for bit in range(6): counts[mask_keys[bit]] += summary[3+bit]
+			skip_diagnostics["rows_generated"] += summary[0]+summary[1]+summary[2]
+			skip_diagnostics["dimmer_requested"] += summary[0]
+			skip_diagnostics["dimmer_resolved"] += summary[0]
+			skip_diagnostics["section_rows"] = {2: summary[0], 3: summary[1], 4: summary[2]}
 	var updated_fixtures: Dictionary = {}
+	for fixture_id in snapshot.get("updated_fixture_ids", PackedInt32Array()): updated_fixtures[fixture_id] = true
 	var skipped: int = 0
-	var applied_rows: int = 0
+	var applied_rows: int = int(snapshot.get("lighting_rows", 0))
 	var failed_rows: int = 0
 	for descriptor_base in range(0, descriptors.size(), DESCRIPTOR_STRIDE):
 		var section_type: int = descriptors[descriptor_base]

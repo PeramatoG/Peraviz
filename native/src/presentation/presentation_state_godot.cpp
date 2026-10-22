@@ -24,6 +24,7 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("physical_values", "index"), &PeravizPresentationState::physical_values);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizPresentationState::clear);
     ClassDB::bind_method(D_METHOD("compose", "generation", "descriptors", "integers", "values", "trace"), &PeravizPresentationState::compose);
+    ClassDB::bind_method(D_METHOD("consume_runtime", "runtime", "generation", "schema_generation", "trace"), &PeravizPresentationState::consume_runtime);
     ClassDB::bind_method(D_METHOD("get_sizes"), &PeravizPresentationState::get_sizes);
 }
 // Installs canonical physical routes; renderer-sized buffers are allocated only after render setup.
@@ -35,7 +36,8 @@ int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const Pac
     for (int64_t i=0;i<ids.size();++i) outputs.push_back({ids[i],scales[i]});
     for (int64_t i=0;i<routes.size();i+=3) targets.push_back({routes[i],routes[i+1],uint32_t(routes[i+2])});
     if (!state_.install(outputs,targets)) return -1;
-    projection_.clear(); materials_.clear(); indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
+    pipeline_.clear(); projection_.clear(); materials_.clear(); indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
+    fixture_ids_.clear(); fixture_ids_.reserve(targets.size());
     return int64_t(state_.generation());
 }
 // Retains native Control Group membership as an input to renderer/resource setup.
@@ -75,7 +77,8 @@ PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) cons
 PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
 // Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
-    state_.clear(); projection_.clear(); materials_.clear();
+    std::vector<int32_t>().swap(fixture_ids_);
+    pipeline_.clear(); state_.clear(); projection_.clear(); materials_.clear();
     indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
 }
 // Replays renderer resources and lens RIDs from exact held physical state.
@@ -84,11 +87,7 @@ void PeravizPresentationState::invalidate_renderer() { state_.invalidate_rendere
 Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt32Array &descriptors,
         const PackedInt32Array &integers, const PackedFloat32Array &values, bool trace) {
     Dictionary result;
-    state_.set_trace_enabled(trace);
-    const bool suppress_lenses=trace && diagnostic_skip_lens_writes_;
-    // Leaving diagnostic isolation replays exact held values without another DMX packet.
-    if (lens_writes_suppressed_ && !suppress_lenses) state_.invalidate_renderer();
-    lens_writes_suppressed_=suppress_lenses;
+    begin_snapshot(trace);
     const int64_t start=trace?now_us():0;
     if (projection_.member_count()!=state_.bindings().size() || !state_.compose_sections(uint64_t(generation),descriptors.ptr(),size_t(descriptors.size()),
             integers.ptr(),size_t(integers.size()),values.ptr(),size_t(values.size()))) { result["valid"]=false; return result; }
@@ -96,6 +95,20 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
     const int64_t projection_start=trace?now_us():0;
     projection_.prepare(state_);
     const int64_t projection_us=trace?now_us()-projection_start:0;
+    return publish(generation,trace,physical_us,projection_us);
+}
+// Applies diagnostic transitions before native evaluation or explicit held-state replay.
+void PeravizPresentationState::begin_snapshot(bool trace) {
+    state_.set_trace_enabled(trace);
+    const bool suppress_lenses=trace && diagnostic_skip_lens_writes_;
+    // Leaving diagnostic isolation replays exact held values without another DMX packet.
+    if (lens_writes_suppressed_ && !suppress_lenses) state_.invalidate_renderer();
+    lens_writes_suppressed_=suppress_lenses;
+}
+// Packs only final renderer rows and applies cached main-thread material resources.
+Dictionary PeravizPresentationState::publish(int64_t generation, bool trace, int64_t physical_us, int64_t projection_us) {
+    Dictionary result;
+    const bool suppress_lenses=lens_writes_suppressed_;
     const int64_t compose_us=physical_us+projection_us;
     const int64_t copy_start=trace?now_us():0;
     auto *indices=indices_masks_.ptrw(); auto *packed=values_.ptrw();
@@ -125,6 +138,74 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
         result["lens_material_writes"]=int64_t(materials_.writes()); result["lens_writes_avoided"]=int64_t(materials_.avoided());
     }
     state_.finish_snapshot(uint64_t(generation));
+    return result;
+}
+// Evaluates, composes and reduces without exporting intermediate physical lighting scalars.
+Dictionary PeravizPresentationState::consume_runtime(const Ref<PeravizVisualRuntime> &runtime,
+        int64_t generation, int32_t schema_generation, bool trace) {
+    Dictionary result;
+    if (runtime.is_null() || uint64_t(generation)!=state_.generation() ||
+            runtime->native_core().schema().schema_generation!=schema_generation) {
+        result["valid"]=false; return result;
+    }
+    begin_snapshot(trace);
+    if (!pipeline_.consume(runtime->native_core(),state_,projection_,uint64_t(generation),schema_generation,trace)) {
+        result["valid"]=false; return result;
+    }
+    Dictionary presentation=publish(generation,trace,pipeline_.physical_us,pipeline_.reduction_us);
+    const int64_t packing_start=trace?now_us():0;
+    const auto &frame=pipeline_.frame();
+    PackedInt32Array descriptors, integers;
+    PackedFloat32Array floats;
+    // Only independent domain updates cross the boundary. Their ordering and timestamps are retained.
+    int64_t intermediate_bytes=0, lighting_rows=0;
+    std::array<int32_t,9> lighting_summary{};
+    auto &fixture_ids=fixture_ids_; fixture_ids.clear();
+    for (size_t b=0;b<frame.descriptors.size();b+=5) {
+        const int32_t type=frame.descriptors[b], count=frame.descriptors[b+1];
+        const auto section=std::find_if(runtime->native_core().schema().sections.begin(),runtime->native_core().schema().sections.end(),
+                [type](const auto &s) { return s.section_type==type; });
+        if (section==runtime->native_core().schema().sections.end()) continue;
+        if (type==2 || type==3 || type==4) {
+            lighting_rows+=count;
+            if (trace) {
+                lighting_summary[type-2]+=count;
+                for (int32_t row=0;row<count;++row) {
+                    const uint32_t mask=uint32_t(frame.integers[frame.descriptors[b+2]+row*section->row_stride_ints+2]);
+                    for (int bit=0;bit<6;++bit) if (mask & (1U<<bit)) ++lighting_summary[3+bit];
+                }
+            }
+            for (int32_t row=0;row<count;++row) fixture_ids.push_back(frame.integers[frame.descriptors[b+2]+row*section->row_stride_ints]);
+            intermediate_bytes+=20+int64_t(count)*(section->row_stride_ints+section->row_stride_floats)*4;
+            continue;
+        }
+        const int64_t ib=integers.size(), fb=floats.size();
+        for (int32_t value : {type,count,int32_t(ib),int32_t(fb),frame.descriptors[b+4]}) descriptors.push_back(value);
+        const int64_t ni=int64_t(count)*section->row_stride_ints, nf=int64_t(count)*section->row_stride_floats;
+        integers.resize(ib+ni); floats.resize(fb+nf);
+        if (ni) std::copy_n(frame.integers.data()+frame.descriptors[b+2],ni,integers.ptrw()+ib);
+        if (nf) std::copy_n(frame.floats.data()+frame.descriptors[b+3],nf,floats.ptrw()+fb);
+    }
+    std::sort(fixture_ids.begin(),fixture_ids.end());
+    fixture_ids.erase(std::unique(fixture_ids.begin(),fixture_ids.end()),fixture_ids.end());
+    PackedInt32Array updated_fixtures;
+    updated_fixtures.resize(fixture_ids.size());
+    if (!fixture_ids.empty()) std::copy(fixture_ids.begin(),fixture_ids.end(),updated_fixtures.ptrw());
+    result["updated_fixture_ids"]=updated_fixtures; result["lighting_rows"]=lighting_rows;
+    result["valid"]=true; result["presentation"]=presentation;
+    result["schema_generation"]=frame.schema_generation;
+    result["runtime_now_seconds"]=runtime->native_core().runtime_now_seconds();
+    result["descriptors"]=descriptors; result["integers"]=integers; result["floats"]=floats;
+    if (trace) {
+        PackedInt32Array summary;
+        summary.resize(lighting_summary.size());
+        std::copy(lighting_summary.begin(),lighting_summary.end(),summary.ptrw());
+        result["lighting_summary"]=summary;
+        presentation["payload_conversion_us"]=int64_t(presentation["payload_conversion_us"])+now_us()-packing_start;
+        presentation["native_evaluation_us"]=pipeline_.evaluation_us;
+        presentation["intermediate_bytes_avoided"]=intermediate_bytes;
+        presentation["intermediate_bytes_copied"]=0;
+    }
     return result;
 }
 // Reports physical native capacities separately from genuinely renderer-sized packed storage.

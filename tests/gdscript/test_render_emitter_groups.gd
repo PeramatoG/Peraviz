@@ -12,11 +12,12 @@ var dmx := PackedByteArray()
 func _initialize() -> void:
 	call_deferred("_run")
 
-func _generate(pixels: bool, load_case: bool = false) -> String:
+func _generate(pixels: bool, load_case: bool = false, independent: bool = false) -> String:
 	var path: String = ProjectSettings.globalize_path("user://render_group_%s_%s.mvr" % [str(pixels), str(load_case)])
 	var args := PackedStringArray([ProjectSettings.globalize_path("res://tests/integration/generate_render_group_fixture.py"), path])
 	if pixels: args.append("--pixels")
 	if load_case: args.append("--load")
+	if independent: args.append("--independent")
 	test.check(OS.execute("python3", args) == 0, "Standard MVR/GDTF synthetic fixture is generated")
 	return path
 
@@ -34,7 +35,13 @@ func _load(path: String) -> void:
 
 func _apply() -> void:
 	runtime._native_visual_runtime.submit_universe_frame(0, dmx)
-	var frame: Dictionary = runtime._native_visual_runtime.consume_latest_visual_frame()
+	var frame: Dictionary
+	if owner_check_pending:
+		# Retain the existing semantic-owner assertion once; subsequent playback uses the direct transaction.
+		frame = runtime._native_visual_runtime.consume_latest_visual_frame()
+	else:
+		frame = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+		test.check(bool(frame.get("native_presentation", false)), "Direct native render-group transaction succeeds")
 	if owner_check_pending:
 		var expected: Dictionary = {}
 		for record in adapter._binding_records: expected[int(record["beam_render_target_id"])] = record["fixture_uuid"]
@@ -46,7 +53,7 @@ func _apply() -> void:
 				var base: int = descriptors[offset+2] + row*3
 				test.check(expected[integers[base+1]] == runtime._native_fixture_uuids_by_id[integers[base]], "Indexed Color owner matches canonical fixture after import/reload")
 		owner_check_pending = false
-	if not (frame.get("descriptors", PackedInt32Array()) as PackedInt32Array).is_empty():
+	if frame.get("native_presentation", false) or not (frame.get("descriptors", PackedInt32Array()) as PackedInt32Array).is_empty():
 		runtime._sectioned_visual_frame_applier.apply_snapshot(frame, app, service, 0.016, runtime, runtime._native_fixture_uuids_by_id, runtime._fixture_nodes)
 	await process_frame
 
@@ -169,6 +176,39 @@ func _run() -> void:
 	var fallback: Dictionary = adapter.diagnostics()
 	test.check(fallback["godot_accepted_aggregates"] == 0 and fallback["godot_rejected_aggregates"] == 20 and fallback["godot_binding_rejections"].get("renderer_policy",0) == 20 and fallback["final_render_rows"] == 1000,
 		"Explicit realtime policy reports Godot-only rejection and safely restores individual rows")
+	# The same generic fixture generator now exercises independently patched Dimmer and RGB at scale.
+	app._visual_settings["enable_realtime_spotlights"] = false
+	await _load(_generate(true, true, true))
+	counts = adapter.diagnostics()
+	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 1000 and counts["godot_accepted_aggregates"] == 0,
+		"One thousand independent Dimmer/RGB emitters retain one thousand renderer rows")
+	for tick in range(2):
+		for universe in range(10):
+			dmx.fill(0)
+			for fixture in range(2):
+				var base: int = fixture * 256
+				dmx[base+3] = 160
+				for emitter in range(50):
+					var index: int = (universe*2+fixture)*50+emitter
+					dmx[base+4+emitter*4] = (index*31+tick*19)%256
+					dmx[base+5+emitter*4+(0 if index%2==0 else 2)] = 255
+			runtime._native_visual_runtime.submit_universe_frame(universe,dmx)
+		var frame: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+		test.check(bool(frame.get("native_presentation", false)), "Independent generation composes directly")
+		test.check(adapter._payload["count"] == 1000, "Every independently changed emitter publishes once")
+		runtime._sectioned_visual_frame_applier.apply_snapshot(frame,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+		for output_index in range(adapter._binding_records.size()):
+			var record: Dictionary = adapter._binding_records[output_index]
+			var fixture_index: int = str(record["fixture_uuid"]).get_slice("-",1).to_int()-1
+			var emitter: int = str(record["geometry_key"]).get_slice("Emitter",1).to_int()
+			var index: int = fixture_index*50+emitter
+			var values: PackedFloat32Array = adapter._native.physical_values(output_index)
+			test.check(is_equal_approx(values[0],float((index*31+tick*19)%256)/255.0), "Independent physical Dimmer retains its canonical patch")
+			test.check(is_equal_approx(values[1 if index%2==0 else 3],1.0) and is_zero_approx(values[3 if index%2==0 else 1]), "Independent RGB retains its canonical patch")
+		var unchanged: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+		test.check(adapter._payload["count"] == 0, "Held independent state suppresses unchanged renderer rows")
+		runtime._sectioned_visual_frame_applier.apply_snapshot(unchanged,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+	if test.failures.is_empty(): print("DIRECT_INDEPENDENT_1000 passed outputs=1000 rows=1000")
 	app._clear_scene()
 	app.queue_free()
 	service = null

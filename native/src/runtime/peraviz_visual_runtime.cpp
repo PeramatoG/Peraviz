@@ -295,6 +295,10 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
+        universe.dirty_properties.install(universe.properties.size());
+        universe.dirty_colors.install(universe.color_targets.size());
+        universe.dirty_wheels.install(universe.wheel_bindings.size());
+        universe.changed_offsets.reserve(universe.interest_offsets.size());
         std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
         universe.interest_offsets.erase(std::unique(universe.interest_offsets.begin(), universe.interest_offsets.end()), universe.interest_offsets.end());
         for (auto &[__, indices] : universe.wheel_binding_indices_by_physical_key) {
@@ -347,6 +351,13 @@ void PeravizVisualRuntimeCore::submit_universe_frame(int universe_id, const uint
 // Consumes newest dirty universes and returns one typed sectioned visual frame.
 SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
     SectionedVisualFrame frame;
+    consume_latest_visual_frame(frame);
+    return frame;
+}
+
+// Reuses caller-owned semantic buffers; borrowed views expire at the next consume.
+void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame &frame) {
+    frame.descriptors.clear(); frame.integers.clear(); frame.floats.clear();
     frame.schema_generation = schema_.schema_generation;
     struct PendingRow { int fixture_id = 0; int32_t render_target_id = 0; uint32_t changed_visual_mask = 0; ComponentState state; CookedEmitterColor color; int32_t wheel_id = 0; int32_t slot_a = 0; int32_t slot_b = 0; float normalized_phase = 0.0f; float split_fraction = 0.0f; float boundary_angle_degrees = 0.0f; CompiledWheelMode wheel_mode = CompiledWheelMode::Select; int32_t revision = 0; bool wheel_row = false; };
     std::vector<PendingRow> rows;
@@ -359,7 +370,8 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         if (!universe.has_pending_frame) continue;
         universe.has_pending_frame = false;
         ++stats_.universes_considered;
-        std::vector<int> changed_offsets;
+        auto &changed_offsets=universe.changed_offsets;
+        changed_offsets.clear();
         for (int offset : universe.interest_offsets) {
             const uint8_t value = offset >= 0 && offset < static_cast<int>(universe.latest_frame.size()) ? universe.latest_frame[static_cast<size_t>(offset)] : 0;
             if (!universe.has_last_relevant_values || universe.last_relevant_values[static_cast<size_t>(offset)] != value) {
@@ -371,9 +383,9 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         if (changed_offsets.empty()) continue;
         if (performance_trace_enabled_) stats_.changed_relevant_offsets += changed_offsets.size();
 
-        std::set<int> property_indices;
-        std::set<int> color_target_indices;
-        std::set<int> wheel_binding_indices;
+        auto &property_indices=universe.dirty_properties; property_indices.clear();
+        auto &color_target_indices=universe.dirty_colors; color_target_indices.clear();
+        auto &wheel_binding_indices=universe.dirty_wheels; wheel_binding_indices.clear();
         std::set<int64_t> gobo_selection_layers;
         std::set<int64_t> gobo_motion_layers;
         for (int offset : changed_offsets) {
@@ -839,7 +851,6 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
         append_descriptor(frame, VisualSectionType::GoboRotation, static_cast<int32_t>(gobo_rotation_rows.size()), int_offset, float_offset);
     }
     frame.stats = stats_;
-    return frame;
 }
 
 // Returns the immutable schema currently used by emitted sectioned frames.
