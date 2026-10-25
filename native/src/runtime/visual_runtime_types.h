@@ -375,6 +375,9 @@ struct FixtureRenderParams {
 };
 
 struct VisualFrameStats {
+    uint64_t source_programs_evaluated = 0, source_cache_hits = 0;
+    uint64_t activation_programs_evaluated = 0, activation_cache_hits = 0;
+    uint64_t evaluation_consumers_scheduled = 0, evaluation_consumers_avoided = 0;
     uint64_t packets_submitted = 0;
     uint64_t packets_coalesced = 0;
     uint64_t universes_ignored = 0;

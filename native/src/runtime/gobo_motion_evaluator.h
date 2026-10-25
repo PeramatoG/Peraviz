@@ -22,10 +22,20 @@ struct EvaluatedGoboScalar {
     bool active = false;
 };
 
+using GoboSourceDefinitions = std::vector<const CompiledDmxSourceProgram *>;
+
+bool evaluate_gobo_source_activation(int32_t source_program_id,
+                                     const GoboSourceDefinitions &programs,
+                                     const std::vector<GoboSourceValue> &values,
+                                     uint32_t *raw_value = nullptr);
+
 bool evaluate_gobo_source_activation(int32_t source_program_id,
                                      const std::vector<CompiledDmxSourceProgram> &programs,
                                      const std::vector<GoboSourceValue> &values,
                                      uint32_t *raw_value = nullptr);
+
+EvaluatedGoboScalar evaluate_active_gobo_motion_scalar(const CompiledGoboMotionBinding &binding,
+        const CompiledDmxSourceProgram &program, uint32_t raw_value, bool active);
 
 EvaluatedGoboScalar evaluate_gobo_motion_scalar(const CompiledGoboMotionBinding &binding,
                                                 const std::vector<CompiledDmxSourceProgram> &programs,

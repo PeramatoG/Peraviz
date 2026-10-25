@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <set>
 
 namespace peraviz::runtime {
 namespace {
@@ -46,7 +45,9 @@ void PeravizVisualRuntimeCore::clear() {
     filter_resources_by_id_.clear();
     wheel_palettes_by_id_.clear();
     base_color_state_by_target_.clear();
+    ordered_wheel_layers_.clear();
     wheel_state_by_physical_key_.clear();
+    mapping_definitions_ = fixture_mode_definitions_ = 0;
     gobo_selection_state_by_layer_.clear();
     gobo_rotation_state_by_layer_.clear();
     diagnosed_ambiguous_gobo_selection_layers_.clear();
@@ -58,279 +59,6 @@ void PeravizVisualRuntimeCore::clear() {
     gobo_asset_by_wheel_slot_.clear();
     stats_ = VisualFrameStats();
     schema_ = make_visual_frame_schema(++next_schema_generation_, VisualFrameSchemaCapabilities());
-}
-
-// Installs parser-owned compiled scene programs as the only runtime setup authority.
-void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene &scene) {
-    clear();
-    diagnostics_ = scene.diagnostics;
-    VisualFrameSchemaCapabilities capabilities;
-    if (scene.fixtures.empty()) {
-        diagnostics_.push_back({"PVZ-RUNTIME-EMPTY-SCENE", "error", "Compiled runtime scene contains no fixture instances.", "CompiledRuntimeScene"});
-    }
-    for (const CompiledEmitterResource &resource : scene.emitter_resources) emitter_resources_by_id_[resource.resource_id] = resource;
-    for (const CompiledFilterResource &resource : scene.filter_resources) filter_resources_by_id_[resource.resource_id] = resource;
-    for (const CompiledWheelPalette &palette : scene.wheel_palettes) wheel_palettes_by_id_[palette.wheel_renderer_id] = palette;
-    for (const CompiledGoboAsset &asset : scene.gobo_assets) {
-        const int64_t key = (static_cast<int64_t>(asset.wheel_id) << 32) | static_cast<uint32_t>(asset.slot_index);
-        gobo_asset_by_wheel_slot_[key] = asset.media_valid && !asset.open_slot ? asset.gobo_asset_id : 0;
-        if (!asset.open_slot && !asset.media_valid) ++stats_.missing_media_warnings;
-    }
-    for (const CompiledDmxSourceProgram &program : scene.source_programs) {
-        if (program.program_id <= 0 || source_programs_by_id_.find(program.program_id) != source_programs_by_id_.end()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-DUPLICATE-PROGRAM", "error", "Compiled source program ID is invalid or duplicated.", std::to_string(program.program_id)});
-            continue;
-        }
-        InstalledSourceProgram installed;
-        installed.program = program;
-        std::sort(installed.program.sources.begin(), installed.program.sources.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
-        installed.max_value = max_raw_value_for_source_count(installed.program.sources.size());
-        installed.inverse_max_value = installed.max_value > 0U ? 1.0 / static_cast<double>(installed.max_value) : 0.0;
-        source_programs_by_id_[program.program_id] = installed;
-    }
-    for (const CompiledFixtureInstance &fixture : scene.fixtures) {
-        if (fixture.fixture_id <= 0 || fixture.universe_id < 0 || fixture.start_address < 1 || fixture.start_address > 512) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PATCH", "error", "Compiled fixture has an invalid ID, universe, or patch address.", fixture.fixture_uuid});
-            continue;
-        }
-        FixtureRenderParams params;
-        params.luminous_flux = fixture.luminous_flux;
-        params.beam_angle_default = fixture.beam_angle_default;
-        params.spot_multiplier = fixture.spot_multiplier;
-        params.beam_multiplier = fixture.beam_multiplier;
-        render_params_by_fixture_[fixture.fixture_id] = params;
-    }
-    int installed_properties = 0;
-    for (const CompiledComponentProperty &property : scene.properties) {
-        const SemanticParameter parameter = semantic_parameter_for_compiled(property.semantic);
-        if (property.property_id <= 0 || property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PROPERTY", "warning", "Compiled property is missing property ID, fixture, semantic, or contributors.", std::to_string(property.fixture_id)});
-            continue;
-        }
-        int property_universe = -1;
-        bool valid_property = true;
-        for (const CompiledPropertyContributor &contributor : property.contributors) {
-            auto program_it = source_programs_by_id_.find(contributor.source_program_id);
-            if (program_it == source_programs_by_id_.end()) {
-                diagnostics_.push_back({"PVZ-RUNTIME-MISSING-PROGRAM", "warning", "Compiled property references a missing source program.", std::to_string(contributor.source_program_id)});
-                valid_property = false;
-                continue;
-            }
-            const CompiledDmxSourceProgram &program = program_it->second.program;
-            if (program.sources.empty() || program.sources.size() > 4) {
-                diagnostics_.push_back({"PVZ-RUNTIME-INVALID-SOURCE-COUNT", "warning", "Compiled source program must contain one to four DMX byte sources.", std::to_string(program.program_id)});
-                valid_property = false;
-                continue;
-            }
-            for (const CompiledDmxByteSource &source : program.sources) {
-                if (source.address < 0 || source.address >= 512) {
-                    diagnostics_.push_back({"PVZ-RUNTIME-SOURCE-OUT-OF-RANGE", "warning", "Compiled DMX byte source is outside the 512-slot universe.", std::to_string(program.program_id)});
-                    valid_property = false;
-                }
-                if (property_universe < 0) property_universe = source.universe_id;
-                if (source.universe_id != property_universe) {
-                    diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-PROPERTY", "warning", "Compiled property spans universes, which is not supported by this evaluator.", std::to_string(program.program_id)});
-                    valid_property = false;
-                }
-            }
-        }
-        if (!valid_property || property_universe < 0) continue;
-        if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
-        if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
-        if (parameter == SemanticParameter::Zoom) render_params_by_fixture_[property.fixture_id].has_zoom = true;
-        const uint32_t installed_mask = visual_mask_for_parameter(parameter);
-        installed_visual_mask_by_fixture_[property.fixture_id] |= installed_mask;
-        capabilities.has_transform = capabilities.has_transform || parameter == SemanticParameter::Pan || parameter == SemanticParameter::Tilt;
-        capabilities.has_intensity = capabilities.has_intensity || parameter == SemanticParameter::Dimmer;
-        capabilities.has_optics = capabilities.has_optics || parameter == SemanticParameter::Zoom;
-        UniverseState &universe = universes_[property_universe];
-        const int property_index = static_cast<int>(universe.properties.size());
-        universe.properties.push_back({property, parameter});
-        for (const CompiledPropertyContributor &contributor : property.contributors) {
-            const CompiledDmxSourceProgram &program = source_programs_by_id_[contributor.source_program_id].program;
-            for (const CompiledDmxByteSource &source : program.sources) {
-                universe.interest_offsets.push_back(source.address);
-                universe.property_indices_by_offset[source.address].push_back(property_index);
-            }
-        }
-        ++installed_properties;
-    }
-    for (const CompiledColorTargetProgram &target : scene.color_targets) {
-        if (target.fixture_id <= 0 || target.beam_render_target_id <= 0 || target.inputs.empty()) continue;
-        int target_universe = -1;
-        bool valid_target = true;
-        ColorTargetRuntime runtime_target;
-        runtime_target.target = target;
-        runtime_target.inputs.reserve(target.inputs.size());
-        for (const CompiledColorInputBinding &input : target.inputs) {
-            auto program_it = source_programs_by_id_.find(input.source_program_id);
-            if (program_it == source_programs_by_id_.end()) { valid_target = false; continue; }
-            const CompiledDmxSourceProgram &program = program_it->second.program;
-            if (program.sources.empty()) { valid_target = false; continue; }
-            for (const CompiledDmxByteSource &source : program.sources) {
-                if (target_universe < 0) target_universe = source.universe_id;
-                if (source.universe_id != target_universe) valid_target = false;
-            }
-            runtime_target.inputs.push_back({input, static_cast<float>(input.default_value), false});
-        }
-        if (!valid_target || target_universe < 0 || runtime_target.inputs.empty()) continue;
-        UniverseState &universe = universes_[target_universe];
-        const int color_target_index = static_cast<int>(universe.color_targets.size());
-        universe.color_targets.push_back(runtime_target);
-        universe.color_fixture_by_target.emplace(target.beam_render_target_id,target.fixture_id);
-        for (const ColorInputRuntime &input : runtime_target.inputs) {
-            const CompiledDmxSourceProgram &program = source_programs_by_id_[input.binding.source_program_id].program;
-            for (const CompiledDmxByteSource &source : program.sources) {
-                universe.interest_offsets.push_back(source.address);
-                universe.color_target_indices_by_offset[source.address].push_back(color_target_index);
-            }
-        }
-        capabilities.has_color = true;
-        installed_visual_mask_by_fixture_[target.fixture_id] |= VisualChangeColor;
-    }
-
-    int installed_wheel_bindings = 0;
-    for (const CompiledWheelTargetBinding &binding : scene.wheel_bindings) {
-        auto program_it = source_programs_by_id_.find(binding.source_program_id);
-        auto palette_it = wheel_palettes_by_id_.find(binding.wheel_renderer_id);
-        if (binding.binding_id <= 0 || binding.fixture_id <= 0 || binding.beam_render_target_id <= 0 || program_it == source_programs_by_id_.end() || palette_it == wheel_palettes_by_id_.end() || (binding.mode == CompiledWheelMode::Select && binding.channel_sets.empty())) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-WHEEL-BINDING", "warning", "Compiled wheel binding is missing a source, palette, target, or required ChannelSets.", std::to_string(binding.binding_id)});
-            continue;
-        }
-        UniverseState &universe = universes_[program_it->second.program.sources.front().universe_id];
-        const int wheel_index = static_cast<int>(universe.wheel_bindings.size());
-        universe.wheel_bindings.push_back({binding});
-        universe.color_fixture_by_target.emplace(binding.beam_render_target_id,binding.fixture_id);
-        const int64_t physical_key = wheel_physical_key(binding.beam_render_target_id, binding.wheel_renderer_id);
-        universe.wheel_binding_indices_by_target[binding.beam_render_target_id].push_back(wheel_index);
-        universe.wheel_binding_indices_by_physical_key[physical_key].push_back(wheel_index);
-        universe.wheel_physical_keys_by_target[binding.beam_render_target_id].push_back(physical_key);
-        for (const CompiledDmxByteSource &source : program_it->second.program.sources) {
-            universe.interest_offsets.push_back(source.address);
-            universe.wheel_binding_indices_by_offset[source.address].push_back(wheel_index);
-        }
-        wheel_state_by_physical_key_[physical_key].beam_target_id = binding.beam_render_target_id;
-        wheel_state_by_physical_key_[physical_key].wheel_renderer_id = binding.wheel_renderer_id;
-        capabilities.has_wheel_selection = true;
-        installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeColor;
-        ++installed_wheel_bindings;
-    }
-    for (const CompiledGoboSelectionBinding &binding : scene.gobo_bindings) {
-        auto program_it = source_programs_by_id_.find(binding.source_program_id);
-        if (binding.binding_id <= 0 || binding.fixture_id <= 0 || binding.beam_render_target_id <= 0 || binding.wheel_id <= 0 || binding.wheel_instance_index <= 0 || program_it == source_programs_by_id_.end() || binding.channel_sets.empty() || program_it->second.program.sources.empty()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-GOBO-BINDING", "warning", "Compiled seated gobo binding is incomplete or has a non-positive wheel instance.", std::to_string(binding.binding_id)});
-            continue;
-        }
-        const int universe_id = program_it->second.program.sources.front().universe_id;
-        std::vector<int> dependency_offsets;
-        std::vector<int32_t> dependency_program_ids;
-        int32_t program_id = binding.source_program_id;
-        std::set<int32_t> visited;
-        bool valid_dependencies = true;
-        while (program_id > 0 && visited.insert(program_id).second) {
-            auto dependency_it = source_programs_by_id_.find(program_id);
-            if (dependency_it == source_programs_by_id_.end()) { valid_dependencies = false; break; }
-            for (const CompiledDmxByteSource &source : dependency_it->second.program.sources) {
-                if (source.universe_id != universe_id) { valid_dependencies = false; break; }
-                dependency_offsets.push_back(source.address);
-            }
-            if (!valid_dependencies) break;
-            dependency_program_ids.push_back(program_id);
-            const auto &activation = dependency_it->second.program.activation;
-            program_id = activation.target_kind == gdtf_runtime::ModeMasterTargetKind::None ? 0 : activation.master_program_id;
-        }
-        if (!valid_dependencies) {
-            diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-GOBO-SELECTION", "warning", "Gobo selection activation dependencies are missing or span universes and cannot be evaluated.", std::to_string(binding.binding_id)});
-            continue;
-        }
-        UniverseState &universe = universes_[universe_id];
-        const int binding_index = static_cast<int>(universe.gobo_bindings.size());
-        universe.gobo_bindings.push_back({binding, dependency_program_ids});
-        const int64_t layer_key = (static_cast<int64_t>(binding.beam_render_target_id) << 32) | static_cast<uint32_t>(binding.wheel_instance_index);
-        universe.gobo_binding_indices_by_layer[layer_key].push_back(binding_index);
-        for (int offset : dependency_offsets) {
-            universe.interest_offsets.push_back(offset);
-            universe.gobo_layers_by_offset[offset].push_back(layer_key);
-        }
-        capabilities.has_gobo_selection = true;
-        installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGobo;
-    }
-    for (const CompiledGoboMotionBinding &binding : scene.gobo_motion_bindings) {
-        if (binding.semantic_kind != gdtf_runtime::GoboSemanticKind::Pos && binding.semantic_kind != gdtf_runtime::GoboSemanticKind::PosRotate) continue;
-        auto source_it = source_programs_by_id_.find(binding.source_program_id);
-        if (binding.binding_id <= 0 || binding.beam_render_target_id <= 0 || !binding.scalar_evaluable || source_it == source_programs_by_id_.end() || source_it->second.program.sources.empty()) continue;
-        const int universe_id = source_it->second.program.sources.front().universe_id;
-        std::vector<int> dependency_offsets;
-        std::vector<int32_t> dependency_program_ids;
-        int32_t program_id = binding.source_program_id;
-        std::set<int32_t> visited;
-        bool valid_dependencies = true;
-        while (program_id > 0 && visited.insert(program_id).second) {
-            auto program_it = source_programs_by_id_.find(program_id);
-            if (program_it == source_programs_by_id_.end()) { valid_dependencies = false; break; }
-            for (const CompiledDmxByteSource &source : program_it->second.program.sources) {
-                if (source.universe_id != universe_id) { valid_dependencies = false; break; }
-                dependency_offsets.push_back(source.address);
-            }
-            if (!valid_dependencies) break;
-            dependency_program_ids.push_back(program_id);
-            const auto &activation = program_it->second.program.activation;
-            program_id = activation.target_kind == gdtf_runtime::ModeMasterTargetKind::None ? 0 : activation.master_program_id;
-        }
-        if (!valid_dependencies) { diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-GOBO-MOTION", "warning", "Gobo Pos activation dependencies are missing or span universes and cannot be evaluated.", std::to_string(binding.binding_id)}); continue; }
-        UniverseState &universe = universes_[universe_id];
-        const int index = static_cast<int>(universe.gobo_motion_bindings.size());
-        universe.gobo_motion_bindings.push_back({binding, dependency_program_ids});
-        const int64_t layer_key = (static_cast<int64_t>(binding.beam_render_target_id) << 32) | static_cast<uint32_t>(binding.wheel_instance_index);
-        universe.gobo_motion_indices_by_layer[layer_key].push_back(index);
-        for (int offset : dependency_offsets) {
-            universe.interest_offsets.push_back(offset);
-            universe.gobo_motion_indices_by_offset[offset].push_back(index);
-            universe.gobo_motion_layers_by_offset[offset].push_back(layer_key);
-        }
-        capabilities.has_gobo_rotation = true;
-        installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGoboRotation;
-    }
-    if (installed_properties == 0 && scene.color_targets.empty() && installed_wheel_bindings == 0 && scene.gobo_bindings.empty() && scene.gobo_motion_bindings.empty()) {
-        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
-    }
-    for (auto &[_, universe] : universes_) {
-        universe.dirty_properties.install(universe.properties.size());
-        universe.dirty_colors.install(universe.color_targets.size());
-        universe.dirty_wheels.install(universe.wheel_bindings.size());
-        universe.changed_offsets.reserve(universe.interest_offsets.size());
-        std::sort(universe.interest_offsets.begin(), universe.interest_offsets.end());
-        universe.interest_offsets.erase(std::unique(universe.interest_offsets.begin(), universe.interest_offsets.end()), universe.interest_offsets.end());
-        for (auto &[__, indices] : universe.wheel_binding_indices_by_physical_key) {
-            std::sort(indices.begin(), indices.end(), [&universe, this](int lhs, int rhs) {
-                const CompiledWheelTargetBinding &a = universe.wheel_bindings[static_cast<size_t>(lhs)].binding;
-                const CompiledWheelTargetBinding &b = universe.wheel_bindings[static_cast<size_t>(rhs)].binding;
-                const auto pa = source_programs_by_id_.find(a.source_program_id);
-                const auto pb = source_programs_by_id_.find(b.source_program_id);
-                const uint32_t a_from = pa != source_programs_by_id_.end() ? pa->second.program.dmx_from : 0U;
-                const uint32_t b_from = pb != source_programs_by_id_.end() ? pb->second.program.dmx_from : 0U;
-                if (a_from != b_from) return a_from < b_from;
-                const uint32_t a_to = pa != source_programs_by_id_.end() ? pa->second.program.dmx_to : 0U;
-                const uint32_t b_to = pb != source_programs_by_id_.end() ? pb->second.program.dmx_to : 0U;
-                if (a_to != b_to) return a_to < b_to;
-                return a.binding_id < b.binding_id;
-            });
-            for (size_t index = 1; index < indices.size(); ++index) {
-                const CompiledWheelTargetBinding &previous_binding = universe.wheel_bindings[static_cast<size_t>(indices[index - 1])].binding;
-                const CompiledWheelTargetBinding &next_binding = universe.wheel_bindings[static_cast<size_t>(indices[index])].binding;
-                const auto previous_program = source_programs_by_id_.find(previous_binding.source_program_id);
-                const auto next_program = source_programs_by_id_.find(next_binding.source_program_id);
-                if (previous_program != source_programs_by_id_.end() && next_program != source_programs_by_id_.end() && next_program->second.program.dmx_from <= previous_program->second.program.dmx_to) {
-                    diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-RANGE-OVERLAP", "warning", "Wheel control ChannelFunction ranges overlap for one physical wheel; runtime will use deterministic binding order.", std::to_string(previous_binding.beam_render_target_id) + ":" + std::to_string(previous_binding.wheel_renderer_id)});
-                }
-            }
-        }
-        for (auto &[__, keys] : universe.wheel_physical_keys_by_target) {
-            std::sort(keys.begin(), keys.end());
-            keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
-        }
-    }
-    schema_ = make_visual_frame_schema(++next_schema_generation_, capabilities);
 }
 
 // Submits a universe snapshot using latest-wins coalescing.
@@ -386,32 +114,36 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         auto &property_indices=universe.dirty_properties; property_indices.clear();
         auto &color_target_indices=universe.dirty_colors; color_target_indices.clear();
         auto &wheel_binding_indices=universe.dirty_wheels; wheel_binding_indices.clear();
-        std::set<int64_t> gobo_selection_layers;
-        std::set<int64_t> gobo_motion_layers;
-        for (int offset : changed_offsets) {
-            auto property_it = universe.property_indices_by_offset.find(offset);
-            if (property_it != universe.property_indices_by_offset.end()) property_indices.insert(property_it->second.begin(), property_it->second.end());
-            auto color_it = universe.color_target_indices_by_offset.find(offset);
-            if (color_it != universe.color_target_indices_by_offset.end()) {
-                if (performance_trace_enabled_) {
-                    ++stats_.color_changed_offsets;
-                    stats_.color_changed_offset_candidates += color_it->second.size();
-                    const uint64_t fanout = color_it->second.size();
-                    stats_.color_offset_fanout_max = std::max(stats_.color_offset_fanout_max, fanout);
-                    if (fanout == 1) ++stats_.color_offset_fanout_1;
-                    else if (fanout <= 4) ++stats_.color_offset_fanout_2_4;
-                    else if (fanout <= 16) ++stats_.color_offset_fanout_5_16;
-                    else if (fanout <= 64) ++stats_.color_offset_fanout_17_64;
-                    else ++stats_.color_offset_fanout_65_plus;
-                }
-                color_target_indices.insert(color_it->second.begin(), color_it->second.end());
+        auto &gobo_selection_layers=universe.dirty_gobo_selections; gobo_selection_layers.clear();
+        auto &gobo_motion_layers=universe.dirty_gobo_motions; gobo_motion_layers.clear();
+        universe.plan.begin_update(changed_offsets);
+        if (performance_trace_enabled_) for (int offset:changed_offsets) {
+            const uint64_t fanout=universe.plan.color_offset_fanout(offset);
+            if (!fanout) continue;
+            ++stats_.color_changed_offsets; stats_.color_changed_offset_candidates+=fanout;
+            stats_.color_offset_fanout_max=std::max(stats_.color_offset_fanout_max,fanout);
+            if (fanout==1) ++stats_.color_offset_fanout_1;
+            else if (fanout<=4) ++stats_.color_offset_fanout_2_4;
+            else if (fanout<=16) ++stats_.color_offset_fanout_5_16;
+            else if (fanout<=64) ++stats_.color_offset_fanout_17_64;
+            else ++stats_.color_offset_fanout_65_plus;
+        }
+        size_t scheduled=0;
+        for (int consumer_index:universe.plan.dirty_consumers()) {
+            const auto &consumer=universe.plan.consumer(uint32_t(consumer_index));
+            const int index=int(consumer.index);
+            switch (consumer.domain) {
+                case EvaluationDomain::Property: property_indices.push_back(index); break;
+                case EvaluationDomain::Color: color_target_indices.push_back(index); break;
+                case EvaluationDomain::Wheel: wheel_binding_indices.insert(&index,&index+1); break;
+                case EvaluationDomain::GoboSelection: gobo_selection_layers.push_back(consumer.target); break;
+                case EvaluationDomain::GoboMotion: gobo_motion_layers.push_back(consumer.target); break;
             }
-            auto wheel_it = universe.wheel_binding_indices_by_offset.find(offset);
-            if (wheel_it != universe.wheel_binding_indices_by_offset.end()) wheel_binding_indices.insert(wheel_it->second.begin(), wheel_it->second.end());
-            auto gobo_it = universe.gobo_layers_by_offset.find(offset);
-            if (gobo_it != universe.gobo_layers_by_offset.end()) gobo_selection_layers.insert(gobo_it->second.begin(), gobo_it->second.end());
-            auto motion_it = universe.gobo_motion_layers_by_offset.find(offset);
-            if (motion_it != universe.gobo_motion_layers_by_offset.end()) gobo_motion_layers.insert(motion_it->second.begin(), motion_it->second.end());
+            ++scheduled;
+        }
+        if (performance_trace_enabled_) {
+            stats_.evaluation_consumers_scheduled+=scheduled;
+            stats_.evaluation_consumers_avoided+=universe.plan.consumer_count()-scheduled;
         }
 
         for (int64_t layer_key : gobo_selection_layers) {
@@ -422,19 +154,9 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             int active_binding_count = 0;
             for (int binding_index : layer_it->second) {
                 if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_bindings.size())) continue;
-                const GoboBindingRuntime &runtime_binding = universe.gobo_bindings[static_cast<size_t>(binding_index)];
-                std::vector<CompiledDmxSourceProgram> programs;
-                std::vector<GoboSourceValue> values;
-                for (int32_t program_id : runtime_binding.dependency_program_ids) {
-                    const auto installed_it = source_programs_by_id_.find(program_id);
-                    if (installed_it == source_programs_by_id_.end()) continue;
-                    const EvaluationResult source_value = evaluate_source_program(universe.latest_frame, installed_it->second, &diagnostics_);
-                    if (!source_value.valid) continue;
-                    programs.push_back(installed_it->second.program);
-                    values.push_back({program_id, source_value.raw_value});
-                }
-                uint32_t raw_value = 0;
-                if (!evaluate_gobo_source_activation(runtime_binding.binding.source_program_id, programs, values, &raw_value)) continue;
+                GoboBindingRuntime &runtime_binding = universe.gobo_bindings[static_cast<size_t>(binding_index)];
+                if (!evaluate_cached_activation(universe,runtime_binding)) continue;
+                const uint32_t raw_value = evaluate_cached_source(universe,runtime_binding.sources.front()).raw_value;
                 const CompiledWheelChannelSet *active_set = nullptr;
                 for (const CompiledWheelChannelSet &set : runtime_binding.binding.channel_sets) {
                     if (raw_value >= set.dmx_from && raw_value <= set.dmx_to) { active_set = &set; break; }
@@ -477,18 +199,11 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             int active_rotate_count = 0;
             for (int binding_index : layer_it->second) {
                 if (binding_index < 0 || binding_index >= static_cast<int>(universe.gobo_motion_bindings.size())) continue;
-                const GoboMotionRuntime &motion = universe.gobo_motion_bindings[static_cast<size_t>(binding_index)];
-                std::vector<CompiledDmxSourceProgram> programs;
-                std::vector<GoboSourceValue> values;
-                for (int32_t program_id : motion.dependency_program_ids) {
-                    const auto installed_it = source_programs_by_id_.find(program_id);
-                    if (installed_it == source_programs_by_id_.end()) continue;
-                    const EvaluationResult source_value = evaluate_source_program(universe.latest_frame, installed_it->second, &diagnostics_);
-                    if (!source_value.valid) continue;
-                    programs.push_back(installed_it->second.program);
-                    values.push_back({program_id, source_value.raw_value});
-                }
-                const EvaluatedGoboScalar evaluated = evaluate_gobo_motion_scalar(motion.binding, programs, values);
+                GoboMotionRuntime &motion = universe.gobo_motion_bindings[static_cast<size_t>(binding_index)];
+                const bool active=evaluate_cached_activation(universe,motion);
+                const auto value=evaluate_cached_source(universe,motion.sources.front());
+                const EvaluatedGoboScalar evaluated = evaluate_active_gobo_motion_scalar(motion.binding,
+                        universe.source_bindings[motion.sources.front()]->program,value.raw_value,active);
                 if (!evaluated.active) continue;
                 if (motion.binding.semantic_kind == gdtf_runtime::GoboSemanticKind::Pos) {
                     ++active_pos_count;
@@ -552,7 +267,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         for (int property_index : property_indices) {
             if (property_index < 0 || property_index >= static_cast<int>(universe.properties.size())) continue;
             const CompiledPropertyProgram &program = universe.properties[static_cast<size_t>(property_index)];
-            const EvaluationResult evaluated = evaluate_property_value(universe.latest_frame, program.property);
+            const EvaluationResult evaluated = evaluate_property_value(universe, program);
             if (!evaluated.valid) continue;
             const float semantic_value = program.parameter == SemanticParameter::Dimmer ? evaluated.normalized_value : evaluated.physical_value;
             if (program.parameter == SemanticParameter::Dimmer || program.parameter == SemanticParameter::Zoom) {
@@ -576,16 +291,15 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             apply_semantic_value(state, program.parameter, semantic_value);
         }
 
+        auto &dirty_color_targets=universe.dirty_color_targets; dirty_color_targets.clear();
         const auto color_start=performance_trace_enabled_?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
         for (int target_index : color_target_indices) {
             if (target_index < 0 || target_index >= static_cast<int>(universe.color_targets.size())) continue;
             ColorTargetRuntime &target = universe.color_targets[static_cast<size_t>(target_index)];
             bool input_changed = false;
             for (ColorInputRuntime &input : target.inputs) {
-                auto program_it = source_programs_by_id_.find(input.binding.source_program_id);
-                if (program_it == source_programs_by_id_.end()) continue;
-                if (input.initialized && !program_uses_changed_offset(program_it->second.program, changed_offsets)) continue;
-                const EvaluationResult evaluated = evaluate_source_program(universe.latest_frame, program_it->second, &diagnostics_);
+                if (input.initialized && !universe.plan.source_changed(input.source)) continue;
+                const EvaluationResult evaluated = evaluate_cached_source(universe,input.source);
                 if (!evaluated.valid) continue;
                 const float next_value = color_value_from_evaluation(input.binding.semantic, evaluated);
                 input_changed = input_changed || !input.initialized || !nearly_equal(input.value, next_value, kDefaultEpsilon);
@@ -594,6 +308,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
                 ++stats_.color_inputs_evaluated;
             }
             if (!input_changed) continue;
+            dirty_color_targets.push_back(target.target.beam_render_target_id);
             ++stats_.color_targets_dirty;
             CookedEmitterColor cooked = cook_emitter_color(target);
             base_color_state_by_target_[target.target.beam_render_target_id] = cooked;
@@ -605,14 +320,16 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
 
 
         if (performance_trace_enabled_) stats_.color_evaluation_us+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-color_start).count();
-        std::set<int64_t> dirty_physical_wheels;
+        auto &dirty_physical_wheels=universe.dirty_physical_wheels; dirty_physical_wheels.clear();
         for (int wheel_index : wheel_binding_indices) {
             if (wheel_index < 0 || wheel_index >= static_cast<int>(universe.wheel_bindings.size())) continue;
             const CompiledWheelTargetBinding &binding = universe.wheel_bindings[static_cast<size_t>(wheel_index)].binding;
-            dirty_physical_wheels.insert(wheel_physical_key(binding.beam_render_target_id, binding.wheel_renderer_id));
+            dirty_physical_wheels.push_back(wheel_physical_key(binding.beam_render_target_id, binding.wheel_renderer_id));
         }
 
-        std::set<int32_t> wheel_dirty_targets;
+        std::sort(dirty_physical_wheels.begin(),dirty_physical_wheels.end());
+        dirty_physical_wheels.erase(std::unique(dirty_physical_wheels.begin(),dirty_physical_wheels.end()),dirty_physical_wheels.end());
+        auto &wheel_dirty_targets=universe.wheel_dirty_targets; wheel_dirty_targets.clear();
         for (int64_t physical_key : dirty_physical_wheels) {
             auto group_it = universe.wheel_binding_indices_by_physical_key.find(physical_key);
             if (group_it == universe.wheel_binding_indices_by_physical_key.end()) continue;
@@ -622,15 +339,14 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             for (int wheel_index : group_it->second) {
                 if (wheel_index < 0 || wheel_index >= static_cast<int>(universe.wheel_bindings.size())) continue;
                 const WheelBindingRuntime &candidate = universe.wheel_bindings[static_cast<size_t>(wheel_index)];
-                auto program_it = source_programs_by_id_.find(candidate.binding.source_program_id);
-                if (program_it == source_programs_by_id_.end()) continue;
-                const EvaluationResult evaluated = evaluate_source_program(universe.latest_frame, program_it->second, &diagnostics_);
+                const InstalledSourceProgram *program=universe.source_bindings[candidate.source];
+                const EvaluationResult evaluated = evaluate_cached_source(universe,candidate.source);
                 if (!evaluated.valid) continue;
                 ++stats_.wheel_inputs_evaluated;
-                if (evaluated.raw_value < program_it->second.program.dmx_from || evaluated.raw_value > program_it->second.program.dmx_to) continue;
+                if (evaluated.raw_value < program->program.dmx_from || evaluated.raw_value > program->program.dmx_to) continue;
                 if (active_wheel == nullptr) {
                     active_wheel = &candidate;
-                    active_program = &program_it->second;
+                    active_program = program;
                     active_evaluation = evaluated;
                 } else {
                     diagnostics_.push_back({"PVZ-RUNTIME-WHEEL-RANGE-OVERLAP", "warning", "Multiple wheel control bindings were active for one physical wheel; using deterministic binding order.", std::to_string(candidate.binding.beam_render_target_id) + ":" + std::to_string(candidate.binding.wheel_renderer_id)});
@@ -647,7 +363,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
                     previous.wheel_renderer_id = wheel_renderer_id;
                     previous.revision = previous_revision + 1;
                     ++stats_.wheel_targets_dirty;
-                    wheel_dirty_targets.insert(beam_target_id);
+                    wheel_dirty_targets.push_back(beam_target_id);
                 }
                 continue;
             }
@@ -719,18 +435,16 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             previous.linear_blue = cooked.linear_blue;
             previous.revision = next_revision;
             ++stats_.wheel_targets_dirty;
-            wheel_dirty_targets.insert(binding.beam_render_target_id);
+            wheel_dirty_targets.push_back(binding.beam_render_target_id);
             ++stats_.wheel_selection_rows;
             ++stats_.fixtures_dirty;
             rows.push_back({binding.fixture_id, binding.beam_render_target_id, VisualChangeColor, {}, cooked, binding.wheel_renderer_id, slot_a->slot_index, slot_b->slot_index, normalized_phase, split_fraction, boundary_angle_degrees, binding.mode, previous.revision, true});
         }
 
         const auto composition_start=performance_trace_enabled_?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
-        std::set<int32_t> dirty_color_targets;
-        for (int target_index : color_target_indices) {
-            if (target_index >= 0 && target_index < static_cast<int>(universe.color_targets.size())) dirty_color_targets.insert(universe.color_targets[static_cast<size_t>(target_index)].target.beam_render_target_id);
-        }
-        dirty_color_targets.insert(wheel_dirty_targets.begin(), wheel_dirty_targets.end());
+        dirty_color_targets.insert(dirty_color_targets.end(),wheel_dirty_targets.begin(),wheel_dirty_targets.end());
+        std::sort(dirty_color_targets.begin(),dirty_color_targets.end());
+        dirty_color_targets.erase(std::unique(dirty_color_targets.begin(),dirty_color_targets.end()),dirty_color_targets.end());
         if (performance_trace_enabled_) stats_.color_dirty_candidates += dirty_color_targets.size();
         for (int32_t beam_target_id : dirty_color_targets) {
             CookedEmitterColor composed = compose_ordered_target_color(beam_target_id);
@@ -904,85 +618,6 @@ uint32_t PeravizVisualRuntimeCore::max_raw_value_for_source_count(size_t source_
     return max_value;
 }
 
-// Assembles source bytes and reports each invalid-input category once per installed program.
-uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
-    if (program.program.sources.empty() || program.program.sources.size() > 4) {
-        if (diagnostics != nullptr && !program.diagnosed_byte_count) {
-            diagnostics->push_back({"PVZ-RUNTIME-UNSUPPORTED-BYTE-COUNT", "warning", "Compiled DMX source byte count must be between one and four.", std::to_string(program.program.program_id)});
-            program.diagnosed_byte_count = true;
-        }
-        return 0U;
-    }
-    uint32_t raw_value = 0;
-    for (const CompiledDmxByteSource &source : program.program.sources) {
-        const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
-        if (!valid && diagnostics != nullptr && !program.diagnosed_missing_byte) {
-            diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program.program_id)});
-            program.diagnosed_missing_byte = true;
-        }
-        const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
-        raw_value = (raw_value << 8U) | value;
-    }
-    return raw_value;
-}
-
-// Evaluates one source program into raw, local normalized, and physical representations.
-PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics) {
-    const uint32_t raw_value = read_raw_value(frame, program, diagnostics);
-    const double dmx_span = program.program.dmx_to > program.program.dmx_from ? static_cast<double>(program.program.dmx_to - program.program.dmx_from) : static_cast<double>(program.max_value);
-    const double full_range_normalized = static_cast<double>(raw_value) * program.inverse_max_value;
-    const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.program.dmx_from)) / dmx_span, 0.0, 1.0) : full_range_normalized;
-    const double physical = program.program.physical_from + ((program.program.physical_to - program.program.physical_from) * local);
-    return {raw_value, static_cast<float>(local), static_cast<float>(physical), program.program.program_id, true};
-}
-
-// Resolves all contributors for one property into a single deterministic value.
-PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_property_value(const std::vector<uint8_t> &frame, const CompiledComponentProperty &property) {
-    double weighted_normalized_sum = 0.0;
-    double weighted_physical_sum = 0.0;
-    double total_weight = 0.0;
-    const InstalledSourceProgram *active_program = nullptr;
-    bool has_range_selector = false;
-    bool has_reference_range = false;
-    uint32_t reference_from = 0;
-    uint32_t reference_to = 0;
-    for (const CompiledPropertyContributor &contributor : property.contributors) {
-        auto program_it = source_programs_by_id_.find(contributor.source_program_id);
-        if (program_it == source_programs_by_id_.end()) continue;
-        const CompiledDmxSourceProgram &program = program_it->second.program;
-        if (!has_reference_range) { reference_from = program.dmx_from; reference_to = program.dmx_to; has_reference_range = true; }
-        else if (program.dmx_from != reference_from || program.dmx_to != reference_to) has_range_selector = true;
-        const uint32_t raw_value = read_raw_value(frame, program_it->second, &diagnostics_);
-        if (raw_value >= program.dmx_from && raw_value <= program.dmx_to && active_program == nullptr) active_program = &program_it->second;
-    }
-    if (property.contributors.size() > 1 && has_range_selector) {
-        if (active_program == nullptr) return {};
-        return evaluate_source_program(frame, *active_program, &diagnostics_);
-    }
-    EvaluationResult result;
-    for (const CompiledPropertyContributor &contributor : property.contributors) {
-        auto program_it = source_programs_by_id_.find(contributor.source_program_id);
-        if (program_it == source_programs_by_id_.end()) continue;
-        const EvaluationResult program_value = evaluate_source_program(frame, program_it->second, &diagnostics_);
-        if (!program_value.valid) continue;
-        if (!result.valid) { result.raw_value = program_value.raw_value; result.active_program_id = program_value.active_program_id; result.valid = true; }
-        weighted_normalized_sum += static_cast<double>(program_value.normalized_value) * contributor.weight;
-        weighted_physical_sum += static_cast<double>(program_value.physical_value) * contributor.weight;
-        total_weight += contributor.weight;
-    }
-    if (total_weight == 0.0 || !result.valid) return {};
-    result.normalized_value = static_cast<float>(weighted_normalized_sum / total_weight);
-    result.physical_value = static_cast<float>(weighted_physical_sum / total_weight);
-    return result;
-}
-
-// Evaluates one installed source program by stable program ID.
-PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program_by_id(const std::vector<uint8_t> &frame, int32_t source_program_id) {
-    auto program_it = source_programs_by_id_.find(source_program_id);
-    if (program_it == source_programs_by_id_.end()) return {};
-    return evaluate_source_program(frame, program_it->second, &diagnostics_);
-}
-
 // Maps a semantic parameter to the render domains it can dirty.
 uint32_t PeravizVisualRuntimeCore::visual_mask_for_parameter(SemanticParameter parameter) {
     switch (parameter) {
@@ -1050,14 +685,6 @@ void PeravizVisualRuntimeCore::cook_render_state(ComponentState &state, const Fi
 
 // Compares two component values using section-appropriate tolerances.
 bool PeravizVisualRuntimeCore::nearly_equal(float a, float b, float epsilon) { return std::fabs(a - b) <= epsilon; }
-
-// Checks whether a source program depends on one of the current dirty DMX offsets.
-bool PeravizVisualRuntimeCore::program_uses_changed_offset(const CompiledDmxSourceProgram &program, const std::vector<int> &changed_offsets) {
-    for (const CompiledDmxByteSource &source : program.sources) {
-        if (std::find(changed_offsets.begin(), changed_offsets.end(), source.address) != changed_offsets.end()) return true;
-    }
-    return false;
-}
 
 // Selects normalized or physical color input values for the supported fallback color slice.
 float PeravizVisualRuntimeCore::color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated) {
@@ -1160,13 +787,10 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::compose_o
     auto base_it = base_color_state_by_target_.find(beam_target_id);
     if (base_it != base_color_state_by_target_.end() && base_it->second.initialized) base = base_it->second;
     runtime::LinearRgb absolute = {base.linear_red * base.gain, base.linear_green * base.gain, base.linear_blue * base.gain};
-    std::vector<std::pair<int32_t, const WheelTargetState *>> layers;
-    for (const auto &entry : wheel_state_by_physical_key_) {
-        if (entry.second.initialized && entry.second.beam_target_id == beam_target_id) layers.push_back({static_cast<int32_t>(entry.first & 0xffffffff), &entry.second});
-    }
-    std::sort(layers.begin(), layers.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
-    for (const auto &entry : layers) {
-        const WheelTargetState &layer = *entry.second;
+    const auto layers=ordered_wheel_layers_.find(beam_target_id);
+    if (layers!=ordered_wheel_layers_.end()) for (const WheelTargetState *entry:layers->second) {
+        const WheelTargetState &layer = *entry;
+        if (!layer.initialized) continue;
         absolute.r *= layer.linear_red * layer.gain;
         absolute.g *= layer.linear_green * layer.gain;
         absolute.b *= layer.linear_blue * layer.gain;

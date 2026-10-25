@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added a production compiled serial evaluation plan with dependency-driven target scheduling, shared immutable scalar mappings and instance-local source/ModeMaster caches. Removed repeated source decoding, live ordered-tree nominations and unrelated wheel scans while preserving selected-mode semantics, independent outputs, temporal gobo behavior and the direct native presentation boundary. No new GDTF effects, workers or renderer backend are introduced.
+
 - Connected native DMX evaluation directly to physical composition and Render Group reduction. Live Intensity/Color/BeamOptics no longer make an intermediate Godot round trip; independent Pan/Tilt, wheel and gobo updates retain their sectioned contracts. Reused semantic buffers and dense dirty nominations reduce avoidable allocation while preserving exact physical identities, held replay and renderer generations. Deterministic coverage includes compact and independently controlled 1,000-output workloads; no FPS gain is claimed.
 
 - Corrected dotted GDTF model basenames and standard model-directory lookup, and fitted fixture meshes to declared dimensions without losing embedded GLB transforms or changing MVR object/truss scaling. Preserved partial-fixture representation and added staged, source/model-aware diagnostics with affected-instance counts and visibility/bounds checks after scene activation. Regression coverage now checks actual 3DS/GLB meshes and full application geometry setup.

@@ -142,6 +142,10 @@ if(PERAVIZ_ENABLE_DMX)
         src/peraviz_dmx_receiver.cpp
         src/runtime/runtime_state_sizes.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/compiled_evaluation_plan.cpp
+        src/runtime/visual_runtime_install.cpp
+        src/runtime/visual_runtime_evaluation.cpp
+        src/runtime/visual_runtime_plan.cpp
         src/runtime/realtime_interest_descriptor.cpp
         src/runtime/realtime_dmx_coordinator.cpp
         src/runtime/compiled_runtime_scene_codec.cpp
@@ -375,6 +379,7 @@ if(BUILD_TESTING)
         src/presentation/wheel_presentation_eligibility.cpp
         tests/visual_runtime_core_test.cpp
         tests/direct_presentation_pipeline_test.cpp
+        tests/compiled_evaluation_plan_test.cpp
         src/presentation/dense_presentation_state.cpp
         src/presentation/render_group_projection.cpp
         tests/gobo_selection_runtime_test.cpp
@@ -384,6 +389,10 @@ if(BUILD_TESTING)
         tests/realtime_dmx_load_harness.cpp
         src/runtime/runtime_state_sizes.cpp
         src/runtime/peraviz_visual_runtime.cpp
+        src/runtime/compiled_evaluation_plan.cpp
+        src/runtime/visual_runtime_install.cpp
+        src/runtime/visual_runtime_evaluation.cpp
+        src/runtime/visual_runtime_plan.cpp
         src/runtime/realtime_interest_descriptor.cpp
         src/runtime/realtime_dmx_coordinator.cpp
         src/runtime/compiled_runtime_scene_codec.cpp

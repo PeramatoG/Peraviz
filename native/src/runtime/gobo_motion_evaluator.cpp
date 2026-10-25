@@ -5,9 +5,13 @@
 namespace peraviz::runtime {
 namespace {
 
+// Borrows an original compiled definition from the reference value container.
+const CompiledDmxSourceProgram *source_pointer(const CompiledDmxSourceProgram &program) { return &program; }
+// Borrows an installed definition from the production pointer view without copying strings or sources.
+const CompiledDmxSourceProgram *source_pointer(const CompiledDmxSourceProgram *program) { return program; }
 // Finds a compiled source program by stable runtime ID.
-const CompiledDmxSourceProgram *find_program(const std::vector<CompiledDmxSourceProgram> &programs, int32_t id) {
-    for (const CompiledDmxSourceProgram &program : programs) if (program.program_id == id) return &program;
+template<class Programs> const CompiledDmxSourceProgram *find_program(const Programs &programs, int32_t id) {
+    for (const auto &entry : programs) { const auto *program=source_pointer(entry); if (program->program_id==id) return program; }
     return nullptr;
 }
 
@@ -18,8 +22,8 @@ const GoboSourceValue *find_value(const std::vector<GoboSourceValue> &values, in
 }
 
 // Evaluates one setup-validated activation cascade with a strict depth bound.
-bool activation_is_active(const CompiledDmxSourceProgram &program,
-                          const std::vector<CompiledDmxSourceProgram> &programs,
+template<class Programs> bool activation_is_active(const CompiledDmxSourceProgram &program,
+                          const Programs &programs,
                           const std::vector<GoboSourceValue> &values,
                           size_t depth) {
     if (depth > programs.size()) return false;
@@ -48,26 +52,46 @@ bool evaluate_gobo_source_activation(int32_t source_program_id,
     return true;
 }
 
+// Uses the same authoritative activation evaluator with borrowed installed source definitions.
+bool evaluate_gobo_source_activation(int32_t source_program_id,
+                                     const GoboSourceDefinitions &programs,
+                                     const std::vector<GoboSourceValue> &values,
+                                     uint32_t *raw_value) {
+    const CompiledDmxSourceProgram *program=find_program(programs,source_program_id);
+    const GoboSourceValue *value=program?find_value(values,program->program_id):nullptr;
+    if (!program || !value || !activation_is_active(*program,programs,values,0)) return false;
+    if (raw_value) *raw_value=value->raw_value;
+    return true;
+}
+
 // Evaluates the active exact gobo semantic and its instantaneous physical scalar.
 EvaluatedGoboScalar evaluate_gobo_motion_scalar(const CompiledGoboMotionBinding &binding,
                                                 const std::vector<CompiledDmxSourceProgram> &programs,
                                                 const std::vector<GoboSourceValue> &values) {
+    const CompiledDmxSourceProgram *program = find_program(programs, binding.source_program_id);
+    const GoboSourceValue *value = program ? find_value(values, program->program_id) : nullptr;
+    if (!program || !value) return evaluate_active_gobo_motion_scalar(binding,CompiledDmxSourceProgram{},0,false);
+    const bool active=binding.scalar_evaluable && activation_is_active(*program,programs,values,0);
+    return evaluate_active_gobo_motion_scalar(binding,*program,value->raw_value,active);
+}
+
+// Reuses the exact physical scalar interpretation after a compiled context has resolved activation.
+EvaluatedGoboScalar evaluate_active_gobo_motion_scalar(const CompiledGoboMotionBinding &binding,
+        const CompiledDmxSourceProgram &program, uint32_t raw_value, bool active) {
     EvaluatedGoboScalar result;
     result.binding_id = binding.binding_id;
     result.semantic_kind = binding.semantic_kind;
     result.physical_unit = binding.physical_unit;
-    const CompiledDmxSourceProgram *program = find_program(programs, binding.source_program_id);
-    const GoboSourceValue *value = program ? find_value(values, program->program_id) : nullptr;
-    if (!program || !value || !binding.scalar_evaluable || !activation_is_active(*program, programs, values, 0)) return result;
-    result.raw_value = value->raw_value;
-    uint32_t scalar_from = program->dmx_from;
-    uint32_t scalar_to = program->dmx_to;
+    if (!binding.scalar_evaluable || !active) return result;
+    result.raw_value=raw_value;
+    uint32_t scalar_from = program.dmx_from;
+    uint32_t scalar_to = program.dmx_to;
     double physical_from = binding.physical_from;
     double physical_to = binding.physical_to;
     if (binding.semantic_kind == gdtf_runtime::GoboSemanticKind::SelectSpin || binding.semantic_kind == gdtf_runtime::GoboSemanticKind::SelectShake) {
         bool found_channel_set = binding.channel_sets.empty();
         for (const CompiledWheelChannelSet &set : binding.channel_sets) {
-            if (value->raw_value < set.dmx_from || value->raw_value > set.dmx_to) continue;
+            if (raw_value < set.dmx_from || raw_value > set.dmx_to) continue;
             scalar_from = set.dmx_from;
             scalar_to = set.dmx_to;
             physical_from = set.physical_from;
@@ -79,7 +103,7 @@ EvaluatedGoboScalar evaluate_gobo_motion_scalar(const CompiledGoboMotionBinding 
         if (!found_channel_set) return result;
     }
     const uint32_t span = scalar_to - scalar_from;
-    result.normalized_value = span == 0 ? 0.0 : static_cast<double>(value->raw_value - scalar_from) / static_cast<double>(span);
+    result.normalized_value = span == 0 ? 0.0 : static_cast<double>(raw_value - scalar_from) / static_cast<double>(span);
     result.normalized_value = std::clamp(result.normalized_value, 0.0, 1.0);
     result.physical_value = physical_from + (physical_to - physical_from) * result.normalized_value;
     result.active = true;

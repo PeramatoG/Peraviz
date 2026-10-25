@@ -15,6 +15,92 @@ approximately 40 FPS during active Color (previously approximately 23 FPS).
 Loading work and its bounded synthetic comparison are recorded in
 [setup measurements](rendering-performance-architecture.md#scene-setup-and-loading).
 
+## Compiled Evaluation Graph, phase 1
+
+The production serial evaluator now uses `CompiledEvaluationPlan`: relevant DMX
+offset → source handle → existing property/Color/wheel consumer or gobo layer.
+Master edges reach gobo consumers even when the dependent bytes are unchanged.
+`EvaluationWorkspace` owns cached numeric source results and generation-stamped
+activation results; it owns no canonical physical output state. Setup hashes and
+adjacency builders are released after compaction. Source/consumer work lists and
+optical target ordering retain deterministic domain visitation.
+
+Identical selected-mode scalar mappings share immutable definitions keyed by exact
+mapping content, source layout and selected-mode identity. The pool is scene-local;
+content changes or scene replacement cannot retain an old definition. Patches,
+component/Beam identities, diagnostics, activation and temporal state remain local.
+The existing GDTF template compiler continues to own shared parsed definitions.
+Whole instance binding graphs are not interned across patches: their numeric target
+routes remain scene-specific. This phase shares the safe scalar mapping unit and
+borrowed gobo definition views instead of changing setup serialization.
+
+Properties retain existing declaration-order range arbitration and weighted
+contributors; Color and wheels retain their established input/range semantics.
+Gobo activation uses the existing cycle-safe ModeMaster evaluator, now once per
+shared source context/update. Physical gobo scalar interpretation is shared with
+the reference entry point; held phase and velocity ownership are unchanged.
+This optimization adds no GDTF capability. In particular, it does not introduce
+ModeMaster interpretation into additional domains, Relations or new optical effects.
+Ordered wheel composition uses exact target-local setup indexes rather than scanning
+unrelated wheels. The PR #108 direct native presentation boundary remains unchanged.
+
+Plans expose dense source/cache ranges and explicit consumer/target ownership for a
+future native partitioner. Shared source dependencies must complete before their
+consumers, target writers must own exclusive ranges, ordered optical composition
+must remain deterministic, and all tasks must join before compact publication.
+Current execution remains serial, with no per-attribute locks or Godot workers.
+
+### Bounded reference comparison
+
+The existing 1,000-output native workload now represents 20 × 50 distinct physical
+properties sharing controls, or 1,000 independently patched Dimmer/RGB/Zoom sources.
+Both retain one selected-mode mapping layout and five shared scalar definitions.
+A temporary build of the evaluator from merged PR #108 (`6ae6e2c`) ran the same
+96-update deterministic sequence, followed by 32 single-source sparse updates.
+Reference code stays outside the production tree. Both runs used Linux Debug,
+identical inputs and opt-in tracing; numbers below are summed CPU microseconds.
+
+| Metric | Shared-control compact source | Independent emitters |
+| --- | --- | --- |
+| Fixture instances / distinct selected-mode source layouts | 20 / 1 | 1,000 / 1 |
+| Source nodes / consumers / dependencies | 100 / 3,000 / 5,100 | 5,000 / 3,000 / 10,000 |
+| Shared immutable scalar definitions | 5 | 5 |
+| Actual source evaluations, 96 updates (before → graph) | 239,950 → 4,799 | 239,980 → 239,980 |
+| Actual source evaluations, 32 sparse updates (before → graph) | 1,600 → 32 | 32 → 32 |
+| Native evaluation CPU, 96 updates (µs, before → graph) | 181,711 → 118,091 | 286,349 → 196,542 |
+| Native evaluation CPU, 32 sparse updates (µs, before → graph) | 1,273 → 1,034 | 163 → 163 |
+| Consumers avoided, sparse submitted universes | 94,400 | 7,648 |
+| Dirty physical outputs / renderer rows per full update | 1,000 / 20 | 1,000 / 1,000 |
+| Produced renderer rows, 96 updates including forced replay | 980 | 49,000 |
+| Retained graph / workspace buffer bytes | 96,296 / 17,900 | 325,000 / 160,000 |
+| Correctness failures | 0 | 0 |
+
+Source/consumer counts refer to existing semantic programs and optical layers,
+not a new node per physical member downstream of a shared route. Avoided-consumer
+counters count unvisited consumers within submitted universes; untouched universes
+are skipped separately. Plan/workspace byte counts cover retained contiguous graph,
+shared mapping and cache/work-list buffers. They exclude existing domain records,
+binding-handle vectors, container/control-block overhead and Godot resources; they
+are not process RSS or net memory savings. Setup scratch is retired.
+
+The comparison checks exact canonical identities, masks, dirty order, numeric
+physical values and render deltas; the same reference/graph workload digests match.
+Additional focused tests cover changed masters, activation/deactivation, shared
+activation caching, independent patches, content/mode separation, invalid/cyclic
+edges, no-change suppression and retirement. Existing native regressions retain
+multi-byte/weighted/calibrated Color and gobo temporal coverage. The existing Godot
+render-group test exercises actual compact/independent output resources and replay.
+
+These are bounded synthetic CPU observations, not a Windows/GPU or FPS measurement.
+Small sparse timings are close to clock/scheduling noise. No timing threshold is
+asserted in CI. Existing core trace adds `source_programs_evaluated`,
+`source_cache_hits`, `activation_programs_evaluated`, `activation_cache_hits`,
+`evaluation_consumers_scheduled` and `evaluation_consumers_avoided`; state-size
+sampling reports `evaluation_*` plan counts and bytes. Normal playback keeps
+tracing off. Pending semantic row and transform staging still use existing serial
+scratch; a general scheduler and broader immutable binding-template sharing remain
+subsequent work.
+
 ## Foundation reference evidence (before Render Groups)
 
 The owner reports approximately **24–25 FPS / 40–42 ms per frame after warmup**,

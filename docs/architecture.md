@@ -73,6 +73,19 @@ MVR patch + selected GDTF DMX mode
 
 Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, and color, BeamOptics, wheel, and gobo output is associated with exact Beam targets. Repeated targets therefore do not collapse into one fixture-wide value.
 
+## Compiled serial evaluation plan
+
+Scene installation derives compact source/activation/consumer adjacency from the
+existing selected-mode programs. Changed DMX offsets nominate only reachable domain
+programs and optical layers. Instance-local workspaces cache decoded scalar values
+until their own bytes change and share a complete ModeMaster activation result
+within each relevant update. Declaration order, weighted/range interpretation and
+temporal gobo state retain their existing owners. Selected-mode/content keys intern
+immutable scalar mappings; patch addresses, source IDs, canonical targets and caches
+remain independent. No setup serialization change or worker pool is introduced.
+See the [current performance roadmap](performance-foundation.md#compiled-evaluation-graph-phase-1)
+for ownership limits, counters and a bounded reference comparison.
+
 ## Native dense presentation state
 
 The [performance foundation](performance-foundation.md) remains the baseline;

@@ -124,6 +124,12 @@ peraviz::runtime::PeravizVisualRuntimeCore &PeravizVisualRuntime::native_core() 
 // Converts native visual frame stats into a Godot dictionary.
 Dictionary PeravizVisualRuntime::stats_to_dictionary(const peraviz::runtime::VisualFrameStats &stats) {
     Dictionary out;
+    out["source_programs_evaluated"]=int64_t(stats.source_programs_evaluated);
+    out["source_cache_hits"]=int64_t(stats.source_cache_hits);
+    out["activation_programs_evaluated"]=int64_t(stats.activation_programs_evaluated);
+    out["activation_cache_hits"]=int64_t(stats.activation_cache_hits);
+    out["evaluation_consumers_scheduled"]=int64_t(stats.evaluation_consumers_scheduled);
+    out["evaluation_consumers_avoided"]=int64_t(stats.evaluation_consumers_avoided);
     out["packets_submitted"] = static_cast<int64_t>(stats.packets_submitted);
     out["packets_coalesced"] = static_cast<int64_t>(stats.packets_coalesced);
     out["universes_ignored"] = static_cast<int64_t>(stats.universes_ignored);
