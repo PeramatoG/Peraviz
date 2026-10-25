@@ -48,7 +48,7 @@ Plans expose dense source/cache ranges and explicit consumer/target ownership fo
 future native partitioner. Shared source dependencies must complete before their
 consumers, target writers must own exclusive ranges, ordered optical composition
 must remain deterministic, and all tasks must join before compact publication.
-Current execution remains serial, with no per-attribute locks or Godot workers.
+The serial reference remains available; the adaptive extension below uses these ownership boundaries without per-source locks or Godot workers.
 
 ### Bounded reference comparison
 
@@ -98,8 +98,86 @@ asserted in CI. Existing core trace adds `source_programs_evaluated`,
 `evaluation_consumers_scheduled` and `evaluation_consumers_avoided`; state-size
 sampling reports `evaluation_*` plan counts and bytes. Normal playback keeps
 tracing off. Pending semantic row and transform staging still use existing serial
-scratch; a general scheduler and broader immutable binding-template sharing remain
-subsequent work.
+scratch; broader immutable binding-template sharing remains subsequent work.
+
+## Adaptive native parallel evaluation
+
+After merged PR #109 the owner observed approximately **75 FPS with active DMX**
+on the existing Windows workload. This may be V-Sync limited and establishes no
+unbounded scalability claim. The 82-fixture / 1,095-output / 20 aggregate Wash shafts /
+115-row reference topology is unchanged.
+
+Production selects a native asynchronous coordinator for sufficiently independent
+non-gobo graphs (initial eligibility: at least 3,072 sources and 512 Color targets).
+Shared-control graphs retain cached serial work. Hardware capacity respects process
+affinity and Linux cgroup quota, reserves three CPUs for main/render/coordinator
+activity and caps reusable workers at four. Fewer than two available workers keeps
+the original synchronous serial path. These are conservative admission bounds,
+not an optimal worker-count claim. Eligible phases additionally consider dirty
+work, estimated useful kernel cost and observed dispatch cost. Whole-evaluation
+serial probes compare native commit cost; slower parallel observations trigger a
+bounded serial cooldown, with periodic rechecks and baseline refresh. Small/sparse
+updates run serially on the coordinator without worker dispatch.
+
+Eligible pure batches evaluate source programs and exact Color input/resource
+cooking; no-wheel final Color normalization also runs in exclusive target slots.
+Shared sources are decoded once before their consumers. The coordinator retains
+ModeMaster resolution, weighted/range arbitration, all canonical maps, transforms,
+ordered optical layers, physical composition and Render Group reduction. Gobo
+scenes remain fully serial, preserving temporal transitions and held phase without
+adding another mailbox between those transitions and their evaluator. No supported
+GDTF capability or aggregation rule changes.
+
+`PERAVIZ_NATIVE_EVALUATION=serial|parallel|auto` is sampled at renderer installation;
+`parallel` is an explicit diagnostic override (two workers), not the default and
+still excludes gobo scenes. Opt-in existing performance tracing reports task count,
+workers used, actual aggregate worker CPU, task wall, coordination residual,
+serial fallback/probe/backoff, native evaluation/physical/reduction wall, main-thread
+publication, completed and consumed latency. Worker CPU overlaps wall time and
+must not be added to it. Coordinator residual includes scheduling/preemption, not
+just lock overhead. State sizes expose scratch, input/snapshot banks, derived display
+cache and worker capacity separately; estimates exclude platform thread stacks,
+container overhead and Godot allocations. There is no per-scalar timing.
+
+Run `peraviz_native_visual_runtime_tests --parallel-pipeline` for the bounded exact
+comparison and ownership/lifecycle checks. It uses 20 deterministic updates with
+full, unchanged and sparse input, calibrated Color, duplicate targets within/across
+universes and ordered wheel layers. It also holds workers behind a test gate,
+injects a recoverable pure-kernel exception, coalesces unrelated universe packets,
+checks automatic serial probes plus actual parallel dispatch, and cancels/reloads
+while workers are active. Existing gobo ModeMaster/continuous-rotation tests run in
+the same focused command. The existing Godot render-group integration test forces
+the production async path for independent emitters, polls without new packets and
+replaces the renderer with held input. No FPS or timing threshold is asserted.
+
+The local runner has a two-CPU quota. Forced parallel measurements therefore do
+not establish a wall-time gain, and automatic policy keeps this host serial.
+Linux Release, 20-update deterministic sequence (summed microseconds, opt-in
+trace, forced two workers; shared case includes one intentional failure/retry):
+
+| Metric | Small serial | Shared-control forced | Independent forced |
+| --- | ---: | ---: | ---: |
+| Serial evaluation wall | 21 | 3,705 | 4,683 |
+| Parallel evaluation wall | — | 4,910 | 4,793 |
+| Native physical + reduction wall | 3 | 1,028 | 889 |
+| Aggregate worker CPU | 0 | 1,348 | 1,772 |
+| Coordination residual wall | 0 | 445 | 632 |
+| Actual parallel tasks / serial updates | 0 / 20 | 40 / 10 | 40 / 10 |
+| Produced dirty physical / render rows | 20 / 20 | 10,250 / 205 | 10,005 / 10,005 |
+| Snapshot buffers / worker scratch bytes | 0 / 0 | 138,536 / 177,956 | 272,296 / 457,128 |
+
+A separate headless Godot Debug integration sample published two 1,000-row
+independent snapshots with six actual parallel tasks: 290 µs summed native
+main-thread publication, 6,468 µs background evaluation, 1,769 µs physical
+composition, 581 µs reduction and 959 µs aggregate worker CPU. Task wall was 660 µs
+(two-worker phase capacity: 1,320 µs; approximately 73% CPU utilization during
+those phases). One post-activation submission recorded 2,429 µs completion and
+8,857 µs consumption latency; the initial already-held batch has no submission
+latency timestamp. These separately collected Debug/Release samples must not be
+combined into a total. Other repeated forced runs varied around parity on this
+quota-limited host. They establish exact useful native work and offloading, not a
+scalability/FPS improvement. Windows GPU/DMX validation is still required. The supported subset is useful CPU parallelism in the production
+path, while optical map commits and reduction remain ordered native work.
 
 ## Foundation reference evidence (before Render Groups)
 

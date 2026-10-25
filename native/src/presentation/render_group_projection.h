@@ -36,6 +36,8 @@ public:
     const std::vector<PreparedRenderRow> &prepared() const { return prepared_; }
     // Borrows setup-generation inverse physical-to-render membership.
     const std::vector<uint32_t> &membership() const { return physical_to_row_; }
+    // Borrows an already composed physical member value for completed resource publication.
+    const RenderValues &member_values(uint32_t index) const { return members_[index].values; }
     size_t buffer_bytes() const;
 private:
     std::vector<uint32_t> physical_to_row_, dirty_rows_;

@@ -7,10 +7,10 @@ This document is the source of truth for the active runtime. The [GDTF support m
 Native C++ owns MVR/GDTF parsing, selected-mode semantic compilation, fixture patch and DMX source programs, physical-value evaluation, target-oriented state, dirty detection, and render-ready frame assembly. The compiled setup model is `CompiledRuntimeScene`.
 
 Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes. C++ is the simulation and calculation
-core; Godot is the presentation engine. Future native dependency evaluation,
+core; Godot is the presentation engine. Native dependency evaluation,
 physical composition and Render Group reduction connect directly to compact
 presentation snapshots. Godot must not shuttle physical-state buffers between
-native calculation stages. Any future parallel evaluation and race resolution
+native calculation stages. Parallel evaluation and race resolution
 belong in C++; no Godot worker threads are introduced.
 
 Scene import uses one owned native preparation task for archive/XML work, immutable
@@ -73,7 +73,7 @@ MVR patch + selected GDTF DMX mode
 
 Dimmer state is render-target-oriented, Pan/Tilt state is component-oriented, and color, BeamOptics, wheel, and gobo output is associated with exact Beam targets. Repeated targets therefore do not collapse into one fixture-wide value.
 
-## Compiled serial evaluation plan
+## Compiled evaluation and native scheduling
 
 Scene installation derives compact source/activation/consumer adjacency from the
 existing selected-mode programs. Changed DMX offsets nominate only reachable domain
@@ -82,15 +82,41 @@ until their own bytes change and share a complete ModeMaster activation result
 within each relevant update. Declaration order, weighted/range interpretation and
 temporal gobo state retain their existing owners. Selected-mode/content keys intern
 immutable scalar mappings; patch addresses, source IDs, canonical targets and caches
-remain independent. No setup serialization change or worker pool is introduced.
+remain independent. Setup serialization is unchanged.
 See the [current performance roadmap](performance-foundation.md#compiled-evaluation-graph-phase-1)
 for ownership limits, counters and a bounded reference comparison.
+
+Large independent, non-gobo scenes use `AsyncPresentationPipeline`: the main thread
+submits stable latest-state input banks and polls completed immutable snapshots.
+One native coordinator owns the same moved physical state and compiled workspace.
+`ParallelEvaluationPrefetch` runs disjoint source decoding and Color input/cooking
+ranges through a bounded persistent C++ pool. Worker slots contain numeric scratch,
+not authoritative state. The coordinator commits source warnings, properties,
+activation, ordered Color/wheel maps and physical/reduction deltas in canonical
+order. Cross-universe target writes remain ordered. Workers never call Godot.
+
+Three input banks coalesce complete latest universe values; two output banks retain
+ordered completed deltas, including one result waiting natively if Godot has not
+consumed the preceding result. No unread delta is overwritten. Main-thread acquire
+and release use atomic handoff without a worker wait. Input submission and polling
+are separate, including frames with no new packets or a stopped stream. Godot packs
+only accepted final render rows and independent domains and applies cached lens
+RIDs. Its displayed physical-value cache is derived presentation data, not a second
+simulation owner. Scene/schema/binding identities gate publication. Explicit setup,
+renderer/diagnostic transitions and shutdown invalidate publication before joining
+and retiring borrowed definitions; ordinary presentation never joins.
+
+Small/shared-control scenes and gobo/temporal scenes retain the original serial
+transaction. This subset deliberately avoids skipping temporal transitions or
+changing the existing continuous gobo phase/velocity owner. See the
+[adaptive evaluation comparison](performance-foundation.md#adaptive-native-parallel-evaluation)
+for policy, measurements and remaining domains.
 
 ## Native dense presentation state
 
 The [performance foundation](performance-foundation.md) remains the baseline;
 renderer scalability is still open. Owner observations on Windows 4.7.1 Forward+
-are approximately 40 FPS with active DMX and 75 FPS while holding illumination.
+after PR #109 are approximately 75 FPS with active DMX; V-Sync may limit this observation.
 Those observations do not attribute the remaining cost or predict this change's FPS.
 
 Production calls `PeravizPresentationState.consume_runtime()` once per logical
@@ -98,7 +124,7 @@ update. `DirectPresentationPipeline` connects native selected-mode evaluation,
 `DensePresentationState` composition and `RenderGroupProjection` reduction using
 borrowed, reusable C++ section buffers. Intensity, Color and BeamOptics scalars
 never cross into Godot for further calculation. The sole authoritative physical
-presentation state remains in `DensePresentationState`; the coordinator owns only
+presentation state remains in `DensePresentationState`; worker jobs own only
 scratch. Godot receives final renderer deltas and independent sectioned Pan/Tilt,
 wheel, gobo and temporal updates. Schema and binding generations are checked
 before consuming pending DMX. Domain presentation finishes before shaft mutation.
@@ -111,8 +137,8 @@ ownership, physical native state and normal Pan/Tilt transforms remain exact;
 compact-source native Render Emitter Groups now accumulate physical members into
 AGGREGATED or INDIVIDUAL shaft rows. Exactly one renderer-sized integer/float
 payload pair crosses to Godot. Main-thread native Godot glue updates cached lens
-RIDs from exact physical values, separately from optical shaft mixing. MultiMesh,
-independent-output batching and C++ threading remain future work. See [dense presentation state](native-dense-presentation-state.md)
+RIDs from exact physical values, separately from optical shaft mixing. MultiMesh
+and GPU/renderer batching remain future work. See [dense presentation state](native-dense-presentation-state.md)
 for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
 ## Renderer ownership
@@ -175,6 +201,6 @@ Art-Net reception records cheap metadata for all valid traffic, but only univers
 
 ## Live latency measurement boundary
 
-Production playback is scheduled by `load_scene.gd::_process`, which calls `DmxController.process_dmx`, the native receiver/coordinator pump, `PeravizVisualRuntime.consume_latest_visual_frame`, and `SectionedVisualFrameApplier.apply_snapshot` in the same render-process opportunity. The 125 ms status refresh only updates monitor UI and does not gate playback. Apply completion is recorded after cached Godot renderer targets have been mutated. This is a CPU-side boundary; render submission, GPU execution, display queueing, and presentation are intentionally not represented as CPU RX-to-apply latency.
+Production playback is scheduled by `load_scene.gd::_process`, which calls `DmxController.process_dmx`, the native receiver/coordinator pump, completed-snapshot polling through `PeravizPresentationState.consume_runtime`, and `SectionedVisualFrameApplier.apply_snapshot` in the same render-process opportunity. The serial fallback completes its native transaction there; asynchronous native work can complete between opportunities. The 125 ms status refresh only updates monitor UI and does not gate playback. Apply completion is recorded after cached Godot renderer targets have been mutated. This is a CPU-side boundary; render submission, GPU execution, display queueing, and presentation are intentionally not represented as CPU RX-to-apply latency.
 
 Renderer diagnostic modes are presentation-only policy over the section applier. They do not change native semantic evaluation, the sectioned protocol, saved visual settings, or renderer resource ownership. Emission-only GDTF Beam outputs remain physical geometry but are excluded from projected beam allocation and work.

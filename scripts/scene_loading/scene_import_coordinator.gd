@@ -117,7 +117,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		budget.breadcrumb("project_completion_end")
 	if bool(import_result.get("ok", false)):
 		app._loaded_mvr_path = path
-		app._last_loaded_file_type = loaded_file_type
+		app.last_loaded_file_type = loaded_file_type
 		if app._status_presenter != null:
 			app._status_presenter.set_scene_state_loaded(int(import_result.get("node_count", 0)))
 	else:

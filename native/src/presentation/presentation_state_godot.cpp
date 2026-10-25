@@ -24,11 +24,15 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("physical_values", "index"), &PeravizPresentationState::physical_values);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizPresentationState::clear);
     ClassDB::bind_method(D_METHOD("compose", "generation", "descriptors", "integers", "values", "trace"), &PeravizPresentationState::compose);
-    ClassDB::bind_method(D_METHOD("consume_runtime", "runtime", "generation", "schema_generation", "trace"), &PeravizPresentationState::consume_runtime);
+    ClassDB::bind_method(D_METHOD("consume_runtime", "runtime", "generation", "schema_generation", "trace", "poll_only"), &PeravizPresentationState::consume_runtime,DEFVAL(false));
     ClassDB::bind_method(D_METHOD("get_sizes"), &PeravizPresentationState::get_sizes);
 }
 // Installs canonical physical routes; renderer-sized buffers are allocated only after render setup.
 int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const PackedFloat32Array &scales, const PackedInt32Array &routes) {
+    retire_async(false);
+    const String mode=OS::get_singleton()->get_environment("PERAVIZ_NATIVE_EVALUATION");
+    async_disabled_=mode=="serial"; async_forced_=mode=="parallel";
+    displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
     if (ids.size()!=scales.size() || routes.size()%3!=0) return -1;
     std::vector<OutputBinding> outputs;
     std::vector<TargetBinding> targets;
@@ -42,6 +46,7 @@ int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const Pac
 }
 // Retains native Control Group membership as an input to renderer/resource setup.
 bool PeravizPresentationState::install_groups(const PackedInt32Array &representatives) {
+    retire_async();
     std::vector<int32_t> mapping;
     mapping.reserve(representatives.size());
     for (int64_t i=0;i<representatives.size();++i) mapping.push_back(representatives[i]);
@@ -49,6 +54,7 @@ bool PeravizPresentationState::install_groups(const PackedInt32Array &representa
 }
 // Allocates the only published arrays to the actual renderer-row count, never physical count.
 bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membership, const PackedInt32Array &classes) {
+    retire_async();
     if (size_t(membership.size())!=state_.bindings().size()) return false;
     std::vector<uint32_t> mapping; std::vector<RenderPresentationClass> modes;
     for (int64_t i=0;i<membership.size();++i) mapping.push_back(uint32_t(membership[i]));
@@ -61,31 +67,35 @@ bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membe
 // Binds existing prepared lens resources without creating per-frame material objects or dictionaries.
 bool PeravizPresentationState::install_materials(const Array &rids, const PackedInt32Array &owners,
         const PackedFloat32Array &scales, const PackedInt32Array &routes) {
+    retire_async();
     diagnostic_skip_lens_writes_=OS::get_singleton()->get_environment("PERAVIZ_DIAGNOSTIC_SKIP_LENS_WRITES")=="1";
     return materials_.install(state_.bindings().size(),rids,owners,scales,routes);
 }
 // Applies presentation suppression without changing held native physical Color/Dimmer.
-int64_t PeravizPresentationState::set_materials_enabled(bool enabled) { return int64_t(materials_.set_enabled(enabled)); }
+int64_t PeravizPresentationState::set_materials_enabled(bool enabled) { retire_async(); return int64_t(materials_.set_enabled(enabled)); }
 // Supports cold inspection/inverse lookup; never used by the renderer's live row loop.
 PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) const {
     PackedFloat32Array result;
-    if (index<0 || size_t(index)>=state_.bindings().size()) return result;
-    result.resize(ValueCount); const auto values=state_.render_values(uint32_t(index));
+    const size_t count=async_?displayed_physical_.size():state_.bindings().size();
+    if (index<0 || size_t(index)>=count) return result;
+    result.resize(ValueCount); const auto values=async_?displayed_physical_[size_t(index)]:state_.render_values(uint32_t(index));
     std::copy(values.begin(),values.end(),result.ptrw()); return result;
 }
 // Reads the cached values committed to a prepared material RID for cold inspection/tests.
 PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
 // Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
+    retire_async(false); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
     std::vector<int32_t>().swap(fixture_ids_);
     pipeline_.clear(); state_.clear(); projection_.clear(); materials_.clear();
     indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
 }
 // Replays renderer resources and lens RIDs from exact held physical state.
-void PeravizPresentationState::invalidate_renderer() { state_.invalidate_renderer(); projection_.invalidate(); }
+void PeravizPresentationState::invalidate_renderer() { retire_async(); state_.invalidate_renderer(); projection_.invalidate(); }
 // Accumulates changed physical contributions natively and copies only compact dirty renderer rows.
 Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt32Array &descriptors,
         const PackedInt32Array &integers, const PackedFloat32Array &values, bool trace) {
+    retire_async();
     Dictionary result;
     begin_snapshot(trace);
     const int64_t start=trace?now_us():0;
@@ -99,10 +109,10 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
 }
 // Applies diagnostic transitions before native evaluation or explicit held-state replay.
 void PeravizPresentationState::begin_snapshot(bool trace) {
-    state_.set_trace_enabled(trace);
+    if (!async_) state_.set_trace_enabled(trace);
     const bool suppress_lenses=trace && diagnostic_skip_lens_writes_;
     // Leaving diagnostic isolation replays exact held values without another DMX packet.
-    if (lens_writes_suppressed_ && !suppress_lenses) state_.invalidate_renderer();
+    if (lens_writes_suppressed_!=suppress_lenses) { retire_async(); state_.invalidate_renderer(); }
     lens_writes_suppressed_=suppress_lenses;
 }
 // Packs only final renderer rows and applies cached main-thread material resources.
@@ -142,11 +152,33 @@ Dictionary PeravizPresentationState::publish(int64_t generation, bool trace, int
 }
 // Evaluates, composes and reduces without exporting intermediate physical lighting scalars.
 Dictionary PeravizPresentationState::consume_runtime(const Ref<PeravizVisualRuntime> &runtime,
-        int64_t generation, int32_t schema_generation, bool trace) {
+        int64_t generation, int32_t schema_generation, bool trace, bool poll_only) {
     Dictionary result;
-    if (runtime.is_null() || uint64_t(generation)!=state_.generation() ||
-            runtime->native_core().schema().schema_generation!=schema_generation) {
+    if (runtime.is_null() || runtime->schema_generation()!=schema_generation ||
+            uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) {
         result["valid"]=false; return result;
+    }
+    if (async_) return poll_async(runtime,generation,schema_generation,trace);
+    if (!runtime->async_available()) { result["valid"]=false; return result; }
+    if (poll_only && !resume_pending_ && deferred_domains_.descriptors.empty()) { result["valid"]=true; result["pending"]=true; return result; }
+    resume_pending_=false;
+    peraviz::presentation::AsyncEvaluationOptions options;
+    options.trace=trace;
+    options.force=async_forced_; if (options.force) options.workers=2;
+    if (!async_disabled_ && runtime->async_available() && AsyncPresentationPipeline::eligible(runtime->native_core(),options)) {
+        begin_snapshot(trace);
+        displayed_physical_.resize(state_.bindings().size());
+        for (size_t i=0;i<displayed_physical_.size();++i) displayed_physical_[i]=state_.render_values(uint32_t(i));
+        try {
+            async_=std::make_shared<AsyncPresentationPipeline>(runtime->native_core_handle(),std::move(state_),std::move(projection_),options);
+        } catch (...) {
+            // Construction restores moved physical ownership; resource-starved environments remain serial.
+            async_disabled_=true;
+        }
+        if (async_) {
+            async_sizes_=async_->initial_sizes(); async_runtime_=runtime; runtime->attach_async(async_);
+            return poll_async(runtime,generation,schema_generation,trace);
+        }
     }
     begin_snapshot(trace);
     if (!pipeline_.consume(runtime->native_core(),state_,projection_,uint64_t(generation),schema_generation,trace)) {
@@ -195,6 +227,17 @@ Dictionary PeravizPresentationState::consume_runtime(const Ref<PeravizVisualRunt
     result["valid"]=true; result["presentation"]=presentation;
     result["schema_generation"]=frame.schema_generation;
     result["runtime_now_seconds"]=runtime->native_core().runtime_now_seconds();
+    if (!deferred_domains_.descriptors.empty()) {
+        PackedInt32Array merged; PackedInt32Array merged_ints; PackedFloat32Array merged_floats;
+        for (int32_t value:deferred_domains_.descriptors) merged.push_back(value);
+        for (int32_t value:deferred_domains_.integers) merged_ints.push_back(value);
+        for (float value:deferred_domains_.floats) merged_floats.push_back(value);
+        for (int64_t b=0;b<descriptors.size();b+=5) {
+            for (int32_t value:{descriptors[b],descriptors[b+1],int32_t(descriptors[b+2]+merged_ints.size()),int32_t(descriptors[b+3]+merged_floats.size()),descriptors[b+4]}) merged.push_back(value);
+        }
+        merged_ints.append_array(integers); merged_floats.append_array(floats);
+        descriptors=merged; integers=merged_ints; floats=merged_floats; deferred_domains_={};
+    }
     result["descriptors"]=descriptors; result["integers"]=integers; result["floats"]=floats;
     if (trace) {
         PackedInt32Array summary;
@@ -216,10 +259,15 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["presentation_contract_revision"]=4;
     sizes["extension_build"]=String(__DATE__ " " __TIME__);
     sizes["unique_lens_material_rids"]=int64_t(materials_.size());
-    sizes["physical_outputs"]=int64_t(state_.bindings().size()); sizes["render_rows"]=int64_t(projection_.row_count());
-    sizes["state_capacity"]=int64_t(state_.state_capacity()); sizes["dirty_capacity"]=int64_t(state_.dirty_capacity());
-    sizes["dirty_high_water"]=int64_t(state_.high_water()); sizes["native_buffer_bytes"]=int64_t(state_.buffer_bytes()+projection_.buffer_bytes());
+    sizes["physical_outputs"]=int64_t(async_?async_sizes_.physical_outputs:state_.bindings().size()); sizes["render_rows"]=int64_t(async_?async_sizes_.render_rows:projection_.row_count());
+    sizes["state_capacity"]=int64_t(async_?async_sizes_.state_capacity:state_.state_capacity()); sizes["dirty_capacity"]=int64_t(async_?async_sizes_.dirty_capacity:state_.dirty_capacity());
+    sizes["dirty_high_water"]=int64_t(async_?async_sizes_.high_water:state_.high_water()); sizes["native_buffer_bytes"]=int64_t(async_?async_sizes_.buffer_bytes:state_.buffer_bytes()+projection_.buffer_bytes());
     sizes["packed_buffer_bytes"]=indices_masks_.size()*int64_t(sizeof(int32_t))+values_.size()*int64_t(sizeof(float));
+    sizes["native_async_active"]=bool(async_); sizes["native_snapshot_buffer_bytes"]=int64_t(async_snapshot_bytes_);
+    sizes["native_worker_scratch_bytes"]=int64_t(async_worker_bytes_);
+    sizes["native_input_buffer_bytes"]=int64_t(async_?async_->input_buffer_bytes():0);
+    sizes["native_display_cache_bytes"]=int64_t(displayed_physical_.capacity()*sizeof(RenderValues));
+    sizes["native_worker_capacity"]=int64_t(async_?async_->worker_count():0);
     return sizes;
 }
 } // namespace godot

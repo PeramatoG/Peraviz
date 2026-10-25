@@ -2,6 +2,7 @@
 #include "runtime/ordered_dirty_indices.h"
 #include "runtime/compiled_evaluation_plan.h"
 #include "runtime/gobo_motion_evaluator.h"
+#include "runtime/parallel_evaluation_prefetch.h"
 
 #include "runtime/visual_frame_schema.h"
 #include "runtime/visual_runtime_types.h"
@@ -45,6 +46,16 @@ enum class SemanticParameter : int32_t {
 
 class PeravizVisualRuntimeCore {
 public:
+    PeravizVisualRuntimeCore();
+    ~PeravizVisualRuntimeCore();
+    void set_native_executor(NativeBatchExecutor *executor);
+    ParallelEvaluationMetrics parallel_metrics() const;
+    bool async_eligible_workload() const;
+    // Temporal/gobo scenes retain the existing serial transaction to preserve every observed transition.
+    bool has_gobo_domains() const { return has_gobo_domains_; }
+    SectionedVisualFrame held_domain_replay() const;
+    struct HeldUniverse { int id=0; std::vector<uint8_t> values; };
+    std::vector<HeldUniverse> held_universes() const;
     void clear();
     void install_compiled_scene(const CompiledRuntimeScene &scene);
     void submit_universe_frame(int universe_id, const uint8_t *data, int length);
@@ -59,6 +70,10 @@ public:
     std::vector<std::pair<uint16_t, std::vector<uint16_t>>> realtime_interest_offsets() const;
 
 private:
+    friend class ParallelEvaluationPrefetch;
+    std::unique_ptr<ParallelEvaluationPrefetch> prefetch_;
+    size_t installed_sources_=0,installed_colors_=0;
+    bool has_gobo_domains_=false;
     struct CompiledPropertyProgram {
         CompiledComponentProperty property;
         SemanticParameter parameter = SemanticParameter::Unknown;
@@ -145,6 +160,7 @@ private:
     struct UniverseState {
         CompiledEvaluationPlan plan;
         std::vector<InstalledSourceProgram *> source_bindings;
+        std::vector<uint8_t> prefetched_warnings;
         std::vector<int> dirty_properties, dirty_colors;
         OrderedDirtyIndices dirty_wheels;
         std::vector<int64_t> dirty_gobo_selections, dirty_gobo_motions, dirty_physical_wheels;
@@ -186,17 +202,7 @@ private:
         bool initialized = false;
     };
 
-    struct CookedEmitterColor {
-        float srgb_red = 1.0f;
-        float srgb_green = 1.0f;
-        float srgb_blue = 1.0f;
-        float gain = 1.0f;
-        double linear_red = 1.0;
-        double linear_green = 1.0;
-        double linear_blue = 1.0;
-        bool valid = true;
-        bool initialized = false;
-    };
+    using CookedEmitterColor = CookedEmitterColorValue;
 
     struct FixtureChangeResult {
         bool changed = false;
@@ -206,10 +212,11 @@ private:
     static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
     static bool is_color_semantic(CompiledSemantic semantic);
     static uint32_t max_raw_value_for_source_count(size_t source_count);
-    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
-    static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics);
+    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings = nullptr);
+    static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings = nullptr);
     void install_source_mappings(const CompiledRuntimeScene &scene);
     void compile_evaluation_plans();
+    void emit_source_warnings(const InstalledSourceProgram &program,uint8_t warnings);
     EvaluationResult evaluate_cached_source(UniverseState &universe, uint32_t source);
     EvaluationResult evaluate_property_value(UniverseState &universe, const CompiledPropertyProgram &property);
     void fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context);
@@ -220,8 +227,8 @@ private:
     static bool nearly_equal(float a, float b, float epsilon);
     static float color_value_from_evaluation(CompiledSemantic semantic, const EvaluationResult &evaluated);
     static int64_t wheel_physical_key(int32_t beam_target_id, int32_t wheel_renderer_id);
-    CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target) const;
-    CookedEmitterColor compose_ordered_target_color(int32_t beam_target_id) const;
+    CookedEmitterColor cook_emitter_color(const ColorTargetRuntime &target,const float *overrides=nullptr) const;
+    CookedEmitterColor compose_ordered_target_color(int32_t beam_target_id,const CookedEmitterColor *base_override=nullptr) const;
     CookedEmitterColor cook_wheel_slot_layer(const CompiledWheelPaletteSlot &slot) const;
     CookedEmitterColor aggregate_indexed_wheel_layer(const CompiledWheelPaletteSlot &slot_a, const CompiledWheelPaletteSlot &slot_b, float split_fraction) const;
     void add_visual_mask_stats(uint32_t visual_mask);

@@ -42,7 +42,7 @@ public:
     bool configure_visual_runtime(Ref<PeravizVisualRuntime> runtime);
     int pump_visual_runtime(Ref<PeravizVisualRuntime> runtime);
     void set_monitor_capture_enabled(bool enabled);
-    void record_godot_apply_completion();
+    void record_godot_apply_completion(int64_t captured_receive_us=0);
     void set_performance_trace_enabled(bool enabled);
     Dictionary consume_interval_latency();
 

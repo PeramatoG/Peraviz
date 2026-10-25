@@ -14,6 +14,7 @@ class PeravizPresentationState : public RefCounted {
 protected:
     static void _bind_methods();
 public:
+    ~PeravizPresentationState();
     int64_t install(const PackedInt32Array &ids, const PackedFloat32Array &scales, const PackedInt32Array &routes);
     bool install_groups(const PackedInt32Array &representatives);
     bool install_render_rows(const PackedInt32Array &membership, const PackedInt32Array &classes);
@@ -25,9 +26,18 @@ public:
     void invalidate_renderer();
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
             const PackedFloat32Array &values, bool trace);
-    Dictionary consume_runtime(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, int32_t schema_generation, bool trace);
+    Dictionary consume_runtime(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, int32_t schema_generation, bool trace, bool poll_only=false);
     Dictionary get_sizes() const;
 private:
+    void retire_async(bool replay_domains=true);
+    Dictionary poll_async(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,int32_t schema_generation,bool trace);
+    std::shared_ptr<peraviz::presentation::AsyncPresentationPipeline> async_;
+    Ref<PeravizVisualRuntime> async_runtime_;
+    std::vector<peraviz::presentation::RenderValues> displayed_physical_;
+    peraviz::presentation::NativePresentationSizes async_sizes_;
+    peraviz::runtime::SectionedVisualFrame deferred_domains_;
+    bool async_disabled_=false,async_forced_=false,resume_pending_=false;
+    size_t async_snapshot_bytes_=0,async_worker_bytes_=0;
     void begin_snapshot(bool trace);
     Dictionary publish(int64_t generation, bool trace, int64_t physical_us, int64_t projection_us);
     peraviz::presentation::DirectPresentationPipeline pipeline_;

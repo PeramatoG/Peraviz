@@ -29,8 +29,22 @@ float linear_to_srgb(float value) {
 
 } // namespace
 
+// Keeps serial construction cheap; parallel scratch is allocated only for an eligible scene session.
+PeravizVisualRuntimeCore::PeravizVisualRuntimeCore() = default;
+// Releases borrowed job views after the owning native coordinator has stopped its executor.
+PeravizVisualRuntimeCore::~PeravizVisualRuntimeCore() = default;
+// Changes execution only at an exclusive native control boundary.
+void PeravizVisualRuntimeCore::set_native_executor(NativeBatchExecutor *executor) {
+    prefetch_.reset();
+    if (executor) prefetch_=std::make_unique<ParallelEvaluationPrefetch>(*this,*executor);
+}
+// Samples the latest coarse execution metrics without introducing clocks in scalar loops.
+ParallelEvaluationMetrics PeravizVisualRuntimeCore::parallel_metrics() const { return prefetch_?prefetch_->metrics():ParallelEvaluationMetrics{}; }
+// Reserves asynchronous publication for substantial independent work; temporal domains retain serial ownership.
+bool PeravizVisualRuntimeCore::async_eligible_workload() const { return installed_sources_>=3072 && installed_colors_>=512 && !has_gobo_domains_; }
 // Clears bindings, cached frames, fixture state, and runtime counters.
 void PeravizVisualRuntimeCore::clear() {
+    prefetch_.reset(); installed_sources_=installed_colors_=0; has_gobo_domains_=false;
     universes_.clear();
     diagnostics_.clear();
     render_params_by_fixture_.clear();
@@ -87,6 +101,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::consume_latest_visual_frame() {
 void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame &frame) {
     frame.descriptors.clear(); frame.integers.clear(); frame.floats.clear();
     frame.schema_generation = schema_.schema_generation;
+    if (prefetch_) prefetch_->prepare();
     struct PendingRow { int fixture_id = 0; int32_t render_target_id = 0; uint32_t changed_visual_mask = 0; ComponentState state; CookedEmitterColor color; int32_t wheel_id = 0; int32_t slot_a = 0; int32_t slot_b = 0; float normalized_phase = 0.0f; float split_fraction = 0.0f; float boundary_angle_degrees = 0.0f; CompiledWheelMode wheel_mode = CompiledWheelMode::Select; int32_t revision = 0; bool wheel_row = false; };
     std::vector<PendingRow> rows;
     struct GoboRow { int32_t fixture_id; int32_t beam_target_id; int32_t wheel_id; int32_t wheel_instance_index; int32_t slot_index; int32_t asset_id; CompiledGoboSelectionMode mode; int32_t revision; };
@@ -99,6 +114,8 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         universe.has_pending_frame = false;
         ++stats_.universes_considered;
         auto &changed_offsets=universe.changed_offsets;
+        const bool prepared_inputs=prefetch_ && prefetch_->inputs_prepared(universe_id);
+        if (!prepared_inputs) {
         changed_offsets.clear();
         for (int offset : universe.interest_offsets) {
             const uint8_t value = offset >= 0 && offset < static_cast<int>(universe.latest_frame.size()) ? universe.latest_frame[static_cast<size_t>(offset)] : 0;
@@ -108,6 +125,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             }
         }
         universe.has_last_relevant_values = true;
+        }
         if (changed_offsets.empty()) continue;
         if (performance_trace_enabled_) stats_.changed_relevant_offsets += changed_offsets.size();
 
@@ -116,7 +134,8 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         auto &wheel_binding_indices=universe.dirty_wheels; wheel_binding_indices.clear();
         auto &gobo_selection_layers=universe.dirty_gobo_selections; gobo_selection_layers.clear();
         auto &gobo_motion_layers=universe.dirty_gobo_motions; gobo_motion_layers.clear();
-        universe.plan.begin_update(changed_offsets);
+        if (!prepared_inputs) universe.plan.begin_update(changed_offsets);
+        if (prefetch_) prefetch_->inject_sources(universe_id);
         if (performance_trace_enabled_) for (int offset:changed_offsets) {
             const uint64_t fanout=universe.plan.color_offset_fanout(offset);
             if (!fanout) continue;
@@ -297,7 +316,8 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             if (target_index < 0 || target_index >= static_cast<int>(universe.color_targets.size())) continue;
             ColorTargetRuntime &target = universe.color_targets[static_cast<size_t>(target_index)];
             bool input_changed = false;
-            for (ColorInputRuntime &input : target.inputs) {
+            const bool prepared_color=prefetch_ && prefetch_->commit_color_inputs(universe_id,size_t(target_index),input_changed);
+            if (!prepared_color) for (ColorInputRuntime &input : target.inputs) {
                 if (input.initialized && !universe.plan.source_changed(input.source)) continue;
                 const EvaluationResult evaluated = evaluate_cached_source(universe,input.source);
                 if (!evaluated.valid) continue;
@@ -310,7 +330,8 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             if (!input_changed) continue;
             dirty_color_targets.push_back(target.target.beam_render_target_id);
             ++stats_.color_targets_dirty;
-            CookedEmitterColor cooked = cook_emitter_color(target);
+            CookedEmitterColor cooked;
+            if (!prefetch_ || !prefetch_->cooked_color(universe_id,size_t(target_index),cooked)) cooked=cook_emitter_color(target);
             base_color_state_by_target_[target.target.beam_render_target_id] = cooked;
             base_color_state_by_target_[target.target.beam_render_target_id].initialized = true;
             ++stats_.color_targets_cooked;
@@ -447,7 +468,8 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         dirty_color_targets.erase(std::unique(dirty_color_targets.begin(),dirty_color_targets.end()),dirty_color_targets.end());
         if (performance_trace_enabled_) stats_.color_dirty_candidates += dirty_color_targets.size();
         for (int32_t beam_target_id : dirty_color_targets) {
-            CookedEmitterColor composed = compose_ordered_target_color(beam_target_id);
+            CookedEmitterColor composed;
+            if (!prefetch_ || !prefetch_->final_color(universe_id,beam_target_id,composed)) composed=compose_ordered_target_color(beam_target_id);
             CookedEmitterColor &previous = color_state_by_target_[beam_target_id];
             const bool initialized = previous.initialized;
             const float useful_delta = initialized ? std::max({std::fabs(previous.srgb_red - composed.srgb_red), std::fabs(previous.srgb_green - composed.srgb_green), std::fabs(previous.srgb_blue - composed.srgb_blue), std::fabs(previous.gain - composed.gain)}) : 1.0f;
@@ -564,6 +586,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         }
         append_descriptor(frame, VisualSectionType::GoboRotation, static_cast<int32_t>(gobo_rotation_rows.size()), int_offset, float_offset);
     }
+    if (prefetch_) prefetch_->observe_completion();
     frame.stats = stats_;
 }
 
@@ -701,7 +724,7 @@ int64_t PeravizVisualRuntimeCore::wheel_physical_key(int32_t beam_target_id, int
 
 
 // Composes one complete color target once into renderer-ready sRGB plus linear gain.
-PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emitter_color(const ColorTargetRuntime &target) const {
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emitter_color(const ColorTargetRuntime &target,const float *overrides) const {
     runtime::LinearRgb add;
     float sub_c = 0.0f, sub_m = 0.0f, sub_y = 0.0f;
     std::vector<std::pair<const CompiledFilterResource *, float>> physical_filters;
@@ -711,8 +734,10 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emit
     float cct_kelvin = 0.0f;
     float tint_value = 0.0f;
     bool has_tint = false;
-    for (const ColorInputRuntime &input : target.inputs) {
-        const float v = std::clamp(input.value, 0.0f, 1.0f);
+    for (size_t i=0;i<target.inputs.size();++i) {
+        const ColorInputRuntime &input=target.inputs[i];
+        const float raw=overrides?overrides[i]:input.value;
+        const float v = std::clamp(raw, 0.0f, 1.0f);
         const auto emitter_it = emitter_resources_by_id_.find(input.binding.emitter_resource_id);
         const auto filter_it = filter_resources_by_id_.find(input.binding.filter_resource_id);
         if (emitter_it != emitter_resources_by_id_.end() && emitter_it->second.valid) {
@@ -737,13 +762,13 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emit
             case CompiledSemantic::ColorSubCyan: sub_c = std::max(sub_c, v); break;
             case CompiledSemantic::ColorSubMagenta: sub_m = std::max(sub_m, v); break;
             case CompiledSemantic::ColorSubYellow: sub_y = std::max(sub_y, v); break;
-            case CompiledSemantic::CieX: cie_x = input.value; has_cie_x = true; break;
-            case CompiledSemantic::CieY: cie_y = input.value; has_cie_y = true; break;
-            case CompiledSemantic::CieBrightness: cie_brightness = std::max(0.0f, input.value); has_cie_brightness = true; break;
+            case CompiledSemantic::CieX: cie_x = raw; has_cie_x = true; break;
+            case CompiledSemantic::CieY: cie_y = raw; has_cie_y = true; break;
+            case CompiledSemantic::CieBrightness: cie_brightness = std::max(0.0f, raw); has_cie_brightness = true; break;
             case CompiledSemantic::Cto:
             case CompiledSemantic::Ctb:
-            case CompiledSemantic::Ctc: cct_kelvin = input.value; break;
-            case CompiledSemantic::Tint: tint_value = input.value; has_tint = true; break;
+            case CompiledSemantic::Ctc: cct_kelvin = raw; break;
+            case CompiledSemantic::Tint: tint_value = raw; has_tint = true; break;
             default: break;
         }
     }
@@ -782,10 +807,13 @@ PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::cook_emit
 
 
 // Composes the authoritative final color from the target-local base state and ordered wheel layers.
-PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::compose_ordered_target_color(int32_t beam_target_id) const {
+PeravizVisualRuntimeCore::CookedEmitterColor PeravizVisualRuntimeCore::compose_ordered_target_color(int32_t beam_target_id,const CookedEmitterColor *base_override) const {
     CookedEmitterColor base;
-    auto base_it = base_color_state_by_target_.find(beam_target_id);
-    if (base_it != base_color_state_by_target_.end() && base_it->second.initialized) base = base_it->second;
+    if (base_override) base=*base_override;
+    else {
+        const auto base_it = base_color_state_by_target_.find(beam_target_id);
+        if (base_it != base_color_state_by_target_.end() && base_it->second.initialized) base = base_it->second;
+    }
     runtime::LinearRgb absolute = {base.linear_red * base.gain, base.linear_green * base.gain, base.linear_blue * base.gain};
     const auto layers=ordered_wheel_layers_.find(beam_target_id);
     if (layers!=ordered_wheel_layers_.end()) for (const WheelTargetState *entry:layers->second) {

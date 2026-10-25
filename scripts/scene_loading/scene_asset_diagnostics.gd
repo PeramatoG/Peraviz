@@ -68,10 +68,10 @@ func _add_failure(data: Dictionary, path: String, kind: String, stage: String, r
 	if format.is_empty() or format == "none": format = "unresolved"
 	var source: String = str(data.get("gdtf_source", ""))
 	var model: String = str(data.get("gdtf_model_name", ""))
-	var reference: String = str(data.get("asset_reference", ""))
-	var key: String = JSON.stringify([source, model, reference, path, format, stage, reason])
+	var asset_reference: String = str(data.get("asset_reference", ""))
+	var key: String = JSON.stringify([source, model, asset_reference, path, format, stage, reason])
 	if not _failures.has(key):
-		_failures[key] = {"source": source, "fixture_type": str(data.get("gdtf_fixture_type", "")), "model": model, "reference": reference, "path": path, "format": format, "stage": stage, "reason": reason, "occurrences": 0, "fixture_instances": {}}
+		_failures[key] = {"source": source, "fixture_type": str(data.get("gdtf_fixture_type", "")), "model": model, "reference": asset_reference, "path": path, "format": format, "stage": stage, "reason": reason, "occurrences": 0, "fixture_instances": {}}
 	var row: Dictionary = _failures[key]
 	row.occurrences += 1
 	var uuid: String = str(data.get("gdtf_fixture_uuid", ""))

@@ -82,12 +82,13 @@ void CompiledEvaluationPlan::finish_install() {
     }
     decltype(building_consumers_)().swap(building_consumers_);
     decltype(source_by_id_)().swap(source_by_id_);
+    workspace_.changed_sources.reserve(sources_.size());
     workspace_.values.resize(sources_.size()); workspace_.invalid.assign(sources_.size(),1);
     workspace_.changed.assign(sources_.size(),0); workspace_.consumers.install(consumers_.size());
 }
 // Schedules only offset-reachable consumers; cached scalar results survive unrelated updates.
 void CompiledEvaluationPlan::begin_update(const std::vector<int> &offsets) {
-    workspace_.consumers.clear();
+    workspace_.consumers.clear(); workspace_.changed_sources.clear();
     if (++workspace_.generation==0) {
         std::fill(workspace_.changed.begin(),workspace_.changed.end(),0);
         std::fill(workspace_.activation_generations.begin(),workspace_.activation_generations.end(),0);
@@ -103,6 +104,7 @@ void CompiledEvaluationPlan::begin_update(const std::vector<int> &offsets) {
             const uint32_t source=offset_sources_[p];
             if (workspace_.changed[source]==workspace_.generation) continue;
             workspace_.changed[source]=workspace_.generation; workspace_.invalid[source]=1;
+            workspace_.changed_sources.push_back(source);
             const auto edges=sources_[source].consumers;
             workspace_.consumers.insert(source_consumers_.begin()+edges.offset,source_consumers_.begin()+edges.offset+edges.count);
         }
@@ -148,6 +150,6 @@ size_t CompiledEvaluationPlan::immutable_bytes() const {
 // Reports retained mutable workspace storage independently from immutable definitions.
 size_t CompiledEvaluationPlan::workspace_bytes() const {
     return workspace_.values.capacity()*sizeof(EvaluatedSourceValue)+workspace_.invalid.capacity()+
-        (workspace_.changed.capacity()+workspace_.activation_generations.capacity())*sizeof(uint64_t)+workspace_.activations.capacity()+workspace_.consumers.buffer_bytes();
+        (workspace_.changed.capacity()+workspace_.activation_generations.capacity())*sizeof(uint64_t)+workspace_.activations.capacity()+workspace_.changed_sources.capacity()*sizeof(uint32_t)+workspace_.consumers.buffer_bytes();
 }
 } // namespace peraviz::runtime

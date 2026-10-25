@@ -19,11 +19,13 @@ void PeravizVisualRuntime::_bind_methods() {
 
 // Clears all native fixture bindings, render parameters, pending frames, and stats.
 void PeravizVisualRuntime::clear() {
-    core_.clear();
+    retire_async();
+    core_->clear(); schema_cache_=core_->schema(); stats_cache_=core_->stats(); sizes_cache_=core_->state_sizes(); interests_cache_.clear();
 }
 
 // Bulk-copies the parser-owned setup payload before validated native installation.
 void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene) {
+    retire_async();
     const PackedInt32Array packed_integers = packed_scene.get("integers", PackedInt32Array());
     const PackedFloat32Array packed_floats = packed_scene.get("floats", PackedFloat32Array());
     std::vector<int32_t> integers(static_cast<size_t>(packed_integers.size()));
@@ -34,20 +36,23 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
     if (!decoded.valid) {
         peraviz::runtime::CompiledRuntimeScene rejected;
         rejected.diagnostics.push_back({"PVZ-PACKED-SCENE-DECODE", "error", decoded.diagnostic, "CompiledRuntimeScene"});
-        core_.install_compiled_scene(rejected);
+        core_->install_compiled_scene(rejected);
+        schema_cache_=core_->schema(); interests_cache_=core_->realtime_interest_offsets();
         return;
     }
-    core_.install_compiled_scene(decoded.scene);
+    core_->install_compiled_scene(decoded.scene);
+    schema_cache_=core_->schema(); interests_cache_=core_->realtime_interest_offsets(); stats_cache_=core_->stats(); sizes_cache_=core_->state_sizes();
 }
 
 // Submits the latest snapshot for a DMX universe.
 void PeravizVisualRuntime::submit_universe_frame(int universe_id, const PackedByteArray &data) {
-    core_.submit_universe_frame(universe_id, data.ptr(), data.size());
+    submit_native_frame(universe_id, data.ptr(), int(data.size()));
 }
 
 // Consumes the latest cooked dirty visual frame as one coherent typed snapshot.
 Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
-    const peraviz::runtime::SectionedVisualFrame frame = core_.consume_latest_visual_frame();
+    if (!async_session_.expired()) { Dictionary pending; pending["schema_generation"]=schema_cache_.schema_generation; pending["pending"]=true; return pending; }
+    const peraviz::runtime::SectionedVisualFrame frame = core_->consume_latest_visual_frame();
     const auto conversion_start = performance_trace_enabled_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     PackedInt32Array descriptors;
     descriptors.resize(static_cast<int64_t>(frame.descriptors.size()));
@@ -68,7 +73,7 @@ Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
     out["protocol_major"] = frame.protocol_major;
     out["protocol_minor"] = frame.protocol_minor;
     out["schema_generation"] = frame.schema_generation;
-    out["runtime_now_seconds"] = core_.runtime_now_seconds();
+    out["runtime_now_seconds"] = core_->runtime_now_seconds();
     out["descriptors"] = descriptors;
     out["integers"] = integers;
     out["floats"] = floats;
@@ -80,7 +85,7 @@ Dictionary PeravizVisualRuntime::consume_latest_visual_frame() {
 
 // Returns the installed section schema for structural registration and validation in Godot.
 Dictionary PeravizVisualRuntime::get_visual_frame_schema() const {
-    const peraviz::runtime::VisualFrameSchema &schema = core_.schema();
+    const peraviz::runtime::VisualFrameSchema &schema = schema_cache_;
     Array sections;
     for (const peraviz::runtime::VisualSectionSchema &section : schema.sections) {
         Dictionary row;
@@ -100,25 +105,26 @@ Dictionary PeravizVisualRuntime::get_visual_frame_schema() const {
 
 // Returns cumulative native runtime counters for diagnostics.
 Dictionary PeravizVisualRuntime::get_stats() const {
-    return stats_to_dictionary(core_.stats());
+    return stats_to_dictionary(async_session_.expired()?core_->stats():stats_cache_);
 }
 
 // Exposes bounded native state sizes only when explicitly requested by diagnostics.
 Dictionary PeravizVisualRuntime::get_state_sizes() const {
     Dictionary result;
-    for (const auto &[key, size] : core_.state_sizes()) result[key] = static_cast<int64_t>(size);
+    for (const auto &[key, size] : (async_session_.expired()?core_->state_sizes():sizes_cache_)) result[key] = static_cast<int64_t>(size);
     return result;
 }
 
 // Toggles trace-only native dirty-state aggregation.
 void PeravizVisualRuntime::set_performance_trace_enabled(bool enabled) {
     performance_trace_enabled_ = enabled;
-    core_.set_performance_trace_enabled(enabled);
+    if (const auto session=async_session_.lock()) session->set_trace(enabled);
+    else core_->set_performance_trace_enabled(enabled);
 }
 
 // Provides native coordinators direct access without marshaling raw universe payloads through Godot.
 peraviz::runtime::PeravizVisualRuntimeCore &PeravizVisualRuntime::native_core() {
-    return core_;
+    return *core_;
 }
 
 // Converts native visual frame stats into a Godot dictionary.

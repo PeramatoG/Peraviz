@@ -33,6 +33,19 @@ func _load(path: String) -> void:
 	owner_check_pending = true
 	test.check(adapter != null and service.is_dense_presentation_active(), "Production native renderer installation succeeds")
 
+# Test-only waiting drives the same nonblocking production poll without submitting another packet.
+func _completed() -> Dictionary:
+	var frame: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+	var deadline: int = Time.get_ticks_msec() + 5000
+	while frame.get("pending", false) and Time.get_ticks_msec() < deadline:
+		await process_frame
+		frame = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation(), true)
+	test.check(not frame.get("pending", false), "Native snapshot completes while polling without fresh DMX")
+	return frame
+
+class StoppedReceiver extends RefCounted:
+	func is_running() -> bool: return false
+
 func _apply() -> void:
 	runtime._native_visual_runtime.submit_universe_frame(0, dmx)
 	var frame: Dictionary
@@ -40,7 +53,7 @@ func _apply() -> void:
 		# Retain the existing semantic-owner assertion once; subsequent playback uses the direct transaction.
 		frame = runtime._native_visual_runtime.consume_latest_visual_frame()
 	else:
-		frame = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+		frame = await _completed()
 		test.check(bool(frame.get("native_presentation", false)), "Direct native render-group transaction succeeds")
 	if owner_check_pending:
 		var expected: Dictionary = {}
@@ -178,6 +191,7 @@ func _run() -> void:
 		"Explicit realtime policy reports Godot-only rejection and safely restores individual rows")
 	# The same generic fixture generator now exercises independently patched Dimmer and RGB at scale.
 	app._visual_settings["enable_realtime_spotlights"] = false
+	OS.set_environment("PERAVIZ_NATIVE_EVALUATION", "parallel")
 	await _load(_generate(true, true, true))
 	counts = adapter.diagnostics()
 	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 1000 and counts["godot_accepted_aggregates"] == 0,
@@ -193,7 +207,7 @@ func _run() -> void:
 					dmx[base+4+emitter*4] = (index*31+tick*19)%256
 					dmx[base+5+emitter*4+(0 if index%2==0 else 2)] = 255
 			runtime._native_visual_runtime.submit_universe_frame(universe,dmx)
-		var frame: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
+		var frame: Dictionary = await _completed()
 		test.check(bool(frame.get("native_presentation", false)), "Independent generation composes directly")
 		test.check(adapter._payload["count"] == 1000, "Every independently changed emitter publishes once")
 		runtime._sectioned_visual_frame_applier.apply_snapshot(frame,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
@@ -206,8 +220,30 @@ func _run() -> void:
 			test.check(is_equal_approx(values[0],float((index*31+tick*19)%256)/255.0), "Independent physical Dimmer retains its canonical patch")
 			test.check(is_equal_approx(values[1 if index%2==0 else 3],1.0) and is_zero_approx(values[3 if index%2==0 else 1]), "Independent RGB retains its canonical patch")
 		var unchanged: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
-		test.check(adapter._payload["count"] == 0, "Held independent state suppresses unchanged renderer rows")
-		runtime._sectioned_visual_frame_applier.apply_snapshot(unchanged,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+		test.check(unchanged.get("pending", false) or adapter._payload["count"] == 0, "Held independent state never republishes changed renderer rows")
+		if not unchanged.get("pending", false):
+			runtime._sectioned_visual_frame_applier.apply_snapshot(unchanged,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+	print("NATIVE_ASYNC_PUBLICATION ", JSON.stringify(adapter.consume_diagnostics()))
+	test.check(adapter.diagnostics().get("native_async_active", false), "Production Godot boundary uses native asynchronous calculations")
+	var competing: RefCounted = ClassDB.instantiate("PeravizPresentationState")
+	var competing_generation: int = competing.install(PackedInt32Array(), PackedFloat32Array(), PackedInt32Array())
+	var rejected: Dictionary = competing.consume_runtime(runtime._native_visual_runtime, competing_generation, runtime._sectioned_visual_frame_applier.schema_generation(), false)
+	test.check(not rejected.get("valid", true), "A second renderer cannot enter a running core's serial evaluator")
+	competing.clear()
+	# Submit once, then drive the actual collection path with a stopped receiver and no packets.
+	dmx.fill(150)
+	runtime._native_visual_runtime.submit_universe_frame(0, dmx)
+	var stopped := StoppedReceiver.new()
+	var deadline: int = Time.get_ticks_msec() + 5000
+	var collected: Dictionary = {"native_frame_pending": true}
+	while collected.get("native_frame_pending", false) and Time.get_ticks_msec() < deadline:
+		await process_frame
+		collected = runtime._collect_dmx(stopped, Callable(), app, service, 0.016)
+	test.check(not collected.get("native_frame_pending", false) and collected.get("universes_changed", -1) == 0, "Stopped-stream collection consumes a previously submitted complete snapshot")
+	adapter.refresh_renderer()
+	var replay: Dictionary = await _completed()
+	test.check(replay.get("native_presentation", false), "Renderer replacement replays held state without another packet")
+	OS.unset_environment("PERAVIZ_NATIVE_EVALUATION")
 	if test.failures.is_empty(): print("DIRECT_INDEPENDENT_1000 passed outputs=1000 rows=1000")
 	app._clear_scene()
 	app.queue_free()

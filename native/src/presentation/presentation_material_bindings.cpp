@@ -36,32 +36,48 @@ void PresentationMaterialBindings::apply(const peraviz::presentation::DensePrese
     using namespace peraviz::presentation;
     writes_=avoided_=color_outputs_=unchanged_=0; dirty_.clear();
     if (!enabled_) return;
-    for (uint32_t index:physical.dirty_indices()) {
-        const uint32_t mask=physical.pending_mask(index);
-        if (mask & peraviz::runtime::VisualChangeColor) ++color_outputs_;
-        // Zoom alone cannot change lens emission; retain topology invalidation and held-state replay.
-        if (!(mask & (peraviz::runtime::VisualChangeColor | peraviz::runtime::VisualChangeDimmer |
-                peraviz::runtime::VisualChangeMaterial | peraviz::runtime::VisualChangeBeamTopology))) continue;
-        if (index<routes_.size()) for (uint32_t material:routes_[index]) {
-            auto &b=bindings_[material]; if (!b.dirty) { b.dirty=true; dirty_.push_back(material); }
-        }
-    }
+    for (uint32_t index:physical.dirty_indices()) nominate(index,physical.pending_mask(index));
     auto *server=RenderingServer::get_singleton();
     for (uint32_t index:dirty_) {
         auto &b=bindings_[index]; b.dirty=false;
         if (suppress_writes) continue;
-        const auto v=physical.render_values(b.owner);
-        const float energy=v[MaterialEnergy]*b.scale;
-        const size_t before=writes_;
-        if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
-            server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));
-            b.red=v[Red]; b.green=v[Green]; b.blue=v[Blue]; ++writes_; avoided_+=b.users>0?b.users-1:0;
-        }
-        if (std::abs(b.energy-energy)>std::max(0.00001f,0.00001f*std::abs(b.energy))) {
-            server->material_set_param(b.rid,energy_,energy); b.energy=energy;
-            ++writes_; avoided_+=b.users>0?b.users-1:0;
-        }
-        if (writes_==before) ++unchanged_;
+        write(b,physical.render_values(b.owner),server);
+    }
+}
+// Nominates actual resource routes from already completed physical presentation values.
+void PresentationMaterialBindings::nominate(uint32_t index,uint32_t mask) {
+    if (mask & peraviz::runtime::VisualChangeColor) ++color_outputs_;
+    if (!(mask & (peraviz::runtime::VisualChangeColor | peraviz::runtime::VisualChangeDimmer |
+            peraviz::runtime::VisualChangeMaterial | peraviz::runtime::VisualChangeBeamTopology))) return;
+    if (index<routes_.size()) for (uint32_t material:routes_[index]) {
+        auto &b=bindings_[material]; if (!b.dirty) { b.dirty=true; dirty_.push_back(material); }
+    }
+}
+// Applies the same guarded RID mutations for synchronous and immutable completed snapshots.
+void PresentationMaterialBindings::write(Binding &b,const peraviz::presentation::RenderValues &v,RenderingServer *server) {
+    using namespace peraviz::presentation;
+    const float energy=v[MaterialEnergy]*b.scale;
+    const size_t before=writes_;
+    if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
+        server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));
+        b.red=v[Red]; b.green=v[Green]; b.blue=v[Blue]; ++writes_; avoided_+=b.users>0?b.users-1:0;
+    }
+    if (std::abs(b.energy-energy)>std::max(0.00001f,0.00001f*std::abs(b.energy))) {
+        server->material_set_param(b.rid,energy_,energy); b.energy=energy;
+        ++writes_; avoided_+=b.users>0?b.users-1:0;
+    }
+    if (writes_==before) ++unchanged_;
+}
+// Mutates only cached main-thread RIDs; no worker or authoritative state is consulted here.
+void PresentationMaterialBindings::apply_completed(const std::vector<peraviz::presentation::PreparedOutput> &changes,
+        const std::vector<peraviz::presentation::RenderValues> &held,bool suppress_writes) {
+    writes_=avoided_=color_outputs_=unchanged_=0; dirty_.clear();
+    if (!enabled_) return;
+    for (const auto &row:changes) nominate(row.index,row.mask);
+    auto *server=RenderingServer::get_singleton();
+    for (uint32_t index:dirty_) {
+        auto &b=bindings_[index]; b.dirty=false;
+        if (!suppress_writes) write(b,held[b.owner],server);
     }
 }
 // Cold renderer-boundary inspection works with headless/dummy drivers that cannot read material RIDs back.

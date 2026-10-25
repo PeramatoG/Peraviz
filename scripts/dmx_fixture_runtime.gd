@@ -339,20 +339,21 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	if not _native_visual_runtime_available or _native_visual_runtime == null:
 		push_error("PeravizVisualRuntime is required for live DMX visualization but is not available.")
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": [], "native_visual_runtime_available": false}
-	if receiver == null or not receiver.is_running():
+	var receiver_running: bool = receiver != null and receiver.is_running()
+	if not receiver_running and light_apply_service == null:
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
-
-	if receiver != null and receiver.has_method("configure_visual_runtime") and _receiver_subscription_generation != _runtime_generation:
+	if receiver_running and receiver.has_method("configure_visual_runtime") and _receiver_subscription_generation != _runtime_generation:
 		if receiver.configure_visual_runtime(_native_visual_runtime):
 			_receiver_subscription_generation = _runtime_generation
 	var submitted_universes: int = 0
-	if receiver != null and receiver.has_method("pump_visual_runtime"):
-		submitted_universes = int(receiver.pump_visual_runtime(_native_visual_runtime))
-	else:
-		push_error("PeravizDmxReceiver native realtime pump is required for production playback.")
-		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
-
-	if submitted_universes == 0 and not _debug_force_full_apply:
+	if receiver_running:
+		if receiver.has_method("pump_visual_runtime"):
+			submitted_universes = int(receiver.pump_visual_runtime(_native_visual_runtime))
+		else:
+			push_error("PeravizDmxReceiver native realtime pump is required for production playback.")
+			return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
+	# Ready native generations must be polled even when this frame receives no new packet.
+	if submitted_universes == 0 and not _debug_force_full_apply and light_apply_service == null:
 		return {"updated": 0, "skipped": 0, "universes_changed": 0, "fixtures_considered": 0, "controls": []}
 
 	var updated: int = 0
@@ -363,7 +364,9 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 	if light_apply_service != null:
 		light_apply_service.set_performance_trace_enabled(_performance_trace_enabled)
 		light_apply_service.set_render_diagnostic_mode(_render_diagnostic_mode)
-		visual_frame = light_apply_service.consume_native_snapshot(_native_visual_runtime, _sectioned_visual_frame_applier.schema_generation())
+		visual_frame = light_apply_service.consume_native_snapshot(_native_visual_runtime, _sectioned_visual_frame_applier.schema_generation(), submitted_universes == 0 and not _debug_force_full_apply)
+		if visual_frame.get("pending", false):
+			return {"updated": 0, "skipped": 0, "universes_changed": submitted_universes, "fixtures_considered": 0, "controls": [], "native_frame_pending": true}
 		if not visual_frame.get("native_presentation", false):
 			push_error("Native presentation rejected the scene or renderer binding generation.")
 			return {"updated": 0, "skipped": 1, "universes_changed": submitted_universes, "fixtures_considered": 0, "controls": []}
@@ -388,7 +391,10 @@ func _collect_dmx(receiver, _apply_fixture_callback: Callable, loader: Node = nu
 			_native_live_diagnostics = compact_result.duplicate(true)
 			_log_native_live_diagnostics_once()
 	if receiver != null and receiver.has_method("record_godot_apply_completion"):
-		receiver.record_godot_apply_completion()
+		if visual_frame.has("received_at_us"):
+			receiver.record_godot_apply_completion(int(visual_frame["received_at_us"]))
+		else:
+			receiver.record_godot_apply_completion()
 
 	return {
 		"updated": updated,

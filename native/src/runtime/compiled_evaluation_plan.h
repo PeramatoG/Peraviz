@@ -43,6 +43,7 @@ struct EvaluationWorkspace {
     std::vector<uint8_t> invalid;
     std::vector<uint64_t> changed, activation_generations;
     std::vector<uint8_t> activations;
+    std::vector<uint32_t> changed_sources;
     OrderedDirtyIndices consumers;
     uint64_t generation = 0;
 };
@@ -56,6 +57,8 @@ public:
             const std::vector<uint32_t> &sources, bool activation_dependencies);
     void finish_install();
     void begin_update(const std::vector<int> &offsets);
+    // Borrows the deduplicated source invalidation prefix for pure native worker preparation.
+    const std::vector<uint32_t> &changed_sources() const { return workspace_.changed_sources; }
     // Borrows deterministic consumer nominations until the next update.
     OrderedDirtyIndices &dirty_consumers() { return workspace_.consumers; }
     // Borrows the installed domain and canonical target binding.
