@@ -7,6 +7,7 @@
 #include <godot_cpp/variant/string_name.hpp>
 
 namespace godot {
+class RenderingServer;
 // Main-thread Godot boundary: retained material RIDs never own or inspect SceneTree nodes.
 class PresentationMaterialBindings {
 public:
@@ -16,6 +17,8 @@ public:
     size_t set_enabled(bool enabled);
     void invalidate();
     void apply(const peraviz::presentation::DensePresentationState &physical, bool suppress_writes = false);
+    void apply_completed(const std::vector<peraviz::presentation::PreparedOutput> &changes,
+        const std::vector<peraviz::presentation::RenderValues> &held,bool suppress_writes=false);
     PackedFloat32Array values(const RID &rid) const;
     // Reports actual material setters in the last applied batch.
     size_t writes() const { return writes_; }
@@ -31,6 +34,8 @@ public:
     size_t avoided() const { return avoided_; }
 private:
     struct Binding { RID rid; uint32_t owner=0, users=0; float scale=1, red=-1, green=-1, blue=-1, energy=-1; bool dirty=false; };
+    void nominate(uint32_t index,uint32_t mask);
+    void write(Binding &binding,const peraviz::presentation::RenderValues &values,RenderingServer *server);
     std::vector<Binding> bindings_;
     std::vector<std::vector<uint32_t>> routes_;
     std::vector<uint32_t> dirty_;

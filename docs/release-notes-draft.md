@@ -1,5 +1,8 @@
 # Peraviz v0.x.x
 
+- Added adaptive native source/Color calculation batches and a bounded asynchronous completed-snapshot pipeline for large independent non-gobo scenes. Small/shared and temporal gobo workloads keep the exact serial path. Godot polls completed generation-valid data without waiting for workers; scene/renderer retirement preserves held values and safely retires native jobs.
+- Corrected two isolated GDScript ownership warnings in scene asset diagnostics and the externally accessed last-loaded file type.
+
 - Added a production compiled serial evaluation plan with dependency-driven target scheduling, shared immutable scalar mappings and instance-local source/ModeMaster caches. Removed repeated source decoding, live ordered-tree nominations and unrelated wheel scans while preserving selected-mode semantics, independent outputs, temporal gobo behavior and the direct native presentation boundary. No new GDTF effects, workers or renderer backend are introduced.
 
 - Connected native DMX evaluation directly to physical composition and Render Group reduction. Live Intensity/Color/BeamOptics no longer make an intermediate Godot round trip; independent Pan/Tilt, wheel and gobo updates retain their sectioned contracts. Reused semantic buffers and dense dirty nominations reduce avoidable allocation while preserving exact physical identities, held replay and renderer generations. Deterministic coverage includes compact and independently controlled 1,000-output workloads; no FPS gain is claimed.

@@ -143,10 +143,10 @@ func compose_dense_snapshot(descriptors: PackedInt32Array, integers: PackedInt32
 	return 1 if _dense_adapter.compose(descriptors, integers, values, _performance_trace_enabled, _render_diagnostic_mode, semantic_conversion_us) else -1
 
 # One native calculation boundary for production; no intermediate lighting payload enters Godot.
-func consume_native_snapshot(runtime: Object, schema_generation: int) -> Dictionary:
+func consume_native_snapshot(runtime: Object, schema_generation: int, poll_only: bool = false) -> Dictionary:
 	if not is_dense_presentation_active():
 		return {"valid": false, "native_presentation": false}
-	return _dense_adapter.consume_runtime(runtime, schema_generation)
+	return _dense_adapter.consume_runtime(runtime, schema_generation, poll_only)
 
 # Starts snapshot-local collection of canonical physical-output renderer commits.
 func begin_visual_snapshot() -> void:

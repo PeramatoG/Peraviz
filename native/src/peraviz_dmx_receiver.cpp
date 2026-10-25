@@ -23,7 +23,7 @@ void PeravizDmxReceiver::_bind_methods() {
     ClassDB::bind_method(D_METHOD("configure_visual_runtime", "runtime"), &PeravizDmxReceiver::configure_visual_runtime);
     ClassDB::bind_method(D_METHOD("pump_visual_runtime", "runtime"), &PeravizDmxReceiver::pump_visual_runtime);
     ClassDB::bind_method(D_METHOD("set_monitor_capture_enabled", "enabled"), &PeravizDmxReceiver::set_monitor_capture_enabled);
-    ClassDB::bind_method(D_METHOD("record_godot_apply_completion"), &PeravizDmxReceiver::record_godot_apply_completion);
+    ClassDB::bind_method(D_METHOD("record_godot_apply_completion", "captured_receive_us"), &PeravizDmxReceiver::record_godot_apply_completion,DEFVAL(0));
     ClassDB::bind_method(D_METHOD("set_performance_trace_enabled", "enabled"), &PeravizDmxReceiver::set_performance_trace_enabled);
     ClassDB::bind_method(D_METHOD("consume_interval_latency"), &PeravizDmxReceiver::consume_interval_latency);
 }
@@ -148,7 +148,7 @@ bool PeravizDmxReceiver::configure_visual_runtime(Ref<PeravizVisualRuntime> runt
     if (runtime.is_null()) return false;
     oldest_pending_receive_us_ = 0;
     last_native_pump_us_ = 0;
-    const peraviz::runtime::RealtimePumpResult result = coordinator_.install_subscription(runtime->native_core(), receiver_->realtime_mailbox());
+    const peraviz::runtime::RealtimePumpResult result = runtime->pump_mailbox(receiver_->realtime_mailbox(), true);
     rehydrated_states_pending_ = result.states_submitted;
     const uint64_t now_us = now_microseconds();
     if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) {
@@ -163,7 +163,7 @@ int PeravizDmxReceiver::pump_visual_runtime(Ref<PeravizVisualRuntime> runtime) {
     if (runtime.is_null()) return 0;
     int consumed = rehydrated_states_pending_;
     rehydrated_states_pending_ = 0;
-    const peraviz::runtime::RealtimePumpResult result = coordinator_.pump(runtime->native_core(), receiver_->realtime_mailbox());
+    const peraviz::runtime::RealtimePumpResult result = runtime->pump_mailbox(receiver_->realtime_mailbox(), false);
     consumed += result.states_submitted;
     const uint64_t now_us = now_microseconds();
     if (result.oldest_receive_us > 0 && now_us >= result.oldest_receive_us) rx_to_native_.observe(now_us - result.oldest_receive_us, performance_trace_enabled_);
@@ -183,14 +183,15 @@ void PeravizDmxReceiver::set_monitor_capture_enabled(bool enabled) {
 }
 
 // Records the bounded native-frame-to-Godot-apply age after renderer mutation completes.
-void PeravizDmxReceiver::record_godot_apply_completion() {
+void PeravizDmxReceiver::record_godot_apply_completion(int64_t captured_receive_us) {
     const uint64_t now_us = now_microseconds();
     if (last_native_pump_us_ > 0 && now_us >= last_native_pump_us_) {
         native_to_apply_.observe(now_us - last_native_pump_us_, performance_trace_enabled_);
         last_native_pump_us_ = 0;
     }
-    if (oldest_pending_receive_us_ > 0 && now_us >= oldest_pending_receive_us_) {
-        rx_to_apply_.observe(now_us - oldest_pending_receive_us_, performance_trace_enabled_);
+    const uint64_t received=captured_receive_us>0?uint64_t(captured_receive_us):oldest_pending_receive_us_;
+    if (received > 0 && now_us >= received) {
+        rx_to_apply_.observe(now_us - received, performance_trace_enabled_);
         oldest_pending_receive_us_ = 0;
     }
 }

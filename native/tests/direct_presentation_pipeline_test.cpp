@@ -154,3 +154,6 @@ bool test_direct_presentation_pipeline() {
     if (!workload(true) || !workload(false)) { std::cerr << "Direct presentation equivalence failed\n"; return false; }
     return true;
 }
+
+// Reuses the established generic workload for focused asynchronous ownership and equivalence tests.
+peraviz::runtime::CompiledRuntimeScene make_native_parallel_workload(bool compact) { return scene_for(compact); }

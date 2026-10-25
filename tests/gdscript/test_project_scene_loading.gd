@@ -37,7 +37,7 @@ func _run() -> void:
 	test.check(not observed.is_empty(), "Observe the installed production renderer during readiness")
 	for item in observed:
 		test.check(is_equal_approx(item.softness, 0.37) and item.offset == 2, "Every installed renderer already uses saved settings and patch offset")
-	test.check(app._last_loaded_file_type == "pvz" and app._user_preferences.last_file_path == project_path, "Publication remembers the original PVZ rather than its extracted MVR")
+	test.check(app.last_loaded_file_type == "pvz" and app._user_preferences.last_file_path == project_path, "Publication remembers the original PVZ rather than its extracted MVR")
 	var adapter: RefCounted = app._fixture_light_apply_service._dense_adapter
 	app._fixture_light_apply_service.set_performance_trace_enabled(true)
 	# Seed nonzero native state without a live receiver, then verify replay preserves it.

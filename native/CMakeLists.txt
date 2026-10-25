@@ -23,6 +23,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(CTest)
+find_package(Threads REQUIRED)
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GodotCompatibility.cmake")
 
 set(GODOT_CPP_DIR "" CACHE PATH "Path to a local godot-cpp checkout")
@@ -121,6 +122,7 @@ add_library(peraviz_native SHARED
 )
 
 if(PERAVIZ_ENABLE_DMX)
+    target_link_libraries(peraviz_native PRIVATE Threads::Threads)
     target_sources(peraviz_native PRIVATE
         src/dmx/dmx_platform.cpp
         src/dmx/udp_socket.cpp
@@ -143,6 +145,9 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/runtime_state_sizes.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/compiled_evaluation_plan.cpp
+        src/runtime/native_worker_pool.cpp
+        src/runtime/parallel_evaluation_prefetch.cpp
+        src/runtime/visual_runtime_replay.cpp
         src/runtime/visual_runtime_install.cpp
         src/runtime/visual_runtime_evaluation.cpp
         src/runtime/visual_runtime_plan.cpp
@@ -162,10 +167,13 @@ if(PERAVIZ_ENABLE_DMX)
         src/presentation/dense_presentation_state.cpp
         src/presentation/render_emitter_groups.cpp
         src/presentation/render_group_projection.cpp
+        src/presentation/async_presentation_pipeline.cpp
         src/presentation/render_group_manifest.cpp
         src/presentation/presentation_material_bindings.cpp
         src/presentation/presentation_state_godot.cpp
+        src/presentation/presentation_async_godot.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
+        src/runtime/visual_runtime_async_godot.cpp
     )
     target_compile_definitions(peraviz_native PRIVATE PERAVIZ_ENABLE_DMX=1)
     if(WIN32)
@@ -380,8 +388,10 @@ if(BUILD_TESTING)
         tests/visual_runtime_core_test.cpp
         tests/direct_presentation_pipeline_test.cpp
         tests/compiled_evaluation_plan_test.cpp
+        tests/parallel_presentation_test.cpp
         src/presentation/dense_presentation_state.cpp
         src/presentation/render_group_projection.cpp
+        src/presentation/async_presentation_pipeline.cpp
         tests/gobo_selection_runtime_test.cpp
         tests/gobo_motion_contract_integration_test.cpp
         tests/realtime_dmx_coordinator_test.cpp
@@ -390,6 +400,9 @@ if(BUILD_TESTING)
         src/runtime/runtime_state_sizes.cpp
         src/runtime/peraviz_visual_runtime.cpp
         src/runtime/compiled_evaluation_plan.cpp
+        src/runtime/native_worker_pool.cpp
+        src/runtime/parallel_evaluation_prefetch.cpp
+        src/runtime/visual_runtime_replay.cpp
         src/runtime/visual_runtime_install.cpp
         src/runtime/visual_runtime_evaluation.cpp
         src/runtime/visual_runtime_plan.cpp
@@ -425,6 +438,7 @@ if(BUILD_TESTING)
         src/asset_cache.cpp
         src/runtime_storage.cpp
     )
+    target_link_libraries(peraviz_native_visual_runtime_tests PRIVATE Threads::Threads)
     target_include_directories(peraviz_native_visual_runtime_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )

@@ -374,6 +374,20 @@ struct FixtureRenderParams {
     bool has_color_temperature = false;
 };
 
+// Domain-specific computed Color scratch, independent of renderer resources.
+struct CookedEmitterColorValue {
+        float srgb_red = 1.0f;
+        float srgb_green = 1.0f;
+        float srgb_blue = 1.0f;
+        float gain = 1.0f;
+        double linear_red = 1.0;
+        double linear_green = 1.0;
+        double linear_blue = 1.0;
+        bool valid = true;
+        bool initialized = false;
+    };
+
+
 struct VisualFrameStats {
     uint64_t source_programs_evaluated = 0, source_cache_hits = 0;
     uint64_t activation_programs_evaluated = 0, activation_cache_hits = 0;

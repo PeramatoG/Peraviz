@@ -66,7 +66,7 @@ var _mvr_xchange_panel
 var _fixture_debug_controller: FixtureDebugController
 var _fixture_inspection_panel: FixtureInspectionPanel
 var _loaded_mvr_path: String = ""
-var _last_loaded_file_type: String = ""
+var last_loaded_file_type: String = ""
 var _visual_environment_baseline := {
 	"ambient_light_energy": 0.2,
 	"ambient_light_sky_contribution": 0.0,

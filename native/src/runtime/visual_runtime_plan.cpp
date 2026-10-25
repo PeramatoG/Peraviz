@@ -166,6 +166,9 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
         add_layers(universe.gobo_binding_indices_by_layer,universe.gobo_bindings,EvaluationDomain::GoboSelection);
         add_layers(universe.gobo_motion_indices_by_layer,universe.gobo_motion_bindings,EvaluationDomain::GoboMotion);
         universe.plan.finish_install();
+        universe.prefetched_warnings.resize(universe.plan.source_count(),0);
+        installed_sources_+=universe.plan.source_count(); installed_colors_+=universe.color_targets.size();
+        has_gobo_domains_=has_gobo_domains_ || !universe.gobo_bindings.empty() || !universe.gobo_motion_bindings.empty();
         universe.dirty_gobo_selections.reserve(universe.gobo_binding_indices_by_layer.size());
         universe.dirty_gobo_motions.reserve(universe.gobo_motion_indices_by_layer.size());
         universe.dirty_physical_wheels.reserve(universe.wheel_bindings.size());

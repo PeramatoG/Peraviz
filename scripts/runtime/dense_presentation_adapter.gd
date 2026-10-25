@@ -265,16 +265,19 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 	return _accept_payload()
 
 # Production calculation stays native; only compact rows and independent domains return.
-func consume_runtime(runtime: Object, schema_generation: int) -> Dictionary:
+func consume_runtime(runtime: Object, schema_generation: int, poll_only: bool = false) -> Dictionary:
 	_payload = {}
 	var boundary_start: int = Time.get_ticks_usec() if _trace else 0
-	var snapshot: Dictionary = _native.consume_runtime(runtime, _generation, schema_generation, _trace)
+	var snapshot: Dictionary = _native.consume_runtime(runtime, _generation, schema_generation, _trace, poll_only)
+	if snapshot.get("pending", false): return snapshot
 	_payload = snapshot.get("presentation", {})
 	if _trace and not _payload.is_empty():
 		var boundary_us: int = Time.get_ticks_usec() - boundary_start
 		_totals["native_boundary_us"] = int(_totals.get("native_boundary_us", 0)) + boundary_us
 		var measured_us: int = 0
-		for key in ["native_evaluation_us", "native_compose_us", "native_material_us", "payload_conversion_us"]: measured_us += int(_payload.get(key, 0))
+		for key in ["native_material_us", "payload_conversion_us"]: measured_us += int(_payload.get(key, 0))
+		if not _payload.get("native_async", false):
+			for key in ["native_evaluation_us", "native_compose_us"]: measured_us += int(_payload.get(key, 0))
 		_totals["boundary_overhead_us"] = int(_totals.get("boundary_overhead_us", 0)) + maxi(0, boundary_us - measured_us)
 	snapshot.erase("presentation")
 	snapshot["native_presentation"] = bool(snapshot.get("valid", false)) and _accept_payload()
@@ -293,7 +296,8 @@ func _accept_payload() -> bool:
 		_totals["actual_lens_material_renderer_writes"] += material_writes
 		_totals["lens_material_writes_avoided"] += int(_payload.get("lens_writes_avoided", 0))
 		_record_mutation(&"material_parameter_writes", material_writes)
-		for key in ["native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]: _totals[key] = int(_totals.get(key, 0)) + int(_payload.get(key, 0))
+		for key in ["native_parallel_tasks", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]: _totals[key] = int(_totals.get(key, 0)) + int(_payload.get(key, 0))
+		_totals["native_workers_used"] = maxi(int(_totals.get("native_workers_used", 0)), int(_payload.get("native_workers_used", 0)))
 		_totals["native_material_us"] += int(_payload.get("native_material_us", 0))
 		_totals["renderer_mutation_us"] += int(_payload.get("native_material_us", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
@@ -605,7 +609,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
+	for key in ["native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:
