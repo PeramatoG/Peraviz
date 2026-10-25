@@ -24,6 +24,8 @@ public:
     auto begin() { std::sort(indices_.begin(),indices_.end()); return indices_.begin(); }
     // Ends the borrowed dirty prefix; no mutation occurs during iteration.
     auto end() { return indices_.end(); }
+    // Reports retained deduplication/work-list storage for diagnostic sampling.
+    size_t buffer_bytes() const { return seen_.capacity()+indices_.capacity()*sizeof(int); }
 private:
     std::vector<uint8_t> seen_;
     std::vector<int> indices_;

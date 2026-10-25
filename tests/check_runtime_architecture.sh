@@ -94,6 +94,10 @@ reject_pattern 'VisualChangeZoom \| VisualChangeBeamTopology' 'Zoom-only changes
 reject_pattern 'var _native_(pan|tilt|dimmer|geometry)_|var _native_target_resolution|var _native_target_registry_summary|func _register_native_axis_target|func _register_native_dimmer_target|func _build_native_geometry_target_map' 'load_scene.gd must delegate native target registry ownership to the focused service.' scripts/load_scene.gd
 
 require_pattern 'consume_native_snapshot' 'Production playback must use direct native composition.' scripts/dmx_fixture_runtime.gd
+require_path "native/src/runtime/compiled_evaluation_plan.cpp" file
+require_pattern 'plan\.begin_update' 'Production native evaluation must schedule through the compiled dependency plan.' native/src/runtime/peraviz_visual_runtime.cpp
+require_pattern 'evaluate_cached_source' 'Production source values must be reused by compiled handle.' native/src/runtime/visual_runtime_evaluation.cpp
+reject_pattern 'std::set<' 'Live semantic evaluation must not recreate ordered tree nominations.' native/src/runtime/peraviz_visual_runtime.cpp
 require_pattern 'pipeline_\.consume' 'Presentation must connect directly to the native calculation transaction.' native/src/presentation/presentation_state_godot.cpp
 reject_pattern 'WorkerThreadPool|Thread\.new' 'Runtime evaluation workers belong in native C++.' scripts/runtime scripts/dmx_fixture_runtime.gd
 
