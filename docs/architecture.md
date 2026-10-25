@@ -124,7 +124,7 @@ update. `DirectPresentationPipeline` connects native selected-mode evaluation,
 `DensePresentationState` composition and `RenderGroupProjection` reduction using
 borrowed, reusable C++ section buffers. Intensity, Color and BeamOptics scalars
 never cross into Godot for further calculation. The sole authoritative physical
-presentation state remains in `DensePresentationState`; the coordinator owns only
+presentation state remains in `DensePresentationState`; worker jobs own only
 scratch. Godot receives final renderer deltas and independent sectioned Pan/Tilt,
 wheel, gobo and temporal updates. Schema and binding generations are checked
 before consuming pending DMX. Domain presentation finishes before shaft mutation.
