@@ -7,8 +7,9 @@ const BoundBeamStateScript = preload("res://scripts/beam_renderers/bound_beam_st
 const RenderBindings = preload("res://scripts/runtime/render_emitter_bindings.gd")
 const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 
-# Temporary milestone-1 renderer bridge. Native state owns composition; these
-# handles only bind existing renderer objects. Delete with the batched backend.
+# Resource ownership and exact fallback for native presentation. The scalable
+# dynamic slice bypasses this script loop; optics remain in the reference renderer.
+const NativeBeamBindings = preload("res://scripts/runtime/native_beam_bindings.gd")
 const STRIDE: int = 12
 const DIMMER: int = 1 << 1
 const COLOR: int = 1 << 2
@@ -46,6 +47,7 @@ class LightHandle:
 	var properties_dirty: bool = true
 	var suppressed: bool = false
 	var initialization_failed: bool = false
+	var native_candidate: bool = false
 	var visibility_callback: Callable
 	var bound_state: RefCounted = BoundBeamStateScript.Cache.new()
 	var compatibility_state: Dictionary = {}
@@ -64,6 +66,7 @@ class OutputHandle:
 	var lights: Array[LightHandle] = []
 	var materials: Array[MaterialHandle] = []
 
+var _native_beams_dirty: bool = true
 var _native: Object
 var _generation: int = -1
 var _outputs: Array[OutputHandle] = []
@@ -114,6 +117,7 @@ func _disconnect_handle(handle: LightHandle) -> void:
 	handle.visibility_callback = Callable()
 
 func clear() -> void:
+	_invalidate_native_beams()
 	_render_bindings.clear(self)
 	_render_descriptors = []
 	_control_fallbacks = {}
@@ -261,6 +265,7 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 		if _mode != "full": _suppress_presentation_handles()
 		_native.invalidate_renderer()
 	_payload = {} # Release the borrowed packed buffers before native writes (no COW churn).
+	_update_native_beam_policy()
 	_payload = _native.compose(_generation, descriptors, integers, values, trace)
 	return _accept_payload()
 
@@ -268,6 +273,7 @@ func compose(descriptors: PackedInt32Array, integers: PackedInt32Array, values: 
 func consume_runtime(runtime: Object, schema_generation: int, poll_only: bool = false) -> Dictionary:
 	_payload = {}
 	var boundary_start: int = Time.get_ticks_usec() if _trace else 0
+	_update_native_beam_policy()
 	var snapshot: Dictionary = _native.consume_runtime(runtime, _generation, schema_generation, _trace, poll_only)
 	if snapshot.get("pending", false): return snapshot
 	_payload = snapshot.get("presentation", {})
@@ -275,7 +281,7 @@ func consume_runtime(runtime: Object, schema_generation: int, poll_only: bool = 
 		var boundary_us: int = Time.get_ticks_usec() - boundary_start
 		_totals["native_boundary_us"] = int(_totals.get("native_boundary_us", 0)) + boundary_us
 		var measured_us: int = 0
-		for key in ["native_material_us", "payload_conversion_us"]: measured_us += int(_payload.get(key, 0))
+		for key in ["native_beam_apply_us", "native_material_us", "payload_conversion_us"]: measured_us += int(_payload.get(key, 0))
 		if not _payload.get("native_async", false):
 			for key in ["native_evaluation_us", "native_compose_us"]: measured_us += int(_payload.get(key, 0))
 		_totals["boundary_overhead_us"] = int(_totals.get("boundary_overhead_us", 0)) + maxi(0, boundary_us - measured_us)
@@ -298,6 +304,15 @@ func _accept_payload() -> bool:
 		_record_mutation(&"material_parameter_writes", material_writes)
 		for key in ["native_parallel_tasks", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]: _totals[key] = int(_totals.get(key, 0)) + int(_payload.get(key, 0))
 		_totals["native_workers_used"] = maxi(int(_totals.get("native_workers_used", 0)), int(_payload.get("native_workers_used", 0)))
+		for key in ["native_beam_apply_us", "native_beam_applied", "native_beam_changed", "native_beam_unchanged", "native_beam_fallback", "native_beam_stale"]: _totals[key] = int(_totals.get(key, 0)) + int(_payload.get(key, 0))
+		_record_mutation(&"beam_visibility_writes", int(_payload.get("native_beam_visibility_writes", 0)))
+		_record_mutation(&"beam_shader_parameter_writes", int(_payload.get("native_beam_parameter_writes", 0)))
+		_totals["actual_beam_dynamic_renderer_writes"] += int(_payload.get("native_beam_dynamic_writes", 0))
+		_totals["renderer_mutation_us"] += int(_payload.get("native_beam_apply_us", 0))
+		var native_counters: Dictionary = _service.get_ref()._visual_apply_counters
+		native_counters["beams_considered"] += int(_payload.get("native_beam_applied", 0))
+		native_counters["beam_dynamic_changed"] += int(_payload.get("native_beam_changed", 0))
+		native_counters["beam_dynamic_unchanged"] += int(_payload.get("native_beam_unchanged", 0))
 		_totals["native_material_us"] += int(_payload.get("native_material_us", 0))
 		_totals["renderer_mutation_us"] += int(_payload.get("native_material_us", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
@@ -320,10 +335,12 @@ func apply() -> void:
 	_shaft_multiplier = maxf(float(settings.get("beam_multiplier", 20.0)), 0.0) / 20.0
 	var realtime: bool = bool(settings.get("enable_realtime_spotlights", false))
 	var presentation: int = int(settings.get("beam_presentation", 1))
-	var changed: int = 0
+	var changed: int = int(_payload.get("native_beam_changed", 0))
 	# One clock pair for the complete mutation pass; never one clock per output.
 	var mutation_start: int = Time.get_ticks_usec() if _trace else 0
-	for row in range(int(_payload["count"])):
+	var script_rows: PackedInt32Array = _payload.get("script_rows", PackedInt32Array())
+	for fallback_index in range(int(_payload.get("script_count", _payload["count"]))):
+		var row: int = script_rows[fallback_index] if _payload.has("script_count") else fallback_index
 		var before: int = _mutation_serial
 		var render_row = _render_bindings.rows[indices[row * 2]]
 		if render_row.presentation_class == 0:
@@ -340,17 +357,22 @@ func apply() -> void:
 		counters["physical_outputs_considered"] += int(_payload["dirty_count"])
 		counters["emitter_output_commits"] += int(_payload["count"])
 		counters["emitter_output_commits_signature_skipped"] += int(_payload["signature_skipped"])
-		counters["emitter_output_commit_usec"] += Time.get_ticks_usec() - start
+		counters["emitter_output_commit_usec"] += Time.get_ticks_usec() - start + int(_payload.get("native_beam_apply_us", 0))
 		_totals["renderer_outputs_processed"] += int(_payload["count"])
 		_totals["renderer_outputs_changed"] += changed
 		_totals["renderer_outputs_unchanged"] += int(_payload["count"]) - changed
 		_totals["compatibility_adapter_us"] += Time.get_ticks_usec() - start
 	_payload = {}
+	if _native_beams_dirty:
+		NativeBeamBindings.install(self)
+		_native_beams_dirty = false
 
 func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: int, realtime: bool, presentation: int) -> void:
 	var color := Color(v[b+1], v[b+2], v[b+3], 1.0)
 	for handle in output.lights:
 		if not is_instance_valid(handle.light): continue
+		# Native application bypasses this script cache. Every fallback starts from unknown mutation signatures.
+		if handle.native_candidate: handle.bound_state.invalidate()
 		handle.color = color
 		handle.energy = v[b+5] if v[b+5] > 0.0 else v[b+4]
 		if mask & (ZOOM | TOPOLOGY):
@@ -503,6 +525,7 @@ func _hide_bound_node(node: Node3D, counter: StringName) -> void:
 		_record_mutation(counter)
 
 func _bind_beam_resource(handle: LightHandle, beam: MeshInstance3D) -> void:
+	_invalidate_native_beams()
 	if handle.beam != beam:
 		handle.initialization_failed = false
 		_record_event(&"beam_resource_rebounds")
@@ -609,7 +632,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
+	for key in ["native_beam_apply_us", "native_beam_applied", "native_beam_changed", "native_beam_unchanged", "native_beam_fallback", "native_beam_stale", "native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:
@@ -626,6 +649,7 @@ func consume_diagnostics() -> Dictionary:
 
 # Setup/control-boundary refresh after a renderer, settings or gobo resource replacement.
 func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
+	_invalidate_native_beams()
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	var aggregated: bool = handle != null and handle.output_index < _render_bindings.membership.size() and _render_bindings.rows[_render_bindings.membership[handle.output_index]].presentation_class == 1
 	if rebuild_groups and handle != null and (aggregated or (handle.output_index < _groups.size() and _groups[handle.output_index] != null)):
@@ -644,6 +668,7 @@ func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 
 func refresh_renderer() -> void:
 	if not is_installed(): return
+	_invalidate_native_beams()
 	_capture_renderer_mutations()
 	_render_bindings.clear(self)
 	_retire_groups()
@@ -781,6 +806,7 @@ func _apply_control_material(group: ControlGroup, v: PackedFloat32Array, b: int)
 
 # Setup once per renderer generation; lenses retain independent native physical routes.
 func _install_render_bindings() -> bool:
+	_invalidate_native_beams()
 	if not _render_bindings.install(self, _render_descriptors): return false
 	var rids: Array = []
 	var owners := PackedInt32Array()
@@ -838,3 +864,14 @@ func _create_aggregate_output(descriptor: Dictionary, representative: int) -> Ou
 	_set_spot_rid(handle, false)
 	output.lights.append(handle)
 	return output
+
+# Cold bindings are revoked once before resource edits, not once per attribute or snapshot.
+func _invalidate_native_beams() -> void:
+	if not _native_beams_dirty and _native != null: _native.clear_beams()
+	_native_beams_dirty = true
+
+# Presentation scale and diagnostic policy only; native physical values never return through scripts.
+func _update_native_beam_policy() -> void:
+	var settings: Dictionary = _loader.get("_visual_settings")
+	var enabled: bool = _mode == "full" and not bool(settings.get("enable_realtime_spotlights", false)) and not bool(settings.get("beam_debug_optics", false)) and int(settings.get("beam_presentation", 1)) == 1 and not _diagnostic_open_surface_lights
+	_native.set_beam_policy(enabled, maxf(float(settings.get("beam_multiplier", 20.0)), 0.0) / 20.0)

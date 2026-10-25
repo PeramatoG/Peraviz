@@ -8,6 +8,7 @@ var service: RefCounted
 var runtime: RefCounted
 var adapter: RefCounted
 var dmx := PackedByteArray()
+var last_setup_us: int = 0
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -22,6 +23,7 @@ func _generate(pixels: bool, load_case: bool = false, independent: bool = false)
 	return path
 
 func _load(path: String) -> void:
+	var setup_start: int = Time.get_ticks_usec()
 	var imported: Dictionary = await app._load_mvr_scene(path, "mvr", false)
 	test.check(bool(imported.get("ok", false)), "Production MVR import succeeds")
 	service = app._fixture_light_apply_service
@@ -30,6 +32,7 @@ func _load(path: String) -> void:
 	runtime._native_visual_runtime.set_performance_trace_enabled(true)
 	runtime._sectioned_visual_frame_applier.set_performance_trace_enabled(true)
 	adapter = service._dense_adapter
+	last_setup_us = Time.get_ticks_usec() - setup_start
 	owner_check_pending = true
 	test.check(adapter != null and service.is_dense_presentation_active(), "Production native renderer installation succeeds")
 
@@ -69,6 +72,31 @@ func _apply() -> void:
 	if frame.get("native_presentation", false) or not (frame.get("descriptors", PackedInt32Array()) as PackedInt32Array).is_empty():
 		runtime._sectioned_visual_frame_applier.apply_snapshot(frame, app, service, 0.016, runtime, runtime._native_fixture_uuids_by_id, runtime._fixture_nodes)
 	await process_frame
+
+# A cold synchronous binding probe extends the same renderer workload; it uses no alternate lighting evaluator.
+func _check_native_binding_boundary(source: MeshInstance3D) -> void:
+	var beam := MeshInstance3D.new()
+	beam.mesh = source.mesh
+	beam.material_override = source.material_override
+	root.add_child(beam)
+	var native: Object = ClassDB.instantiate("PeravizPresentationState")
+	var generation: int = native.install(PackedInt32Array([1]), PackedFloat32Array([1.0]), PackedInt32Array([2,11,0,3,12,0]))
+	native.install_render_rows(PackedInt32Array([0]), PackedInt32Array([0]))
+	var objects := PackedInt64Array([beam.get_instance_id()])
+	var thresholds := PackedFloat64Array([0.015])
+	test.check(not native.install_beams(generation+1, objects, thresholds), "Stale generation cannot install renderer handles")
+	test.check(native.install_beams(generation, objects, thresholds), "Current renderer generation admits weak indexed handles")
+	native.set_beam_policy(true, 1.1)
+	var initial: Dictionary = native.compose(generation, PackedInt32Array([2,1,0,0,0]), PackedInt32Array([1,11,2]), PackedFloat32Array([0.5,10,8,10,2]), true)
+	test.check(initial["script_count"] == 1, "Initial geometry/topology remains an exact script fallback")
+	var color: Dictionary = native.compose(generation, PackedInt32Array([3,1,0,0,0]), PackedInt32Array([1,12,4]), PackedFloat32Array([0.2,0.4,0.8,1]), true)
+	var values: PackedFloat32Array = native.physical_values(0)
+	test.check(color["script_count"] == 0 and color["native_beam_applied"] == 1, "Synchronous native publication executes the same batch")
+	test.check(beam.get_instance_shader_parameter("beam_dynamic_state") == Color(values[1], values[2], values[3], clampf(values[6]*1.1,0.0,50.0)), "Non-integer presentation scale preserves the reference float conversion")
+	beam.free()
+	var stale: Dictionary = native.compose(generation, PackedInt32Array([3,1,0,0,0]), PackedInt32Array([1,12,4]), PackedFloat32Array([0.8,0.4,0.2,1]), true)
+	test.check(stale["script_count"] == 1 and stale["native_beam_stale"] == 1 and native.get_sizes()["native_beam_bindings"] == 0, "Freed weak handles retire safely and nominate the authoritative fallback")
+	native.clear()
 
 func _aggregate() -> RefCounted:
 	return adapter._render_bindings.aggregate_outputs()[0]
@@ -196,7 +224,11 @@ func _run() -> void:
 	counts = adapter.diagnostics()
 	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 1000 and counts["godot_accepted_aggregates"] == 0,
 		"One thousand independent Dimmer/RGB emitters retain one thousand renderer rows")
-	for tick in range(2):
+	var renderer_totals: Dictionary = {}
+	var original_meshes: Array = []
+	var original_transforms: Array = []
+	var backend_expected: bool = OS.get_environment("PERAVIZ_NATIVE_BEAM_APPLY") != "0"
+	for tick in range(10):
 		for universe in range(10):
 			dmx.fill(0)
 			for fixture in range(2):
@@ -204,8 +236,8 @@ func _run() -> void:
 				dmx[base+3] = 160
 				for emitter in range(50):
 					var index: int = (universe*2+fixture)*50+emitter
-					dmx[base+4+emitter*4] = (index*31+tick*19)%256
-					dmx[base+5+emitter*4+(0 if index%2==0 else 2)] = 255
+					dmx[base+4+emitter*4] = (0 if tick == 8 else 50+(index*31+tick*19)%200)
+					dmx[base+5+emitter*4+(index+tick)%3] = 255
 			runtime._native_visual_runtime.submit_universe_frame(universe,dmx)
 		var frame: Dictionary = await _completed()
 		test.check(bool(frame.get("native_presentation", false)), "Independent generation composes directly")
@@ -217,12 +249,38 @@ func _run() -> void:
 			var emitter: int = str(record["geometry_key"]).get_slice("Emitter",1).to_int()
 			var index: int = fixture_index*50+emitter
 			var values: PackedFloat32Array = adapter._native.physical_values(output_index)
-			test.check(is_equal_approx(values[0],float((index*31+tick*19)%256)/255.0), "Independent physical Dimmer retains its canonical patch")
-			test.check(is_equal_approx(values[1 if index%2==0 else 3],1.0) and is_zero_approx(values[3 if index%2==0 else 1]), "Independent RGB retains its canonical patch")
+			test.check(is_equal_approx(values[0],float(0 if tick == 8 else 50+(index*31+tick*19)%200)/255.0), "Independent physical Dimmer retains its canonical patch")
+			test.check(is_equal_approx(values[1+(index+tick)%3],1.0) and is_zero_approx(values[1+(index+tick+1)%3]) and is_zero_approx(values[1+(index+tick+2)%3]), "Independent RGB retains its canonical patch")
+			var handle = adapter._outputs[output_index].lights[0]
+			var intensity: float = clampf(values[6], 0.0, 50.0)
+			test.check(handle.beam.visible == (intensity > 0.015), "Native batch preserves exact reference blackout threshold")
+			if intensity > 0.015:
+				test.check(handle.beam.get_instance_shader_parameter("beam_dynamic_state") == Color(values[1], values[2], values[3], intensity), "Actual Vector Prism uniform equals final physical RGB/intensity")
+			if tick == 1:
+				original_meshes.append(handle.beam.mesh)
+				original_transforms.append(handle.beam.transform)
+			elif tick >= 2:
+				test.check(handle.beam.mesh == original_meshes[output_index] and handle.beam.transform == original_transforms[output_index], "Dynamic batches preserve meshes and local optical transforms")
+		var sample: Dictionary = adapter.consume_diagnostics()
+		if tick >= 2 and tick < 8:
+			for key in ["renderer_outputs_processed", "renderer_outputs_changed", "renderer_outputs_unchanged", "compatibility_adapter_us", "renderer_mutation_us", "native_beam_apply_us", "native_beam_applied", "native_beam_fallback", "native_boundary_us", "payload_conversion_us", "native_material_us", "main_thread_publication_us", "optics_apply_calls", "beam_topology_rebuilt", "actual_beam_dynamic_renderer_writes"]:
+				renderer_totals[key] = int(renderer_totals.get(key, 0)) + int(sample.get(key, 0))
 		var unchanged: Dictionary = service.consume_native_snapshot(runtime._native_visual_runtime, runtime._sectioned_visual_frame_applier.schema_generation())
 		test.check(unchanged.get("pending", false) or adapter._payload["count"] == 0, "Held independent state never republishes changed renderer rows")
 		if not unchanged.get("pending", false):
 			runtime._sectioned_visual_frame_applier.apply_snapshot(unchanged,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+	test.check(renderer_totals["renderer_outputs_processed"] == 6000 and renderer_totals["native_beam_applied"] == (6000 if backend_expected else 0), "Warm independent generations execute the production native batch or explicit reference loop")
+	test.check(renderer_totals["optics_apply_calls"] == 0 and renderer_totals["beam_topology_rebuilt"] == 0, "Dimmer/Color playback does not rebuild optical geometry")
+	renderer_totals["scene_setup_us"] = last_setup_us
+	renderer_totals["native_enabled"] = backend_expected
+	renderer_totals["resources"] = adapter._native.get_sizes()
+	print("INDEPENDENT_RENDER_COMPARISON ", JSON.stringify(renderer_totals))
+	_check_native_binding_boundary(adapter._outputs[0].lights[0].beam)
+	var transform_handle = adapter._outputs[0].lights[0]
+	var inherited_before: Transform3D = transform_handle.beam.global_transform
+	transform_handle.light.rotation.y += 0.1
+	test.check(transform_handle.beam.global_transform != inherited_before, "Native application retains normal ancestor/mechanical transform propagation")
+	transform_handle.light.rotation.y -= 0.1
 	print("NATIVE_ASYNC_PUBLICATION ", JSON.stringify(adapter.consume_diagnostics()))
 	test.check(adapter.diagnostics().get("native_async_active", false), "Production Godot boundary uses native asynchronous calculations")
 	var competing: RefCounted = ClassDB.instantiate("PeravizPresentationState")
@@ -230,6 +288,10 @@ func _run() -> void:
 	var rejected: Dictionary = competing.consume_runtime(runtime._native_visual_runtime, competing_generation, runtime._sectioned_visual_frame_applier.schema_generation(), false)
 	test.check(not rejected.get("valid", true), "A second renderer cannot enter a running core's serial evaluator")
 	competing.clear()
+	service.set_render_diagnostic_mode("no-beams")
+	for output in adapter._outputs: test.check(not output.lights[0].beam.visible, "Diagnostic suppression hides independently batched shafts")
+	service.set_render_diagnostic_mode("full")
+	for output in adapter._outputs: test.check(output.lights[0].beam.visible, "Held replay restores every independently batched shaft")
 	# Submit once, then drive the actual collection path with a stopped receiver and no packets.
 	dmx.fill(150)
 	runtime._native_visual_runtime.submit_universe_frame(0, dmx)
@@ -245,12 +307,17 @@ func _run() -> void:
 	test.check(replay.get("native_presentation", false), "Renderer replacement replays held state without another packet")
 	OS.unset_environment("PERAVIZ_NATIVE_EVALUATION")
 	if test.failures.is_empty(): print("DIRECT_INDEPENDENT_1000 passed outputs=1000 rows=1000")
+	var retired_native: Object = adapter._native
+	var retired_beam: MeshInstance3D = adapter._outputs[0].lights[0].beam
 	app._clear_scene()
+	test.check(retired_native.get_sizes()["native_beam_bindings"] == 0 and retired_native.get_sizes()["native_beam_buffer_bytes"] == 0, "Scene teardown releases every native beam binding and fallback buffer")
 	app.queue_free()
 	service = null
 	runtime = null
 	adapter = null
 	aggregate = null
+	original_meshes.clear()
 	await process_frame
+	test.check(not is_instance_valid(retired_beam), "Scene teardown frees individual shaft nodes without native strong references")
 	await process_frame
 	test.finish(self)

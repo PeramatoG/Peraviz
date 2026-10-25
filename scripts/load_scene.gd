@@ -750,9 +750,9 @@ func _restore_visual_project_settings(settings: Variant) -> void:
 	if visual_settings_window != null and visual_settings_window.has_method("configure"):
 		visual_settings_window.call("configure", _visual_settings)
 
-func _collect_app_state(last_loaded_file_type: String) -> Dictionary:
+func _collect_app_state(file_type_for_state: String) -> Dictionary:
 	return {
-		"last_loaded_file_type": last_loaded_file_type,
+		"last_loaded_file_type": file_type_for_state,
 	}
 
 func _remember_loaded_file(path: String, file_type: String) -> void:

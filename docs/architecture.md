@@ -6,7 +6,7 @@ This document is the source of truth for the active runtime. The [GDTF support m
 
 Native C++ owns MVR/GDTF parsing, selected-mode semantic compilation, fixture patch and DMX source programs, physical-value evaluation, target-oriented state, dirty detection, and render-ready frame assembly. The compiled setup model is `CompiledRuntimeScene`.
 
-Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native threads do not modify scene nodes. C++ is the simulation and calculation
+Godot owns scene construction, interaction, UI, setup-time renderer resources, and mutation of cached renderer targets. `NativeRendererTargetRegistry` maps stable native component and render-target IDs to Godot objects. Native workers never modify scene nodes; main-thread GDExtension presentation may mutate cached renderer nodes. C++ is the simulation and calculation
 core; Godot is the presentation engine. Native dependency evaluation,
 physical composition and Render Group reduction connect directly to compact
 presentation snapshots. Godot must not shuttle physical-state buffers between
@@ -127,7 +127,7 @@ never cross into Godot for further calculation. The sole authoritative physical
 presentation state remains in `DensePresentationState`; worker jobs own only
 scratch. Godot receives final renderer deltas and independent sectioned Pan/Tilt,
 wheel, gobo and temporal updates. Schema and binding generations are checked
-before consuming pending DMX. Domain presentation finishes before shaft mutation.
+before consuming pending DMX. Independent domains finish before script fallback shafts; native dynamic shaft writes are transform-independent and consume the same accepted generation.
 The explicit packed `compose()` API remains for reference tests and cold held-state
 replay; live playback uses the direct transaction.
 
@@ -138,8 +138,29 @@ compact-source native Render Emitter Groups now accumulate physical members into
 AGGREGATED or INDIVIDUAL shaft rows. Exactly one renderer-sized integer/float
 payload pair crosses to Godot. Main-thread native Godot glue updates cached lens
 RIDs from exact physical values, separately from optical shaft mixing. MultiMesh
-and GPU/renderer batching remain future work. See [dense presentation state](native-dense-presentation-state.md)
+and GPU instancing remain future work. Large independent Vector Prism scenes now use the exact native main-thread batch described below. See [dense presentation state](native-dense-presentation-state.md)
 for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
+
+## Independent emitter presentation, phase 1
+
+`NativeBeamBindings` applies final native render rows directly to weak, indexed
+MeshInstance3D handles on Godot's main thread. It uses the same Vector Prism mesh,
+material, instance uniforms, Node visibility and ancestor transforms. Native
+serial and completed-async publication share this consumer. The cache holds only
+last-applied renderer signatures, never physical lighting authority. Packed final
+rows remain available for inspection; a reusable fallback-row index prefix means
+GDScript iterates only unsupported rows, without per-row objects or dictionaries
+for handled outputs. No physical values are sent back into C++ by scripts.
+
+Cold admission requires at least 128 compatible individual rows, open Vector Prism
+resources, no shared Control Group material, gobo/projector, debug or realtime
+surface-light policy. The 115-row reference scene retains its existing renderer
+loop. Zoom/topology always use the exact reference fallback and invalidate mutation
+signatures before reuse. Scene/renderer/resource changes revoke weak bindings;
+freed object IDs fail safely to fallback. Publication still requires current
+schema/binding generations and never waits on workers during ordinary frames.
+See the [bounded comparison](performance-foundation.md#independent-emitter-render-application-phase-1)
+for the GPU-instancing decision, resource limits and measurement boundaries.
 
 ## Renderer ownership
 

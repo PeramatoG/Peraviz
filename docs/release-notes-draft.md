@@ -1,5 +1,8 @@
 # Peraviz v0.x.x
 
+- Added a production native main-thread dynamic apply batch for large independent open Vector Prism emitters. It preserves individual physical identities, meshes, shaders, culling and exact optical fallbacks while bypassing the per-output GDScript loop; no GPU instancing or draw-call reduction is claimed.
+- Corrected the scene-state method parameter that shadowed the public last-loaded file type, preserving the serialized key and project-loading behavior.
+
 - Added adaptive native source/Color calculation batches and a bounded asynchronous completed-snapshot pipeline for large independent non-gobo scenes. Small/shared and temporal gobo workloads keep the exact serial path. Godot polls completed generation-valid data without waiting for workers; scene/renderer retirement preserves held values and safely retires native jobs.
 - Corrected two isolated GDScript ownership warnings in scene asset diagnostics and the externally accessed last-loaded file type.
 

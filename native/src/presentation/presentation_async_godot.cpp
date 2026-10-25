@@ -54,6 +54,8 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
     async_sizes_=snapshot->sizes; async_snapshot_bytes_=snapshot->buffer_bytes()*2; async_worker_bytes_=snapshot->parallel.retained_bytes;
     for (const auto &row:snapshot->physical_rows) displayed_physical_[row.index]=row.values;
     runtime->accept_completed(*snapshot);
+    Dictionary presentation;
+    apply_beams(snapshot->render_rows,trace,presentation);
     auto *indices=indices_masks_.ptrw(); auto *values=values_.ptrw(); size_t count=0;
     for (const auto &row:snapshot->render_rows) {
         indices[count*2]=int32_t(row.index); indices[count*2+1]=int32_t(row.mask);
@@ -62,7 +64,6 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
     const int64_t material_start=trace?now_us():0;
     materials_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_);
     const int64_t material_us=trace?now_us()-material_start:0;
-    Dictionary presentation;
     presentation["valid"]=true; presentation["native_async"]=true; presentation["generation"]=generation;
     presentation["input_generation"]=int64_t(snapshot->input_generation); presentation["unresolved_rows"]=int64_t(snapshot->unresolved_rows);
     presentation["count"]=int64_t(count); presentation["indices_masks"]=indices_masks_; presentation["values"]=values_;
@@ -107,7 +108,7 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
         presentation["native_policy_backoffs"]=int64_t(parallel.policy_backoffs);
         presentation["native_completed_latency_us"]=snapshot->completion_latency_us;
         const int64_t elapsed=now_us()-start;
-        presentation["payload_conversion_us"]=std::max<int64_t>(0,elapsed-material_us);
+        presentation["payload_conversion_us"]=std::max<int64_t>(0,elapsed-material_us-int64_t(presentation.get("native_beam_apply_us",0)));
         presentation["main_thread_publication_us"]=elapsed;
         if (snapshot->submitted_ns) presentation["native_consumed_latency_us"]=std::max<int64_t>(0,now_us()-int64_t(snapshot->submitted_ns/1000));
     }
