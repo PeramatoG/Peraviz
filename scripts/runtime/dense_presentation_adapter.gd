@@ -348,7 +348,7 @@ func apply() -> void:
 		var row: int = script_rows[fallback_index] if _payload.has("script_count") else fallback_index
 		var before: int = _mutation_serial
 		var render_row = _render_bindings.rows[indices[row * 2]]
-		if render_row.presentation_class == 0:
+		if render_row.presentation_class == 0 and not _payload.get("gain_replay", false):
 			var group: ControlGroup = _groups[render_row.output.index] if not _groups.is_empty() else null
 			if group != null: _apply_control_material(group, values, row * STRIDE)
 		_apply_output(render_row.output, values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)

@@ -38,6 +38,7 @@ public:
     void flush_lenses();
     PackedFloat32Array lens_buffer(int32_t batch) const;
     void set_beam_policy(bool enabled,double multiplier);
+    Dictionary replay_presentation_gains(bool shafts,bool surfaces,double surface_gain,bool trace);
     void clear();
     void invalidate_renderer();
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
@@ -46,6 +47,9 @@ public:
     Dictionary get_sizes() const;
 private:
     void apply_beams(const std::vector<peraviz::presentation::PreparedRenderRow> &rows,bool trace,Dictionary &result);
+    // Main-thread displayed render rows, independent of an in-flight physical snapshot.
+    std::vector<peraviz::presentation::PreparedRenderRow> held_renderer_, gain_rows_;
+    std::vector<bool> held_renderer_valid_;
     NativeBeamBindings beams_;
     NativeLensBatches lenses_;
     PackedInt32Array script_rows_;

@@ -87,10 +87,65 @@ and `custom_footprint_dynamic_writes` (last native batch). Existing native proje
 shadow and cache-build gauges keep their original meanings; custom footprints do
 not increase them. Counters use retained handles, never live SceneTree enumeration.
 
+## Live settings, held replay and measured CPU cost
+
+Gains change presentation values, never the renderer installation. The native
+main-thread cache retains final displayed render rows, not another physical/DMX
+state. Shaft replay covers individual, Control Group and aggregate resources,
+including zero recovery. Surface replay retains unscaled physical energy separately
+from gain, so restoring a zero gain is exact. Neither replay consumes or retires an
+in-flight native snapshot; subsequent completion applies the newest gain. Scalar
+changes do not advance renderer compatibility revisions or gobo phase/topology.
+Footprint softness writes existing uniforms; range edits update existing volume
+bounds. Actual radial support changes can refresh their optical geometry. Preset
+matching uses an explicit optical key contract including profile, softness and range;
+independent environment controls do not select another optical preset/backend.
+
+One focused before/after run used the same generated production-imported MVR:
+1,000 physical outputs, 20 aggregate shafts and 1,000 independent Custom footprints,
+Linux Debug, Godot 4.7.1 headless Forward+. These are **CPU main-thread settings
+costs, not GPU/frame rates**. DMX was held or changed/submitted for the indicated
+case; the corrected active case also starts native consumption before the edit.
+
+| Settings transaction | Before ms | After ms | Native gain replay µs |
+| --- | ---: | ---: | ---: |
+| Shaft gain, held DMX | 4,970.065 | 0.636 | 20 |
+| Shaft gain, changing DMX | 4,973.251 | 0.518 | 15 |
+| Footprint gain | 127.307 | 0.253 | 49 |
+| Footprint softness | 4,937.729 | 5.827 | — |
+| Custom → Native | 119.996 | 118.375 | — |
+| Native → Custom | 150.732 | 155.054 | — |
+
+Previously each scalar transaction recreated 20 aggregate shafts and reinstalled
+dense/lens/footprint associations; shaft/softness refresh also called a global
+resource rebind for every emitter. Corrected scalar cases created/retired **zero**
+shafts, lens batches or footprint volumes, installed zero bindings and made zero
+registry calls/scans. Shaft edits issued 20 script beam parameter writes; surface
+gain issued 1,000 native material writes; softness issued no beam writes. Backend
+changes intentionally still replace 20 aggregate shafts and retire/create the
+1,000 footprint volumes, with two batched indexed registry calls and no full scan.
+The aggregate workload has no admitted GPU lens batches; the independent 1,000-row
+regression additionally checks that its existing GPU lens batches remain identical
+through scalar edits. Timings are individual trace samples, not CI thresholds.
+
+Reproduce via `test_render_emitter_groups.gd -- --live-settings-probe` using Forward+.
+Normal runtime tracing is opt-in and reports settings duration, native replay,
+actual writes and constant-time resource deltas. Regression coverage also checks
+both serial aggregate and completed-async independent paths, pending DMX, original
+gobo image/roll preservation, no-op settings and renderer/reload fallbacks. The small
+Forward+/Vulkan graphical check now changes gain/softness through the shared live
+update helper; opaque floor/wall/incline imagery and zero native projectors remain.
+Its Custom, held-rotation/Zoom and camera-inside captures are pixel-identical to
+the preceding committed captures on the same software Vulkan device.
+
+This fixes interactive settings reconstruction. The remaining full-coverage GPU
+projection cost is the next performance milestone; the owner's 55/95 FPS figures
+still compare different coverage and cannot establish relative renderer speed.
+
 ## Bounded graphical validation
 
 The owner's Windows RTX 3070 / Godot 4.7.1 Forward+ observations (V-Sync off,
-same MVR/chase) were about 60 FPS with all Custom footprints and 95 FPS with
+same MVR/chase) were initially about 60 FPS (latest report: 55 FPS) with all Custom footprints and 95 FPS with
 Native's gobos only. The former generic “Custom” quick entry also showed Native
 coverage. **Those are unequal workloads, not a Custom-vs-Native speed comparison.**
 
@@ -218,7 +273,7 @@ Trace also reports lifetime `presentation_cache_builds`: per-renderer footprint
 texture creations and gobo energy builds. An energy build comprises the static
 transmission analysis and coverage/chord lookup. These counts should settle after
 setup/selection/settings changes. They must stay flat through dimmer/color updates,
-ordinary DMX frames and camera movement. Zoom/roll reuse their static textures.
+ordinary DMX frames, camera movement and gain-only edits. Zoom/roll reuse their static textures.
 Caches remain bounded; no filtering or transmission analysis moved into playback.
 
 ## Diagnostic open realtime lights: small scenes only

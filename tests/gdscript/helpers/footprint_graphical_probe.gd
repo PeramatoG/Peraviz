@@ -186,12 +186,9 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	await tree.process_frame
 
 func _apply_style(loader: Node, service: RefCounted, gain: float, softness: float) -> void:
-	loader._visual_settings.footprint_multiplier = gain
-	loader._visual_settings.footprint_softness = softness
-	for output in service._dense_adapter._outputs:
-		for handle in output.lights: handle.params["footprint_softness"] = softness
-	loader.renderer.configure(null, loader._visual_settings)
-	service.refresh_dense_renderer()
+	var changes := {"footprint_multiplier": gain, "footprint_softness": softness}
+	loader._visual_settings.merge(changes, true)
+	preload("res://scripts/runtime/visual_settings_update.gd").apply_values(loader, changes)
 	for anchor in loader.anchors: loader.renderer.get_beam_resource(anchor).visible = false
 
 func _math_baseline(previous_style: bool) -> Shader:

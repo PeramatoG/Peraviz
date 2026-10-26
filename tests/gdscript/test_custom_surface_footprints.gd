@@ -39,6 +39,14 @@ func run() -> void:
 	window.settings_changed.connect(func(_settings: Dictionary) -> void: emissions[0] += 1)
 	window._apply_quick_preset("Vector Prism + Custom Footprints")
 	test.check(emissions[0] == 1, "A preset delivers one atomic settings change")
+	window._on_panel_setting_changed("footprint_max_range", 30.0)
+	test.check(window._preset_option.get_item_text(window._preset_option.selected) == "Modified settings", "Range participates in optical preset matching")
+	window._apply_quick_preset("Vector Prism + Custom Footprints")
+	window._on_panel_setting_changed("beam_softness", 0.5)
+	test.check(window._preset_option.get_item_text(window._preset_option.selected) == "Modified settings", "Beam profile participates in optical preset matching")
+	window._apply_quick_preset("Vector Prism + Custom Footprints")
+	window._on_panel_setting_changed("ambient_multiplier", 0.09)
+	test.check(window._preset_option.selected == 0, "Independent environment values do not select another optical renderer")
 	window._on_panel_setting_changed("footprint_multiplier", 0.8)
 	test.check(window._settings.footprint_backend == "custom" and window._preset_option.get_item_text(window._preset_option.selected) == "Modified settings" and window._backend_status.text.contains("Custom"), "Modified settings clearly retains active custom backend and open patterns")
 	window.configure({"footprint_multiplier": 0.35, "footprint_softness": 0.08, "footprint_backend": "native"})
@@ -93,6 +101,16 @@ func run() -> void:
 	for iteration in range(8): apply(service, loader.frame(0.6, iteration * 0.1))
 	test.check(volume.parameter_updates == updates and loader.renderer._footprint_cache.creations == texture_builds, "Color/Dimmer playback does not update projection geometry or build artwork")
 	check_optics(loader.anchors[0], volume)
+	var geometry_before: int = volume.projection.geometry_revision
+	var mesh_before: Mesh = loader.renderer.get_beam_resource(loader.anchors[0]).mesh
+	loader._fixture_gobo_projector.set_presentation_rotation(loader.anchors[0], 67.0)
+	var roll_before: float = volume.projection.gobo_roll_deg
+	for gain in [0.0, 0.5, 1.0]:
+		loader._visual_settings.footprint_multiplier = gain
+		preload("res://scripts/runtime/visual_settings_update.gd").apply_values(loader, {"footprint_multiplier": gain})
+	test.check(volume.projection.gobo_roll_deg == roll_before and volume.projection.geometry_revision == geometry_before and volume.projection.pattern_texture == texture and loader.renderer.get_beam_resource(loader.anchors[0]).mesh == mesh_before, "Live surface gain preserves held gobo phase, original texture and shaft topology")
+	loader._fixture_gobo_projector.set_presentation_rotation(loader.anchors[0], 77.0)
+	test.check(volume.projection.gobo_roll_deg == 77.0, "Gobo motion continues after live gain edits without reinitialization")
 	apply(service, loader.frame(0.0, 0.3))
 	test.check(adapter.diagnostics().active_custom_footprints == 0, "Blackout removes all custom contributions")
 	apply(service, loader.frame(0.8, 0.4))

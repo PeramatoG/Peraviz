@@ -18,6 +18,7 @@ public:
     void clear();
     size_t set_enabled(bool enabled);
     void invalidate();
+    size_t set_surface_gain(double gain);
     void apply(const peraviz::presentation::DensePresentationState &physical, bool suppress_writes = false);
     void apply_completed(const std::vector<peraviz::presentation::PreparedOutput> &changes,
         const std::vector<peraviz::presentation::RenderValues> &held,bool suppress_writes=false);
@@ -39,7 +40,7 @@ private:
     struct SurfaceInstance { RID rid; bool allowed=true, visible=false, known=false; };
     void update_surface_visible(size_t index, bool force=false);
     std::vector<SurfaceInstance> surface_instances_;
-    struct Binding { RID rid; uint32_t owner=0, users=0; float scale=1, red=-1, green=-1, blue=-1, energy=-1; bool dirty=false; };
+    struct Binding { RID rid; uint32_t owner=0, users=0; float scale=1, red=-1, green=-1, blue=-1, energy=-1, surface_base=0; bool dirty=false; };
     void nominate(uint32_t index,uint32_t mask);
     void write(Binding &binding,const peraviz::presentation::RenderValues &values,RenderingServer *server);
     std::vector<Binding> bindings_;

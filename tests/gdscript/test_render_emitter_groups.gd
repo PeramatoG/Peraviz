@@ -223,6 +223,9 @@ func _run() -> void:
 	app._visual_settings["beam_presentation"] = 1
 	app._visual_settings["beam_render_mode"] = 0
 	app._update_beam_renderer_mode(true)
+	if "--live-settings-probe" in OS.get_cmdline_user_args():
+		await preload("res://tests/gdscript/helpers/live_settings_probe.gd").run(self)
+		return
 	if "--render-lens-probe" in OS.get_cmdline_user_args():
 		await _load(_generate(true,true,true))
 		dmx.resize(512)
@@ -321,6 +324,7 @@ func _run() -> void:
 		dmx[f*16+3] = 160
 		dmx[f*16+4] = 255
 	await _apply()
+	await preload("res://tests/gdscript/helpers/live_settings_probe.gd").exercise(self)
 	adapter.consume_diagnostics()
 	for f in range(20):
 		dmx[f*16+4] = 64
@@ -453,6 +457,7 @@ func _run() -> void:
 	renderer_totals["resources"] = adapter._native.get_sizes()
 	print("INDEPENDENT_RENDER_COMPARISON ", JSON.stringify(renderer_totals))
 	_check_lens_instances(lens_expected)
+	await preload("res://tests/gdscript/helpers/live_settings_probe.gd").exercise(self)
 	# Force one unsupported material, then rebuild from held state and restore admission.
 	if lens_expected:
 		var output_index: int = adapter._lens_batches.members.keys()[0]

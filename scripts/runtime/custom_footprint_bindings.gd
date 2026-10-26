@@ -3,6 +3,9 @@ extends RefCounted
 const Volume = preload("res://scripts/beam_renderers/custom_footprint_volume.gd")
 const Policy = preload("res://scripts/runtime/surface_light_policy.gd")
 const ReceiverWatch = preload("res://scripts/runtime/footprint_receiver_watch.gd")
+var created: int = 0
+var retired: int = 0
+var installs: int = 0
 var volumes: Array[MeshInstance3D] = []
 var _receivers: Array[WeakRef] = []
 var _watches: Array[Node3D] = []
@@ -31,6 +34,7 @@ func _clear_volumes(native: Object) -> void:
 	volumes.clear()
 
 func install(adapter: RefCounted) -> bool:
+	installs += 1
 	# Revoke borrowed native RIDs before retiring any presentation resources.
 	adapter._native.clear_footprints()
 	var retained: Dictionary = {}
@@ -81,6 +85,7 @@ func install(adapter: RefCounted) -> bool:
 			var volume: MeshInstance3D = retained.get(light.get_instance_id())
 			if volume == null:
 				volume = Volume.new()
+				created += 1
 				light.add_child(volume)
 				light.set_meta(Volume.META, volume)
 			else: retained.erase(light.get_instance_id())
@@ -102,6 +107,7 @@ func install(adapter: RefCounted) -> bool:
 	return true
 
 func _retire_volume(volume: MeshInstance3D) -> void:
+	retired += 1
 	var anchor := volume.get_parent()
 	if anchor != null: anchor.remove_meta(Volume.META)
 	volume.free()
@@ -116,7 +122,7 @@ func counts() -> Dictionary:
 		if not is_instance_valid(volume): continue
 		culled += 1 if volume.culled else 0
 		updates += volume.parameter_updates
-	return {"custom_footprint_supported": _supported, "custom_projector_resources": volumes.size(), "culled_custom_footprints": culled,
+	return {"custom_volumes_created": created, "custom_volumes_retired": retired, "custom_binding_installs": installs, "custom_footprint_supported": _supported, "custom_projector_resources": volumes.size(), "culled_custom_footprints": culled,
 		"custom_projector_parameter_updates": updates}
 
 # One setup traversal of scenery only. Do not subscribe fixtures, lenses, shafts

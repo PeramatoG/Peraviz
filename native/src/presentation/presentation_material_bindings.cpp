@@ -2,6 +2,7 @@
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <cmath>
+#include <algorithm>
 #include "runtime/visual_runtime_types.h"
 
 namespace godot {
@@ -54,6 +55,21 @@ size_t PresentationMaterialBindings::set_enabled(bool enabled) {
     for (size_t i=0;i<surface_instances_.size();++i) update_surface_visible(i);
     return writes;
 }
+// Changes visual gain on borrowed surface RIDs using the last displayed physical energy, including zero recovery.
+size_t PresentationMaterialBindings::set_surface_gain(double gain) {
+    if (!surface_ || !std::isfinite(gain)) return 0;
+    size_t writes=0;
+    for (size_t i=0;i<bindings_.size();++i) {
+        auto &b=bindings_[i]; b.scale=float(std::max(gain,0.0));
+        const float energy=enabled_?b.surface_base*b.scale:0.0f;
+        if (b.energy!=energy) {
+            RenderingServer::get_singleton()->material_set_param(b.rid,energy_,energy); b.energy=energy; ++writes;
+        }
+        update_surface_visible(i);
+    }
+    writes_=writes;
+    return writes;
+}
 // Invalidates cached renderer mutations without changing native semantic or material ownership.
 void PresentationMaterialBindings::invalidate() { for (auto &b:bindings_) b.red=b.green=b.blue=b.energy=-1; }
 // Coalesces shared lens RIDs in native main-thread glue; independent pixel lenses remain exact.
@@ -81,7 +97,8 @@ void PresentationMaterialBindings::nominate(uint32_t index,uint32_t mask) {
 // Applies the same guarded RID mutations for synchronous and immutable completed snapshots.
 void PresentationMaterialBindings::write(Binding &b,const peraviz::presentation::RenderValues &v,RenderingServer *server) {
     using namespace peraviz::presentation;
-    const float energy=surface_ ? (v[Visible]>0 ? (v[SpotEnergy]>0 ? v[SpotEnergy] : v[BeamEnergy])*b.scale : 0.0f) : v[MaterialEnergy]*b.scale;
+    if (surface_) b.surface_base=v[Visible]>0 ? (v[SpotEnergy]>0 ? v[SpotEnergy] : v[BeamEnergy]) : 0.0f;
+    const float energy=surface_ ? b.surface_base*b.scale : v[MaterialEnergy]*b.scale;
     const size_t before=writes_;
     if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
         server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));

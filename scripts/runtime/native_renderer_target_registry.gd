@@ -21,6 +21,10 @@ var _dimmer_emitter_owner_by_key: Dictionary = {}
 var _beam_profiles_by_geometry_key: Dictionary = {}
 var _beam_output_records_by_geometry_key: Dictionary = {}
 var _beam_output_records_by_id: Dictionary = {}
+var _shaft_record_index: Dictionary = {}
+var _shaft_record_index_dirty: bool = true
+var shaft_registry_calls: int = 0
+var shaft_registry_scans: int = 0
 var _summary: Dictionary = {}
 var _lens_material_cache: Dictionary = {}
 var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
@@ -58,6 +62,10 @@ func clear_renderer_targets() -> void:
 	_beam_profiles_by_geometry_key.clear()
 	_beam_output_records_by_geometry_key.clear()
 	_beam_output_records_by_id.clear()
+	_shaft_record_index.clear()
+	_shaft_record_index_dirty = true
+	shaft_registry_calls = 0
+	shaft_registry_scans = 0
 	_lens_material_cache.clear()
 	_render_emitter_groups.clear()
 	_aggregate_candidates.clear()
@@ -256,38 +264,42 @@ func get_presentation_ownership_diagnostics(active_emitter_ids: Dictionary) -> D
 		"active_native_emitters": active_emitters.size(),
 	}
 
-func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
-	if light == null or not is_instance_valid(light):
-		return
-	for output_record in _beam_output_records_by_id.values():
-		_rebind_record_beam(output_record as Dictionary, light, beam)
-	for target_map in [_dimmer_targets, _optics_targets, _color_targets]:
-		for target_record in (target_map as Dictionary).values():
-			_rebind_record_beam(target_record as Dictionary, light, beam)
-
-# Rebinds a cold resource transaction in linear time, including explicit absent shafts.
-func rebind_shaft_instances(changes: Dictionary) -> void:
+# Build only at a target-generation boundary. Live replacements address exact
+# record slots; they never rescan all targets for each physical emitter.
+func _ensure_shaft_record_index() -> void:
+	if not _shaft_record_index_dirty: return
+	_shaft_record_index_dirty = false
+	_shaft_record_index.clear()
+	shaft_registry_scans += 1
 	var records: Array = _beam_output_records_by_id.values()
 	for target_map in [_dimmer_targets, _optics_targets, _color_targets]: records.append_array(target_map.values())
 	for record in records:
 		var anchors: Array = record.get("emitter_anchors", [])
-		var beams: Array = record.get("beam_instances", [])
 		for index in range(anchors.size()):
-			if not is_instance_valid(anchors[index]) or not changes.has(anchors[index].get_instance_id()): continue
-			while beams.size() <= index: beams.append(null)
-			beams[index] = changes[anchors[index].get_instance_id()]
-		record["beam_instances"] = beams
+			if not is_instance_valid(anchors[index]): continue
+			var id: int = anchors[index].get_instance_id()
+			if not _shaft_record_index.has(id): _shaft_record_index[id] = []
+			_shaft_record_index[id].append([record, index])
 
-func _rebind_record_beam(record: Dictionary, light: SpotLight3D, beam: MeshInstance3D) -> void:
-	var anchors: Array = record.get("emitter_anchors", [])
-	var index: int = anchors.find(light)
-	if index < 0:
-		return
-	var beams: Array = record.get("beam_instances", [])
-	while beams.size() <= index:
-		beams.append(null)
-	beams[index] = beam
-	record["beam_instances"] = beams
+func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
+	if not is_instance_valid(light): return
+	_ensure_shaft_record_index()
+	shaft_registry_calls += 1
+	_write_shaft_slots(light.get_instance_id(), beam)
+
+# Batches share the same generation-scoped reverse index as individual replacements.
+func rebind_shaft_instances(changes: Dictionary) -> void:
+	if changes.is_empty(): return
+	_ensure_shaft_record_index()
+	shaft_registry_calls += 1
+	for id in changes: _write_shaft_slots(id, changes[id])
+
+func _write_shaft_slots(id: int, beam: MeshInstance3D) -> void:
+	for slot in _shaft_record_index.get(id, []):
+		var beams: Array = slot[0].get("beam_instances", [])
+		while beams.size() <= slot[1]: beams.append(null)
+		beams[slot[1]] = beam
+		slot[0]["beam_instances"] = beams
 
 func get_target_failure(target_id: int) -> Variant:
 	return _target_resolution_failures.get(target_id, null)
@@ -505,6 +517,7 @@ func _resolve_beam_output_record(fixture_uuid: String, emitter_node: Node3D, fal
 	_beam_output_records_by_geometry_key[geometry_key] = output_record
 	if beam_render_target_id > 0:
 		_beam_output_records_by_id[beam_render_target_id] = output_record
+		_shaft_record_index_dirty = true
 	return output_record
 
 func _build_semantic_target_record(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String, target: Node3D, output_records: Array) -> Dictionary:
@@ -551,6 +564,7 @@ func _register_dimmer_target(manifest_row: Dictionary, target_id: int, fixture_u
 	if record.is_empty():
 		return
 	_dimmer_targets[target_id] = record
+	_shaft_record_index_dirty = true
 	_increment_counter("dimmer_owner_geometries_resolved")
 	if not record.get("emitter_nodes", []).is_empty():
 		_increment_counter("dimmer_targets_with_emitter_nodes")
@@ -587,6 +601,7 @@ func _register_color_target(manifest_row: Dictionary, target_id: int, fixture_uu
 	if record.is_empty():
 		return
 	_color_targets[target_id] = record
+	_shaft_record_index_dirty = true
 	_increment_counter("color_resolved")
 
 func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_uuid: String, geometry_key: String) -> void:
@@ -600,6 +615,7 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 			existing["beam_optical_profile"] = profile
 			_apply_initial_optics_profile(existing.get("emitter_anchors", []), profile)
 			_optics_targets[target_id] = existing
+			_shaft_record_index_dirty = true
 		return
 	var record: Dictionary = _resolve_beam_target_resources(manifest_row, target_id, fixture_uuid, geometry_key, "optics", ":optics")
 	if record.is_empty():
@@ -608,6 +624,7 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 	record["beam_optical_profile"] = optical_profile
 	_apply_initial_optics_profile(record.get("emitter_anchors", []), optical_profile)
 	_optics_targets[target_id] = record
+	_shaft_record_index_dirty = true
 	_increment_counter("optics_resolved")
 
 func _apply_initial_optics_profile(emitter_anchors: Array, optical_profile: Dictionary) -> void:

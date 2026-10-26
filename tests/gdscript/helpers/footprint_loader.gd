@@ -3,6 +3,8 @@ extends "res://tests/gdscript/helpers/dense_mutation_loader.gd"
 const Surface = preload("res://scripts/beam_renderers/surface_footprint_presentation.gd")
 var _fixture_gobo_projector = preload("res://scripts/fixture_gobo_projector.gd").new()
 var _fixture_light_apply_service: RefCounted
+var _beam_params_template_cache: Dictionary = {}
+var _live_settings_trace: Dictionary = {}
 var _has_loaded_bounds: bool = false
 var _loaded_bounds: AABB
 var proxies_root: Node3D

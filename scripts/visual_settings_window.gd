@@ -76,6 +76,12 @@ const DEFAULT_SETTINGS := {
 	"gobo_debug_shake_waveform": 0,
 }
 
+const OPTICAL_PRESET_KEYS := [
+	"beam_presentation", "beam_render_mode", "footprint_backend", "enable_realtime_spotlights",
+	"beam_multiplier", "footprint_multiplier", "footprint_softness", "footprint_max_range",
+	"beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier",
+]
+
 const QUICK_PRESETS := {
 	"Shared Haze": {
 		"beam_presentation": 0,
@@ -112,6 +118,11 @@ const QUICK_PRESETS := {
 		"spot_multiplier": 1.0,
 		"footprint_multiplier": 0.6,
 		"footprint_softness": 0.10,
+		"footprint_max_range": 40.0,
+		"beam_softness": 0.32,
+		"beam_radial_falloff": 1.0,
+		"beam_longitudinal_falloff": 1.0,
+		"haze_density_multiplier": 0.22,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -129,6 +140,11 @@ const QUICK_PRESETS := {
 		"spot_multiplier": 1.0,
 		"footprint_multiplier": 0.6,
 		"footprint_softness": 0.10,
+		"footprint_max_range": 40.0,
+		"beam_softness": 0.32,
+		"beam_radial_falloff": 1.0,
+		"beam_longitudinal_falloff": 1.0,
+		"haze_density_multiplier": 0.22,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -304,7 +320,8 @@ func _sync_quick_preset_selection() -> void:
 	for index in range(BeamPresentationOptionsScript.PRESET_NAMES.size()):
 		var preset_name: String = BeamPresentationOptionsScript.PRESET_NAMES[index]
 		var matches: bool = true
-		for key in (QUICK_PRESETS[preset_name] as Dictionary):
+		# Match the optical presentation contract, independent of environment controls.
+		for key in OPTICAL_PRESET_KEYS:
 			if _settings.get(key) != (QUICK_PRESETS[preset_name] as Dictionary).get(key):
 				matches = false
 				break

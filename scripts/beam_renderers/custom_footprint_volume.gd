@@ -79,10 +79,7 @@ func sync() -> void:
 		_material.set_shader_parameter("profile_anchored", projection.radial_profile.anchored)
 		_material.set_shader_parameter("soft_open_profile", projection.radial_profile.diffuse)
 		parameter_updates += 1
-	if _softness != projection.footprint_softness:
-		_softness = projection.footprint_softness
-		_material.set_shader_parameter("edge_softness", _softness)
-		parameter_updates += 1
+	sync_softness()
 	var source: Texture2D = projection.pattern_texture
 	var source_id: int = source.get_instance_id() if source != null else 0
 	if _source_id != source_id:
@@ -97,6 +94,13 @@ func sync() -> void:
 		parameter_updates += 1
 	_sync_world()
 	_update_bounds()
+
+# Profile-only edits do not touch transforms, coverage, texture bindings or bounds.
+func sync_softness() -> void:
+	if projection == null or _softness == projection.footprint_softness: return
+	_softness = projection.footprint_softness
+	_material.set_shader_parameter("edge_softness", _softness)
+	parameter_updates += 1
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSFORM_CHANGED and projection != null and is_inside_tree(): _sync_world()

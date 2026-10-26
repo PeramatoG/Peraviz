@@ -15,6 +15,7 @@ int64_t now_us() {
 // Exposes setup-only physical/resource binding and a single renderer-oriented snapshot contract.
 void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("install", "ids", "scales", "routes"), &PeravizPresentationState::install);
+    ClassDB::bind_method(D_METHOD("replay_presentation_gains", "shafts", "surfaces", "surface_gain", "trace"), &PeravizPresentationState::replay_presentation_gains);
     ClassDB::bind_method(D_METHOD("invalidate_renderer"), &PeravizPresentationState::invalidate_renderer);
     ClassDB::bind_method(D_METHOD("install_groups", "representatives"), &PeravizPresentationState::install_groups);
     ClassDB::bind_method(D_METHOD("install_render_rows", "membership", "classes"), &PeravizPresentationState::install_render_rows);
@@ -45,7 +46,7 @@ int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const Pac
     retire_async(false); clear_beams(); clear_lenses(); clear_footprints();
     const String mode=OS::get_singleton()->get_environment("PERAVIZ_NATIVE_EVALUATION");
     async_disabled_=mode=="serial"; async_forced_=mode=="parallel";
-    displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
+    displayed_physical_.clear(); held_renderer_.clear(); held_renderer_valid_.clear(); gain_rows_.clear(); deferred_domains_={}; resume_pending_=false;
     if (ids.size()!=scales.size() || routes.size()%3!=0) return -1;
     std::vector<OutputBinding> outputs;
     std::vector<TargetBinding> targets;
@@ -74,6 +75,8 @@ bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membe
     for (int64_t i=0;i<classes.size();++i) modes.push_back(RenderPresentationClass(classes[i]));
     if (!projection_.install(mapping,modes)) return false;
     clear_beams(); script_rows_.resize(classes.size());
+    held_renderer_.assign(classes.size(),{}); held_renderer_valid_.assign(classes.size(),false);
+    gain_rows_.clear(); gain_rows_.reserve(classes.size());
     indices_masks_.resize(classes.size()*2); values_.resize(classes.size()*ValueCount);
     state_.invalidate_renderer();
     return true;
@@ -99,7 +102,7 @@ PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) cons
 PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
 // Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
-    retire_async(false); clear_beams(); clear_lenses(); clear_footprints(); script_rows_=PackedInt32Array(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
+    retire_async(false); clear_beams(); clear_lenses(); clear_footprints(); script_rows_=PackedInt32Array(); held_renderer_.clear(); held_renderer_valid_.clear(); gain_rows_.clear(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
     std::vector<int32_t>().swap(fixture_ids_);
     pipeline_.clear(); state_.clear(); projection_.clear(); materials_.clear();
     indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
@@ -287,6 +290,7 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["native_async_active"]=bool(async_); sizes["native_snapshot_buffer_bytes"]=int64_t(async_snapshot_bytes_);
     sizes["native_worker_scratch_bytes"]=int64_t(async_worker_bytes_);
     sizes["native_input_buffer_bytes"]=int64_t(async_?async_->input_buffer_bytes():0);
+    sizes["native_gain_cache_bytes"]=int64_t((held_renderer_.capacity()+gain_rows_.capacity())*sizeof(PreparedRenderRow)+held_renderer_valid_.capacity()/8);
     sizes["native_display_cache_bytes"]=int64_t(displayed_physical_.capacity()*sizeof(RenderValues));
     sizes["native_beam_bindings"]=int64_t(beams_.count()); sizes["native_beam_buffer_bytes"]=int64_t(beams_.buffer_bytes()+script_rows_.size()*sizeof(int32_t));
     sizes["native_worker_capacity"]=int64_t(async_?async_->worker_count():0);

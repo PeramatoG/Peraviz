@@ -383,7 +383,7 @@ func _ready() -> void:
 		_apply_visual_settings_preferences_to_window()
 	else:
 		push_warning("VisualSettingsWindow is not ready for configure(); initial visual settings not pushed.")
-	_apply_visual_settings(_visual_settings)
+	_apply_visual_settings(_visual_settings, true)
 	_refresh_day_night_environment_controller()
 	call_deferred("_auto_load_last_file_from_preferences")
 
@@ -429,7 +429,9 @@ func _initialize_beam_renderers() -> void:
 	_beam_renderers[BEAM_RENDER_MODE_VOLUMETRIC] = VolumetricBeamRendererScript.new()
 	_update_beam_renderer_mode(true)
 
-func _apply_visual_settings(settings: Dictionary) -> void:
+var _live_settings_trace: Dictionary = {}
+
+func _apply_visual_settings(settings: Dictionary, initialize_environment: bool = false) -> void:
 	if settings.has("spot_multiplier") and not settings.has("footprint_multiplier"):
 		settings = VisualSettingsMigration.migrate(settings)
 	var previous_settings: Dictionary = _visual_settings.duplicate(true)
@@ -437,57 +439,59 @@ func _apply_visual_settings(settings: Dictionary) -> void:
 		if settings.has(key):
 			_visual_settings[key] = settings[key]
 
-	if world_environment != null and world_environment.environment != null:
-		if _environment_has_property(world_environment.environment, "ambient_light_source"):
-			world_environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		world_environment.environment.ambient_light_color = Color(1.0, 1.0, 1.0, 1.0)
-		var ambient_multiplier: float = float(_visual_settings.get("ambient_multiplier", 0.08))
-		world_environment.environment.ambient_light_energy = ambient_multiplier
-		if _environment_has_property(world_environment.environment, "ambient_light_sky_contribution"):
-			world_environment.environment.ambient_light_sky_contribution = 0.0
-		var bloom_multiplier: float = float(_visual_settings.get("bloom_multiplier", 0.0))
-		world_environment.environment.glow_enabled = bloom_multiplier > 0.001
-		world_environment.environment.glow_bloom = float(_visual_environment_baseline.get("glow_bloom", 0.05)) * bloom_multiplier
-		world_environment.environment.glow_intensity = float(_visual_environment_baseline.get("glow_intensity", 0.55)) * bloom_multiplier
-		world_environment.environment.glow_strength = float(_visual_environment_baseline.get("glow_strength", 0.55)) * bloom_multiplier
-		world_environment.environment.background_color = _visual_settings.get("background_color", _visual_environment_baseline.get("background_color", Color(0.129412, 0.137255, 0.156863, 1.0)))
-		var ambient_fog_density: float = max(float(_visual_settings.get("ambient_fog_density", 0.0)), 0.0)
-		world_environment.environment.fog_enabled = ambient_fog_density > 0.0001
-		if world_environment.environment.fog_enabled:
-			world_environment.environment.fog_density = ambient_fog_density
-		var volumetric_fog_density: float = max(float(_visual_settings.get("volumetric_fog_density", 0.0)), 0.0)
-		var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 1)) in [0, 2]
-		world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001 or presentation_uses_fog
-		world_environment.environment.volumetric_fog_density = volumetric_fog_density
-		if _environment_has_property(world_environment.environment, "volumetric_fog_length"):
-			world_environment.environment.volumetric_fog_length = clamp(float(_visual_settings.get("volumetric_fog_length", 110.0)), 1.0, 500.0)
-		if _environment_has_property(world_environment.environment, "volumetric_fog_fade"):
-			world_environment.environment.volumetric_fog_fade = max(float(_visual_settings.get("volumetric_fog_fade", 0.02)), 0.005)
-	if _shared_haze_controller == null:
-		_shared_haze_controller = SharedHazeControllerScript.new()
-	_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) in [0, 2], _visual_settings)
-
-	# Renderer-level volumetric fog froxel settings are kept static in project.godot.
-	# Do not mutate froxel sizing/filtering at runtime, as it can cause renderer signal churn.
-
-	_beam_params_template_cache.clear()
-	_update_beam_renderer_mode(false)
+	var updates = preload("res://scripts/runtime/visual_settings_update.gd")
+	var changed: Dictionary = updates.changed(previous_settings, _visual_settings)
+	if changed.is_empty() and not initialize_environment: return
+	var trace: bool = _fixture_light_apply_service._performance_trace_enabled
+	var started: int = Time.get_ticks_usec() if trace else 0
+	var counters_before: Dictionary = updates.counters(self) if trace else {}
+	_live_settings_trace = {}
+	if initialize_environment or updates.environment_changed(changed):
+		if world_environment != null and world_environment.environment != null:
+			if _environment_has_property(world_environment.environment, "ambient_light_source"):
+				world_environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			world_environment.environment.ambient_light_color = Color(1.0, 1.0, 1.0, 1.0)
+			var ambient_multiplier: float = float(_visual_settings.get("ambient_multiplier", 0.08))
+			world_environment.environment.ambient_light_energy = ambient_multiplier
+			if _environment_has_property(world_environment.environment, "ambient_light_sky_contribution"):
+				world_environment.environment.ambient_light_sky_contribution = 0.0
+			var bloom_multiplier: float = float(_visual_settings.get("bloom_multiplier", 0.0))
+			world_environment.environment.glow_enabled = bloom_multiplier > 0.001
+			world_environment.environment.glow_bloom = float(_visual_environment_baseline.get("glow_bloom", 0.05)) * bloom_multiplier
+			world_environment.environment.glow_intensity = float(_visual_environment_baseline.get("glow_intensity", 0.55)) * bloom_multiplier
+			world_environment.environment.glow_strength = float(_visual_environment_baseline.get("glow_strength", 0.55)) * bloom_multiplier
+			world_environment.environment.background_color = _visual_settings.get("background_color", _visual_environment_baseline.get("background_color", Color(0.129412, 0.137255, 0.156863, 1.0)))
+			var ambient_fog_density: float = max(float(_visual_settings.get("ambient_fog_density", 0.0)), 0.0)
+			world_environment.environment.fog_enabled = ambient_fog_density > 0.0001
+			if world_environment.environment.fog_enabled:
+				world_environment.environment.fog_density = ambient_fog_density
+			var volumetric_fog_density: float = max(float(_visual_settings.get("volumetric_fog_density", 0.0)), 0.0)
+			var presentation_uses_fog: bool = int(_visual_settings.get("beam_presentation", 1)) in [0, 2]
+			world_environment.environment.volumetric_fog_enabled = volumetric_fog_density > 0.0001 or presentation_uses_fog
+			world_environment.environment.volumetric_fog_density = volumetric_fog_density
+			if _environment_has_property(world_environment.environment, "volumetric_fog_length"):
+				world_environment.environment.volumetric_fog_length = clamp(float(_visual_settings.get("volumetric_fog_length", 110.0)), 1.0, 500.0)
+			if _environment_has_property(world_environment.environment, "volumetric_fog_fade"):
+				world_environment.environment.volumetric_fog_fade = max(float(_visual_settings.get("volumetric_fog_fade", 0.02)), 0.005)
+		if _shared_haze_controller == null:
+			_shared_haze_controller = SharedHazeControllerScript.new()
+		_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) in [0, 2], _visual_settings)
+		_refresh_day_night_environment_controller()
+	if updates.structural(changed):
+		_beam_params_template_cache.clear()
+		_update_beam_renderer_mode(false)
+		_refresh_emitter_light_scalars()
+		if updates.refresh_shaft_optics(changed): _refresh_existing_beam_material_scalars()
+		_fixture_light_apply_service.refresh_dense_renderer()
+	else:
+		updates.apply_values(self, changed)
 	_save_visual_settings_to_project()
-	_refresh_emitter_light_scalars()
-
-	var beam_scalar_changed: bool = (
-		not is_equal_approx(float(previous_settings.get("beam_multiplier", 20.0)), float(_visual_settings.get("beam_multiplier", 20.0)))
-		or int(previous_settings.get("beam_presentation", 1)) != int(_visual_settings.get("beam_presentation", 1))
-		or previous_settings.get("beam_softness") != _visual_settings.get("beam_softness")
-		or previous_settings.get("beam_radial_falloff") != _visual_settings.get("beam_radial_falloff")
-		or previous_settings.get("beam_longitudinal_falloff") != _visual_settings.get("beam_longitudinal_falloff")
-		or previous_settings.get("footprint_softness") != _visual_settings.get("footprint_softness")
-		or previous_settings.get("haze_density_multiplier") != _visual_settings.get("haze_density_multiplier")
-	)
-	if beam_scalar_changed:
-		_refresh_existing_beam_material_scalars()
-	_fixture_light_apply_service.refresh_dense_renderer()
-	_refresh_day_night_environment_controller()
+	if trace:
+		_live_settings_trace["settings_apply_us"] = Time.get_ticks_usec() - started
+		_live_settings_trace["structural_refreshes"] = 1 if updates.structural(changed) else 0
+		var counters_after: Dictionary = updates.counters(self)
+		for key in counters_after: _live_settings_trace[key] = int(counters_after[key]) - int(counters_before.get(key, 0))
+		print("[PeravizLiveSettings] ", JSON.stringify(_live_settings_trace))
 
 
 
@@ -626,10 +630,13 @@ func _update_beam_for_light(light: SpotLight3D, beam_params: Dictionary, rebind_
 	if _active_beam_renderer == null:
 		return
 	light.set_meta("peraviz_beam_last_params", beam_params)
+	var previous_resource: MeshInstance3D = _active_beam_renderer.get_beam_resource(light)
 	_active_beam_renderer.ensure_beam(light)
 	_active_beam_renderer.update_beam(light, beam_params)
 	_refresh_native_gobo_presentation(light)
-	_native_target_registry.rebind_beam_resource(light, _active_beam_renderer.get_beam_resource(light))
+	var current_resource: MeshInstance3D = _active_beam_renderer.get_beam_resource(light)
+	if current_resource != previous_resource:
+		_native_target_registry.rebind_beam_resource(light, current_resource)
 	if rebind_dense: _fixture_light_apply_service.rebind_dense_light(light)
 
 func _apply_emitter_light_dimmer_fast(light: SpotLight3D, photometric: Dictionary, normalized_dimmer: float, beam_color: Color, controls: Dictionary = {}) -> bool:
