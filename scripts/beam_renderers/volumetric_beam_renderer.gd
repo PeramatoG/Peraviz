@@ -87,10 +87,10 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if is_member_deferred(light):
 		# Keep physical optical/footprint metadata ready while omitting only the graphical shaft.
 		params["smooth_light_profile"] = true
-		var projection: RefCounted = OpticalProjection.resolve(light)
-		projection.configure(params, light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
-		if not params.has("profile_beam_angle"): params["profile_beam_angle"] = projection.base_beam_angle_deg
-		projection.apply_footprint(light)
+		var deferred_projection: RefCounted = OpticalProjection.resolve(light)
+		deferred_projection.configure(params, light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
+		if not params.has("profile_beam_angle"): params["profile_beam_angle"] = deferred_projection.base_beam_angle_deg
+		deferred_projection.apply_footprint(light)
 		refresh_surface_profile(light)
 		return
 	ensure_beam(light)
