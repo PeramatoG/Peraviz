@@ -35,7 +35,7 @@ func run() -> void:
 				if anchored:
 					var expected := rad_to_deg(2 * atan(tan(deg_to_rad(angle * 0.5)) * ratio))
 					test.check_close(state.resolved_field_angle_deg, expected, 0.0001, "FieldAngle follows Zoom tangent ratio without drift")
-					test.check(tan(deg_to_rad(state.half_angle_deg)) <= tan(deg_to_rad(expected * 0.5)) * 1.061, "Support stays close to FieldAngle")
+					test.check(tan(deg_to_rad(state.half_angle_deg)) <= tan(deg_to_rad(expected * 0.5)) * (1.501 if fixture.get("beam_type", "Wash") == "Wash" else 1.061), "Support respects the bounded type-specific tail")
 				test.check(state.radial_profile.get_instance_id() == profile_id and state.profile_revision == revision, "Zoom cycling reuses the static base profile")
 		if fixture.get("beam_type_explicit", false) == false:
 			test.check(state.diagnostic(fixture).contains("BeamType=Wash source=gdtf-default") and state.diagnostic(fixture).contains("FieldAngle=25.000 source=gdtf-default"), "Defaults remain canonical and are reported as defaults")

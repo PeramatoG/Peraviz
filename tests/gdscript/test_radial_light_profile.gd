@@ -12,6 +12,19 @@ func _init() -> void:
 	call_deferred("run")
 
 func run() -> void:
+	for kind in ["Wash", "Spot", "Fresnel", "PC", "Rectangle"]:
+		for softness in [0.0, 0.32, 1.0]:
+			for bias in [0.25, 1.0, 4.0]:
+				var authored = Profile.new()
+				authored.configure(kind, 20, 40, 2.0, softness, bias, true, true)
+				var ratio: float = tan(deg_to_rad(20.0)) / tan(deg_to_rad(10.0))
+				test.check_close(authored.sample_support(Vector2(1.0 / authored.support_scale * authored.aspect.x, 0)), 0.5, 0.00001, "Softness preserves rendered 50% anchor")
+				test.check_close(authored.sample_support(Vector2(ratio / authored.support_scale * authored.aspect.x, 0)), 0.1, 0.00001, "Softness and radial controls preserve rendered 10% anchor")
+				var last: float = 1.0
+				for index in range(1001):
+					var v: float = authored.sample_support(Vector2(float(index) / 1000.0 * authored.aspect.x, 0))
+					test.check(v >= 0 and v <= last + 0.00001 and absf(v-last) < 0.03, "Bounded tail remains continuous and monotonic")
+					last = v
 	for angles in [Vector2(10, 20), Vector2(20, 40), Vector2(35, 48), Vector2(60, 90)]:
 		var profile = Profile.new()
 		profile.configure("Spot", angles.x, angles.y)

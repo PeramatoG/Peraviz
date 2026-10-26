@@ -115,7 +115,6 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if not params.has("profile_beam_angle"): params["profile_beam_angle"] = projection.base_beam_angle_deg
 	projection.apply_footprint(light)
 	refresh_surface_profile(light)
-	if bool(params.get("beam_debug_optics", false)): print("[PeravizOpticalProfile] ", projection.diagnostic(params))
 
 	var intensity_max: float = max(float(params.get("intensity_max", 100.0)), 0.01)
 	var intensity: float = clamp(float(params.get("scaled_intensity", 0.0)), 0.0, intensity_max)
@@ -141,8 +140,6 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	params["gobo_projection_radius"] = gobo_projection_radius
 	var beam_rotation_deg: float = float(shape_result.get("beam_rotation_deg", 0.0))
 
-	if bool(params.get("beam_debug_optics", false)):
-		print("[PeravizBeamOptics] mode=", _active_shape_provider.shape_mode(), " angle_deg=", beam_angle, " range_m=", beam_range, " radius_end_m=", gobo_projection_radius)
 
 	_set_bound_visibility(beam, intensity > threshold)
 	if intensity <= threshold: _sync_debug_axis(light, false)
