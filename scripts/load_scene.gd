@@ -87,6 +87,8 @@ var _visual_settings := {
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
 	"beam_presentation": 1,
+	"footprint_backend": "custom",
+	"footprint_max_range": 40.0,
 	"beam_quality": 2,
 	"use_fog_volume_gobo_beam": false,
 	"fog_volume_density_scale": 1.1,
@@ -612,6 +614,7 @@ func _rebind_native_shaft_instances(changes: Dictionary) -> void:
 func _ensure_beam_runtime_for_light(light: SpotLight3D) -> void:
 	if _active_beam_renderer == null or light == null or not is_instance_valid(light):
 		return
+	light.set_meta(&"peraviz_footprint_backend", _visual_settings.get("footprint_backend", "custom"))
 	_active_beam_renderer.ensure_beam(light)
 
 # Bulk settings changes defer dense group rebuilding until every member is updated.
@@ -751,7 +754,7 @@ func _restore_dmx_project_settings(settings: Dictionary) -> void:
 func _restore_visual_project_settings(settings: Variant) -> void:
 	if settings is not Dictionary:
 		return
-	var visual_settings: Dictionary = settings as Dictionary
+	var visual_settings: Dictionary = VisualSettingsMigration.migrate_saved(settings as Dictionary)
 	if visual_settings.is_empty():
 		return
 	_apply_visual_settings(visual_settings)

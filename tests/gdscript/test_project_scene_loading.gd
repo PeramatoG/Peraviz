@@ -18,8 +18,17 @@ func _run() -> void:
 	settings["beam_softness"] = 0.37
 	settings["beam_multiplier"] = 7.0
 	settings["beam_presentation"] = 1
+	settings["footprint_backend"] = "custom"
 	settings["beam_render_mode"] = 0
 	var saved: Dictionary = app._project_archive.save_project(project_path, path, "test", settings, {"universe_offset": 2, "auto_start_dmx": false}, {})
+	var round_trip: Dictionary = app._project_archive.open_project(project_path)
+	test.check(round_trip.visual_settings.footprint_backend == "custom", "PVZ preserves explicit custom backend")
+	var legacy_settings: Dictionary = settings.duplicate()
+	legacy_settings.erase("footprint_backend")
+	var legacy_path := ProjectSettings.globalize_path("user://generated_legacy_footprint.pvz")
+	app._project_archive.save_project(legacy_path, path, "test", legacy_settings, {}, {})
+	var legacy: Dictionary = app._project_archive.open_project(legacy_path)
+	test.check(legacy.visual_settings.footprint_backend == "native" and legacy.visual_settings.beam_presentation == 1, "Legacy PVZ preserves Vector Prism with native footprint reference")
 	test.check(saved.get("ok", false), "Save a generic PVZ with non-default visual and patch settings")
 	var phases: Array[String] = []
 	var observed: Array[Dictionary] = []
@@ -61,6 +70,12 @@ func _run() -> void:
 	test.check(after["physical_outputs"] == 102 and after["aggregate_shaft_resources"] == 2 and after["final_render_rows"] == 4, "Bulk settings updates preserve physical identities and aggregate resource counts")
 	for index in range(physical.size()): test.check(adapter._native.physical_values(index) == physical[index], "Settings rebind preserves exact held native physical state")
 	print("PROJECT_SETTINGS_BATCH ", JSON.stringify({"physical_outputs": after["physical_outputs"], "global_rebuilds": int(after["forced_replays"]) - int(before["forced_replays"]), "wall_ms": elapsed_ms}))
+	var original_renderer: BeamRendererBase = app._active_beam_renderer
+	for preset in ["Vector Prism + Native Footprints", "Vector Prism + Custom Footprints"]:
+		app._apply_visual_settings(preload("res://scripts/visual_settings_window.gd").QUICK_PRESETS[preset])
+		test.check(app._active_beam_renderer == original_renderer and app._visual_settings.beam_presentation == 1, "Preset changes preserve the atmospheric renderer")
+		for index in range(physical.size()): test.check(adapter._native.physical_values(index) == physical[index], "Preset switching preserves exact held native DMX")
+	test.check(app._visual_settings.footprint_backend == "custom" and not app._visual_settings.enable_realtime_spotlights, "Preferred preset resolves independent backend policy")
 	# A second opening must retire the previous generation and avoid late settings work.
 	var old_generation: int = adapter._generation
 	await app._open_project(project_path)

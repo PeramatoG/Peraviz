@@ -10,6 +10,13 @@ static func migrate(settings: Dictionary) -> Dictionary:
 	if not result.has("footprint_softness"): result["footprint_softness"] = 0.04
 	return result
 
+# Only archive/project restoration applies legacy defaults. Partial live UI updates
+# must never reinterpret a missing backend as a request to switch away from custom.
+static func migrate_saved(settings: Dictionary) -> Dictionary:
+	var result := migrate(settings)
+	if not result.has("footprint_backend"): result["footprint_backend"] = "native"
+	return result
+
 static func surface_multiplier(settings: Dictionary) -> float:
 	var footprint := maxf(float(settings.get("footprint_multiplier", settings.get("spot_multiplier", 1.0))), 0.0)
 	return footprint if int(settings.get("beam_presentation", 1)) == 1 else maxf(float(settings.get("spot_multiplier", 1.0)), 0.0)

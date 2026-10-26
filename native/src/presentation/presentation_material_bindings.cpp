@@ -7,18 +7,42 @@
 namespace godot {
 // Installs renderer-owned material resources and exact physical inverse routes once per generation.
 bool PresentationMaterialBindings::install(size_t count, const Array &rids, const PackedInt32Array &owners,
-        const PackedFloat32Array &scales, const PackedInt32Array &routes) {
+        const PackedFloat32Array &scales, const PackedInt32Array &routes, bool surface) {
     if (rids.size()!=owners.size() || owners.size()!=scales.size() || routes.size()%2!=0) return false;
     for (int64_t i=0;i<owners.size();++i) if (owners[i]<0 || size_t(owners[i])>=count ||
         rids[i].get_type()!=Variant::RID || !std::isfinite(scales[i]) || scales[i]<0) return false;
     for (int64_t i=0;i<routes.size();i+=2) if (routes[i]<0 || size_t(routes[i])>=count || routes[i+1]<0 || routes[i+1]>=owners.size()) return false;
-    clear(); routes_.resize(count); bindings_.reserve(owners.size()); dirty_.reserve(owners.size());
+    clear(); surface_=surface; routes_.resize(count); bindings_.reserve(owners.size()); dirty_.reserve(owners.size());
     for (int64_t i=0;i<owners.size();++i) { Binding b; b.rid=rids[i]; b.owner=uint32_t(owners[i]); b.scale=scales[i]; bindings_.push_back(b); }
     for (int64_t i=0;i<routes.size();i+=2) { routes_[routes[i]].push_back(uint32_t(routes[i+1])); ++bindings_[routes[i+1]].users; }
     return true;
 }
+// Borrows presentation volume instance RIDs; initial visibility awaits held physical replay.
+bool PresentationMaterialBindings::install_surface_instances(const Array &instances) {
+    if (!surface_ || size_t(instances.size())!=bindings_.size()) return false;
+    for (int64_t i=0;i<instances.size();++i) if (instances[i].get_type()!=Variant::RID) return false;
+    surface_instances_.resize(instances.size());
+    for (int64_t i=0;i<instances.size();++i) { surface_instances_[i].rid=instances[i]; update_surface_visible(i,true); }
+    return true;
+}
+// Repairs Godot's visibility notification without scene lookup or a worker wait.
+void PresentationMaterialBindings::set_surface_visible(int32_t index,bool allowed) {
+    if (index<0 || size_t(index)>=surface_instances_.size()) return;
+    surface_instances_[index].allowed=allowed;
+    update_surface_visible(size_t(index),true);
+}
+// Suppresses actual draw submission during blackout and conservative receiver culling.
+void PresentationMaterialBindings::update_surface_visible(size_t index,bool force) {
+    if (index>=surface_instances_.size()) return;
+    auto &instance=surface_instances_[index];
+    const bool visible=enabled_ && instance.allowed && bindings_[index].energy>0;
+    if (force || !instance.known || visible!=instance.visible) {
+        RenderingServer::get_singleton()->instance_set_visible(instance.rid,visible);
+        instance.visible=visible; instance.known=true;
+    }
+}
 // Releases RIDs and scene-sized routes before their owning Godot resources are retired.
-void PresentationMaterialBindings::clear() { decltype(bindings_)().swap(bindings_); decltype(routes_)().swap(routes_); decltype(dirty_)().swap(dirty_); writes_=avoided_=color_outputs_=unchanged_=0; }
+void PresentationMaterialBindings::clear() { decltype(surface_instances_)().swap(surface_instances_); decltype(bindings_)().swap(bindings_); decltype(routes_)().swap(routes_); decltype(dirty_)().swap(dirty_); writes_=avoided_=color_outputs_=unchanged_=0; }
 // Suppression preserves physical held values; enabling forces current material values to replay.
 size_t PresentationMaterialBindings::set_enabled(bool enabled) {
     size_t writes=0;
@@ -27,6 +51,7 @@ size_t PresentationMaterialBindings::set_enabled(bool enabled) {
         RenderingServer::get_singleton()->material_set_param(b.rid,energy_,0.0f); b.energy=0; ++writes;
     }
     enabled_=enabled;
+    for (size_t i=0;i<surface_instances_.size();++i) update_surface_visible(i);
     return writes;
 }
 // Invalidates cached renderer mutations without changing native semantic or material ownership.
@@ -56,7 +81,7 @@ void PresentationMaterialBindings::nominate(uint32_t index,uint32_t mask) {
 // Applies the same guarded RID mutations for synchronous and immutable completed snapshots.
 void PresentationMaterialBindings::write(Binding &b,const peraviz::presentation::RenderValues &v,RenderingServer *server) {
     using namespace peraviz::presentation;
-    const float energy=v[MaterialEnergy]*b.scale;
+    const float energy=surface_ ? (v[Visible]>0 ? (v[SpotEnergy]>0 ? v[SpotEnergy] : v[BeamEnergy])*b.scale : 0.0f) : v[MaterialEnergy]*b.scale;
     const size_t before=writes_;
     if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
         server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));
@@ -66,6 +91,7 @@ void PresentationMaterialBindings::write(Binding &b,const peraviz::presentation:
         server->material_set_param(b.rid,energy_,energy); b.energy=energy;
         ++writes_; avoided_+=b.users>0?b.users-1:0;
     }
+    if (surface_) update_surface_visible(size_t(&b-bindings_.data()));
     if (writes_==before) ++unchanged_;
 }
 // Mutates only cached main-thread RIDs; no worker or authoritative state is consulted here.
@@ -79,6 +105,13 @@ void PresentationMaterialBindings::apply_completed(const std::vector<peraviz::pr
         auto &b=bindings_[index]; b.dirty=false;
         if (!suppress_writes) write(b,held[b.owner],server);
     }
+}
+// Counts cached native surface contributions only at diagnostic report boundaries.
+size_t PresentationMaterialBindings::active() const {
+    size_t count=0;
+    for (size_t i=0;i<bindings_.size();++i) if (enabled_ && bindings_[i].energy>0 &&
+        (surface_instances_.empty() || surface_instances_[i].allowed)) ++count;
+    return count;
 }
 // Cold renderer-boundary inspection works with headless/dummy drivers that cannot read material RIDs back.
 PackedFloat32Array PresentationMaterialBindings::values(const RID &rid) const {

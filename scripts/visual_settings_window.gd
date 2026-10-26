@@ -21,7 +21,10 @@ const DEFAULT_SETTINGS := {
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
+	"enable_realtime_spotlights": false,
 	"beam_presentation": 1,
+	"footprint_backend": "custom",
+	"footprint_max_range": 40.0,
 	"beam_haze_density": 0.17,
 	"beam_anisotropy": 0.62,
 	"beam_noise_amount": 0.06,
@@ -89,6 +92,36 @@ const QUICK_PRESETS := {
 	},
 	"Vector Prism": {
 		"beam_presentation": 1,
+		"beam_multiplier": 20.0,
+		"spot_multiplier": 1.0,
+		"footprint_multiplier": 1.0,
+		"bloom_multiplier": 0.0,
+		"volumetric_fog_density": 0.0,
+		"volumetric_fog_length": 110.0,
+		"light_volumetric_fog_energy": 0.0,
+		"shared_haze_density": 0.015,
+		"shared_haze_margin": 5.0,
+		"environment_current_preset": 1,
+	},
+	"Vector Prism + Custom Footprints": {
+		"beam_presentation": 1,
+		"footprint_backend": "custom",
+		"enable_realtime_spotlights": false,
+		"beam_multiplier": 20.0,
+		"spot_multiplier": 1.0,
+		"footprint_multiplier": 1.0,
+		"bloom_multiplier": 0.0,
+		"volumetric_fog_density": 0.0,
+		"volumetric_fog_length": 110.0,
+		"light_volumetric_fog_energy": 0.0,
+		"shared_haze_density": 0.015,
+		"shared_haze_margin": 5.0,
+		"environment_current_preset": 1,
+	},
+	"Vector Prism + Native Footprints": {
+		"beam_presentation": 1,
+		"footprint_backend": "native",
+		"enable_realtime_spotlights": false,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
 		"footprint_multiplier": 1.0,
@@ -203,7 +236,7 @@ func _build_ui() -> void:
 	for preset_name in BeamPresentationOptionsScript.PRESET_NAMES:
 		_preset_option.add_item(preset_name)
 	_preset_option.add_item(CUSTOM_PRESET_NAME)
-	_preset_option.select(BeamPresentationOptionsScript.PRESET_NAMES.find("Vector Prism"))
+	_preset_option.select(BeamPresentationOptionsScript.PRESET_NAMES.find("Vector Prism + Custom Footprints"))
 	_preset_option.item_selected.connect(func(index: int) -> void:
 		if index >= BeamPresentationOptionsScript.PRESET_NAMES.size():
 			return

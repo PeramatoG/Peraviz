@@ -63,6 +63,7 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
     }
     const int64_t material_start=trace?now_us():0;
     materials_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_);
+    footprints_.apply_completed(snapshot->physical_rows,displayed_physical_);
     lenses_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_,trace);
     if (trace) presentation.merge(lenses_.stats(),true);
     const int64_t material_us=trace?now_us()-material_start:0;

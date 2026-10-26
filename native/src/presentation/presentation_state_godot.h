@@ -22,6 +22,11 @@ public:
     bool install_groups(const PackedInt32Array &representatives);
     bool install_render_rows(const PackedInt32Array &membership, const PackedInt32Array &classes);
     bool install_materials(const Array &rids, const PackedInt32Array &owners, const PackedFloat32Array &scales, const PackedInt32Array &routes);
+    bool install_footprints(int64_t generation, const Array &rids, const Array &instances, const PackedInt32Array &owners, const PackedFloat32Array &scales, const PackedInt32Array &routes);
+    void clear_footprints();
+    void set_footprint_visible(int32_t index, bool visible);
+    void set_footprints_enabled(bool enabled);
+    PackedFloat32Array footprint_values(const RID &rid) const;
     int64_t set_materials_enabled(bool enabled);
     PackedFloat32Array physical_values(int32_t index) const;
     PackedFloat32Array material_values(const RID &rid) const;
@@ -59,6 +64,7 @@ private:
     peraviz::presentation::DensePresentationState state_;
     peraviz::presentation::RenderGroupProjection projection_;
     PresentationMaterialBindings materials_;
+    PresentationMaterialBindings footprints_;
     std::vector<int32_t> fixture_ids_;
     bool diagnostic_skip_lens_writes_=false, lens_writes_suppressed_=false;
     // Exactly renderer-row-sized borrowed buffers; no physical/group duplicate payloads.

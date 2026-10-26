@@ -29,6 +29,7 @@ var texture_id: int = 0
 var configured: bool = false
 var radial_profile: RefCounted = RadialProfile.new()
 var profile_revision: int = 0
+var pattern_texture: Texture2D
 var surface_texture: Texture2D
 var surface_source_id: int = -1
 var surface_profile_revision: int = -1
@@ -52,6 +53,7 @@ static func resolve(light: SpotLight3D) -> RefCounted:
 func configure(params: Dictionary, texture: Texture2D) -> bool:
 	# Godot's projector supports half apertures up to 89 degrees. Resolve this
 	# engine presentation limit once; the shaft consumes the same full aperture.
+	pattern_texture = texture
 	var enable_profile := bool(params.get("smooth_light_profile", false))
 	# Typed comparisons inside the reusable profile avoid temporary containers and
 	# recomputing curves/textures during Zoom, color, intensity or roll playback.
@@ -95,6 +97,12 @@ func configure(params: Dictionary, texture: Texture2D) -> bool:
 	geometry_revision += 1
 	return true
 
+func set_pattern(texture: Texture2D) -> void:
+	if pattern_texture == texture: return
+	pattern_texture = texture
+	texture_id = texture.get_instance_id() if texture != null else 0
+	revision += 1
+
 func set_roll(degrees: float) -> void:
 	if is_equal_approx(gobo_roll_deg, degrees): return
 	gobo_roll_deg = degrees
@@ -134,6 +142,8 @@ func apply_footprint(light: SpotLight3D) -> void:
 	last_projector_transform = resolved
 	footprint_applied = true
 	footprint_revision = revision
+	if light.has_meta(&"peraviz_custom_footprint"):
+		light.get_meta(&"peraviz_custom_footprint").sync()
 
 func apply_shaft(beam: MeshInstance3D) -> void:
 	# Raw topology runs along Y. Preserve source-artwork X/right, Y/down and

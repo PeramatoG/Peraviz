@@ -162,6 +162,16 @@ func refresh_surface_profile(light: SpotLight3D) -> void:
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM or not light.has_meta(&"peraviz_optical_projection_state"): return
 	var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
 	if not projection.configured: return
+	if SurfacePolicy.custom_light(light):
+		projection.set_pattern(light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
+		projection.apply_footprint(light)
+		# Custom consumes original cached artwork and the profile in its shader.
+		if light.light_projector != null: light.light_projector = null
+		if light.has_meta("peraviz_pre_projector_shadow_enabled"):
+			light.shadow_enabled = bool(light.get_meta("peraviz_pre_projector_shadow_enabled"))
+			light.remove_meta("peraviz_pre_projector_shadow_enabled")
+		projection.surface_source_id = -1 # Native re-entry must rebuild its presentation binding.
+		return
 	var source: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
 	var source_id: int = source.get_instance_id() if source != null else 0
 	var open_owner: bool = SurfacePolicy.owns_realtime_light(bool(_settings.get("enable_realtime_spotlights", false)), _presentation_mode, false, _diagnostic_open_surface_lights, projection.has_projected_surface_profile)

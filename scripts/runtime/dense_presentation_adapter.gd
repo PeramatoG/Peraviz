@@ -11,6 +11,8 @@ const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 # dynamic slice bypasses this script loop; optics remain in the reference renderer.
 const AggregateShaftResources = preload("res://scripts/runtime/aggregate_shaft_resources.gd")
 const InstancedLensBatches = preload("res://scripts/runtime/instanced_lens_batches.gd")
+const CustomFootprints = preload("res://scripts/runtime/custom_footprint_bindings.gd")
+var _footprints = CustomFootprints.new()
 var _lens_batches = InstancedLensBatches.new()
 
 const NativeBeamBindings = preload("res://scripts/runtime/native_beam_bindings.gd")
@@ -121,6 +123,7 @@ func _disconnect_handle(handle: LightHandle) -> void:
 	handle.visibility_callback = Callable()
 
 func clear() -> void:
+	_footprints.clear(_native)
 	_lens_batches.clear(_native)
 	_invalidate_native_beams()
 	_render_bindings.clear(self)
@@ -197,6 +200,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted, budget: Sc
 			if not is_instance_valid(light):
 				continue
 			var handle := LightHandle.new()
+			light.set_meta(SurfacePolicy.BACKEND_META, "custom" if SurfacePolicy.custom(loader.get("_visual_settings")) else "native")
 			handle.light = light
 			handle.rid = light.get_instance()
 			handle.projection = OpticalProjectionScript.resolve(light)
@@ -439,7 +443,7 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
 	var before: int = _mutation_serial
 	var enabled: bool = false
-	handle.owns_realtime_surface_light = _mode == "full" and handle.projected and _surface_multiplier > 0.0 and SurfacePolicy.owns_realtime_light(realtime, presentation, handle.light.light_projector != null, _diagnostic_open_surface_lights, handle.has_projected_surface_profile)
+	handle.owns_realtime_surface_light = _mode == "full" and handle.projected and _surface_multiplier > 0.0 and SurfacePolicy.owns_realtime_light(realtime, presentation, handle.light.light_projector != null, _diagnostic_open_surface_lights, handle.has_projected_surface_profile, SurfacePolicy.custom_light(handle.light))
 	if _mode == "full" and handle.visible:
 		enabled = handle.owns_realtime_surface_light
 	if not enabled and _surface_multiplier <= 0.0 and handle.light.light_energy != 0.0:
@@ -577,6 +581,7 @@ func _sync_presentation_policy() -> void:
 		var writes: int = _native.set_materials_enabled(_mode != "transforms-only")
 		_record_mutation(&"material_parameter_writes", writes)
 		if _trace: _totals["actual_lens_material_renderer_writes"] += writes
+		_native.set_footprints_enabled(_mode == "full")
 	if _loader.has_method("_set_native_presentation_enabled"):
 		_loader._set_native_presentation_enabled(_mode == "full")
 
@@ -628,6 +633,7 @@ func diagnostics() -> Dictionary:
 	result.merge(_render_bindings.counts(self))
 	result.merge(AggregateShaftResources.counts(self))
 	result.merge(_lens_batches.counts())
+	result.merge(_footprints.counts())
 	result["control_groups"] = _totals.get("presentation_control_groups", _outputs.size())
 	result.merge(_control_fallbacks)
 	return result
@@ -830,6 +836,8 @@ func _install_render_bindings() -> bool:
 	AggregateShaftResources.reconcile(self)
 	_install_groups()
 	if _trace: _totals["shaft_resource_binding_us"] = int(_totals.get("shaft_resource_binding_us", 0)) + Time.get_ticks_usec() - binding_start
+	if not _footprints.install(self): return false
+	_native.set_footprints_enabled(_mode == "full")
 	return _install_lens_bindings()
 
 # Lens-only policy changes preserve existing shaft/gobo initialization and group resources.

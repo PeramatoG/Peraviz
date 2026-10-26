@@ -2,6 +2,15 @@ extends RefCounted
 
 # Renderer ownership is independent of the optical capability to describe a surface.
 # This diagnostic is deliberately absent from saved settings and the normal UI.
+const BACKEND_META: StringName = &"peraviz_footprint_backend"
+
+# Missing settings retain legacy behavior; new-session owners explicitly choose custom.
+static func custom(settings: Dictionary) -> bool:
+	return str(settings.get("footprint_backend", "native")) == "custom"
+
+static func custom_light(light: SpotLight3D) -> bool:
+	return str(light.get_meta(BACKEND_META, "native")) == "custom"
+
 const OPEN_ARGUMENT: String = "--peraviz-open-footprint-lights="
 const OWNED: int = 1 << 0
 const ACTIVE: int = 1 << 1
@@ -22,8 +31,8 @@ static func open_lights_from_arguments(arguments: PackedStringArray) -> bool:
 			return argument.trim_prefix(OPEN_ARGUMENT) == "on"
 	return false
 
-static func owns_realtime_light(realtime: bool, presentation: int, projector: bool, diagnostic_open: bool, has_profile: bool) -> bool:
-	return realtime or projector or presentation in [0, 2] or (diagnostic_open and presentation == 1 and has_profile)
+static func owns_realtime_light(realtime: bool, presentation: int, projector: bool, diagnostic_open: bool, has_profile: bool, custom_backend: bool = false) -> bool:
+	return realtime or presentation in [0, 2] or (not custom_backend and (projector or (diagnostic_open and presentation == 1 and has_profile)))
 
 # Existing handles retain a bitset; transitions update fixed-size gauges in O(1).
 # Snapshots allocate only at startup / the trace-report boundary, never per frame.

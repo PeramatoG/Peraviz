@@ -1,5 +1,8 @@
 # Peraviz v0.x.x
 
+- Added independent Custom/Native footprint selection with Vector Prism retained for both presets. New sessions use bounded Forward+ perspective projection of cached gobo artwork and open Spot/Wash profiles without native projector/shadow costs. Legacy PVZ archives retain native rendering; explicit backend choices and held DMX survive switching. Opaque camera-depth receivers are supported; fixture-space occlusion and transparent transmission remain deferred. Retained native physical state, aggregate shafts and GPU-instanced lenses.
+- Fixed uninitialized lazy lens-material and deferred projection local-name warnings without changing their behavior.
+
 - Added real Forward+ GPU instancing for compatible independent opaque apertures, with bounded mechanical/spatial MultiMesh batches, native dirty buffer submission and exact individual fallback/replay. Canonical emitters, Vector Prism shafts, native apply batching and lazy aggregate shafts are preserved. Corrected the native lens energy shader parameter; no hardware FPS gain is claimed.
 
 - Accepted standard Vector Prism aggregate members now retain physical anchors, lenses and exact native state without allocating hidden individual shaft nodes/materials. Unsupported policies rehydrate individuals from held state on the main thread; re-aggregation releases unnecessary shafts. Added actual resource counters and retained independent-emitter native batching.

@@ -467,6 +467,8 @@ func _run() -> void:
 		adapter.refresh_renderer()
 		_check_lens_instances(true)
 		var anchor: SpotLight3D = adapter._outputs[output_index].lights[0].light
+		# This specific regression deliberately exercises native projector admission.
+		app._apply_visual_settings({"footprint_backend": "native"})
 		anchor.light_projector = GradientTexture2D.new()
 		service.rebind_dense_light(anchor)
 		test.check(not adapter._lens_batches.members.has(output_index), "Projector resource changes retire incompatible GPU slots")
@@ -503,9 +505,16 @@ func _run() -> void:
 	transform_handle.light.rotation.y += 0.1
 	test.check(transform_handle.beam.global_transform != inherited_before, "Native application retains normal ancestor/mechanical transform propagation")
 	transform_handle.light.rotation.y -= 0.1
+	app._apply_visual_settings({"footprint_backend": "custom"})
 	if not adapter._native.get_sizes().get("native_async_active", false):
 		var resumed: Dictionary = await _completed()
 		runtime._sectioned_visual_frame_applier.apply_snapshot(resumed,app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
+	test.check(adapter._footprints.volumes.size() == 1000, "Async runtime retains independent physical footprints behind native shaft/lens batching")
+	for index in [0, 499, 999]:
+		var surface: MeshInstance3D = adapter._footprints.volumes[index]
+		var physical: PackedFloat32Array = adapter._native.physical_values(index)
+		var committed: PackedFloat32Array = adapter._native.footprint_values(surface.material_override.get_rid())
+		test.check(committed[0] == physical[1] and committed[1] == physical[2] and committed[2] == physical[3] and is_equal_approx(committed[3],physical[5] if physical[5] > 0 else physical[4]), "Completed native snapshots apply exact physical surface Color/energy")
 	print("NATIVE_ASYNC_PUBLICATION ", JSON.stringify(adapter.consume_diagnostics()))
 	test.check(adapter.diagnostics().get("native_async_active", false), "Production Godot boundary uses native asynchronous calculations")
 	var competing: RefCounted = ClassDB.instantiate("PeravizPresentationState")

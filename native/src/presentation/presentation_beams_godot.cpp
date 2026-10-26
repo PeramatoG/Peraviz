@@ -36,4 +36,18 @@ void PeravizPresentationState::set_lens_visible(int32_t batch,int32_t instance,b
 void PeravizPresentationState::flush_lenses() { lenses_.flush(); }
 // Exposes the actual retained instance buffer to focused renderer regression checks.
 PackedFloat32Array PeravizPresentationState::lens_buffer(int32_t batch) const { return lenses_.buffer(batch); }
+// Binds independently owned surface materials to canonical physical outputs, never aggregate shaft rows.
+bool PeravizPresentationState::install_footprints(int64_t generation,const Array &rids,const Array &instances,const PackedInt32Array &owners,
+        const PackedFloat32Array &scales,const PackedInt32Array &routes) {
+    if (uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) return false;
+    return footprints_.install(async_?displayed_physical_.size():state_.bindings().size(),rids,owners,scales,routes,true) && footprints_.install_surface_instances(instances);
+}
+// Revokes borrowed surface RIDs before their presentation owner frees them.
+void PeravizPresentationState::clear_footprints() { footprints_.clear(); }
+// Diagnostic policy suppresses only surface presentation; physical held state remains native.
+void PeravizPresentationState::set_footprints_enabled(bool enabled) { footprints_.set_enabled(enabled); }
+// Accepts renderer visibility policy only; DMX and physical values remain untouched.
+void PeravizPresentationState::set_footprint_visible(int32_t index,bool visible) { footprints_.set_surface_visible(index,visible); }
+// Exposes committed presentation cache values for deterministic lifecycle checks.
+PackedFloat32Array PeravizPresentationState::footprint_values(const RID &rid) const { return footprints_.values(rid); }
 } // namespace godot

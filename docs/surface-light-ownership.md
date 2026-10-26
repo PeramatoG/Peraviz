@@ -5,7 +5,119 @@ Every projected physical output can resolve a surface profile. That capability
 its smooth radial profiles, shared Optical Projection State, dynamic FieldAngle,
 axial decay, gobo energy normalization and cached footprint softness.
 
-## Regression and restored policy
+## Independent footprint backend
+
+New sessions use **Vector Prism + Custom Footprints**: `beam_presentation=1`,
+`footprint_backend="custom"`, `enable_realtime_spotlights=false`. **Vector Prism +
+Native Footprints** keeps presentation 1 and selects `footprint_backend="native"`.
+The shaft renderer is unchanged. Experimental numeric IDs 0/2/3 remain available
+in advanced settings and retain their saved meaning; the quick menu shows the two
+Vector Prism presets. PVZ archives without a backend migrate to native, while
+explicit backend choices round-trip. Partial live settings never apply archive
+migration. MVR imports use the current session settings, initially custom.
+
+The custom backend owns bounded square-pyramid meshes and surface materials,
+independently of shafts and GPU lenses. Both consume `OpticalProjectionState`;
+its resolved anchor already includes lens offset, hierarchy, aperture, roll and
+parity. A cached inverse of that world transform supplies perspective coordinates
+`local.xy / (-local.z * tan(half_angle))`. Original cached PNG/BMP or supported
+composed gobo textures supply artwork, including alpha and aspect ratio. Open
+Spot/Wash use the established radial profile analytically, without textures.
+No vectorized shaft geometry supplies the footprint image.
+
+Native main-thread glue applies dirty **physical** Color/surface energy directly
+to material RIDs in both serial and completed-async paths, independently of shaft
+aggregation and gain. Blackout suppresses mesh instance RIDs too. Custom selection
+clears native projector textures, gobo-required shadows and shadow masks; a gobo
+cannot grant realtime-light ownership. Explicit realtime lighting and experimental
+atmospheric lighting retain their separate policies. Resources survive unrelated
+renderer rebinding; backend/scene retirement revokes borrowed RIDs before freeing
+volumes. Held native state replays on selection and diagnostic changes.
+
+Forward+ reconstructs the camera-visible opaque position using Vulkan NDC Z in
+[0,1], rejecting Reverse-Z background depth 0. Exit faces bound raster coverage,
+including cameras inside a volume. One normal-buffer sample gives a view-space
+normal; the incident direction uses `VIEW_MATRIX` with no translation. This avoids
+the CC0 shader's additional depth samples and preserves normal-map detail. It may
+require a normal prepass attachment: fewer samples alone do not prove a GPU win.
+The diagnostic derivative variant removes that sampler and is confined to tests.
+
+`footprint_max_range` defaults to 40 m, independently of shaft length; a radial
+80–100% distance fade avoids a hard end. This is a presentation limit, not GDTF
+photometry. Imported scene bounds conservatively reject empty volume AABBs;
+scenic transform subscriptions coalesce bounds growth without per-fixture scene
+searches or colliders. Camera frustum culling and shader cone/depth masks finish
+selection. New/remeshed receivers require scene setup again; bounds are deliberately
+conservative. Transform/range/Zoom changes update geometry; Color/Dimmer and camera
+motion do not search receivers. Gobo roll only updates the shared transform.
+
+This is an additive, unshaded **Peraviz approximation**, with profile, inverse-square
+attenuation and incidence, rather than native material/BRDF lighting equivalence.
+The legacy cone renderer is outside this prototype. Only shared Vector Prism
+optics and Forward+ opaque depth/normal receivers are supported; no automatic native
+substitution occurs on other renderers. Transparent transmission is unsupported.
+Camera depth is **not fixture-space occlusion**: hidden-from-fixture surfaces may
+still receive light. Silhouettes, depth/normal prepass coverage and MSAA edges can
+show screen-space artifacts. Selective low-resolution projector depth or bounded
+geometric occlusion remains a follow-up; no new shadow maps are rendered here.
+
+Mechanisms were adapted from [BluntBSE's CC0 projection shader](https://godotshaders.com/shader/compatibility-friendly-texture-projection/)
+and [Rytelier's MIT normal-buffer shader](https://godotshaders.com/shader/fake-light-projection/).
+Their published licences were verified; the [source notice](../scripts/shaders/custom_footprint.LICENSE.txt)
+retains MIT terms. Neither upstream planar UVs nor per-pixel inverse/axis assumptions
+were copied into the optical contract.
+
+Custom trace keys are `custom_projector_resources`, `active_custom_footprints`
+(before camera culling), `culled_custom_footprints`, `custom_projector_parameter_updates`
+and `custom_footprint_dynamic_writes` (last native batch). Existing native projector,
+shadow and cache-build gauges keep their original meanings; custom footprints do
+not increase them. Counters use retained handles, never live SceneTree enumeration.
+
+## Bounded graphical validation
+
+The focused generated scene exercises original PNG/BMP floor/wall projection,
+Spot/Wash, inclined scenery, held rotation/Zoom, camera-inside-volume, finite range,
+and actual blackout draw suppression. [Custom image](images/custom-footprints/custom.png),
+[Native comparison](images/custom-footprints/native.png),
+[held rotation/Zoom](images/custom-footprints/held-rotation-zoom.png) and
+[camera inside](images/custom-footprints/camera-inside.png) are actual viewport captures.
+The six-output native comparison enables the existing open-light diagnostic for
+matching open patterns; the production native preset retains its previous policy.
+
+Godot 4.7.1 Forward+/Vulkan, Linux Debug extension, Mesa llvmpipe LLVM 19.1.7,
+960×640, no MSAA, six measured frames after eight warm-up frames:
+
+| Workload | CPU render ms | Software device ms | Draws | Native lights / shadowed projectors |
+| --- | ---: | ---: | ---: | ---: |
+| 6 custom, normal buffer | 0.168 | 32.709 | 11 | 0 / 0 |
+| 6 native reference (open diagnostic) | 0.162 | 23.207 | 5 | 6 / 2 |
+| 6 custom, depth derivatives (test only) | 0.157 | 31.276 | 11 | 0 / 0 |
+| 1,095 custom | 1.352 | 190.113 | 1,100 | 0 / 0 |
+| 1,095 custom, blackout | 0.116 | 13.679 | 5 | 0 / 0 |
+
+Custom lit-pixel coverage (>0.15) was 29,505 pixels versus 23,289 native and 29,445
+with depth derivatives. Coverage includes brightness/profile differences, not a
+texture-fidelity score. Buffered normals avoid derivative discontinuities and use
+normal-map detail, but these noisy software timings **do not establish a GPU speed
+advantage** over derivatives or native rendering. The large scene uses a generated
+projector grid, no native mass-light benchmark. It retains 1,095 surface materials
+and instances with one shared volume mesh/shader; engine/driver memory is not
+measured. Inclusive six-update CPU averages were 0.160 ms (six outputs) and
+14.040 ms (1,095); they include the harness's existing shaft fallback and physical
+adapter work with shaft gain zero, not just footprint writes.
+
+Run the focused headless test with Forward+, then opt into actual graphics:
+
+```sh
+$GODOT --path . --rendering-method forward_plus --rendering-driver vulkan --audio-driver Dummy --script tests/gdscript/test_custom_surface_footprints.gd -- --render-footprint-probe
+```
+
+`--footprint-count=1095` runs the custom-only large scene; `--footprint-output=PATH`
+selects the capture/JSON directory (default `user://footprint-probe`). Hardware GPU
+and normal-buffer bandwidth/quality measurements still need the owner's Windows
+RTX 3070 / Godot 4.7.1 Forward+ run after CI. No Windows FPS gain is claimed.
+
+## Regression and restored native-reference policy
 
 Commit `f0e954d` accidentally made `smooth_profile_enabled && projected` sufficient
 to enable every existing SpotLight RID. On the user's canonical scene this changed
@@ -14,7 +126,7 @@ Forward+ lights. The reported result was approximately 1 FPS instead of 24–25 
 Native angular falloff without shadows is cheaper than a projector, but is not a
 scalable backend for thousands of independent theatrical surface lights.
 
-Production Vector Prism now grants realtime surface ownership only to:
+The native reference grants realtime surface ownership only to:
 
 - A currently assigned, genuine gobo/projector texture.
 - Explicitly requested realtime lighting.

@@ -1,18 +1,18 @@
-# Beam presentation experiment
+# Beam presentation and footprint backends
 
 Peraviz resolves GDTF/MVR and live DMX in the native runtime. The modes below consume the same resolved texture, color, dimmer, beam angle, range, index, and rotation state. They are Peraviz presentation choices and do not add or reinterpret GDTF semantics.
 
 ## Independent surface projection
 
-An active native gobo selection assigns the cached composed texture to `SpotLight3D.light_projector` in every mode. Godot 4.7 requires shadows for reliable projector output, so Peraviz enables them while a projector is present and restores the prior policy when it is cleared. Projector roll is composed into the saved local optical basis around local `-Z`; it does not rewrite Euler angles, the emitter origin, or the beam direction. The Vector Prism child receives an explicit inverse presentation roll around its documented longitudinal axis, preserving its recovered topology and centerline.
+With `footprint_backend="native"`, an active gobo selection assigns the cached composed texture to `SpotLight3D.light_projector`. With `footprint_backend="custom"`, a bounded GPU volume samples the original cached image instead, without a native projector. Godot 4.7 requires shadows for reliable projector output, so Peraviz enables them while a projector is present and restores the prior policy when it is cleared. Projector roll is composed into the saved local optical basis around local `-Z`; it does not rewrite Euler angles, the emitter origin, or the beam direction. The Vector Prism child receives an explicit inverse presentation roll around its documented longitudinal axis, preserving its recovered topology and centerline.
 
-The shadows-only aperture mask is a separate resource. It exists only for an active gobo in Shared Haze + Gobo Shadow and shapes volumetric light through real shadows. It is not the crisp surface-projector path.
+The shadows-only aperture mask is a separate native-reference resource. It exists only for an active gobo in Shared Haze + Gobo Shadow and shapes volumetric light through real shadows. It is not the crisp surface-projector path.
 
 ## Presentation modes
 
 ### Vector Prism
 
-This is the recovered reference renderer. Its cached vectorized prism represents the gobo silhouette as geometry, with gobo-dependent primitive counts. Indexed and continuous rotation remain parametric and reuse topology. The shared haze is hidden and real fixture SpotLights are used only by active surface projectors.
+This is the recovered reference renderer. Its cached vectorized prism represents the gobo silhouette as geometry, with gobo-dependent primitive counts. Indexed and continuous rotation remain parametric and reuse topology. The shared haze is hidden and surface projection selects the independent Custom or Native backend. Custom is the new-session default and requires no realtime surface light. See [surface ownership](surface-light-ownership.md) for legacy migration and limitations.
 
 ### Shared Haze
 
@@ -43,7 +43,7 @@ Presentation ownership is explicit:
 - Vector Prism owns only the vector shaft.
 - Shared haze owns one scene-level FogVolume.
 - A main realtime SpotLight contributes to haze only when its authoritative physical output is active and the selected haze mode requires it.
-- Surface projection owns the crisp projector and its Godot 4.7 shadow dependency.
+- Custom surface projection owns bounded Forward+ meshes/materials; the Native reference owns the crisp projector and its existing Godot 4.7 shadow dependency.
 - The physical mask belongs only to Shared Haze + Gobo Shadow.
 - Shader Beam Proxy owns one cached proxy instance per relevant emitter and requires neither shared haze nor a realtime SpotLight for its shaft.
 

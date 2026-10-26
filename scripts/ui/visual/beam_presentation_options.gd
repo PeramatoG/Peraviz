@@ -9,8 +9,6 @@ const LABELS: Array[String] = [
 ]
 
 const PRESET_NAMES: Array[String] = [
-	"Shared Haze",
-	"Vector Prism",
-	"Shared Haze + Gobo Shadow",
-	"Shader Beam Proxy",
+	"Vector Prism + Custom Footprints",
+	"Vector Prism + Native Footprints",
 ]

@@ -81,10 +81,17 @@ revisions can intentionally lag held state while suppressed; both catch up in fu
 Regression tests compare actual bases, common near origin, angle conversion,
 revision identity, asymmetric source-artwork UV correspondence (both axes),
 topology reuse, 600 motion/Zoom/camera updates, blackout and packed
-dense held-state replay. GPU footprint appearance and RTX 3070 reference FPS still
-require the reference scene on a graphical machine; headless FPS is not comparable.
+dense held-state replay. The [custom surface regression](surface-light-ownership.md) now exercises real
+Forward+ floor/wall/inclined projection. RTX 3070 GPU performance still requires
+the reference machine; software/headless timings are not comparable.
 
 The reference renderer also consumes a [shared radial light profile](vector-light-profile.md).
 The presentation aperture includes its low-energy shoulder while `source_full_angle_deg`
 retains native Zoom. Both consumers still use the same resolved aperture and bases.
 The profile is a reusable presentation value, not an additional optical state owner.
+
+The custom volume reads `pattern_texture` from this state and uses the resolved
+anchor transform directly, including its parity and roll. It never derives artwork
+from shaft polygons. Surface range is a separate bounded presentation setting;
+Color/Dimmer arrive directly from native physical presentation, not this geometry
+adapter or shaft intensity.

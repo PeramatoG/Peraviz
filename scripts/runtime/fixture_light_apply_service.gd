@@ -982,7 +982,7 @@ func _requires_realtime_spotlight(loader: Node, light: SpotLight3D, visible: boo
 		var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
 		has_profile = projection.has_projected_surface_profile
 	var settings: Variant = loader.get("_visual_settings") if loader != null else null
-	return SurfacePolicy.owns_realtime_light(false, int(settings.get("beam_presentation", 1)) if settings is Dictionary else 1, light.light_projector != null, _diagnostic_open_surface_lights, has_profile)
+	return SurfacePolicy.owns_realtime_light(false, int(settings.get("beam_presentation", 1)) if settings is Dictionary else 1, light.light_projector != null, _diagnostic_open_surface_lights, has_profile, SurfacePolicy.custom_light(light))
 
 # Emits a bounded one-time warning for compatibility presentation failures.
 func _warn_visual_once(key: String, message: String, condition: bool = true) -> void:
