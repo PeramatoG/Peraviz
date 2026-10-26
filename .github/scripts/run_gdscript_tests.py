@@ -56,7 +56,10 @@ def main() -> int:
     failures = 0
     for script in scripts:
         started = time.monotonic()
-        command = [args.godot, "--headless", "--audio-driver", "Dummy", "--rendering-method", "gl_compatibility", "--path", str(args.project), "--script", str(script.relative_to(args.project))]
+        # The aperture batch is intentionally Forward+-only; exercise its production admission in CI.
+        # Other tests retain the established Compatibility backend. No additional test matrix is needed.
+        renderer = "forward_plus" if script.name == "test_render_emitter_groups.gd" else "gl_compatibility"
+        command = [args.godot, "--headless", "--audio-driver", "Dummy", "--rendering-method", renderer, "--path", str(args.project), "--script", str(script.relative_to(args.project))]
         timed_out = False
         try:
             result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=args.timeout, check=False)

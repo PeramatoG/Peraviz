@@ -169,6 +169,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/presentation/render_group_projection.cpp
         src/presentation/async_presentation_pipeline.cpp
         src/presentation/render_group_manifest.cpp
+        src/presentation/native_lens_batches.cpp
         src/presentation/native_beam_bindings.cpp
         src/presentation/presentation_beams_godot.cpp
         src/presentation/presentation_material_bindings.cpp

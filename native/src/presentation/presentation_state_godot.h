@@ -3,6 +3,7 @@
 #include "runtime/peraviz_visual_runtime_godot.h"
 #include "presentation/presentation_material_bindings.h"
 #include "presentation/native_beam_bindings.h"
+#include "presentation/native_lens_batches.h"
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -26,6 +27,11 @@ public:
     PackedFloat32Array material_values(const RID &rid) const;
     bool install_beams(int64_t generation,const PackedInt64Array &objects,const PackedFloat64Array &thresholds);
     void clear_beams();
+    bool install_lenses(int64_t generation,const Array &rids,const Array &owners,const Array &buffers,const Array &scales);
+    void clear_lenses();
+    void set_lens_visible(int32_t batch,int32_t instance,bool visible);
+    void flush_lenses();
+    PackedFloat32Array lens_buffer(int32_t batch) const;
     void set_beam_policy(bool enabled,double multiplier);
     void clear();
     void invalidate_renderer();
@@ -36,6 +42,7 @@ public:
 private:
     void apply_beams(const std::vector<peraviz::presentation::PreparedRenderRow> &rows,bool trace,Dictionary &result);
     NativeBeamBindings beams_;
+    NativeLensBatches lenses_;
     PackedInt32Array script_rows_;
     void retire_async(bool replay_domains=true);
     Dictionary poll_async(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,int32_t schema_generation,bool trace);

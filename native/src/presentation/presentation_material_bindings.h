@@ -41,6 +41,6 @@ private:
     std::vector<uint32_t> dirty_;
     size_t writes_=0, avoided_=0, color_outputs_=0, unchanged_=0;
     bool enabled_=true;
-    const StringName emission_{"emission"}, energy_{"emission_energy_multiplier"};
+    const StringName emission_{"emission"}, energy_{"emission_energy"};
 };
 }

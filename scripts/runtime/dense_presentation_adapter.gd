@@ -10,6 +10,9 @@ const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 # Resource ownership and exact fallback for native presentation. The scalable
 # dynamic slice bypasses this script loop; optics remain in the reference renderer.
 const AggregateShaftResources = preload("res://scripts/runtime/aggregate_shaft_resources.gd")
+const InstancedLensBatches = preload("res://scripts/runtime/instanced_lens_batches.gd")
+var _lens_batches = InstancedLensBatches.new()
+
 const NativeBeamBindings = preload("res://scripts/runtime/native_beam_bindings.gd")
 const STRIDE: int = 12
 const DIMMER: int = 1 << 1
@@ -118,6 +121,7 @@ func _disconnect_handle(handle: LightHandle) -> void:
 	handle.visibility_callback = Callable()
 
 func clear() -> void:
+	_lens_batches.clear(_native)
 	_invalidate_native_beams()
 	_render_bindings.clear(self)
 	_render_descriptors = []
@@ -580,6 +584,8 @@ func set_mode(mode: String) -> void:
 	if mode == _mode or not is_installed(): return
 	if _trace: _totals["mode_transition_replays"] += 1
 	_mode = mode
+	if not _lens_batches.batches.is_empty() or (mode == "full" and _lens_batches.source_outputs >= InstancedLensBatches.MIN_BATCH and RenderingServer.get_current_rendering_method() == "forward_plus" and OS.get_environment("PERAVIZ_GPU_LENSES") != "0"):
+		_install_lens_bindings()
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
 	_native.invalidate_renderer()
@@ -621,6 +627,7 @@ func diagnostics() -> Dictionary:
 	if _native != null: result.merge(_native.get_sizes())
 	result.merge(_render_bindings.counts(self))
 	result.merge(AggregateShaftResources.counts(self))
+	result.merge(_lens_batches.counts())
 	result["control_groups"] = _totals.get("presentation_control_groups", _outputs.size())
 	result.merge(_control_fallbacks)
 	return result
@@ -650,7 +657,7 @@ func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 	_invalidate_native_beams()
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	var aggregated: bool = handle != null and handle.output_index < _render_bindings.membership.size() and _render_bindings.rows[_render_bindings.membership[handle.output_index]].presentation_class == 1
-	if rebuild_groups and handle != null and (aggregated or (handle.output_index < _groups.size() and _groups[handle.output_index] != null)):
+	if rebuild_groups and handle != null and (aggregated or _lens_batches.needs_rebind(handle.output_index, light) or (handle.output_index < _groups.size() and _groups[handle.output_index] != null)):
 		refresh_renderer()
 		return
 	if handle != null:
@@ -666,6 +673,7 @@ func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 
 func refresh_renderer() -> void:
 	if not is_installed(): return
+	_lens_batches.clear(_native)
 	_invalidate_native_beams()
 	_capture_renderer_mutations()
 	_render_bindings.clear(self)
@@ -822,12 +830,18 @@ func _install_render_bindings() -> bool:
 	AggregateShaftResources.reconcile(self)
 	_install_groups()
 	if _trace: _totals["shaft_resource_binding_us"] = int(_totals.get("shaft_resource_binding_us", 0)) + Time.get_ticks_usec() - binding_start
+	return _install_lens_bindings()
+
+# Lens-only policy changes preserve existing shaft/gobo initialization and group resources.
+func _install_lens_bindings() -> bool:
+	_lens_batches.install(self)
 	var rids: Array = []
 	var owners := PackedInt32Array()
 	var scales := PackedFloat32Array()
 	var routes := PackedInt32Array()
 	var indices: Dictionary = {}
 	for output in _outputs:
+		if _lens_batches.members.has(output.index): continue
 		for material in output.materials:
 			if not indices.has(material.rid):
 				indices[material.rid] = rids.size()

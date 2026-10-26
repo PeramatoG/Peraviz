@@ -23,6 +23,11 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("material_values", "rid"), &PeravizPresentationState::material_values);
     ClassDB::bind_method(D_METHOD("physical_values", "index"), &PeravizPresentationState::physical_values);
     ClassDB::bind_method(D_METHOD("install_beams", "generation", "objects", "thresholds"), &PeravizPresentationState::install_beams);
+    ClassDB::bind_method(D_METHOD("install_lenses", "generation", "rids", "owners", "buffers", "scales"), &PeravizPresentationState::install_lenses);
+    ClassDB::bind_method(D_METHOD("clear_lenses"), &PeravizPresentationState::clear_lenses);
+    ClassDB::bind_method(D_METHOD("set_lens_visible", "batch", "instance", "visible"), &PeravizPresentationState::set_lens_visible);
+    ClassDB::bind_method(D_METHOD("flush_lenses"), &PeravizPresentationState::flush_lenses);
+    ClassDB::bind_method(D_METHOD("lens_buffer", "batch"), &PeravizPresentationState::lens_buffer);
     ClassDB::bind_method(D_METHOD("clear_beams"), &PeravizPresentationState::clear_beams);
     ClassDB::bind_method(D_METHOD("set_beam_policy", "enabled", "multiplier"), &PeravizPresentationState::set_beam_policy);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizPresentationState::clear);
@@ -32,7 +37,7 @@ void PeravizPresentationState::_bind_methods() {
 }
 // Installs canonical physical routes; renderer-sized buffers are allocated only after render setup.
 int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const PackedFloat32Array &scales, const PackedInt32Array &routes) {
-    retire_async(false); clear_beams();
+    retire_async(false); clear_beams(); clear_lenses();
     const String mode=OS::get_singleton()->get_environment("PERAVIZ_NATIVE_EVALUATION");
     async_disabled_=mode=="serial"; async_forced_=mode=="parallel";
     displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
@@ -76,7 +81,7 @@ bool PeravizPresentationState::install_materials(const Array &rids, const Packed
     return materials_.install(state_.bindings().size(),rids,owners,scales,routes);
 }
 // Applies presentation suppression without changing held native physical Color/Dimmer.
-int64_t PeravizPresentationState::set_materials_enabled(bool enabled) { retire_async(); return int64_t(materials_.set_enabled(enabled)); }
+int64_t PeravizPresentationState::set_materials_enabled(bool enabled) { retire_async(); lenses_.set_enabled(enabled); return int64_t(materials_.set_enabled(enabled)); }
 // Supports cold inspection/inverse lookup; never used by the renderer's live row loop.
 PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) const {
     PackedFloat32Array result;
@@ -89,13 +94,13 @@ PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) cons
 PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
 // Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
-    retire_async(false); clear_beams(); script_rows_=PackedInt32Array(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
+    retire_async(false); clear_beams(); clear_lenses(); script_rows_=PackedInt32Array(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
     std::vector<int32_t>().swap(fixture_ids_);
     pipeline_.clear(); state_.clear(); projection_.clear(); materials_.clear();
     indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
 }
 // Replays renderer resources and lens RIDs from exact held physical state.
-void PeravizPresentationState::invalidate_renderer() { retire_async(); state_.invalidate_renderer(); projection_.invalidate(); }
+void PeravizPresentationState::invalidate_renderer() { retire_async(); state_.invalidate_renderer(); projection_.invalidate(); lenses_.invalidate(); }
 // Accumulates changed physical contributions natively and copies only compact dirty renderer rows.
 Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt32Array &descriptors,
         const PackedInt32Array &integers, const PackedFloat32Array &values, bool trace) {
@@ -136,6 +141,8 @@ Dictionary PeravizPresentationState::publish(int64_t generation, bool trace, int
     // Godot boundary work is main-thread-only and addresses cached material RIDs, never nodes.
     const int64_t material_start=trace?now_us():0;
     materials_.apply(state_,suppress_lenses);
+    lenses_.apply(state_,suppress_lenses,trace);
+    if (trace) result.merge(lenses_.stats(),true);
     const int64_t material_us=trace?now_us()-material_start:0;
     const size_t dirty_count=state_.dirty_indices().size();
     result["valid"]=true; result["generation"]=generation; result["unresolved_rows"]=int64_t(state_.unresolved_rows());
@@ -259,6 +266,7 @@ Dictionary PeravizPresentationState::consume_runtime(const Ref<PeravizVisualRunt
 // Reports physical native capacities separately from genuinely renderer-sized packed storage.
 Dictionary PeravizPresentationState::get_sizes() const {
     Dictionary sizes;
+    sizes.merge(lenses_.stats(),true);
     sizes["diagnostic_skip_lens_writes_active"]=lens_writes_suppressed_;
     sizes["diagnostic_skip_lens_writes_requested"]=diagnostic_skip_lens_writes_;
     sizes["presentation_contract_revision"]=4;
