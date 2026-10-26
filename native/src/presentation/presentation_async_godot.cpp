@@ -63,6 +63,8 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
     }
     const int64_t material_start=trace?now_us():0;
     materials_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_);
+    lenses_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_,trace);
+    if (trace) presentation.merge(lenses_.stats(),true);
     const int64_t material_us=trace?now_us()-material_start:0;
     presentation["valid"]=true; presentation["native_async"]=true; presentation["generation"]=generation;
     presentation["input_generation"]=int64_t(snapshot->input_generation); presentation["unresolved_rows"]=int64_t(snapshot->unresolved_rows);

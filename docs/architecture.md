@@ -137,8 +137,9 @@ ownership, physical native state and normal Pan/Tilt transforms remain exact;
 compact-source native Render Emitter Groups now accumulate physical members into
 AGGREGATED or INDIVIDUAL shaft rows. Exactly one renderer-sized integer/float
 payload pair crosses to Godot. Main-thread native Godot glue updates cached lens
-RIDs from exact physical values, separately from optical shaft mixing. MultiMesh
-and GPU instancing remain future work. Large independent Vector Prism scenes now use the exact native main-thread batch described below. See [dense presentation state](native-dense-presentation-state.md)
+RIDs from exact physical values, separately from optical shaft mixing. Compatible
+independent opaque lenses now use the bounded MultiMesh path described below;
+volumetric shafts retain their reference rendering. Large independent Vector Prism scenes now use the exact native main-thread batch described below. See [dense presentation state](native-dense-presentation-state.md)
 for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
 ## Independent emitter presentation, phase 1
@@ -161,6 +162,37 @@ freed object IDs fail safely to fallback. Publication still requires current
 schema/binding generations and never waits on workers during ordinary frames.
 See the [bounded comparison](performance-foundation.md#independent-emitter-render-application-phase-1)
 for the GPU-instancing decision, resource limits and measurement boundaries.
+
+## GPU-instanced independent apertures, phase 1
+
+`InstancedLensBatches` admits only Forward+ opaque, double-sided, single-surface
+triangle lenses whose stored StandardMaterial options match the default PBR
+reference (white albedo, metallic 0, roughness 1, specular 0.5, additive emission).
+Textures, custom shaders/passes, transparency, skinned/morphed geometry, nondefault
+render policy, physical light units, Control Groups and projector/gobo resources
+retain individual lenses. A small shader implements that material slice; it does
+not implement optical simulation or any Vector Prism shaft formula.
+
+Setup partitions shared mesh/material-compatible outputs by nearest mechanical
+Axis and 4 m local cells, with 8–64 instances per batch. Reflected, non-conformal or oversized geometry
+falls back. Canonical nodes, collision/picking children, source meshes/materials
+and target IDs remain intact. Only their draw layers are suppressed; a shared
+batch material renders exact independent Color/emission through INSTANCE_CUSTOM.
+Batch transforms inherit the same mechanical ancestor. Static geometry/resource
+configuration changes use the existing cold rebind/refresh transaction.
+
+`NativeLensBatches` borrows generation-checked MultiMesh RIDs and indexed physical
+routes. Both serial and completed async publication update reusable 16-float
+transform/custom buffers directly from native physical values, then submit each
+changed batch once through `multimesh_set_buffer()` on the main thread. No
+GDScript physical-value round trip, worker Godot calls or ordinary presentation
+wait is introduced. Source visibility signals coalesce a native buffer flush,
+including held/no-packet frames. Cold renderer/policy changes revoke routes before
+freeing batch nodes, restore original draw layers and replay authoritative held
+state. Diagnostic modes and unsupported backends use individual lenses. Original
+lens resources are retained for exact fallback; this stage reduces submissions,
+not their allocation. MultiMesh culling is per bounded batch, not per instance.
+See the [measured comparison](performance-foundation.md#gpu-instanced-independent-apertures-phase-1).
 
 ## Aggregate member shaft lifetime
 

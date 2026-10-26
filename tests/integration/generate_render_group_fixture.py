@@ -13,7 +13,7 @@ def channel(offset: int, attribute: str, geometry: str, high: float = 1) -> str:
     return f'<DMXChannel Offset="{offset}" Geometry="{geometry}"><LogicalChannel Attribute="{attribute}"><ChannelFunction Attribute="{attribute}" DMXFrom="0" PhysicalFrom="0" PhysicalTo="{high}"/></LogicalChannel></DMXChannel>'
 
 
-def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False, independent: bool = False) -> None:
+def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False, independent: bool = False, apertures: bool = False) -> None:
     """Retain fifty physical lenses, one emission-only output and a genuine mechanical chain."""
     geometries = []
     spacing = 0.5 if independent else 0.018
@@ -76,11 +76,11 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
         xml = xml.replace('<Axis Name="Tilt">','<Axis Name="Head">')
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as gdtf:
-        if not wheel:
+        if not wheel and not apertures:
             xml = xml.replace(' File="lens"','')
         gdtf.writestr('description.xml', xml)
-        if wheel:
-            gdtf.writestr('models/gltf/lens.glb', lens_glb())
+        if wheel or apertures:
+            gdtf.writestr('models/gltf/lens.glb', lens_glb(simple_opaque=apertures))
             if wheel == 'media':
                 gdtf.writestr('wheels/pattern.png', gobo_png())
     mode = selected_mode or ('Basic' if wheel == 'basic' else 'Pixels' if pixels else 'Global')
@@ -96,4 +96,4 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
 
 
 if __name__ == '__main__':
-    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv, '--independent' in sys.argv)
+    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv, '--independent' in sys.argv, '--apertures' in sys.argv)

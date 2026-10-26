@@ -190,7 +190,8 @@ attenuation and optical resources). A faithful GPU path would need a shader/data
 contract and optical/spatial partitioning with independent transform ownership.
 This phase keeps exact existing geometry, shader, transparent blending/sorting and
 per-node culling, and moves the costly independent dynamic apply loop into native
-main-thread code. MultiMesh is not enabled and no draw-call reduction is claimed.
+main-thread code. This shaft apply batch does not enable MultiMesh or claim
+draw-call reduction; the later aperture slice below is separate.
 See [MultiMesh's documented limits](https://docs.godotengine.org/en/stable/classes/class_multimesh.html).
 
 The existing generated production-import workload runs 1,000 independently patched
@@ -295,7 +296,67 @@ initial material duplication. Overall setup improved modestly in this sample;
 resource binding itself became slightly slower. Draw/GPU/fragment performance was
 not measured by the dummy renderer. The 82-fixture owner's canonical 1,095 outputs
 and 115 render rows retain their existing semantics; one normal Windows GPU/DMX
-validation follows full CI. True GPU instancing remains a subsequent milestone.
+validation follows full CI. The first independent-aperture GPU slice is described below.
+
+## GPU-instanced independent apertures, phase 1
+
+Production Forward+ uses real MultiMesh instances for a narrow default opaque
+StandardMaterial lens slice. Shafts keep Vector Prism, native apply batching and
+lazy aggregate-member allocation. Mesh/material policy, nearest mechanical Axis
+and 4 m local cells partition 8–64-instance batches; incompatible/small cells keep
+individual resources. Non-conformal instance transforms fall back because Godot's
+MultiMesh normal transform differs from the individual nonuniform-scale path. No physical emitter/control identity is merged. Source
+nodes, picking geometry and original materials remain for exact held-state fallback.
+`PERAVIZ_GPU_LENSES=0` selects the individual reference at setup/refresh.
+
+One sequential Linux Debug A/B of the generated independent Dimmer/RGB workload:
+
+| Measurement | Individual reference | GPU aperture path |
+| --- | ---: | ---: |
+| Canonical physical outputs / shaft rows | 1,000 / 1,000 | 1,000 / 1,000 |
+| Instanced apertures / individual lens fallback | 0 / 1,000 | 960 / 40 |
+| Actual MultiMesh nodes / GPU instances | 0 / 0 | 60 / 960 |
+| Additional shared lens material / reused mesh resources | 0 / 0 | 1 / 1 |
+| Native lens RID bindings | 1,000 | 40 |
+| Changed / unchanged final rows, six warm updates | 6,000 / 0 | 6,000 / 0 |
+| Inclusive native material application, six updates µs | 2,024 | 1,177 |
+| Native instance packing / RS submission, six updates µs | 0 / 0 | 803 / 61 |
+| MultiMesh submissions / transferred bytes per fully changed update | 0 / 0 | 60 / 61,440 |
+| Derived native batch/route/buffer storage bytes | 0 | 150,720 |
+| Aperture admission/binding setup µs | 0 | 34,733 |
+| Whole scene setup elapsed µs | 1,524,662 | 1,570,946 |
+
+CPU times above use the headless/dummy backend and are not GPU performance results.
+Material application includes packing/submission; do not add these overlapping
+timers. Native shaft application is unchanged (6,000 native applies in both runs);
+whole-publication timing is noisy and is not attributed to aperture instancing.
+Original 1,000 lens nodes/materials remain retained; new resources are 60 MultiMesh
+nodes/resources, one shared shader material and their instance buffers. The native
+byte counter covers packed buffers, retained slots and inverse routes, excluding
+container/RID/node overhead, shared source meshes, shader caches and driver memory.
+The graphics transfer counter covers MultiMesh payloads only, not fallback uniform
+uploads. Teardown verifies actual nodes freed and native routes/buffers empty.
+
+An opt-in probe in the same generated regression renders separated aperture copies
+using production materials and native instance data on Godot 4.7.1 Forward+/Vulkan
+with Mesa llvmpipe: actual viewport **draw calls/objects 1,000 → 100**, with **8,000
+primitives in both** and **zero pixel difference** over 60,270 nonblack pixels.
+This is genuine GPU instancing/submission evidence from a software graphics driver,
+not a hardware GPU speed or FPS claim. Run the existing test with
+`--rendering-method forward_plus --rendering-driver vulkan -- --render-lens-probe`
+on a drawable backend; normal CI retains focused headless value/lifetime coverage.
+Compatibility/Mobile and unsupported materials use the individual reference.
+A preliminary Compatibility probe hit its existing shaft instance-uniform UBO
+limit; it is not used as acceptance/performance evidence. No shader/shaft workaround
+is shipped. Hardware GPU frame time remains for one ordinary owner Windows test.
+
+Focused regression covers independent Color/Dimmer/blackout, stable unique slots,
+mechanical transforms, source visibility without new DMX, mixed material/projector
+fallback, held replay, renderer/diagnostic replacement, stale-generation rejection
+and actual resource retirement. The reference RID binding now writes Godot's
+internal `emission_energy` shader parameter (the public BaseMaterial property is
+`emission_energy_multiplier`), fixing the previously ignored native energy update
+and ensuring individual/instanced lenses use the same supported response.
 
 ## Foundation reference evidence (before Render Groups)
 

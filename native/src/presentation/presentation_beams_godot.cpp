@@ -23,4 +23,17 @@ void PeravizPresentationState::apply_beams(const std::vector<peraviz::presentati
     result["native_beam_parameter_writes"]=int64_t(stats.parameters); result["native_beam_dynamic_writes"]=int64_t(stats.dynamic);
     result["native_beam_stale"]=int64_t(stats.stale); result["native_beam_fallback"]=int64_t(fallback);
 }
+// Installs borrowed MultiMesh RIDs only for this physical binding generation.
+bool PeravizPresentationState::install_lenses(int64_t generation,const Array &rids,const Array &owners,const Array &buffers,const Array &scales) {
+    if (uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) return false;
+    return lenses_.install(async_?displayed_physical_.size():state_.bindings().size(),rids,owners,buffers,scales);
+}
+// Revokes native batch routes before their Godot resource owner tears down.
+void PeravizPresentationState::clear_lenses() { lenses_.clear(); }
+// Visibility signals carry resource policy only, never lighting calculations.
+void PeravizPresentationState::set_lens_visible(int32_t batch,int32_t instance,bool visible) { lenses_.set_visible(batch,instance,visible); }
+// Coalesced cold visibility changes submit without waiting for another DMX packet.
+void PeravizPresentationState::flush_lenses() { lenses_.flush(); }
+// Exposes the actual retained instance buffer to focused renderer regression checks.
+PackedFloat32Array PeravizPresentationState::lens_buffer(int32_t batch) const { return lenses_.buffer(batch); }
 } // namespace godot
