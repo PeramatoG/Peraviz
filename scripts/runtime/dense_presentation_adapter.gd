@@ -486,7 +486,7 @@ func _update_surface_counts(handle: LightHandle) -> void:
 	var flags: int = SurfacePolicy.OWNED if handle.owns_realtime_surface_light else 0
 	if handle.realtime_visible:
 		flags |= SurfacePolicy.ACTIVE
-		if handle.has_gobo or handle.light.light_projector != null:
+		if handle.light.light_projector != null or (handle.has_gobo and not SurfacePolicy.custom_light(handle.light)):
 			flags |= SurfacePolicy.PROJECTOR
 			if handle.light.light_projector != null: flags |= SurfacePolicy.PROJECTOR_TEXTURE
 			if handle.light.shadow_enabled: flags |= SurfacePolicy.SHADOWED_PROJECTOR

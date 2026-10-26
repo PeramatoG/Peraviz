@@ -95,6 +95,12 @@ func run() -> void:
 	for mode in ["no-beams", "transforms-only", "full"]:
 		service.set_render_diagnostic_mode(mode)
 		test.check(adapter.diagnostics().active_custom_footprints == (128 if mode == "full" else 0), "Diagnostics suspend/resume held footprints")
+	loader._visual_settings.enable_realtime_spotlights = true
+	service.refresh_dense_renderer()
+	counts = adapter.diagnostics()
+	test.check(counts.surface_lights.active_surface_lights == 128 and counts.surface_lights.active_projector_lights == 0, "Explicit independent realtime lighting survives custom selection without miscounting custom gobos as native projectors")
+	loader._visual_settings.enable_realtime_spotlights = false
+	service.refresh_dense_renderer()
 	var kept_volume: MeshInstance3D = adapter._footprints.volumes[0]
 	var old_renderer: BeamRendererBase = loader.renderer
 	var replacement := preload("res://scripts/beam_renderers/volumetric_beam_renderer.gd").new()
