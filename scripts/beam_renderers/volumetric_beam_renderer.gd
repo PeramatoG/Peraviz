@@ -428,3 +428,10 @@ func unbind_control_group(beam: MeshInstance3D) -> void:
 	beam.material_override = material
 	beam.remove_meta(&"peraviz_control_group_material")
 	BoundBeamStateScript.invalidate_resource(beam)
+
+# Cold admission for exact native Dimmer/Color application. Optics still use this renderer.
+func supports_native_dynamic(light: SpotLight3D, beam: MeshInstance3D) -> bool:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM or not is_instance_valid(light) or not is_instance_valid(beam) or beam.mesh == null: return false
+	if not beam.material_override is ShaderMaterial: return false
+	var material := beam.material_override as ShaderMaterial
+	return material.shader == _beam_material_template.shader and material.next_pass == null and not beam.has_meta(&"peraviz_control_group_material") and material.get_shader_parameter("has_gobo_energy") != true and material.get_shader_parameter("gobo_coverage") == null and material.get_shader_parameter("gobo_mask") == null

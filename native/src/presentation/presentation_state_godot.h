@@ -2,10 +2,12 @@
 #include "presentation/direct_presentation_pipeline.h"
 #include "runtime/peraviz_visual_runtime_godot.h"
 #include "presentation/presentation_material_bindings.h"
+#include "presentation/native_beam_bindings.h"
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
 namespace godot {
@@ -22,6 +24,9 @@ public:
     int64_t set_materials_enabled(bool enabled);
     PackedFloat32Array physical_values(int32_t index) const;
     PackedFloat32Array material_values(const RID &rid) const;
+    bool install_beams(int64_t generation,const PackedInt64Array &objects,const PackedFloat64Array &thresholds);
+    void clear_beams();
+    void set_beam_policy(bool enabled,double multiplier);
     void clear();
     void invalidate_renderer();
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
@@ -29,6 +34,9 @@ public:
     Dictionary consume_runtime(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, int32_t schema_generation, bool trace, bool poll_only=false);
     Dictionary get_sizes() const;
 private:
+    void apply_beams(const std::vector<peraviz::presentation::PreparedRenderRow> &rows,bool trace,Dictionary &result);
+    NativeBeamBindings beams_;
+    PackedInt32Array script_rows_;
     void retire_async(bool replay_domains=true);
     Dictionary poll_async(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,int32_t schema_generation,bool trace);
     std::shared_ptr<peraviz::presentation::AsyncPresentationPipeline> async_;

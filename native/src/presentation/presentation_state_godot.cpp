@@ -22,6 +22,9 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_materials_enabled", "enabled"), &PeravizPresentationState::set_materials_enabled);
     ClassDB::bind_method(D_METHOD("material_values", "rid"), &PeravizPresentationState::material_values);
     ClassDB::bind_method(D_METHOD("physical_values", "index"), &PeravizPresentationState::physical_values);
+    ClassDB::bind_method(D_METHOD("install_beams", "generation", "objects", "thresholds"), &PeravizPresentationState::install_beams);
+    ClassDB::bind_method(D_METHOD("clear_beams"), &PeravizPresentationState::clear_beams);
+    ClassDB::bind_method(D_METHOD("set_beam_policy", "enabled", "multiplier"), &PeravizPresentationState::set_beam_policy);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizPresentationState::clear);
     ClassDB::bind_method(D_METHOD("compose", "generation", "descriptors", "integers", "values", "trace"), &PeravizPresentationState::compose);
     ClassDB::bind_method(D_METHOD("consume_runtime", "runtime", "generation", "schema_generation", "trace", "poll_only"), &PeravizPresentationState::consume_runtime,DEFVAL(false));
@@ -29,7 +32,7 @@ void PeravizPresentationState::_bind_methods() {
 }
 // Installs canonical physical routes; renderer-sized buffers are allocated only after render setup.
 int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const PackedFloat32Array &scales, const PackedInt32Array &routes) {
-    retire_async(false);
+    retire_async(false); clear_beams();
     const String mode=OS::get_singleton()->get_environment("PERAVIZ_NATIVE_EVALUATION");
     async_disabled_=mode=="serial"; async_forced_=mode=="parallel";
     displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
@@ -60,6 +63,7 @@ bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membe
     for (int64_t i=0;i<membership.size();++i) mapping.push_back(uint32_t(membership[i]));
     for (int64_t i=0;i<classes.size();++i) modes.push_back(RenderPresentationClass(classes[i]));
     if (!projection_.install(mapping,modes)) return false;
+    clear_beams(); script_rows_.resize(classes.size());
     indices_masks_.resize(classes.size()*2); values_.resize(classes.size()*ValueCount);
     state_.invalidate_renderer();
     return true;
@@ -85,7 +89,7 @@ PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) cons
 PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
 // Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
-    retire_async(false); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
+    retire_async(false); clear_beams(); script_rows_=PackedInt32Array(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
     std::vector<int32_t>().swap(fixture_ids_);
     pipeline_.clear(); state_.clear(); projection_.clear(); materials_.clear();
     indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
@@ -115,9 +119,10 @@ void PeravizPresentationState::begin_snapshot(bool trace) {
     if (lens_writes_suppressed_!=suppress_lenses) { retire_async(); state_.invalidate_renderer(); }
     lens_writes_suppressed_=suppress_lenses;
 }
-// Packs only final renderer rows and applies cached main-thread material resources.
+// Applies final main-thread beam/material resources and packs unchanged renderer-row contracts.
 Dictionary PeravizPresentationState::publish(int64_t generation, bool trace, int64_t physical_us, int64_t projection_us) {
     Dictionary result;
+    apply_beams(projection_.prepared(),trace,result);
     const bool suppress_lenses=lens_writes_suppressed_;
     const int64_t compose_us=physical_us+projection_us;
     const int64_t copy_start=trace?now_us():0;
@@ -267,6 +272,7 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["native_worker_scratch_bytes"]=int64_t(async_worker_bytes_);
     sizes["native_input_buffer_bytes"]=int64_t(async_?async_->input_buffer_bytes():0);
     sizes["native_display_cache_bytes"]=int64_t(displayed_physical_.capacity()*sizeof(RenderValues));
+    sizes["native_beam_bindings"]=int64_t(beams_.count()); sizes["native_beam_buffer_bytes"]=int64_t(beams_.buffer_bytes()+script_rows_.size()*sizeof(int32_t));
     sizes["native_worker_capacity"]=int64_t(async_?async_->worker_count():0);
     return sizes;
 }

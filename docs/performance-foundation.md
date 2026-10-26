@@ -179,6 +179,72 @@ quota-limited host. They establish exact useful native work and offloading, not 
 scalability/FPS improvement. Windows GPU/DMX validation is still required. The supported subset is useful CPU parallelism in the production
 path, while optical map commits and reduction remain ordered native work.
 
+## Independent emitter render application, phase 1
+
+This delivers native **CPU renderer-apply batching**, not GPU instancing. The
+Godot 4.7 API exposes `RenderingServer.multimesh_set_buffer(RID, PackedFloat32Array)`
+for contiguous transforms/colors/custom data. MultiMesh's shared visibility bounds
+lack individual spatial culling, and its per-instance color/custom data cannot
+replace all the current Vector Prism instance uniforms unchanged (profile, cone,
+attenuation and optical resources). A faithful GPU path would need a shader/data
+contract and optical/spatial partitioning with independent transform ownership.
+This phase keeps exact existing geometry, shader, transparent blending/sorting and
+per-node culling, and moves the costly independent dynamic apply loop into native
+main-thread code. MultiMesh is not enabled and no draw-call reduction is claimed.
+See [MultiMesh's documented limits](https://docs.godotengine.org/en/stable/classes/class_multimesh.html).
+
+The existing generated production-import workload runs 1,000 independently patched
+Dimmer/RGB emitters, with six measured warm updates after resource initialization.
+Every primary changes per pixel and Dimmer varies independently. Blackout/restore,
+actual instance uniforms, mesh/local transform identity, inherited transforms,
+diagnostic replay, renderer replacement and weak-resource retirement are checked.
+A small synchronous native-boundary probe checks generation rejection, exact
+non-integer presentation scaling and freed-handle fallback. Grouped-source and
+project-loading regressions remain in existing tests. No new benchmark framework
+or hardware threshold is added.
+
+One sequential Linux Debug / Godot 4.7.1 headless comparison, same deterministic
+sequence and PR #110 async evaluator in both runs. The reference uses
+`PERAVIZ_NATIVE_BEAM_APPLY=0`; normal production enables cold-compatible batches.
+Times below sum **six** updates, except scene setup (one import each).
+
+| Metric | Reference script loop | Native batch |
+| --- | ---: | ---: |
+| Canonical physical outputs / renderer rows / shaft nodes | 1,000 / 1,000 / 1,000 | 1,000 / 1,000 / 1,000 |
+| GDScript apply/handle loop, inclusive CPU µs | 54,474 | 46 |
+| Renderer mutation pass, inclusive CPU µs | 54,639 | 1,658 |
+| Native beam apply CPU µs | 36 (fallback nomination) | 1,503 |
+| Native payload packing/transfer CPU µs | 507 | 523 |
+| Native main-thread publication CPU µs | 734 | 2,175 |
+| Actual dynamic uniform writes / topology rebuilds | 6,000 / 0 | 6,000 / 0 |
+| Changed / unchanged renderer outputs in measured updates | 6,000 / 0 | 6,000 / 0 |
+| Native-handled / script fallback rows | 0 / 6,000 | 6,000 / 0 |
+| Render payload / binding+fallback table bytes | 56,000 / 4,000 | 56,000 / 44,000 |
+| Scene setup elapsed µs | 1,898,733 | 1,919,873 |
+| Draw calls / GPU frame time | unavailable (dummy renderer) | unavailable (dummy renderer) |
+| Native handles after scene teardown | 0 | 0 |
+
+Timers are inclusive: mutation time includes native beam/material work plus the
+script mutation loop. Native publication includes beam apply, lens apply and
+packing. Do not add overlapping columns. The difference establishes lower CPU
+script/property/handle overhead, not fewer engine uniform calls. Godot API call
+cost is not isolated from native iteration; actual calls are counted separately.
+Render submission/draw and transparent fragment costs cannot be measured with the
+dummy renderer; resource topology and shader work are unchanged. These are bounded
+headless observations, not Windows/GPU/FPS evidence. Setup includes loading and
+frame-budget yields and establishes no setup improvement. Cache bytes exclude
+engine wrapper/container overhead, not RSS. Held/no-new-input updates publish no
+changed rows; no-beams/full replay and exact fallback remain covered.
+
+Lazy allocation of aggregated member shafts is deferred: current setup constructs
+physical beam defaults and proves resource compatibility before aggregate binding.
+Avoiding that allocation safely also needs individual-resource rehydration for
+renderer policy/resource changes. This PR preserves those existing lifetimes:
+1,000 compact members still allocate 1,000 member shafts plus 20 aggregate shafts,
+with only 20 visible. No unused-shaft allocation saving is claimed. The owner's
+82-fixture / 1,095-output / 115-row behavior and ~75 active-DMX FPS remain the
+Windows regression reference. One normal owner GPU/DMX validation follows CI.
+
 ## Foundation reference evidence (before Render Groups)
 
 The owner reports approximately **24–25 FPS / 40–42 ms per frame after warmup**,
