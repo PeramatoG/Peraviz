@@ -9,6 +9,7 @@ const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 
 # Resource ownership and exact fallback for native presentation. The scalable
 # dynamic slice bypasses this script loop; optics remain in the reference renderer.
+const AggregateShaftResources = preload("res://scripts/runtime/aggregate_shaft_resources.gd")
 const NativeBeamBindings = preload("res://scripts/runtime/native_beam_bindings.gd")
 const STRIDE: int = 12
 const DIMMER: int = 1 << 1
@@ -220,15 +221,11 @@ func install(loader: Node, service: RefCounted, registry: RefCounted, budget: Sc
 			_lights_by_id[light.get_instance_id()] = handle
 	_generation = _native.install(bindings["ids"], bindings["scales"], bindings["routes"])
 	if budget != null:
-		await budget.checkpoint(true)
-		budget.phase = "control_group_resources"
-	_install_groups()
-	if budget != null:
-		await budget.checkpoint(true)
+		if not await budget.checkpoint(true): return false
 		budget.phase = "aggregate_resources"
 	if not _install_render_bindings(): return false
 	if budget != null:
-		await budget.checkpoint(true)
+		if not await budget.checkpoint(true): return false
 		budget.phase = "final_runtime_install"
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
@@ -623,6 +620,7 @@ func diagnostics() -> Dictionary:
 	result["diagnostic_open_surface_lights"] = _diagnostic_open_surface_lights
 	if _native != null: result.merge(_native.get_sizes())
 	result.merge(_render_bindings.counts(self))
+	result.merge(AggregateShaftResources.counts(self))
 	result["control_groups"] = _totals.get("presentation_control_groups", _outputs.size())
 	result.merge(_control_fallbacks)
 	return result
@@ -632,7 +630,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["native_beam_apply_us", "native_beam_applied", "native_beam_changed", "native_beam_unchanged", "native_beam_fallback", "native_beam_stale", "native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
+	for key in ["shaft_resource_binding_us", "native_beam_apply_us", "native_beam_applied", "native_beam_changed", "native_beam_unchanged", "native_beam_fallback", "native_beam_stale", "native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:
@@ -687,7 +685,6 @@ func refresh_renderer() -> void:
 				handle.properties_dirty = true
 				handle.bound_state.invalidate()
 			handle.initialization_failed = false
-	_install_groups()
 	if not _install_render_bindings(): return
 	if _trace: _totals["forced_replays"] += 1
 	_native.invalidate_renderer()
@@ -727,22 +724,31 @@ func _install_groups() -> void:
 	var largest: int = 1 if not _outputs.is_empty() else 0
 	var shared_lenses: int = 0
 	var shared_beams: int = 0
+	var control_groups: int = 0
 	for members in candidates.values():
 		if members.size() < 2: continue
 		var beams: Array = []
 		var safe: bool = true
+		var deferred_description := PackedInt64Array()
+		var deferred_count: int = 0
 		for index in members:
 			if _outputs[index].lights.size() != 1: safe = false; break
 			var light: LightHandle = _outputs[index].lights[0]
-			if not light.projected or light.has_gobo or not is_instance_valid(light.beam): safe = false; break
+			if not light.projected or light.has_gobo: safe = false; break
 			if is_instance_valid(light.debug_axis) and light.debug_axis.visible: safe = false; break
 			if light.params.get("intensity_visibility_threshold", 0.015) != 0.015: safe = false; break
 			if _route_signatures[index] != _route_signatures[members[0]]: safe = false; break
 			if _route_signatures[index][0].size() != 1: safe = false; break
-			beams.append(light.beam)
-		if not safe: continue
-		var material: ShaderMaterial = _renderer.bind_control_group(beams)
-		if material == null: continue
+			if is_instance_valid(light.beam): beams.append(light.beam)
+			elif _renderer.has_method("shaft_compatibility") and _renderer.is_member_deferred(light.light):
+				var description: PackedInt64Array = _renderer.shaft_compatibility(light.light)
+				if description.is_empty() or (not deferred_description.is_empty() and deferred_description != description): safe = false; break
+				deferred_description = description
+				deferred_count += 1
+			else: safe = false; break
+		if not safe or (deferred_count > 0 and deferred_count != members.size()): continue
+		var material: ShaderMaterial = _renderer.bind_control_group(beams) if deferred_count == 0 else null
+		if material == null and deferred_count == 0: continue
 		var group := ControlGroup.new()
 		group.members = members
 		group.material = material
@@ -771,7 +777,8 @@ func _install_groups() -> void:
 					if source is BaseMaterial3D and source.next_pass == null and entry.get("mesh") != null and entry["mesh"].material_override == null: lens_cache[key] = handle
 			grouped += 1
 		largest = maxi(largest, members.size())
-		shared_beams += 1
+		control_groups += 1
+		if material != null: shared_beams += 1
 		if group.lens_copies > 0: shared_lenses += 1
 	if not _native.install_groups(representatives):
 		# A rejected actual binding must leave a fully independent renderer path.
@@ -782,10 +789,11 @@ func _install_groups() -> void:
 		_native.install_groups(representatives)
 		grouped = 0
 		shared_beams = 0
+		control_groups = 0
 		shared_lenses = 0
 		largest = 1 if not _outputs.is_empty() else 0
 	_totals["physical_outputs"] = _outputs.size()
-	_totals["presentation_control_groups"] = _outputs.size() - grouped + shared_beams
+	_totals["presentation_control_groups"] = _outputs.size() - grouped + control_groups
 	_totals["grouped_physical_outputs"] = grouped
 	_totals["individual_physical_outputs"] = _outputs.size() - grouped
 	_totals["largest_group"] = largest
@@ -794,6 +802,7 @@ func _install_groups() -> void:
 
 # Shared Control Groups still perform one material write, even across separated individual shafts.
 func _apply_control_material(group: ControlGroup, v: PackedFloat32Array, b: int) -> void:
+	if group.material == null: return
 	var dynamic := Color(v[b+1], v[b+2], v[b+3], v[b+6] * _shaft_multiplier)
 	if dynamic == group.dynamic: return
 	group.dynamic = dynamic
@@ -807,7 +816,12 @@ func _apply_control_material(group: ControlGroup, v: PackedFloat32Array, b: int)
 # Setup once per renderer generation; lenses retain independent native physical routes.
 func _install_render_bindings() -> bool:
 	_invalidate_native_beams()
+	var binding_start: int = Time.get_ticks_usec() if _trace else 0
+	AggregateShaftResources.prepare(self)
 	if not _render_bindings.install(self, _render_descriptors): return false
+	AggregateShaftResources.reconcile(self)
+	_install_groups()
+	if _trace: _totals["shaft_resource_binding_us"] = int(_totals.get("shaft_resource_binding_us", 0)) + Time.get_ticks_usec() - binding_start
 	var rids: Array = []
 	var owners := PackedInt32Array()
 	var scales := PackedFloat32Array()
@@ -829,6 +843,7 @@ func _create_aggregate_output(descriptor: Dictionary, representative: int) -> Ou
 	if parent == null: return null
 	var light := SpotLight3D.new()
 	light.name = "PeravizAggregateEmitter"
+	light.set_meta("peraviz_aggregate_shaft", true)
 	light.position = descriptor["origin"]
 	var direction: Vector3 = descriptor["direction"]
 	light.basis = Basis.looking_at(direction, Vector3.UP if absf(direction.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD)

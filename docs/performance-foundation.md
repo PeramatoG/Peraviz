@@ -236,14 +236,66 @@ frame-budget yields and establishes no setup improvement. Cache bytes exclude
 engine wrapper/container overhead, not RSS. Held/no-new-input updates publish no
 changed rows; no-beams/full replay and exact fallback remain covered.
 
-Lazy allocation of aggregated member shafts is deferred: current setup constructs
-physical beam defaults and proves resource compatibility before aggregate binding.
-Avoiding that allocation safely also needs individual-resource rehydration for
-renderer policy/resource changes. This PR preserves those existing lifetimes:
-1,000 compact members still allocate 1,000 member shafts plus 20 aggregate shafts,
-with only 20 visible. No unused-shaft allocation saving is claimed. The owner's
-82-fixture / 1,095-output / 115-row behavior and ~75 active-DMX FPS remain the
-Windows regression reference. One normal owner GPU/DMX validation follows CI.
+The following milestone changes compact aggregate-member allocation only;
+independent emitter resources and the native apply comparison above are unchanged.
+
+## Lazy aggregate member shafts
+
+Accepted standard open Vector Prism groups now defer member shaft nodes and
+materials. Setup uses a renderer identity/revision/shader/priority description
+rather than temporary full resources. Native membership, projected output,
+mechanical anchor, optical/resource exclusions and exact Zoom authority still gate
+final acceptance. Unsupported/custom resources remain eager and use the reliable
+individual fallback. Physical identities, lenses and Control Groups survive with
+no shaft resource; no GDTF interpretation, shader or native evaluation changes.
+
+The existing generated test covers 50 compatible members (plus an unrelated Glow),
+1,000 aggregate members, and 1,000 independent Dimmer/RGB emitters using #111's
+native apply path. It checks actual missing shaft children and creation counters,
+not just visibility. Configured realtime fallback creates 1,000 individuals from
+held native values; re-aggregation frees them and repairs canonical/semantic
+resource views. Actual Legacy → Vector Prism replacement, diagnostic replay,
+scene reload and teardown remain covered. No stream packet is required for cold
+rehydration. Import-budget cancellation gates remain before final publication.
+
+One sequential Linux Debug / Godot 4.7.1 headless comparison, identical generated
+1,000-member workload. `PERAVIZ_LAZY_AGGREGATE_SHAFTS=0` selects the retained eager
+reference at setup/control boundaries. Timings include frame-budget yields and
+are observations, not CI thresholds or a Windows/GPU/FPS claim.
+
+| Metric | Eager reference | Lazy default |
+| --- | ---: | ---: |
+| Canonical physical outputs / aggregate groups / members | 1,000 / 20 / 1,000 | 1,000 / 20 / 1,000 |
+| Actually allocated member shaft nodes | 1,000 | 0 |
+| Actually allocated aggregate shaft nodes | 20 | 20 |
+| Individual node/material constructions during setup | 1,000 | 0 |
+| Unique attached shaft materials, active | 40 | 20 |
+| Unique attached shaft mesh resources, active | 1 | 1 |
+| Nominal attached position/index array bytes, active | 2,592 | 2,592 |
+| Scene setup elapsed µs | 1,804,323 | 1,742,813 |
+| Registry target setup ms | 328.871 | 310.983 |
+| Aggregate/material binding ms | 47.051 | 48.504 |
+| Layout/resource/control binding CPU µs (subset of previous row) | 21,194 | 25,732 |
+| Individuals rehydrated / retired in forced fallback cycle | 0 / 0 | 1,000 / 1,000 |
+| Member nodes allocated again after re-acceptance | 1,000 | 0 |
+
+The material count includes attached member/aggregate overrides, including shared
+Control Group materials, and excludes the renderer template and physical lens
+materials. Meshes may share cached normalized geometry; removing member nodes does
+not imply freeing cached mesh buffers. The byte estimate counts nominal float32
+positions and uint32 indices exposed by attached ArrayMesh surfaces. It excludes
+normals/UVs/compression, unbound provider caches, nodes, material/shader overhead,
+CPU wrappers and driver/GPU allocations; it is neither RSS nor total graphics
+memory. No invented per-node/material byte saving is reported. Event counters
+count real renderer construction/rehydration/immediate aggregate retirement since
+scene reset, not inferred row counts or arbitrary external node destruction.
+
+The deterministic saving is 1,000 unnecessary shaft-node allocations and their
+initial material duplication. Overall setup improved modestly in this sample;
+resource binding itself became slightly slower. Draw/GPU/fragment performance was
+not measured by the dummy renderer. The 82-fixture owner's canonical 1,095 outputs
+and 115 render rows retain their existing semantics; one normal Windows GPU/DMX
+validation follows full CI. True GPU instancing remains a subsequent milestone.
 
 ## Foundation reference evidence (before Render Groups)
 

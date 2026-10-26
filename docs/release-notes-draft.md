@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Accepted standard Vector Prism aggregate members now retain physical anchors, lenses and exact native state without allocating hidden individual shaft nodes/materials. Unsupported policies rehydrate individuals from held state on the main thread; re-aggregation releases unnecessary shafts. Added actual resource counters and retained independent-emitter native batching.
+
 - Added a production native main-thread dynamic apply batch for large independent open Vector Prism emitters. It preserves individual physical identities, meshes, shaders, culling and exact optical fallbacks while bypassing the per-output GDScript loop; no GPU instancing or draw-call reduction is claimed.
 - Corrected the scene-state method parameter that shadowed the public last-loaded file type, preserving the serialized key and project-loading behavior.
 

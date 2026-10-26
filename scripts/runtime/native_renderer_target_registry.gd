@@ -26,6 +26,7 @@ var _lens_material_cache: Dictionary = {}
 var _gobo_resources: RefCounted = NativeGoboResourceRegistryScript.new()
 var _renderer_generation: int = 0
 var _render_emitter_groups: Array = []
+var _aggregate_candidates: Dictionary = {}
 var _control_group_fallbacks: Dictionary = {}
 var _render_group_diagnostics: Dictionary = {}
 
@@ -59,6 +60,7 @@ func clear_renderer_targets() -> void:
 	_beam_output_records_by_id.clear()
 	_lens_material_cache.clear()
 	_render_emitter_groups.clear()
+	_aggregate_candidates.clear()
 	_control_group_fallbacks.clear()
 	_render_group_diagnostics.clear()
 	_summary = _new_summary()
@@ -99,6 +101,13 @@ func install_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null) 
 	_build_geometry_target_map(renderer_manifest)
 	_index_emitter_ancestors()
 	_index_beam_profiles(renderer_manifest)
+	# Native classification nominates provisional resource candidates before any shaft is allocated.
+	for item in renderer_manifest:
+		if item is not Dictionary: continue
+		for descriptor in item.get("render_emitter_groups", []):
+			_render_emitter_groups.append(descriptor)
+			if int(descriptor.get("presentation_class", 0)) == 1:
+				for canonical in descriptor["physical_ids"]: _aggregate_candidates[int(canonical)] = true
 	# Bind even canonical physical outputs with no live scalar contributor.
 	for geometry_key in _beam_profiles_by_geometry_key:
 		if budget != null and not await budget.checkpoint(): return
@@ -109,7 +118,6 @@ func install_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null) 
 		if item is not Dictionary:
 			continue
 		var row: Dictionary = item
-		_render_emitter_groups.append_array(row.get("render_emitter_groups", []))
 		_control_group_fallbacks.merge(row.get("control_group_fallbacks", {}), true)
 		_render_group_diagnostics.merge(row.get("render_group_diagnostics", {}), true)
 		var targets: Array = row.get("targets", [])
@@ -256,6 +264,19 @@ func rebind_beam_resource(light: SpotLight3D, beam: MeshInstance3D) -> void:
 	for target_map in [_dimmer_targets, _optics_targets, _color_targets]:
 		for target_record in (target_map as Dictionary).values():
 			_rebind_record_beam(target_record as Dictionary, light, beam)
+
+# Rebinds a cold resource transaction in linear time, including explicit absent shafts.
+func rebind_shaft_instances(changes: Dictionary) -> void:
+	var records: Array = _beam_output_records_by_id.values()
+	for target_map in [_dimmer_targets, _optics_targets, _color_targets]: records.append_array(target_map.values())
+	for record in records:
+		var anchors: Array = record.get("emitter_anchors", [])
+		var beams: Array = record.get("beam_instances", [])
+		for index in range(anchors.size()):
+			if not is_instance_valid(anchors[index]) or not changes.has(anchors[index].get_instance_id()): continue
+			while beams.size() <= index: beams.append(null)
+			beams[index] = changes[anchors[index].get_instance_id()]
+		record["beam_instances"] = beams
 
 func _rebind_record_beam(record: Dictionary, light: SpotLight3D, beam: MeshInstance3D) -> void:
 	var anchors: Array = record.get("emitter_anchors", [])
@@ -456,6 +477,8 @@ func _resolve_beam_output_record(fixture_uuid: String, emitter_node: Node3D, fal
 		profile = _default_profile_for_geometry_key(geometry_key)
 	var beam_render_target_id: int = int(profile.get("beam_render_target_id", fallback_target_id))
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [geometry_key, [emitter_node]])
+	if _aggregate_candidates.has(beam_render_target_id):
+		for light in emitter_anchors: _call_variant("prepare_deferred_shaft", [light, profile])
 	var emitter_records: Array = _build_emitter_records([emitter_node], emitter_anchors)
 	var lens_material_targets: Array = _prepare_lens_materials(geometry_key, [emitter_node])
 	_apply_lens_profiles(lens_material_targets)
