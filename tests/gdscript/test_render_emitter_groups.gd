@@ -102,6 +102,7 @@ func _aggregate() -> RefCounted:
 	return adapter._render_bindings.aggregate_outputs()[0]
 
 func _run() -> void:
+	var lazy_expected: bool = OS.get_environment("PERAVIZ_LAZY_AGGREGATE_SHAFTS") != "0"
 	test.check(change_scene_to_file(ProjectSettings.get_setting("application/run/main_scene")) == OK, "Normal application scene loads")
 	await process_frame
 	await process_frame
@@ -120,6 +121,15 @@ func _run() -> void:
 		await process_frame
 		quit(1)
 		return
+	test.check(sizes["allocated_member_shafts"] == (1 if lazy_expected else 51), "Accepted fifty members allocate no individual shafts; the unrelated Glow path remains eager")
+	test.check(sizes["member_shafts_created"] == (1 if lazy_expected else 51), "Setup avoids creation itself rather than creating and hiding member shafts")
+	var deferred: int = 0
+	for output in adapter._outputs:
+		for handle in output.lights:
+			if handle.light.has_meta(&"peraviz_deferred_aggregate_shaft"):
+				deferred += 1
+				test.check(handle.beam == null and handle.light.get_node_or_null("PeravizVolumetricBeam") == null, "Deferred physical anchor owns no hidden shaft child")
+	test.check(deferred == (50 if lazy_expected else 0), "All canonical compact members retain lightweight anchors")
 	test.check(sizes["packed_buffer_bytes"] == 2 * (2 * 4 + 12 * 4), "Only two renderer rows size the single integer/float payload pair")
 	dmx.resize(512)
 	dmx.fill(0)
@@ -180,6 +190,9 @@ func _run() -> void:
 	counts = adapter.diagnostics()
 	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 20 and counts["aggregate_shaft_resources"] == 20,
 		"Twenty production-imported compact sources retain 1000 physical outputs and allocate exactly 20 aggregate shafts")
+	test.check(counts["allocated_member_shafts"] == (0 if lazy_expected else 1000) and counts["member_shafts_created"] == (0 if lazy_expected else 1000), "Thousand-output setup avoids actual member nodes and material allocation")
+	var allocation_setup: Dictionary = {"scene_setup_us": last_setup_us, "binding_metrics": app._scene_setup_resource_metrics.duplicate(), "resources": counts}
+	print("AGGREGATE_RESOURCE_SETUP ", JSON.stringify(allocation_setup))
 	dmx.fill(0)
 	for f in range(20):
 		dmx[f*16] = 200
@@ -212,11 +225,50 @@ func _run() -> void:
 	var native_interval: Dictionary = runtime._native_visual_runtime.get_stats()
 	for key in ["color_evaluation_us", "color_composition_us", "color_inputs_evaluated", "color_targets_cooked", "color_rows"]: native_interval[key] -= native_before[key]
 	print("COLOR_AUDIT_NATIVE_60_TICKS ", JSON.stringify(native_interval))
+	var held_values: PackedFloat32Array = adapter._native.physical_values(0)
+	var stable: Dictionary = adapter.diagnostics()
+	test.check(stable["member_shafts_created"] == (0 if lazy_expected else 1000) and stable["aggregate_shafts_created"] == 20, "Normal Dimmer/Color playback never rebuilds lazy resources")
+	print("AGGREGATE_RESOURCE_ACTIVE ", JSON.stringify(stable))
 	app._visual_settings["enable_realtime_spotlights"] = true
+	app._update_beam_renderer_mode(false)
 	adapter.refresh_renderer()
 	var fallback: Dictionary = adapter.diagnostics()
 	test.check(fallback["godot_accepted_aggregates"] == 0 and fallback["godot_rejected_aggregates"] == 20 and fallback["godot_binding_rejections"].get("renderer_policy",0) == 20 and fallback["final_render_rows"] == 1000,
 		"Explicit realtime policy reports Godot-only rejection and safely restores individual rows")
+	test.check(fallback["allocated_member_shafts"] == 1000 and fallback["aggregate_shaft_resources"] == 0, "Fallback creates every required individual shaft")
+	test.check(fallback["rehydrated_member_shafts"] == (1000 if lazy_expected else 0), "Rehydration counts actual lazy allocations")
+	test.check(adapter._native.physical_values(0) == held_values, "Fallback preserves authoritative held physical values without a new DMX packet")
+	var rehydrated_nodes: Array = []
+	for output in adapter._outputs:
+		var handle = output.lights[0]
+		var values: PackedFloat32Array = adapter._native.physical_values(output.index)
+		test.check(is_instance_valid(handle.beam) and handle.beam.visible and handle.beam.mesh != null, "Every rehydrated shaft is initialized from held state")
+		test.check(handle.beam.get_instance_shader_parameter("beam_dynamic_state") == Color(values[1],values[2],values[3],clampf(values[6],0.0,50.0)), "Rehydration restores exact held shader values")
+		rehydrated_nodes.append(handle.beam)
+	app._visual_settings["enable_realtime_spotlights"] = false
+	app._update_beam_renderer_mode(false)
+	adapter.refresh_renderer()
+	var regrouped: Dictionary = adapter.diagnostics()
+	test.check(regrouped["aggregated_members"] == 1000 and regrouped["render_rows"] == 20 and regrouped["allocated_member_shafts"] == (0 if lazy_expected else 1000), "Re-aggregation retires unnecessary individuals and retains every physical output")
+	if lazy_expected:
+		for node in rehydrated_nodes: test.check(not is_instance_valid(node), "Retirement frees real nodes immediately and leaves no duplicates")
+		test.check(regrouped["retired_member_shafts"] == 1000, "Retirement counts actual freed members")
+	for record in app._native_target_registry._beam_output_records_by_id.values():
+		for node in record.get("beam_instances", []): test.check(node == null or is_instance_valid(node), "Registry resource views contain no freed member references")
+	test.check(adapter._native.physical_values(0) == held_values and regrouped["visible_aggregate_shafts"] == 20, "Re-aggregation replays the held aggregate appearance")
+	print("AGGREGATE_RESOURCE_RESTORED ", JSON.stringify(regrouped))
+	# Actual renderer replacement exercises the same held-state resource transaction.
+	app._visual_settings["beam_render_mode"] = 1
+	app._update_beam_renderer_mode(true)
+	adapter.refresh_renderer()
+	test.check(adapter.diagnostics()["allocated_member_shafts"] == 1000 and adapter.diagnostics()["aggregate_shaft_resources"] == 0, "Legacy renderer replacement safely restores every required individual")
+	app._visual_settings["beam_render_mode"] = 0
+	app._update_beam_renderer_mode(true)
+	adapter.refresh_renderer()
+	test.check(adapter.diagnostics()["aggregated_members"] == 1000 and adapter.diagnostics()["allocated_member_shafts"] == (0 if lazy_expected else 1000), "Returning Vector Prism recreates only accepted aggregate shafts")
+	test.check(adapter._native.physical_values(0) == held_values, "Renderer replacement preserves authoritative held values")
+
+	rehydrated_nodes.clear()
 	# The same generic fixture generator now exercises independently patched Dimmer and RGB at scale.
 	app._visual_settings["enable_realtime_spotlights"] = false
 	OS.set_environment("PERAVIZ_NATIVE_EVALUATION", "parallel")

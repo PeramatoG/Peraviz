@@ -32,6 +32,13 @@ var _settings: Dictionary = {}
 var _beam_settings_hash: int = 0
 var _shape_providers: Dictionary = {}
 var _active_shape_provider: VolumetricBeamShapeProvider
+const DEFERRED_SHAFT: StringName = &"peraviz_deferred_aggregate_shaft"
+var _resource_revision: int = 0
+var _member_created: int = 0
+var _lazy_created: int = 0
+var _rehydrated: int = 0
+var _member_retired: int = 0
+var _aggregate_created: int = 0
 var _last_parameter_write_count: int = 0
 var _presentation_mode: int = PRESENTATION_VECTOR_PRISM
 var _fog_controller: FogVolumeGoboBeamController = FogVolumeControllerScript.new()
@@ -45,6 +52,7 @@ func _init() -> void:
 	_active_shape_provider = _shape_providers[SHAPE_MODE_GOBO_PRISM] as VolumetricBeamShapeProvider
 
 func configure(view_camera: Camera3D, settings: Dictionary) -> void:
+	_resource_revision += 1
 	_camera = view_camera
 	_settings = settings.duplicate(true)
 	_presentation_mode = int(settings.get("beam_presentation", PRESENTATION_VECTOR_PRISM))
@@ -52,10 +60,16 @@ func configure(view_camera: Camera3D, settings: Dictionary) -> void:
 	_active_shape_provider = _select_shape_provider()
 
 func ensure_beam(light: SpotLight3D) -> void:
+	if is_member_deferred(light): return
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
 		return
 	if light.has_meta(BEAM_META_KEY):
 		return
+	if light.get_meta("peraviz_aggregate_shaft", false): _aggregate_created += 1
+	else:
+		_member_created += 1
+		if light.get_meta("peraviz_shaft_was_deferred", false): _lazy_created += 1
+		if light.get_meta("peraviz_shaft_was_aggregate", false): _rehydrated += 1
 	var beam := MeshInstance3D.new()
 	beam.name = "PeravizVolumetricBeam"
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -69,6 +83,15 @@ func ensure_beam(light: SpotLight3D) -> void:
 func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
 		_update_experimental_beam(light, params)
+		return
+	if is_member_deferred(light):
+		# Keep physical optical/footprint metadata ready while omitting only the graphical shaft.
+		params["smooth_light_profile"] = true
+		var projection: RefCounted = OpticalProjection.resolve(light)
+		projection.configure(params, light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
+		if not params.has("profile_beam_angle"): params["profile_beam_angle"] = projection.base_beam_angle_deg
+		projection.apply_footprint(light)
+		refresh_surface_profile(light)
 		return
 	ensure_beam(light)
 	var beam: MeshInstance3D = light.get_meta(BEAM_META_KEY) as MeshInstance3D
@@ -361,6 +384,11 @@ func _cleanup_debug_axis(light: SpotLight3D) -> void:
 	light.remove_meta(DEBUG_AXIS_KEY)
 
 func reset_scene_state() -> void:
+	_member_created = 0
+	_lazy_created = 0
+	_rehydrated = 0
+	_member_retired = 0
+	_aggregate_created = 0
 	for provider in _shape_providers.values():
 		provider.clear_cache()
 	_proxy_controller.reset_scene_state()
@@ -435,3 +463,61 @@ func supports_native_dynamic(light: SpotLight3D, beam: MeshInstance3D) -> bool:
 	if not beam.material_override is ShaderMaterial: return false
 	var material := beam.material_override as ShaderMaterial
 	return material.shader == _beam_material_template.shader and material.next_pass == null and not beam.has_meta(&"peraviz_control_group_material") and material.get_shader_parameter("has_gobo_energy") != true and material.get_shader_parameter("gobo_coverage") == null and material.get_shader_parameter("gobo_mask") == null
+
+# Immutable standard-resource description; unknown/custom resources retain their eager path.
+func shaft_compatibility(light: SpotLight3D) -> PackedInt64Array:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM: return PackedInt64Array()
+	if bool(_settings.get("enable_realtime_spotlights", false)) or bool(_settings.get("beam_debug_optics", false)) or _diagnostic_open_surface_lights: return PackedInt64Array()
+	if light.light_projector != null or (light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null): return PackedInt64Array()
+	var beam: MeshInstance3D = get_beam_resource(light)
+	if beam != null:
+		if not beam.material_override is ShaderMaterial: return PackedInt64Array()
+		var material: ShaderMaterial = beam.material_override
+		if material.shader != _beam_material_template.shader or material.next_pass != null or material.render_priority != _beam_material_template.render_priority: return PackedInt64Array()
+		if material.get_shader_parameter("has_gobo_energy") == true or material.get_shader_parameter("gobo_coverage") != null or material.get_shader_parameter("gobo_mask") != null: return PackedInt64Array()
+	elif not is_member_deferred(light):
+		return PackedInt64Array()
+	return PackedInt64Array([get_instance_id(), _resource_revision, _beam_material_template.shader.get_instance_id(), _beam_material_template.render_priority])
+
+# Native membership is provisional until renderer layout and control-authority checks finish.
+func prepare_deferred_member(light: SpotLight3D, profile: Dictionary) -> void:
+	if OS.get_environment("PERAVIZ_LAZY_AGGREGATE_SHAFTS") == "0":
+		ensure_beam(light)
+		return
+	if get_beam_resource(light) != null or not bool(profile.get("has_projected_beam", true)): return
+	var already_deferred: bool = is_member_deferred(light)
+	light.set_meta(DEFERRED_SHAFT, true)
+	var description := shaft_compatibility(light)
+	if description.is_empty():
+		# Keep prior deferral identity so a newly incompatible policy is explicitly rehydrated.
+		if not already_deferred: light.remove_meta(DEFERRED_SHAFT)
+		return
+	light.set_meta(DEFERRED_SHAFT, description)
+	light.set_meta("peraviz_shaft_was_deferred", true)
+
+func is_member_deferred(light: SpotLight3D) -> bool:
+	return light.has_meta(DEFERRED_SHAFT)
+
+# Accepted groups retain anchors/lenses but release unnecessary real nodes and materials immediately.
+func defer_member_shaft(light: SpotLight3D) -> bool:
+	if OS.get_environment("PERAVIZ_LAZY_AGGREGATE_SHAFTS") == "0": return false
+	var description := shaft_compatibility(light)
+	if description.is_empty(): return false
+	var beam: MeshInstance3D = get_beam_resource(light)
+	light.set_meta(DEFERRED_SHAFT, description)
+	light.set_meta("peraviz_shaft_was_deferred", true)
+	light.set_meta("peraviz_shaft_was_aggregate", true)
+	if beam != null:
+		light.remove_meta(BEAM_META_KEY)
+		beam.free()
+		_member_retired += 1
+	return true
+
+# Cold allocation stays hidden until dense held-state replay configures all uniforms and geometry.
+func rehydrate_member_shaft(light: SpotLight3D) -> void:
+	light.remove_meta(DEFERRED_SHAFT)
+	ensure_beam(light)
+
+func shaft_resource_counters() -> Dictionary:
+	return {"member_shafts_created": _member_created, "individual_shafts_created_lazily": _lazy_created,
+		"rehydrated_member_shafts": _rehydrated, "retired_member_shafts": _member_retired, "aggregate_shafts_created": _aggregate_created}

@@ -601,6 +601,14 @@ func _update_existing_beam_material_scalars(light: SpotLight3D) -> void:
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service._track_phase("beam_update", beam_phase_start)
 
+# Cold provisional nomination; final resource acceptance belongs to the dense renderer binding transaction.
+func _prepare_deferred_shaft(light: SpotLight3D, profile: Dictionary) -> void:
+	if _active_beam_renderer != null and _active_beam_renderer.has_method("prepare_deferred_member"):
+		_active_beam_renderer.prepare_deferred_member(light, profile)
+
+func _rebind_native_shaft_instances(changes: Dictionary) -> void:
+	_native_target_registry.rebind_shaft_instances(changes)
+
 func _ensure_beam_runtime_for_light(light: SpotLight3D) -> void:
 	if _active_beam_renderer == null or light == null or not is_instance_valid(light):
 		return
@@ -1699,6 +1707,7 @@ func _configure_native_target_registry() -> void:
 			"collect_emitter_lights": Callable(self, "_collect_fixture_emitter_lights"),
 			"get_emitter_photometrics": Callable(self, "_get_fixture_emitter_photometrics"),
 			"ensure_beam_runtime": Callable(self, "_ensure_beam_runtime_for_light"),
+			"prepare_deferred_shaft": Callable(self, "_prepare_deferred_shaft"),
 			"get_beam_resource": Callable(self, "_get_beam_resource_for_light"),
 			"apply_beam_optics": Callable(self, "_apply_beam_optics_for_light"),
 			"present_native_gobo": Callable(self, "_present_native_gobo"),

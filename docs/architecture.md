@@ -162,6 +162,29 @@ schema/binding generations and never waits on workers during ordinary frames.
 See the [bounded comparison](performance-foundation.md#independent-emitter-render-application-phase-1)
 for the GPU-instancing decision, resource limits and measurement boundaries.
 
+## Aggregate member shaft lifetime
+
+Native classification nominates provisional members before registry shaft creation.
+The standard Vector Prism renderer exposes an immutable generation/resource
+identity description without constructing member meshes or materials. Unknown
+materials, gobo/projector resources and unsupported policies retain eager resources
+and exact fallback. Final render layout acceptance checks physical membership,
+anchors, optical/resource compatibility and selected-mode Zoom authority before
+`AggregateShaftResources` confirms deferral. Canonical outputs, SpotLight anchors,
+mechanical geometry, optical metadata and physical lenses remain installed.
+
+The cold binding transaction now resolves render layout, reconciles actual shaft
+allocation, installs Control Groups/lens sharing, and finally binds lens RIDs.
+Deferred Control Groups retain their native control and lens ownership without a
+phantom shared shaft material. Accepted aggregates own normal renderer shafts;
+member shafts are absent. Resource lists are rebound in one indexed transaction.
+Policy or resource changes rehydrate missing individuals hidden on the main thread,
+then force native held-state replay before presentation. No new DMX packet is
+needed. Re-acceptance retires unnecessary nodes immediately after revoking native
+beam handles. Renderer replacement refreshes resource descriptions, never borrowed
+old-generation handles. Dimmer/Color playback never changes resource ownership.
+See the [allocation comparison](performance-foundation.md#lazy-aggregate-member-shafts).
+
 ## Renderer ownership
 
 GDTF/native semantic state determines physical optical values. Peraviz resolves

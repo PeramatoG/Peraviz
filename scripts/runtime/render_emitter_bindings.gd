@@ -51,6 +51,7 @@ func install(adapter: RefCounted, descriptors: Array) -> bool:
 			if membership[index] >= 0 or adapter._outputs[index].lights.size() != 1: reason = "resource_ownership"; break
 			var light = adapter._outputs[index].lights[0]
 			if not light.projected or light.has_gobo or (is_instance_valid(light.debug_axis) and light.debug_axis.visible): reason = "projector_or_debug_resource"; break
+			if adapter._renderer.has_method("shaft_compatibility") and adapter._renderer.shaft_compatibility(light.light).is_empty(): reason = "shaft_resource_compatibility"; break
 			if not members.is_empty() and adapter._route_signatures[index][2] != adapter._route_signatures[members[0]][2]: reason = "zoom_authority"; break
 			members.append(index)
 		if not reason.is_empty() or members.size() < 3:
