@@ -222,11 +222,17 @@ See the [allocation comparison](performance-foundation.md#lazy-aggregate-member-
 GDTF/native semantic state determines physical optical values. Peraviz resolves
 shared presentation geometry into one [Optical Projection State](optical-projection-state.md)
 per emitter. Every projected output may resolve surface-profile data without owning
-a realtime renderer light. Vector Prism grants realtime ownership only to genuine
-projectors and explicit realtime/experimental modes. Open-light A/B is an opt-in
-developer argument; see [surface ownership](surface-light-ownership.md). The future
-physical outputs → optical/surface state → Control/Render Groups → bounded/batched
-surface backend remains deferred. Vector shaft and surface footprint consume its aperture,
+a realtime renderer light. The default custom footprint backend consumes original
+raster artwork and radial
+profiles through bounded Forward+ perspective volumes; its native physical material
+RID application is independent of shaft reduction. It suppresses native projectors
+and their shadow dependency. The selectable native reference grants realtime
+ownership only to genuine projectors and explicit realtime/experimental modes.
+Open-light A/B is an opt-in
+developer argument; see [surface ownership](surface-light-ownership.md). Physical
+outputs retain individual surface identity behind Control/Render Group
+shaft reduction. Surface batching and projector-space occlusion remain deferred.
+Vector shaft and surface footprint consume its aperture,
 base optical transform, native gobo roll, visual alignment and parity. They may not
 maintain competing authoritative optical transforms. Color/intensity remain in the
 native dense photometric state; camera movement cannot dirty projection geometry.
@@ -249,6 +255,19 @@ startup validation and beam/footprint lifecycle coverage.
 Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.
 
 Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Indexed selected-gobo angles and continuous selected-gobo AngularSpeed use protocol 2.3 `GoboRotation` motion-state rows transported through compiled setup contract 7. C++ owns authoritative phase, signed velocity, ModeMaster arbitration, and dirty transitions; Godot advances active layers locally and mutates presentation parameters without topology regeneration. Gobo selection and rotation ownership is keyed by Beam render target plus one-based wheel instance; binding IDs remain diagnostic identities and never arbitrate Pos against PosRotate. Logical gobo control and temporal state outlive renderer target generations; target rebuilds explicitly rehydrate current resources and phase, while true runtime rebuilds seed the new native generation once from the latest held snapshots for used universes. Godot may compose and cache a bounded static multi-wheel mask, but independently moving compositions remain deferred. See [Gobo control](GDTF_GOBO_CONTROL.md).
+
+Live visual settings compare actual old/new values before dispatch. Gains replay
+main-thread displayed renderer rows and cached unscaled surface energy; they never
+retire/poll native workers, re-evaluate physical state or rebuild bindings. A pending
+completed snapshot subsequently uses the latest presentation policy. Script fallback
+and aggregate shafts consume the same replay, with one gain application. Profile-only
+edits update existing uniforms; actual support-cone changes may refresh optical
+geometry without reclassifying groups or replacing lenses. Only structural edits use
+the controlled replacement lifecycle. Renderer compatibility revisions exclude scalar
+uniforms. Shaft resource replacement is identity-guarded and uses generation-scoped
+reverse record slots, avoiding per-emitter global target scans. Opt-in runtime tracing
+emits `[PeravizLiveSettings]` timings and constant-time ownership deltas; no-op
+settings transactions perform no renderer work.
 
 ## Invariants and limitations
 

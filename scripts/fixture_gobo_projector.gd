@@ -52,6 +52,7 @@ const GOBO_BEHAVIOR_ROTATION: int = 2
 const GOBO_BEHAVIOR_SHAKE: int = 3
 
 const DmxGoboRangeResolverScript = preload("res://scripts/dmx_gobo_range_resolver.gd")
+const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
 const DmxGoboControlsResolverScript = preload("res://scripts/dmx_gobo_controls_resolver.gd")
 
 var _texture_cache: Dictionary = {}
@@ -71,7 +72,7 @@ func set_shadow_mask_enabled(light: SpotLight3D, enabled: bool) -> void:
 	if light == null or not is_instance_valid(light):
 		return
 	var texture: Texture2D = light.get_meta(GOBO_TEXTURE_META_KEY) as Texture2D if light.has_meta(GOBO_TEXTURE_META_KEY) else light.light_projector
-	if not enabled or texture == null:
+	if not enabled or texture == null or SurfacePolicy.custom_light(light):
 		_remove_gobo_plane(light)
 		return
 	var plane: MeshInstance3D = _ensure_gobo_plane(light)
@@ -529,7 +530,7 @@ func _apply_gobo_visuals(light: SpotLight3D, gobo_texture: Texture2D, controls: 
 		_remove_gobo_plane(light)
 		return
 	var use_native_shadow_gobo_mask: bool = bool(controls.get("use_native_shadow_gobo_mask", false))
-	if not use_native_shadow_gobo_mask:
+	if not use_native_shadow_gobo_mask or SurfacePolicy.custom_light(light):
 		_remove_gobo_plane(light)
 		return
 	var gobo_plane: MeshInstance3D = _ensure_gobo_plane(light)
@@ -560,6 +561,7 @@ func _apply_gobo_shake_tilt_to_light(light: SpotLight3D, shake_tilt_deg: float) 
 func _set_light_projector_texture(light: SpotLight3D, texture: Texture2D) -> void:
 	if light == null or not is_instance_valid(light):
 		return
+	if SurfacePolicy.custom_light(light): texture = null
 	if texture != null and light.has_meta(OpticalProjectionScript.META):
 		var projection: RefCounted = light.get_meta(OpticalProjectionScript.META)
 		if projection.smooth_profile_enabled and projection.surface_texture != null: texture = projection.surface_texture

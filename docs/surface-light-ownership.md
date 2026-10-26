@@ -5,7 +5,197 @@ Every projected physical output can resolve a surface profile. That capability
 its smooth radial profiles, shared Optical Projection State, dynamic FieldAngle,
 axial decay, gobo energy normalization and cached footprint softness.
 
-## Regression and restored policy
+## Independent footprint backend
+
+New sessions use **Vector Prism + Custom Footprints**: `beam_presentation=1`,
+`footprint_backend="custom"`, `enable_realtime_spotlights=false`. **Vector Prism +
+Native Footprints** keeps presentation 1 and selects `footprint_backend="native"`.
+The shaft renderer is unchanged. The unmatched quick-preset entry is labelled
+**Modified settings**; it never selects a backend. A status line always identifies
+the active backend and Native's gobo-only coverage. Programmatic control updates
+emit no intermediate settings, so a preset commits once. Experimental numeric IDs 0/2/3 remain available
+in advanced settings and retain their saved meaning; the quick menu shows the two
+Vector Prism presets. PVZ archives without a backend migrate to native, while
+explicit backend choices round-trip. Partial live settings never apply archive
+migration. New MVR documents select the preferred custom route; opening a PVZ instead
+restores its explicit or migrated backend.
+
+New sessions and both presets use `footprint_multiplier=0.6` and
+`footprint_softness=0.10`; explicit PVZ values remain intact. The surface shader
+applies native Color/energy once, then this visual gain. Reliable Beam/Field radial
+anchors stay primary. Unanchored type fallbacks use one broad Wash terminal
+feather and a moderate Spot feather; gobo artwork is never blurred. These are
+Peraviz visual defaults, not physical calibration or new GDTF attributes.
+
+The custom backend owns conservative twelve-sided cone meshes and surface materials,
+independently of shafts and GPU lenses. Both consume `OpticalProjectionState`;
+its resolved anchor already includes lens offset, hierarchy, aperture, roll and
+parity. A cached inverse of that world transform supplies perspective coordinates
+`local.xy / (-local.z * tan(half_angle))`. Original cached PNG/BMP or supported
+composed gobo textures supply artwork, including alpha and aspect ratio. Open
+Spot/Wash use the established radial profile analytically, without textures.
+No vectorized shaft geometry supplies the footprint image.
+
+Native main-thread glue applies dirty **physical** Color/surface energy directly
+to material RIDs in both serial and completed-async paths, independently of shaft
+aggregation and gain. Blackout suppresses mesh instance RIDs too. Custom selection
+clears native projector textures, gobo-required shadows and shadow masks; a gobo
+cannot grant realtime-light ownership. Explicit realtime lighting and experimental
+atmospheric lighting retain their separate policies. Resources survive unrelated
+renderer rebinding; backend/scene retirement revokes borrowed RIDs before freeing
+volumes. Held native state replays on selection and diagnostic changes.
+
+Forward+ reconstructs the camera-visible opaque position using Vulkan NDC Z in
+[0,1], rejecting Reverse-Z background depth 0. Exit faces bound raster coverage,
+including cameras inside a volume. One normal-buffer sample gives a view-space
+normal. Vertices cache view-to-projector rows and the view-space optical origin,
+so fragments avoid repeated world/view matrix work. Common exact radial exponents
+2/8 use multiplication; general profiles retain `pow`. Exactly zero artwork
+transmission rejects work early without dropping faint detail. This avoids
+the CC0 shader's additional depth samples and preserves normal-map detail. It may
+require a normal prepass attachment: fewer samples alone do not prove a GPU win.
+The diagnostic derivative variant removes that sampler and is confined to tests.
+
+`footprint_max_range` defaults to 40 m, independently of shaft length; a radial
+80–100% distance fade avoids a hard end. This is a presentation limit, not GDTF
+photometry. Imported scene bounds plus the application Ground conservatively reject empty volume AABBs;
+scenic transform subscriptions coalesce bounds growth without per-fixture scene
+searches or colliders. Camera frustum culling and shader cone/depth masks finish
+selection. New/remeshed receivers require scene setup again; bounds are deliberately
+conservative. Transform/range/Zoom changes update geometry; Color/Dimmer and camera
+motion do not search receivers. Gobo roll only updates the shared transform.
+
+This is an additive, unshaded **Peraviz approximation**, with profile, inverse-square
+attenuation and incidence, rather than native material/BRDF lighting equivalence.
+The legacy cone renderer is outside this prototype. Only shared Vector Prism
+optics and Forward+ opaque depth/normal receivers are supported; no automatic native
+substitution occurs on other renderers. Transparent transmission is unsupported.
+Camera depth is **not fixture-space occlusion**: hidden-from-fixture surfaces may
+still receive light. Silhouettes, depth/normal prepass coverage and MSAA edges can
+show screen-space artifacts. Selective low-resolution projector depth or bounded
+geometric occlusion remains a follow-up; no new shadow maps are rendered here.
+
+Mechanisms were adapted from [BluntBSE's CC0 projection shader](https://godotshaders.com/shader/compatibility-friendly-texture-projection/)
+and [Rytelier's MIT normal-buffer shader](https://godotshaders.com/shader/fake-light-projection/).
+Their published licences were verified; the [source notice](../scripts/shaders/custom_footprint.LICENSE.txt)
+retains MIT terms. Neither upstream planar UVs nor per-pixel inverse/axis assumptions
+were copied into the optical contract.
+
+Custom trace keys are `custom_projector_resources`, `active_custom_footprints`
+(before camera culling), `culled_custom_footprints`, `custom_projector_parameter_updates`
+and `custom_footprint_dynamic_writes` (last native batch). Existing native projector,
+shadow and cache-build gauges keep their original meanings; custom footprints do
+not increase them. Counters use retained handles, never live SceneTree enumeration.
+
+## Live settings, held replay and measured CPU cost
+
+Gains change presentation values, never the renderer installation. The native
+main-thread cache retains final displayed render rows, not another physical/DMX
+state. Shaft replay covers individual, Control Group and aggregate resources,
+including zero recovery. Surface replay retains unscaled physical energy separately
+from gain, so restoring a zero gain is exact. Neither replay consumes or retires an
+in-flight native snapshot; subsequent completion applies the newest gain. Scalar
+changes do not advance renderer compatibility revisions or gobo phase/topology.
+Footprint softness writes existing uniforms; range edits update existing volume
+bounds. Actual radial support changes can refresh their optical geometry. Preset
+matching uses an explicit optical key contract including profile, softness and range;
+independent environment controls do not select another optical preset/backend.
+
+One focused before/after run used the same generated production-imported MVR:
+1,000 physical outputs, 20 aggregate shafts and 1,000 independent Custom footprints,
+Linux Debug, Godot 4.7.1 headless Forward+. These are **CPU main-thread settings
+costs, not GPU/frame rates**. DMX was held or changed/submitted for the indicated
+case; the corrected active case also starts native consumption before the edit.
+
+| Settings transaction | Before ms | After ms | Native gain replay µs |
+| --- | ---: | ---: | ---: |
+| Shaft gain, held DMX | 4,970.065 | 0.636 | 20 |
+| Shaft gain, changing DMX | 4,973.251 | 0.518 | 15 |
+| Footprint gain | 127.307 | 0.253 | 49 |
+| Footprint softness | 4,937.729 | 5.827 | — |
+| Custom → Native | 119.996 | 118.375 | — |
+| Native → Custom | 150.732 | 155.054 | — |
+
+Previously each scalar transaction recreated 20 aggregate shafts and reinstalled
+dense/lens/footprint associations; shaft/softness refresh also called a global
+resource rebind for every emitter. Corrected scalar cases created/retired **zero**
+shafts, lens batches or footprint volumes, installed zero bindings and made zero
+registry calls/scans. Shaft edits issued 20 script beam parameter writes; surface
+gain issued 1,000 native material writes; softness issued no beam writes. Backend
+changes intentionally still replace 20 aggregate shafts and retire/create the
+1,000 footprint volumes, with two batched indexed registry calls and no full scan.
+The aggregate workload has no admitted GPU lens batches; the independent 1,000-row
+regression additionally checks that its existing GPU lens batches remain identical
+through scalar edits. Timings are individual trace samples, not CI thresholds.
+
+Reproduce via `test_render_emitter_groups.gd -- --live-settings-probe` using Forward+.
+Normal runtime tracing is opt-in and reports settings duration, native replay,
+actual writes and constant-time resource deltas. Regression coverage also checks
+both serial aggregate and completed-async independent paths, pending DMX, original
+gobo image/roll preservation, no-op settings and renderer/reload fallbacks. The small
+Forward+/Vulkan graphical check now changes gain/softness through the shared live
+update helper; opaque floor/wall/incline imagery and zero native projectors remain.
+Its Custom, held-rotation/Zoom and camera-inside captures are pixel-identical to
+the preceding committed captures on the same software Vulkan device.
+
+This fixes interactive settings reconstruction. The remaining full-coverage GPU
+projection cost is the next performance milestone; the owner's 55/95 FPS figures
+still compare different coverage and cannot establish relative renderer speed.
+
+## Bounded graphical validation
+
+The owner's Windows RTX 3070 / Godot 4.7.1 Forward+ observations (V-Sync off,
+same MVR/chase) were initially about 60 FPS (latest report: 55 FPS) with all Custom footprints and 95 FPS with
+Native's gobos only. The former generic “Custom” quick entry also showed Native
+coverage. **Those are unequal workloads, not a Custom-vs-Native speed comparison.**
+
+The generated scene covers PNG/BMP gobos, Spot/Wash together, floor/wall/incline,
+held DMX, preset/renderer changes, mirror/rotation, camera-inside, range and blackout.
+[Previous defaults](images/custom-footprints/previous-defaults.png) and
+[softer 0.6-gain defaults](images/custom-footprints/custom.png) use the same physical
+inputs. The isolated scene peak fell from 215 to 171 (8-bit output); neither clipped
+highlights. Dense overlapping footprints
+still saturate additively. There is no nonlinear clamp or second Dimmer/Color gain.
+
+One equal-coverage 1,095-output comparison, Linux Debug, Godot 4.7.1 Forward+/Vulkan,
+Mesa llvmpipe LLVM 19.1.7, 960×640, no MSAA, eight warm-up/six measured frames,
+identical textures, range (8 m for the generated floor), 0.6 gain and 0.10 softness:
+
+| Custom variant | CPU render ms | Software device ms | Draws | Lit pixels (>0.15) |
+| --- | ---: | ---: | ---: | ---: |
+| Square volume, original fragment math | 1.381 | 195.637 | 1,100 | 58,075 |
+| Circumscribed cone, original math | 1.372 | 179.634 | 1,100 | 58,075 |
+| Cone + vertex-cached transforms / exact fast powers | 1.329 | 169.676 | 1,100 | 58,076 |
+| Blackout | 0.122 | 9.857 | 5 | 0 |
+
+The cone changed **zero pixels**; optimized math changed ten pixels by one 8-bit
+level maximum (one crossed the reporting threshold). All 1,095 emitters and original
+image details remain. Native surface lights / shadowed projectors were 0/0 in all
+variants. A twelve-sided circumscribed cone bounds the entire circular support,
+removing square-corner coverage (19.6% less axial cross-section), at the cost of
+22 rather than 6 triangles per footprint: viewport primitives rose 6,630→24,150.
+Actual fragment-invocation/overdraw counters are unavailable. This shows a software
+rendering cost reduction, **not an RTX FPS prediction**; vertex/bandwidth tradeoffs
+still need Windows validation. Overlap and one draw/material per physical footprint
+remain. Engine/driver memory was not measured.
+
+Render Group acceptance proves shaft aggregation, not identical surface distributions.
+The existing compact generator has distinct emitter offsets and potentially separate
+RGB authorities. Those project different patterns on inclined/depth-varying receivers;
+no approximate member collapse is applied. Immutable mesh/texture sharing is retained.
+
+```sh
+$GODOT --path . --rendering-method forward_plus --rendering-driver vulkan --audio-driver Dummy --script tests/gdscript/test_custom_surface_footprints.gd -- --render-footprint-probe
+```
+
+`--footprint-count=1095` runs the controlled Custom-only comparison; the optional
+`--footprint-output=PATH` selects captures/JSON. Clean-cache CI retains Native/Legacy
+lifecycle checks and adds the normal Custom path, including gobo→open while hidden.
+Selection invalidates shared shaft geometry; cold renderer replacement publishes
+final registry handles in one batch; newly bound lenses inherit diagnostic suppression.
+No readiness checks are weakened. Fixture-space occlusion remains deferred.
+
+## Regression and restored native-reference policy
 
 Commit `f0e954d` accidentally made `smooth_profile_enabled && projected` sufficient
 to enable every existing SpotLight RID. On the user's canonical scene this changed
@@ -14,7 +204,7 @@ Forward+ lights. The reported result was approximately 1 FPS instead of 24–25 
 Native angular falloff without shadows is cheaper than a projector, but is not a
 scalable backend for thousands of independent theatrical surface lights.
 
-Production Vector Prism now grants realtime surface ownership only to:
+The native reference grants realtime surface ownership only to:
 
 - A currently assigned, genuine gobo/projector texture.
 - Explicitly requested realtime lighting.
@@ -83,7 +273,7 @@ Trace also reports lifetime `presentation_cache_builds`: per-renderer footprint
 texture creations and gobo energy builds. An energy build comprises the static
 transmission analysis and coverage/chord lookup. These counts should settle after
 setup/selection/settings changes. They must stay flat through dimmer/color updates,
-ordinary DMX frames and camera movement. Zoom/roll reuse their static textures.
+ordinary DMX frames, camera movement and gain-only edits. Zoom/roll reuse their static textures.
 Caches remain bounded; no filtering or transmission analysis moved into playback.
 
 ## Diagnostic open realtime lights: small scenes only

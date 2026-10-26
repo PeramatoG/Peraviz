@@ -13,7 +13,7 @@ const BASIC_KEYS := {
 	"bloom_multiplier": true,
 	"volumetric_fog_density": true,
 	"light_volumetric_fog_energy": true,
-	"beam_presentation": true,
+	"footprint_backend": true,
 }
 
 var _controls: Dictionary = {}
@@ -43,6 +43,8 @@ func _build_ui() -> void:
 	_add_slider_row("Volumetric fog fade", "volumetric_fog_fade", 0.0, 0.2, 0.005)
 	_add_slider_row("Native light fog energy", "light_volumetric_fog_energy", 0.0, 1500.0, 10.0)
 	_add_option_row("Beam presentation", "beam_presentation", BeamPresentationOptionsScript.LABELS)
+	_add_option_row("Footprint backend", "footprint_backend", ["Custom (Forward+ opaque surfaces)", "Native (gobo reference)"], ["custom", "native"])
+	_add_slider_row("Footprint maximum range (m)", "footprint_max_range", 1.0, 200.0, 1.0)
 	_add_color_row("Background color", "background_color")
 
 func set_advanced_mode(enabled: bool) -> void:
@@ -58,7 +60,8 @@ func apply_settings(settings: Dictionary) -> void:
 			(control as HSlider).value = float(settings.get(key, (control as HSlider).value))
 		elif control is OptionButton:
 			var option: OptionButton = control as OptionButton
-			option.select(clamp(int(settings.get(key, 0)), 0, max(0, option.item_count - 1)))
+			var selected: int = ["custom", "native"].find(str(settings.get(key, "custom"))) if key == "footprint_backend" else int(settings.get(key, 0))
+			option.select(clampi(selected, 0, maxi(0, option.item_count - 1)))
 		elif control is ColorPickerButton:
 			(control as ColorPickerButton).color = settings.get(key, Color.BLACK)
 	_update_value_labels()
@@ -100,7 +103,7 @@ func _add_slider_row(label_text: String, key: String, min_value: float, max_valu
 	if _is_advanced(key):
 		_advanced_rows.append(row)
 
-func _add_option_row(label_text: String, key: String, options: Array[String]) -> void:
+func _add_option_row(label_text: String, key: String, options: Array[String], values: Array = []) -> void:
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	add_child(row)
@@ -115,7 +118,7 @@ func _add_option_row(label_text: String, key: String, options: Array[String]) ->
 	for option_text in options:
 		option_button.add_item(option_text)
 	option_button.item_selected.connect(func(index: int) -> void:
-		setting_changed.emit(key, index)
+		setting_changed.emit(key, values[index] if not values.is_empty() else index)
 	)
 	row.add_child(option_button)
 

@@ -9,6 +9,11 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		app._status_presenter.set_scene_state_loading(path)
 	app._clear_scene()
 	app._scene_loading = true
+	if project_context.is_empty() and loaded_file_type == "mvr":
+		# A new MVR document has no saved presentation policy. PVZ restoration
+		# below instead preserves explicit and migrated legacy settings.
+		app._apply_visual_settings({"beam_render_mode": 0, "beam_presentation": 1, "footprint_backend": "custom", "enable_realtime_spotlights": false, "footprint_multiplier": 0.6, "footprint_softness": 0.10})
+		if app.visual_settings_window != null: app.visual_settings_window.configure(app._visual_settings)
 	app._scene_load_failed = false
 	app._scene_setup_resource_metrics.clear()
 	var loading_overlay := preload("res://scripts/scene_loading/scene_loading_overlay.gd").new()

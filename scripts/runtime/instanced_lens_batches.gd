@@ -111,7 +111,7 @@ func install(adapter: RefCounted) -> void:
 	var owners: Array = []
 	var buffers: Array = []
 	var scales: Array = []
-	var shared_material: ShaderMaterial
+	var shared_material: ShaderMaterial = null
 	for group in candidates.values():
 		for first in range(0, group.size(), MAX_BATCH):
 			var entries: Array = group.slice(first, mini(first + MAX_BATCH, group.size()))

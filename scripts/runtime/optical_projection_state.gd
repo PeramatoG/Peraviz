@@ -29,6 +29,7 @@ var texture_id: int = 0
 var configured: bool = false
 var radial_profile: RefCounted = RadialProfile.new()
 var profile_revision: int = 0
+var pattern_texture: Texture2D
 var surface_texture: Texture2D
 var surface_source_id: int = -1
 var surface_profile_revision: int = -1
@@ -52,10 +53,14 @@ static func resolve(light: SpotLight3D) -> RefCounted:
 func configure(params: Dictionary, texture: Texture2D) -> bool:
 	# Godot's projector supports half apertures up to 89 degrees. Resolve this
 	# engine presentation limit once; the shaft consumes the same full aperture.
+	pattern_texture = texture
 	var enable_profile := bool(params.get("smooth_light_profile", false))
 	# Typed comparisons inside the reusable profile avoid temporary containers and
 	# recomputing curves/textures during Zoom, color, intensity or roll playback.
 	base_beam_angle_deg = float(params.get("profile_beam_angle", base_beam_angle_deg if configured else (params.get("beam_angle", 25.0) if bool(params.get("beam_angle_explicit", false)) else 25.0)))
+	var previous_support: float = radial_profile.support_scale
+	var previous_aspect: Vector2 = radial_profile.aspect
+	var previous_rectangle: bool = radial_profile.rectangular
 	var profile_changed: bool = radial_profile.configure(str(params.get("beam_type", "Wash")), base_beam_angle_deg, float(params.get("field_angle", 25.0)), float(params.get("rectangle_ratio", 1.0)), float(params.get("beam_softness", 0.32)), float(params.get("beam_radial_falloff", 1.0)), bool(params.get("beam_angle_explicit", false)), bool(params.get("field_angle_explicit", false)))
 	has_projected_surface_profile = radial_profile.projected
 	profile_changed = profile_changed or smooth_profile_enabled != enable_profile
@@ -70,8 +75,12 @@ func configure(params: Dictionary, texture: Texture2D) -> bool:
 	var mz := bool(params.get("beam_gobo_mirror_z", false))
 	var offset := Vector3(float(params.get("lens_shift_x", 0.0)), float(params.get("lens_shift_y", 0.0)), -maxf(float(params.get("lens_offset_m", params.get("near_offset", 0.0))), 0.0))
 	var next_texture: int = texture.get_instance_id() if texture != null else 0
-	if configured and not profile_changed and source_full_angle_deg == angle and lens_radius == radius and visual_range == length_m and gobo_scale == scale_value and alignment_roll_deg == alignment and mirror_x == mx and mirror_z == mz and lens_offset == offset and texture_id == next_texture:
-		return false
+	if configured and smooth_profile_enabled == enable_profile and previous_support == radial_profile.support_scale and previous_aspect == radial_profile.aspect and previous_rectangle == radial_profile.rectangular and source_full_angle_deg == angle and lens_radius == radius and visual_range == length_m and gobo_scale == scale_value and alignment_roll_deg == alignment and mirror_x == mx and mirror_z == mz and lens_offset == offset and texture_id == next_texture:
+		# Artistic profile uniforms do not change aperture, topology or alignment.
+		if profile_changed:
+			resolved_field_angle_deg = radial_profile.dynamic_field_angle(angle, float(params.get("profile_beam_angle", angle)))
+			revision += 1
+		return profile_changed
 	smooth_profile_enabled = enable_profile
 	source_full_angle_deg = angle
 	resolved_field_angle_deg = radial_profile.dynamic_field_angle(angle, float(params.get("profile_beam_angle", angle)))
@@ -94,6 +103,15 @@ func configure(params: Dictionary, texture: Texture2D) -> bool:
 	revision += 1
 	geometry_revision += 1
 	return true
+
+func set_pattern(texture: Texture2D) -> void:
+	if pattern_texture == texture: return
+	pattern_texture = texture
+	texture_id = texture.get_instance_id() if texture != null else 0
+	# Selection also invalidates the shaft topology, including an open gobo
+	# restored after presentation was suppressed. Roll never enters this path.
+	geometry_revision += 1
+	revision += 1
 
 func set_roll(degrees: float) -> void:
 	if is_equal_approx(gobo_roll_deg, degrees): return
@@ -134,6 +152,8 @@ func apply_footprint(light: SpotLight3D) -> void:
 	last_projector_transform = resolved
 	footprint_applied = true
 	footprint_revision = revision
+	if light.has_meta(&"peraviz_custom_footprint"):
+		light.get_meta(&"peraviz_custom_footprint").sync()
 
 func apply_shaft(beam: MeshInstance3D) -> void:
 	# Raw topology runs along Y. Preserve source-artwork X/right, Y/down and

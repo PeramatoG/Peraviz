@@ -25,6 +25,8 @@ func run() -> void:
 	test.check(app._dmx_controller.get_render_diagnostic_mode() == mode, "User arguments reach production diagnostic mode")
 	test.check(app._dmx_controller._perf_trace_enabled == trace, "User arguments reach production trace configuration")
 	test.check((await app._load_mvr_scene(fixture,"mvr",false)).get("ok",false), "Production MVR scene loads")
+	# These assertions intentionally cover native projector diagnostics.
+	app._apply_visual_settings({"footprint_backend": "native"})
 	var service: RefCounted = app._fixture_light_apply_service
 	test.check(service.is_dense_presentation_active(), "Dense installation is active in every mode")
 	apply_dmx(200,120)
@@ -59,6 +61,7 @@ func run() -> void:
 		test.check(app._asset_cache._scene_cache.is_empty() and app._asset_cache._mesh_cache.is_empty(), "Unload releases import caches")
 		test.check((await app._load_mvr_scene(fixture,"mvr",false)).get("ok",false), "Second scene load succeeds")
 		test.check(service.is_dense_presentation_active() and service._dense_adapter._generation != previous_generation, "Reload installs a fresh dense generation")
+		app._apply_visual_settings({"footprint_backend": "native"})
 		apply_dmx(200,180)
 		await process_frame
 		verify_resources(mode)

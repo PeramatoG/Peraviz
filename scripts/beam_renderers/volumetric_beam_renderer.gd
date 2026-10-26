@@ -39,6 +39,7 @@ var _lazy_created: int = 0
 var _rehydrated: int = 0
 var _member_retired: int = 0
 var _aggregate_created: int = 0
+var _aggregate_retired: int = 0
 var _last_parameter_write_count: int = 0
 var _presentation_mode: int = PRESENTATION_VECTOR_PRISM
 var _fog_controller: FogVolumeGoboBeamController = FogVolumeControllerScript.new()
@@ -52,7 +53,10 @@ func _init() -> void:
 	_active_shape_provider = _shape_providers[SHAPE_MODE_GOBO_PRISM] as VolumetricBeamShapeProvider
 
 func configure(view_camera: Camera3D, settings: Dictionary) -> void:
-	_resource_revision += 1
+	var next_mode := int(settings.get("beam_presentation", PRESENTATION_VECTOR_PRISM))
+	var next_shape := str(settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM))
+	if next_mode != _presentation_mode or next_shape != str(_settings.get("volumetric_shape_mode", SHAPE_MODE_GOBO_PRISM)):
+		_resource_revision += 1
 	_camera = view_camera
 	_settings = settings.duplicate(true)
 	_presentation_mode = int(settings.get("beam_presentation", PRESENTATION_VECTOR_PRISM))
@@ -87,10 +91,10 @@ func update_beam(light: SpotLight3D, params: Dictionary) -> void:
 	if is_member_deferred(light):
 		# Keep physical optical/footprint metadata ready while omitting only the graphical shaft.
 		params["smooth_light_profile"] = true
-		var projection: RefCounted = OpticalProjection.resolve(light)
-		projection.configure(params, light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
-		if not params.has("profile_beam_angle"): params["profile_beam_angle"] = projection.base_beam_angle_deg
-		projection.apply_footprint(light)
+		var deferred_projection: RefCounted = OpticalProjection.resolve(light)
+		deferred_projection.configure(params, light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
+		if not params.has("profile_beam_angle"): params["profile_beam_angle"] = deferred_projection.base_beam_angle_deg
+		deferred_projection.apply_footprint(light)
 		refresh_surface_profile(light)
 		return
 	ensure_beam(light)
@@ -162,6 +166,16 @@ func refresh_surface_profile(light: SpotLight3D) -> void:
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM or not light.has_meta(&"peraviz_optical_projection_state"): return
 	var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
 	if not projection.configured: return
+	if SurfacePolicy.custom_light(light):
+		projection.set_pattern(light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
+		projection.apply_footprint(light)
+		# Custom consumes original cached artwork and the profile in its shader.
+		if light.light_projector != null: light.light_projector = null
+		if light.has_meta("peraviz_pre_projector_shadow_enabled"):
+			light.shadow_enabled = bool(light.get_meta("peraviz_pre_projector_shadow_enabled"))
+			light.remove_meta("peraviz_pre_projector_shadow_enabled")
+		projection.surface_source_id = -1 # Native re-entry must rebuild its presentation binding.
+		return
 	var source: Texture2D = light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null
 	var source_id: int = source.get_instance_id() if source != null else 0
 	var open_owner: bool = SurfacePolicy.owns_realtime_light(bool(_settings.get("enable_realtime_spotlights", false)), _presentation_mode, false, _diagnostic_open_surface_lights, projection.has_projected_surface_profile)
@@ -190,6 +204,24 @@ func _compute_beam_settings_hash() -> int:
 	for key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff"]:
 		hash_value = int((hash_value ^ hash(_settings.get(key, null))) * 16777619)
 	return hash_value
+
+# Value-only profile uniforms retain geometry, control groups and gobo phase.
+func update_profile_uniforms(light: SpotLight3D, params: Dictionary) -> void:
+	if _presentation_mode != PRESENTATION_VECTOR_PRISM:
+		update_beam(light, params)
+		return
+	var projection: RefCounted = OpticalProjection.resolve(light)
+	var previous_geometry: int = projection.geometry_revision
+	projection.configure(params, projection.pattern_texture)
+	if previous_geometry != projection.geometry_revision:
+		update_beam(light, params)
+		return
+	var beam: MeshInstance3D = get_beam_resource(light)
+	if beam != null:
+		_apply_static_beam_params(beam, params)
+		_set_bound_shader_parameter(beam, "profile_parameters", projection.radial_profile.signature)
+		_set_bound_shader_parameter(beam, "profile_feather_start", projection.radial_profile.feather_start)
+	refresh_surface_profile(light)
 
 func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void:
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.0)
@@ -299,6 +331,7 @@ func get_beam_resource(light: SpotLight3D) -> MeshInstance3D:
 	return beam if beam != null and is_instance_valid(beam) else null
 
 func cleanup_beam(light: SpotLight3D) -> void:
+	if light.get_meta("peraviz_aggregate_shaft", false) and get_beam_resource(light) != null: _aggregate_retired += 1
 	_fog_controller.clear_for_light(light)
 	_proxy_controller.clear_for_light(light)
 	if light.has_meta(BEAM_META_KEY):
@@ -389,6 +422,7 @@ func reset_scene_state() -> void:
 	_rehydrated = 0
 	_member_retired = 0
 	_aggregate_created = 0
+	_aggregate_retired = 0
 	for provider in _shape_providers.values():
 		provider.clear_cache()
 	_proxy_controller.reset_scene_state()
@@ -520,4 +554,4 @@ func rehydrate_member_shaft(light: SpotLight3D) -> void:
 
 func shaft_resource_counters() -> Dictionary:
 	return {"member_shafts_created": _member_created, "individual_shafts_created_lazily": _lazy_created,
-		"rehydrated_member_shafts": _rehydrated, "retired_member_shafts": _member_retired, "aggregate_shafts_created": _aggregate_created}
+		"rehydrated_member_shafts": _rehydrated, "retired_member_shafts": _member_retired, "aggregate_shafts_created": _aggregate_created, "aggregate_shafts_retired": _aggregate_retired}
