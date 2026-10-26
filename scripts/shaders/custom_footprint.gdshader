@@ -86,7 +86,7 @@ void fragment() {
 	vec3 toward_source_view = toward_projector(view_position);
 	float distance_squared = dot(toward_source_view, toward_source_view);
 	if (distance_squared >= projection_range * projection_range) { discard; }
-	float inverse_distance = inversesqrt(max(distance_squared, 0.000001));
+	float inverse_distance = inversesqrt(max(distance_squared, 1e-30));
 	vec4 artwork = vec4(1.0);
 	if (has_artwork) {
 		// Godot spotlight reference maps +projector X to +U and +Y to -V.
