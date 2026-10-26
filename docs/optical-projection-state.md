@@ -95,3 +95,8 @@ anchor transform directly, including its parity and roll. It never derives artwo
 from shaft polygons. Surface range is a separate bounded presentation setting;
 Color/Dimmer arrive directly from native physical presentation, not this geometry
 adapter or shaft intensity.
+
+Surface-only falloff refinements leave native photometry and shaft profiles intact:
+reliable Beam/Field anchors remain primary, while unanchored Wash/Spot use different
+terminal feathers. Original gobo pixels are never blurred. Source selection advances
+geometry revision (needed for held gobo-to-open replay); roll alone never does.

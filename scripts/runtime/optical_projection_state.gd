@@ -101,6 +101,9 @@ func set_pattern(texture: Texture2D) -> void:
 	if pattern_texture == texture: return
 	pattern_texture = texture
 	texture_id = texture.get_instance_id() if texture != null else 0
+	# Selection also invalidates the shaft topology, including an open gobo
+	# restored after presentation was suppressed. Roll never enters this path.
+	geometry_revision += 1
 	revision += 1
 
 func set_roll(degrees: float) -> void:

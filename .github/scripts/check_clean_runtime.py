@@ -98,6 +98,10 @@ def main() -> int:
         raise RuntimeError('Application lifecycle completion marker missing')
     run_stage(base + ['--script','res://tests/integration/test_application_presentation_lifecycle.gd',
                       '--','--peraviz-perf-trace','--mvr',str(fixture),'--legacy'], output / 'application-lifecycle-legacy.log', 60, environment)
+    custom_base = base.copy()
+    custom_base[custom_base.index('--rendering-method') + 1] = 'forward_plus'
+    run_stage(custom_base + ['--script','res://tests/integration/test_application_presentation_lifecycle.gd',
+                             '--','--peraviz-perf-trace','--mvr',str(fixture),'--custom'], output / 'application-lifecycle-custom.log', 60, environment)
     check_modes(base, fixture, output, environment, run_stage)
     check_failure_contract(base, output, environment)
     print('Clean-cache application startup and presentation lifecycle passed.', flush=True)

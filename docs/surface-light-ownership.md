@@ -10,13 +10,24 @@ axial decay, gobo energy normalization and cached footprint softness.
 New sessions use **Vector Prism + Custom Footprints**: `beam_presentation=1`,
 `footprint_backend="custom"`, `enable_realtime_spotlights=false`. **Vector Prism +
 Native Footprints** keeps presentation 1 and selects `footprint_backend="native"`.
-The shaft renderer is unchanged. Experimental numeric IDs 0/2/3 remain available
+The shaft renderer is unchanged. The unmatched quick-preset entry is labelled
+**Modified settings**; it never selects a backend. A status line always identifies
+the active backend and Native's gobo-only coverage. Programmatic control updates
+emit no intermediate settings, so a preset commits once. Experimental numeric IDs 0/2/3 remain available
 in advanced settings and retain their saved meaning; the quick menu shows the two
 Vector Prism presets. PVZ archives without a backend migrate to native, while
 explicit backend choices round-trip. Partial live settings never apply archive
-migration. MVR imports use the current session settings, initially custom.
+migration. New MVR documents select the preferred custom route; opening a PVZ instead
+restores its explicit or migrated backend.
 
-The custom backend owns bounded square-pyramid meshes and surface materials,
+New sessions and both presets use `footprint_multiplier=0.6` and
+`footprint_softness=0.10`; explicit PVZ values remain intact. The surface shader
+applies native Color/energy once, then this visual gain. Reliable Beam/Field radial
+anchors stay primary. Unanchored type fallbacks use one broad Wash terminal
+feather and a moderate Spot feather; gobo artwork is never blurred. These are
+Peraviz visual defaults, not physical calibration or new GDTF attributes.
+
+The custom backend owns conservative twelve-sided cone meshes and surface materials,
 independently of shafts and GPU lenses. Both consume `OpticalProjectionState`;
 its resolved anchor already includes lens offset, hierarchy, aperture, roll and
 parity. A cached inverse of that world transform supplies perspective coordinates
@@ -37,14 +48,17 @@ volumes. Held native state replays on selection and diagnostic changes.
 Forward+ reconstructs the camera-visible opaque position using Vulkan NDC Z in
 [0,1], rejecting Reverse-Z background depth 0. Exit faces bound raster coverage,
 including cameras inside a volume. One normal-buffer sample gives a view-space
-normal; the incident direction uses `VIEW_MATRIX` with no translation. This avoids
+normal. Vertices cache view-to-projector rows and the view-space optical origin,
+so fragments avoid repeated world/view matrix work. Common exact radial exponents
+2/8 use multiplication; general profiles retain `pow`. Exactly zero artwork
+transmission rejects work early without dropping faint detail. This avoids
 the CC0 shader's additional depth samples and preserves normal-map detail. It may
 require a normal prepass attachment: fewer samples alone do not prove a GPU win.
 The diagnostic derivative variant removes that sampler and is confined to tests.
 
 `footprint_max_range` defaults to 40 m, independently of shaft length; a radial
 80–100% distance fade avoids a hard end. This is a presentation limit, not GDTF
-photometry. Imported scene bounds conservatively reject empty volume AABBs;
+photometry. Imported scene bounds plus the application Ground conservatively reject empty volume AABBs;
 scenic transform subscriptions coalesce bounds growth without per-fixture scene
 searches or colliders. Camera frustum culling and shader cone/depth masks finish
 selection. New/remeshed receivers require scene setup again; bounds are deliberately
@@ -75,47 +89,56 @@ not increase them. Counters use retained handles, never live SceneTree enumerati
 
 ## Bounded graphical validation
 
-The focused generated scene exercises original PNG/BMP floor/wall projection,
-Spot/Wash, inclined scenery, held rotation/Zoom, camera-inside-volume, finite range,
-and actual blackout draw suppression. [Custom image](images/custom-footprints/custom.png),
-[Native comparison](images/custom-footprints/native.png),
-[held rotation/Zoom](images/custom-footprints/held-rotation-zoom.png) and
-[camera inside](images/custom-footprints/camera-inside.png) are actual viewport captures.
-The six-output native comparison enables the existing open-light diagnostic for
-matching open patterns; the production native preset retains its previous policy.
+The owner's Windows RTX 3070 / Godot 4.7.1 Forward+ observations (V-Sync off,
+same MVR/chase) were about 60 FPS with all Custom footprints and 95 FPS with
+Native's gobos only. The former generic “Custom” quick entry also showed Native
+coverage. **Those are unequal workloads, not a Custom-vs-Native speed comparison.**
 
-Godot 4.7.1 Forward+/Vulkan, Linux Debug extension, Mesa llvmpipe LLVM 19.1.7,
-960×640, no MSAA, six measured frames after eight warm-up frames:
+The generated scene covers PNG/BMP gobos, Spot/Wash together, floor/wall/incline,
+held DMX, preset/renderer changes, mirror/rotation, camera-inside, range and blackout.
+[Previous defaults](images/custom-footprints/previous-defaults.png) and
+[softer 0.6-gain defaults](images/custom-footprints/custom.png) use the same physical
+inputs. The isolated scene peak fell from 215 to 171 (8-bit output); neither clipped
+highlights. Dense overlapping footprints
+still saturate additively. There is no nonlinear clamp or second Dimmer/Color gain.
 
-| Workload | CPU render ms | Software device ms | Draws | Native lights / shadowed projectors |
+One equal-coverage 1,095-output comparison, Linux Debug, Godot 4.7.1 Forward+/Vulkan,
+Mesa llvmpipe LLVM 19.1.7, 960×640, no MSAA, eight warm-up/six measured frames,
+identical textures, range (8 m for the generated floor), 0.6 gain and 0.10 softness:
+
+| Custom variant | CPU render ms | Software device ms | Draws | Lit pixels (>0.15) |
 | --- | ---: | ---: | ---: | ---: |
-| 6 custom, normal buffer | 0.168 | 32.709 | 11 | 0 / 0 |
-| 6 native reference (open diagnostic) | 0.162 | 23.207 | 5 | 6 / 2 |
-| 6 custom, depth derivatives (test only) | 0.157 | 31.276 | 11 | 0 / 0 |
-| 1,095 custom | 1.352 | 190.113 | 1,100 | 0 / 0 |
-| 1,095 custom, blackout | 0.116 | 13.679 | 5 | 0 / 0 |
+| Square volume, original fragment math | 1.381 | 195.637 | 1,100 | 58,075 |
+| Circumscribed cone, original math | 1.372 | 179.634 | 1,100 | 58,075 |
+| Cone + vertex-cached transforms / exact fast powers | 1.329 | 169.676 | 1,100 | 58,076 |
+| Blackout | 0.122 | 9.857 | 5 | 0 |
 
-Custom lit-pixel coverage (>0.15) was 29,505 pixels versus 23,289 native and 29,445
-with depth derivatives. Coverage includes brightness/profile differences, not a
-texture-fidelity score. Buffered normals avoid derivative discontinuities and use
-normal-map detail, but these noisy software timings **do not establish a GPU speed
-advantage** over derivatives or native rendering. The large scene uses a generated
-projector grid, no native mass-light benchmark. It retains 1,095 surface materials
-and instances with one shared volume mesh/shader; engine/driver memory is not
-measured. Inclusive six-update CPU averages were 0.160 ms (six outputs) and
-14.040 ms (1,095); they include the harness's existing shaft fallback and physical
-adapter work with shaft gain zero, not just footprint writes.
+The cone changed **zero pixels**; optimized math changed ten pixels by one 8-bit
+level maximum (one crossed the reporting threshold). All 1,095 emitters and original
+image details remain. Native surface lights / shadowed projectors were 0/0 in all
+variants. A twelve-sided circumscribed cone bounds the entire circular support,
+removing square-corner coverage (19.6% less axial cross-section), at the cost of
+22 rather than 6 triangles per footprint: viewport primitives rose 6,630→24,150.
+Actual fragment-invocation/overdraw counters are unavailable. This shows a software
+rendering cost reduction, **not an RTX FPS prediction**; vertex/bandwidth tradeoffs
+still need Windows validation. Overlap and one draw/material per physical footprint
+remain. Engine/driver memory was not measured.
 
-Run the focused headless test with Forward+, then opt into actual graphics:
+Render Group acceptance proves shaft aggregation, not identical surface distributions.
+The existing compact generator has distinct emitter offsets and potentially separate
+RGB authorities. Those project different patterns on inclined/depth-varying receivers;
+no approximate member collapse is applied. Immutable mesh/texture sharing is retained.
 
 ```sh
 $GODOT --path . --rendering-method forward_plus --rendering-driver vulkan --audio-driver Dummy --script tests/gdscript/test_custom_surface_footprints.gd -- --render-footprint-probe
 ```
 
-`--footprint-count=1095` runs the custom-only large scene; `--footprint-output=PATH`
-selects the capture/JSON directory (default `user://footprint-probe`). Hardware GPU
-and normal-buffer bandwidth/quality measurements still need the owner's Windows
-RTX 3070 / Godot 4.7.1 Forward+ run after CI. No Windows FPS gain is claimed.
+`--footprint-count=1095` runs the controlled Custom-only comparison; the optional
+`--footprint-output=PATH` selects captures/JSON. Clean-cache CI retains Native/Legacy
+lifecycle checks and adds the normal Custom path, including gobo→open while hidden.
+Selection invalidates shared shaft geometry; cold renderer replacement publishes
+final registry handles in one batch; newly bound lenses inherit diagnostic suppression.
+No readiness checks are weakened. Fixture-space occlusion remains deferred.
 
 ## Regression and restored native-reference policy
 

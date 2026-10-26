@@ -10,6 +10,7 @@ var runtime: RefCounted
 var dmx := PackedByteArray()
 var beams: Array[MeshInstance3D] = []
 var lights: Array[SpotLight3D] = []
+var custom: bool = false
 
 func _initialize() -> void:
 	call_deferred("run")
@@ -29,12 +30,12 @@ func run() -> void:
 		push_error("Normal application script did not compile/instantiate")
 		quit(1)
 		return
-	app._visual_settings["enable_realtime_spotlights"] = true
-	app._visual_settings["beam_presentation"] = 1
-	app._visual_settings["beam_render_mode"] = 1 if args.has("--legacy") else 0
-	app._update_beam_renderer_mode(true)
+	custom = args.has("--custom")
 	var imported: Dictionary = await app._load_mvr_scene(fixture, "mvr", false)
 	test.check(bool(imported.get("ok", false)), "Reference fixture uses normal MVR import path")
+	test.check(app._visual_settings.footprint_backend == "custom" and app._visual_settings.beam_presentation == 1 and not app._visual_settings.enable_realtime_spotlights, "New MVR imports select preferred presentation defaults")
+	if not custom:
+		app._apply_visual_settings({"footprint_backend": "native", "enable_realtime_spotlights": true, "beam_presentation": 1, "beam_render_mode": 1 if args.has("--legacy") else 0})
 	service = app._fixture_light_apply_service
 	test.check(service.is_dense_presentation_active(), "Dense production installation is active")
 	if not service.is_dense_presentation_active():
@@ -80,7 +81,7 @@ func run() -> void:
 		test.check(int(stable[key]) == 0, "Steady state does not initialize/rebind/rebuild: "+key)
 	test.check(service._dense_adapter._outputs[0].lights[0].bound_state == first_cache, "Bound cache survives playback")
 	test.check(beams[0].mesh != null and first_mesh != null, "Both initial/current beam topology are real resources")
-	app._visual_settings["enable_realtime_spotlights"] = true
+	app._visual_settings["enable_realtime_spotlights"] = not custom
 	await apply_dmx(0, 130, 120, 255, 200, 180, 230, 255)
 	check_hidden("Blackout")
 	await apply_dmx(200, 130, 120, 255, 200, 180, 230, 255)
@@ -153,11 +154,20 @@ func check_active(context: String, gobo: bool = true) -> void:
 		else:
 			test.check(beam.get_instance_shader_parameter("beam_color") == color, context+": actual legacy shader color follows held state")
 			test.check(float(beam.get_instance_shader_parameter("near_emission")) > 0.0, context+": actual legacy shader emission is active")
-		test.check(light.visible and light.is_visible_in_tree() and light.light_energy > 0.0,context+": actual footprint Node and energy are active")
-		test.check(service._dense_adapter._outputs[i].lights[0].realtime_visible,context+": footprint RID remains enabled")
-		test.check((light.light_projector != null) == gobo,context+": actual projector follows gobo selection")
+		if custom:
+			var surface: MeshInstance3D = light.get_meta(&"peraviz_custom_footprint")
+			test.check(surface != null and (surface.projection.pattern_texture != null) == gobo, context+": custom source follows held gobo/open selection")
+			if surface != null:
+				var applied: PackedFloat32Array = service._dense_adapter._native.footprint_values(surface.material_override.get_rid())
+				test.check(applied.size() == 4 and applied[3] > 0.0, context+": native physical energy reaches custom material")
+			test.check(not service._dense_adapter._outputs[i].lights[0].realtime_visible and light.light_projector == null and not light.shadow_enabled, context+": custom needs no native projector or shadow")
+		else:
+			test.check(light.visible and light.is_visible_in_tree() and light.light_energy > 0.0,context+": actual footprint Node and energy are active")
+			test.check(service._dense_adapter._outputs[i].lights[0].realtime_visible,context+": footprint RID remains enabled")
+			test.check((light.light_projector != null) == gobo,context+": actual projector follows gobo selection")
 
 func check_hidden(context: String) -> void:
+	if custom: test.check(service._dense_adapter.diagnostics().active_custom_footprints == 0, context+": custom contributions suppress")
 	for i in range(lights.size()):
 		var beam: MeshInstance3D = app._get_beam_resource_for_light(lights[i])
 		test.check(beam != null and not beam.visible,context+": actual beam hides")

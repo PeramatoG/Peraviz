@@ -32,11 +32,19 @@ func _init() -> void:
 
 static func volume_mesh() -> ArrayMesh:
 	if _volume != null: return _volume
-	# Closed square pyramid, Godot clockwise outward winding. Only exit faces render, also when
-	# the camera is inside; one fragment per covered pixel, no fullscreen quad.
-	var corners := PackedVector3Array([Vector3.ZERO, Vector3(-1,-1,-1), Vector3(1,-1,-1), Vector3(1,1,-1), Vector3(-1,1,-1)])
+	# Circumscribe the complete circular support cone; never inscribe/crop it.
+	# Twelve sides remove square-corner overdraw while retaining every ray.
+	const SIDES: int = 12
+	var ring := PackedVector3Array()
+	var radius := 1.0 / cos(PI / SIDES)
+	for index in range(SIDES):
+		var angle := (float(index) * TAU + PI) / SIDES
+		ring.append(Vector3(cos(angle) * radius, sin(angle) * radius, -1.0))
 	var vertices := PackedVector3Array()
-	for index in [0,2,1, 0,3,2, 0,4,3, 0,1,4, 1,3,4, 1,2,3]: vertices.append(corners[index])
+	for index in range(SIDES):
+		vertices.append_array(PackedVector3Array([Vector3.ZERO, ring[(index + 1) % SIDES], ring[index]]))
+	for index in range(1, SIDES - 1):
+		vertices.append_array(PackedVector3Array([ring[0], ring[index], ring[index + 1]]))
 	var arrays: Array = []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -68,6 +76,8 @@ func sync() -> void:
 		_profile_revision = projection.profile_revision
 		_material.set_shader_parameter("profile_parameters", projection.radial_profile.signature)
 		_material.set_shader_parameter("profile_feather_start", projection.radial_profile.feather_start)
+		_material.set_shader_parameter("profile_anchored", projection.radial_profile.anchored)
+		_material.set_shader_parameter("soft_open_profile", projection.radial_profile.diffuse)
 		parameter_updates += 1
 	if _softness != projection.footprint_softness:
 		_softness = projection.footprint_softness

@@ -84,6 +84,9 @@ func _run() -> void:
 	await app._open_project(project_path)
 	adapter = app._fixture_light_apply_service._dense_adapter
 	test.check(adapter._generation != old_generation and not app._scene_loading, "PVZ reload retires the old generation and completes readiness")
+	app._apply_visual_settings({"footprint_backend": "native"})
+	await app._load_mvr_scene(path, "mvr", false)
+	test.check(app._visual_settings.footprint_backend == "custom" and app._visual_settings.beam_presentation == 1 and not app._visual_settings.enable_realtime_spotlights, "New MVR document does not inherit the prior project's native backend")
 	app._clear_scene()
 	app.queue_free()
 	await process_frame

@@ -13,6 +13,7 @@ var exponent: float = 8.0
 var coefficient: float = LN2
 var support_scale: float = 1.0
 var rectangular: bool = false
+var diffuse: bool = false
 var aspect: Vector2 = Vector2.ONE
 var projected: bool = true
 var anchored: bool = false
@@ -47,7 +48,8 @@ func configure(beam_type: String, beam_angle: float, field_angle: float, rectang
 	var kind := beam_type.to_lower()
 	projected = kind in ["wash", "spot", "rectangle", "pc", "fresnel"]
 	rectangular = kind == "rectangle"
-	var soft: bool = kind in ["wash", "fresnel", "pc"]
+	diffuse = kind in ["wash", "fresnel", "pc"]
+	var soft: bool = diffuse
 	exponent = 2.0 if soft else 8.0
 	anchored = false
 	field_ratio = 1.0

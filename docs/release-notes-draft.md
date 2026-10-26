@@ -1,5 +1,6 @@
 # Peraviz v0.x.x
 
+- Clarified footprint presets: unmatched values are “Modified settings”, with an always-visible active-backend/coverage status; preset application emits one settings transaction. New session/preset visual gain is 0.6 with softer, distinct Spot/Wash edges; saved values and physical GDTF/DMX remain unchanged. Tightened conservative raster coverage and moved repeated projector math to vertices with equal-coverage graphical validation. Fixed held gobo→open shaft readiness, stale renderer handles and diagnostic lens rebinding during clean startup.
 - Added independent Custom/Native footprint selection with Vector Prism retained for both presets. New sessions use bounded Forward+ perspective projection of cached gobo artwork and open Spot/Wash profiles without native projector/shadow costs. Legacy PVZ archives retain native rendering; explicit backend choices and held DMX survive switching. Opaque camera-depth receivers are supported; fixture-space occlusion and transparent transmission remain deferred. Retained native physical state, aggregate shafts and GPU-instanced lenses.
 - Fixed uninitialized lazy lens-material and deferred projection local-name warnings without changing their behavior.
 

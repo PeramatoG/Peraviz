@@ -704,6 +704,13 @@ func refresh_renderer() -> void:
 	_native.invalidate_renderer()
 	compose(PackedInt32Array(), PackedInt32Array(), PackedFloat32Array(), _trace, _mode)
 	apply()
+	# Publish final shaft handles once after cold renderer replacement. Gobo
+	# replay must never retain retired MeshInstances, including legacy shafts.
+	if _loader.has_method("_rebind_native_shaft_instances"):
+		var changes: Dictionary = {}
+		for output in _outputs:
+			for handle in output.lights: changes[handle.light.get_instance_id()] = handle.beam
+		_loader._rebind_native_shaft_instances(changes)
 
 # Retires every setup-generation resource reference, including renderer-only replacement.
 func _retire_groups() -> void:
@@ -857,7 +864,10 @@ func _install_lens_bindings() -> bool:
 				owners.append(output.index)
 				scales.append(material.scale)
 			routes.append_array(PackedInt32Array([output.index, int(indices[material.rid])]))
-	return _native.install_materials(rids, owners, scales, routes)
+	if not _native.install_materials(rids, owners, scales, routes): return false
+	# New lens bindings must immediately inherit the current diagnostic policy.
+	_native.set_materials_enabled(_mode != "transforms-only")
+	return true
 
 # Setup consumes native optical descriptors; this never classifies geometry or mixes live pixels.
 func _create_aggregate_output(descriptor: Dictionary, representative: int) -> OutputHandle:

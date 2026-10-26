@@ -514,7 +514,7 @@ func _run() -> void:
 		var surface: MeshInstance3D = adapter._footprints.volumes[index]
 		var physical: PackedFloat32Array = adapter._native.physical_values(index)
 		var committed: PackedFloat32Array = adapter._native.footprint_values(surface.material_override.get_rid())
-		test.check(committed[0] == physical[1] and committed[1] == physical[2] and committed[2] == physical[3] and is_equal_approx(committed[3],physical[5] if physical[5] > 0 else physical[4]), "Completed native snapshots apply exact physical surface Color/energy")
+		test.check(committed[0] == physical[1] and committed[1] == physical[2] and committed[2] == physical[3] and is_equal_approx(committed[3],(physical[5] if physical[5] > 0 else physical[4]) * float(app._visual_settings.footprint_multiplier)), "Completed native snapshots apply exact physical surface Color/energy")
 	print("NATIVE_ASYNC_PUBLICATION ", JSON.stringify(adapter.consume_diagnostics()))
 	test.check(adapter.diagnostics().get("native_async_active", false), "Production Godot boundary uses native asynchronous calculations")
 	var competing: RefCounted = ClassDB.instantiate("PeravizPresentationState")

@@ -13,5 +13,6 @@ func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = 
 
 func _build_cached_beam_params(light: SpotLight3D, angle: float, color: Color, dimmer: float, intensity: float, radius: float, defaults: Dictionary) -> Dictionary:
 	var params: Dictionary = super._build_cached_beam_params(light, angle, color, dimmer, intensity, radius, defaults)
+	params["footprint_softness"] = float(_visual_settings.get("footprint_softness", 0.10))
 	params["beam_type"] = light.get_meta("test_beam_type", "Wash")
 	return params

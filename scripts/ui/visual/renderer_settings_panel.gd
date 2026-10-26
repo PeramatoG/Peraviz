@@ -43,7 +43,7 @@ func _build_ui() -> void:
 	_add_slider_row("Volumetric fog fade", "volumetric_fog_fade", 0.0, 0.2, 0.005)
 	_add_slider_row("Native light fog energy", "light_volumetric_fog_energy", 0.0, 1500.0, 10.0)
 	_add_option_row("Beam presentation", "beam_presentation", BeamPresentationOptionsScript.LABELS)
-	_add_option_row("Footprint backend", "footprint_backend", ["Custom (Forward+ opaque surfaces)", "Native (reference)"], ["custom", "native"])
+	_add_option_row("Footprint backend", "footprint_backend", ["Custom (Forward+ opaque surfaces)", "Native (gobo reference)"], ["custom", "native"])
 	_add_slider_row("Footprint maximum range (m)", "footprint_max_range", 1.0, 200.0, 1.0)
 	_add_color_row("Background color", "background_color")
 

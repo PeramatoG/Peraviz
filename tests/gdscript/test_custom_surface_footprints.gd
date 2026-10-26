@@ -32,6 +32,19 @@ func run() -> void:
 		test.check(WindowSettings.QUICK_PRESETS[preset].beam_presentation == 1, "Both presets retain Vector Prism shafts")
 	for key in WindowSettings.QUICK_PRESETS["Vector Prism + Custom Footprints"]:
 		test.check(WindowSettings.DEFAULT_SETTINGS[key] == WindowSettings.QUICK_PRESETS["Vector Prism + Custom Footprints"][key], "Default settings identify the preferred quick preset: " + key)
+	var window := WindowSettings.new()
+	root.add_child(window)
+	await process_frame
+	var emissions := [0]
+	window.settings_changed.connect(func(_settings: Dictionary) -> void: emissions[0] += 1)
+	window._apply_quick_preset("Vector Prism + Custom Footprints")
+	test.check(emissions[0] == 1, "A preset delivers one atomic settings change")
+	window._on_panel_setting_changed("footprint_multiplier", 0.8)
+	test.check(window._settings.footprint_backend == "custom" and window._preset_option.get_item_text(window._preset_option.selected) == "Modified settings" and window._backend_status.text.contains("Custom"), "Modified settings clearly retains active custom backend and open patterns")
+	window.configure({"footprint_multiplier": 0.35, "footprint_softness": 0.08, "footprint_backend": "native"})
+	test.check(window._settings.footprint_multiplier == 0.35 and window._settings.footprint_softness == 0.08 and window._backend_status.text.contains("gobos only"), "Explicit saved visual choices survive while native coverage is labelled")
+	window.queue_free()
+	await process_frame
 	var loader := Harness.new()
 	loader.output_count = 128
 	loader.vector_prism = true

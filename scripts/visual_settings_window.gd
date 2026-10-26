@@ -12,12 +12,12 @@ const RendererSettingsPanelScript = preload("res://scripts/ui/visual/renderer_se
 const EnvironmentSettingsPanelScript = preload("res://scripts/ui/visual/environment_settings_panel.gd")
 const DebugGoboSettingsPanelScript = preload("res://scripts/ui/visual/debug_gobo_settings_panel.gd")
 const BeamPresentationOptionsScript = preload("res://scripts/ui/visual/beam_presentation_options.gd")
-const CUSTOM_PRESET_NAME := "Custom"
+const CUSTOM_PRESET_NAME := "Modified settings"
 
 const DEFAULT_SETTINGS := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
-	"footprint_multiplier": 1.0,
+	"footprint_multiplier": 0.6,
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
@@ -33,7 +33,7 @@ const DEFAULT_SETTINGS := {
 	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.0,
 	"haze_density_multiplier": 0.22,
-	"footprint_softness": 0.04,
+	"footprint_softness": 0.10,
 	"gobo_scale": 1.0,
 	"gobo_rotation_deg": 0.0,
 	"beam_gobo_alignment_rotation_deg": 0.0,
@@ -110,7 +110,8 @@ const QUICK_PRESETS := {
 		"enable_realtime_spotlights": false,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
-		"footprint_multiplier": 1.0,
+		"footprint_multiplier": 0.6,
+		"footprint_softness": 0.10,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -126,7 +127,8 @@ const QUICK_PRESETS := {
 		"enable_realtime_spotlights": false,
 		"beam_multiplier": 20.0,
 		"spot_multiplier": 1.0,
-		"footprint_multiplier": 1.0,
+		"footprint_multiplier": 0.6,
+		"footprint_softness": 0.10,
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
@@ -167,6 +169,8 @@ var _settings: Dictionary = DEFAULT_SETTINGS.duplicate(true)
 var _ui_visibility_policy = UiVisibilityPolicyScript
 var _tabs: TabContainer
 var _preset_option: OptionButton
+var _backend_status: Label
+var _applying_controls: bool = false
 var _advanced_mode_toggle: CheckBox
 var _renderer_panel: RendererSettingsPanel
 var _environment_panel: EnvironmentSettingsPanel
@@ -244,7 +248,11 @@ func _build_ui() -> void:
 			return
 		_apply_quick_preset(BeamPresentationOptionsScript.PRESET_NAMES[index])
 	)
+	_preset_option.tooltip_text = "Modified settings means no exact preset match. It does not change the footprint backend."
 	preset_row.add_child(_preset_option)
+	_backend_status = Label.new()
+	_backend_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	layout.add_child(_backend_status)
 
 	_tabs = TabContainer.new()
 	_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -277,16 +285,20 @@ func _build_ui() -> void:
 	actions_row.add_child(reset_button)
 
 func _apply_settings_to_controls() -> void:
+	_applying_controls = true
 	if _renderer_panel != null:
 		_renderer_panel.apply_settings(_settings)
 	if _environment_panel != null:
 		_environment_panel.apply_settings(_settings)
 	if _debug_panel != null:
 		_debug_panel.apply_settings(_settings)
+	_applying_controls = false
 	_apply_mode_to_panels()
 	_sync_quick_preset_selection()
 
 func _sync_quick_preset_selection() -> void:
+	if _backend_status != null:
+		_backend_status.text = "Footprints: Custom (Spot, Wash and gobos)" if str(_settings.get("footprint_backend", "custom")) == "custom" else "Footprints: Native reference (gobos only; open lights need the explicit diagnostic)"
 	if _preset_option == null:
 		return
 	for index in range(BeamPresentationOptionsScript.PRESET_NAMES.size()):
@@ -342,6 +354,7 @@ func _apply_quick_preset(preset_name: String) -> void:
 	_emit_settings_changed()
 
 func _on_panel_setting_changed(key: String, value: Variant) -> void:
+	if _applying_controls: return
 	_settings[key] = value
 	_sync_quick_preset_selection()
 	_emit_settings_changed()

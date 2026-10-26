@@ -81,7 +81,7 @@ var _beam_aperture_measurement_service: Variant = null
 var _visual_settings := {
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
-	"footprint_multiplier": 1.0,
+	"footprint_multiplier": 0.6,
 	"enable_realtime_spotlights": false,
 	"beam_multiplier": 20.0,
 	"bloom_multiplier": 0.0,
@@ -103,7 +103,7 @@ var _visual_settings := {
 	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.0,
 	"haze_density_multiplier": 0.22,
-	"footprint_softness": 0.04,
+	"footprint_softness": 0.10,
 	"gobo_scale": 1.0,
 	"gobo_rotation_deg": 0.0,
 	"beam_gobo_alignment_rotation_deg": 0.0,

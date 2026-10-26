@@ -45,7 +45,7 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	var loader := Harness.new()
 	loader.output_count = count
 	loader.vector_prism = true
-	loader._visual_settings = {"beam_presentation": 1, "footprint_backend": "custom", "footprint_max_range": 25.0, "footprint_multiplier": 2.0, "enable_realtime_spotlights": false, "beam_multiplier": 0.0}
+	loader._visual_settings = {"beam_presentation": 1, "footprint_backend": "custom", "footprint_max_range": 25.0, "footprint_multiplier": 0.6, "footprint_softness": 0.10, "enable_realtime_spotlights": false, "beam_multiplier": 0.0}
 	viewport.add_child(loader)
 	await tree.process_frame
 	loader.renderer.configure(camera, loader._visual_settings)
@@ -93,49 +93,51 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
 	var results: Array = []
 	var center_reference := Color.BLACK
-	for backend in (["custom", "native"] if count <= 6 else ["custom"]):
-		adapter._diagnostic_open_surface_lights = backend == "native"
-		loader._visual_settings.footprint_backend = backend
-		loader.renderer.configure(camera, loader._visual_settings)
+	if count == 6:
+		_apply_style(loader, service, 1.0, 0.04)
+		var previous := _math_baseline(true)
+		for volume in adapter._footprints.volumes: volume.material_override.shader = previous
+		await RenderingServer.frame_post_draw
+		service.refresh_dense_renderer()
+		var before := await _capture(tree, viewport, directory.path_join("previous-defaults.png"))
+		before["gain"] = loader._visual_settings.footprint_multiplier
+		before["server_energy"] = RenderingServer.material_get_param(adapter._footprints.volumes[0].material_override.get_rid(), "emission_energy")
+		before["energy"] = adapter._native.footprint_values(adapter._footprints.volumes[0].material_override.get_rid())[3]
+		before["variant"] = "previous-defaults-gain-1-softness-004"
+		results.append(before)
+	_apply_style(loader, service, 0.6, 0.10)
+	var square := _square_volume()
+	var baseline := _math_baseline(false)
+	var baseline_image: Image = null
+	# Equal receiver coverage and optical/physical state for all three variants.
+	for variant in ["square-original-math", "bounded-original-math", "custom"]:
+		for volume in adapter._footprints.volumes:
+			volume.mesh = square if variant == "square-original-math" else Volume.volume_mesh()
+			volume.material_override.shader = Volume.SHADER if variant == "custom" else baseline
+		await RenderingServer.frame_post_draw
 		service.refresh_dense_renderer()
 		for anchor in loader.anchors: loader.renderer.get_beam_resource(anchor).visible = false
-		var stats := await _capture(tree, viewport, directory.path_join(backend + ".png"))
-		if backend == "custom":
-			var update_usec: int = 0
-			for iteration in range(6):
-				var update: Dictionary = loader.frame(0.8 + iteration * 0.02, 0.5)
-				var started := Time.get_ticks_usec()
-				service.compose_dense_snapshot(update.descriptors, update.integers, update.floats)
-				service.end_visual_snapshot()
-				update_usec += Time.get_ticks_usec() - started
-			stats["physical_update_cpu_ms"] = float(update_usec) / 6000.0
-			service.compose_dense_snapshot(frame.descriptors, frame.integers, frame.floats)
-			service.end_visual_snapshot()
-		stats["backend"] = backend
+		var stats := await _capture(tree, viewport, directory.path_join(variant + ".png"))
+		stats["gain"] = loader._visual_settings.footprint_multiplier
+		stats["server_energy"] = RenderingServer.material_get_param(adapter._footprints.volumes[0].material_override.get_rid(), "emission_energy")
+		stats["energy"] = adapter._native.footprint_values(adapter._footprints.volumes[0].material_override.get_rid())[3]
+		stats["variant"] = variant
 		stats["projectors"] = count
 		stats["resources"] = adapter.diagnostics().custom_projector_resources
-		stats["shadowed_projector_lights"] = adapter.diagnostics().surface_lights.shadowed_projector_lights
-		stats["open_light_diagnostic"] = backend == "native"
 		stats["native_surface_lights"] = adapter.diagnostics().surface_lights.active_surface_lights
+		stats["shadowed_projector_lights"] = adapter.diagnostics().surface_lights.shadowed_projector_lights
+		if baseline_image == null: baseline_image = viewport.get_texture().get_image()
+		else:
+			var difference := _difference(baseline_image, viewport.get_texture().get_image())
+			stats.merge(difference)
+			test.check(difference.max_pixel_error <= 2.0 / 255.0, "Equal-coverage optimization preserves all source pixels within raster precision")
 		results.append(stats)
-		if backend == "custom" and count == 6:
+		test.check(stats.lit_pixels > 100, "All custom variants visibly project the same eligible sources")
+		if variant == "custom" and count == 6:
 			_check_receivers(viewport, camera, loader, test, ramp)
 			var pixel := Vector2i(camera.unproject_position(Vector3(0,0,2)))
 			center_reference = viewport.get_texture().get_image().get_pixel(pixel.x,pixel.y)
-		test.check(stats.lit_pixels > 100, "Real Forward+ rendering produces visible " + backend + " footprints")
-	adapter._diagnostic_open_surface_lights = false
 	if count == 6:
-		# Focused normal-method comparison on exactly the same opaque geometry.
-		loader._visual_settings.footprint_backend = "custom"
-		loader.renderer.configure(camera, loader._visual_settings)
-		service.refresh_dense_renderer()
-		for anchor in loader.anchors: loader.renderer.get_beam_resource(anchor).visible = false
-		var derivative := Shader.new()
-		derivative.code = Volume.SHADER.code.replace("uniform sampler2D normal_texture : hint_normal_roughness_texture, repeat_disable, filter_nearest;", "").replace("normalize(textureLod(normal_texture, SCREEN_UV, 0.0).xyz * 2.0 - 1.0)", "normalize(cross(dFdy(view_position), dFdx(view_position)))")
-		for volume in adapter._footprints.volumes: volume.material_override.shader = derivative
-		var derivative_stats := await _capture(tree, viewport, directory.path_join("depth-derivatives.png"))
-		derivative_stats["backend"] = "custom-depth-derivatives-diagnostic"
-		results.append(derivative_stats)
 		# Perspective, roll and hierarchy changes while physical input is held.
 		for i in range(count):
 			var handle = adapter._outputs[i].lights[0]
@@ -183,6 +185,51 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	viewport.free()
 	await tree.process_frame
 
+func _apply_style(loader: Node, service: RefCounted, gain: float, softness: float) -> void:
+	loader._visual_settings.footprint_multiplier = gain
+	loader._visual_settings.footprint_softness = softness
+	for output in service._dense_adapter._outputs:
+		for handle in output.lights: handle.params["footprint_softness"] = softness
+	loader.renderer.configure(null, loader._visual_settings)
+	service.refresh_dense_renderer()
+	for anchor in loader.anchors: loader.renderer.get_beam_resource(anchor).visible = false
+
+func _math_baseline(previous_style: bool) -> Shader:
+	# Test-only reference keeps identical optical/physical data and sampling.
+	var code: String = Volume.SHADER.code
+	var start := code.find("float radial_power(")
+	var end := code.find("float footprint_feather(")
+	code = code.substr(0, start) + "float radial_power(float radius, float exponent) { return pow(radius, exponent); }\n" + code.substr(end)
+	code = code.replace("vec3 local = projector_position(view_position);", "vec3 world_position = (INV_VIEW_MATRIX * vec4(view_position, 1.0)).xyz;\nvec3 local = (world_to_projector * vec4(world_position, 1.0)).xyz;")
+	code = code.replace("vec3 toward_source_view = toward_projector(view_position);", "vec3 toward_source_view = mat3(VIEW_MATRIX) * (projector_origin - world_position);")
+	code = code.replace("if (artwork.a == 0.0 || all(equal(artwork.rgb, vec3(0.0)))) { discard; }", "")
+	if previous_style:
+		start = code.find("float footprint_feather(")
+		end = code.find("void vertex()")
+		code = code.substr(0, start) + "float footprint_feather(float m) { return (1.0-smoothstep(profile_feather_start,1.0,m)) * (1.0-smoothstep(1.0-max(edge_softness,0.0001),1.0,m)); }\n" + code.substr(end)
+	var shader := Shader.new()
+	shader.code = code
+	return shader
+
+func _square_volume() -> ArrayMesh:
+	var corners := PackedVector3Array([Vector3.ZERO, Vector3(-1,-1,-1), Vector3(1,-1,-1), Vector3(1,1,-1), Vector3(-1,1,-1)])
+	var vertices := PackedVector3Array()
+	for index in [0,2,1, 0,3,2, 0,4,3, 0,1,4, 1,3,4, 1,2,3]: vertices.append(corners[index])
+	var arrays: Array = []; arrays.resize(Mesh.ARRAY_MAX); arrays[Mesh.ARRAY_VERTEX] = vertices
+	var mesh := ArrayMesh.new(); mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+func _difference(reference: Image, actual: Image) -> Dictionary:
+	var max_error := 0.0
+	var changed: int = 0
+	for y in range(reference.get_height()):
+		for x in range(reference.get_width()):
+			var a := reference.get_pixel(x,y); var b := actual.get_pixel(x,y)
+			var error := maxf(absf(a.r-b.r),maxf(absf(a.g-b.g),absf(a.b-b.b)))
+			if error > 0.0: changed += 1
+			max_error = maxf(max_error,error)
+	return {"max_pixel_error": max_error, "changed_pixels": changed}
+
 func _check_receivers(viewport: SubViewport, camera: Camera3D, loader: Node, test: RefCounted, ramp: MeshInstance3D) -> void:
 	var image := viewport.get_texture().get_image()
 	for index in range(6):
@@ -214,11 +261,13 @@ func _capture(tree: SceneTree, viewport: SubViewport, path: String) -> Dictionar
 	var image := viewport.get_texture().get_image()
 	image.save_png(path)
 	var lit: int = 0
+	var saturated: int = 0
 	for y in range(image.get_height()):
 		for x in range(image.get_width()):
 			var color := image.get_pixel(x,y)
 			if maxf(color.r,maxf(color.g,color.b)) > 0.15: lit += 1
-	return {"cpu_render_ms": cpu / 6.0, "gpu_render_ms": gpu / 6.0, "draw_calls": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), "lit_pixels": lit}
+			if maxf(color.r,maxf(color.g,color.b)) >= 0.98: saturated += 1
+	return {"cpu_render_ms": cpu / 6.0, "gpu_render_ms": gpu / 6.0, "primitives": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME), "draw_calls": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), "lit_pixels": lit, "saturated_pixels": saturated}
 
 func _add_box(parent: Node3D, position: Vector3, size: Vector3) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()

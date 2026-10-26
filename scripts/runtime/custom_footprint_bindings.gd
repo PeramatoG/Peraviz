@@ -47,6 +47,14 @@ func install(adapter: RefCounted) -> bool:
 			_bounds_known = true
 		var scene_root: Node = adapter._loader.get("proxies_root")
 		if scene_root != null: _subscribe_receivers(scene_root)
+		# The application ground is outside imported Proxies and is still a
+		# receiver. Excluding it can incorrectly cull valid open footprints.
+		var ground := adapter._loader.get_node_or_null("Ground") as MeshInstance3D
+		if ground != null:
+			var bounds: AABB = ground.global_transform * ground.get_aabb()
+			_receiver_bounds = _receiver_bounds.merge(bounds) if _bounds_known else bounds
+			_bounds_known = true
+			_subscribe_receivers(ground)
 	var settings: Dictionary = adapter._loader.get("_visual_settings")
 	var custom: bool = Policy.custom(settings)
 	_supported = RenderingServer.get_current_rendering_method() == "forward_plus" and adapter._renderer != null and adapter._renderer.has_method("refresh_surface_profile")
