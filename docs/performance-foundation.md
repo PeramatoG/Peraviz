@@ -344,7 +344,8 @@ primitives in both** and **zero pixel difference** over 60,270 nonblack pixels.
 This is genuine GPU instancing/submission evidence from a software graphics driver,
 not a hardware GPU speed or FPS claim. Run the existing test with
 `--rendering-method forward_plus --rendering-driver vulkan -- --render-lens-probe`
-on a drawable backend; normal CI retains focused headless value/lifetime coverage.
+on a drawable backend. The existing render-group regression uses headless Forward+
+in CI to exercise production admission; other regressions retain Compatibility.
 Compatibility/Mobile and unsupported materials use the individual reference.
 A preliminary Compatibility probe hit its existing shaft instance-uniform UBO
 limit; it is not used as acceptance/performance evidence. No shader/shaft workaround

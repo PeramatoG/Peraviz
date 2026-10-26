@@ -398,7 +398,7 @@ func _run() -> void:
 	counts = adapter.diagnostics()
 	test.check(counts["physical_outputs"] == 1000 and counts["render_rows"] == 1000 and counts["godot_accepted_aggregates"] == 0,
 		"One thousand independent Dimmer/RGB emitters retain one thousand renderer rows")
-	var lens_expected: bool = OS.get_environment("PERAVIZ_GPU_LENSES") != "0"
+	var lens_expected: bool = RenderingServer.get_current_rendering_method() == "forward_plus" and OS.get_environment("PERAVIZ_GPU_LENSES") != "0"
 	print("LENS_SETUP ", JSON.stringify(adapter.diagnostics()))
 	var renderer_totals: Dictionary = {}
 	var original_meshes: Array = []

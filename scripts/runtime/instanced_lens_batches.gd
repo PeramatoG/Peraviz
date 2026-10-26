@@ -33,10 +33,10 @@ func clear(native: RefCounted) -> void:
 
 # Every stored material option must equal the reference slice, including new engine options.
 # Unknown optical/material combinations remain on the exact existing resource path.
-static func _simple_material(material: Material, reference: Dictionary) -> bool:
+static func _simple_material(material: Material, baseline_options: Dictionary) -> bool:
 	if not material is StandardMaterial3D: return false
-	for key in reference:
-		if material.get(key) != reference[key]: return false
+	for key in baseline_options:
+		if material.get(key) != baseline_options[key]: return false
 	return true
 
 # Picking bodies/colliders remain under the source mesh; nested graphics require reference ownership.
@@ -69,12 +69,12 @@ func install(adapter: RefCounted) -> void:
 	var prototype := StandardMaterial3D.new()
 	prototype.cull_mode = BaseMaterial3D.CULL_DISABLED
 	prototype.emission_enabled = true
-	var reference: Dictionary = {}
+	var baseline_options: Dictionary = {}
 	for property in prototype.get_property_list():
 		var key: StringName = property.name
 		if not int(property.usage) & PROPERTY_USAGE_STORAGE: continue
 		if str(key).begins_with("resource_") or key in [&"emission", &"emission_energy_multiplier"]: continue
-		reference[key] = prototype.get(key)
+		baseline_options[key] = prototype.get(key)
 	var candidates: Dictionary = {}
 	var seen: Dictionary = {}
 	for output in adapter._outputs:
@@ -91,7 +91,7 @@ func install(adapter: RefCounted) -> void:
 		if seen.has(mesh.get_instance_id()) or mesh.top_level or mesh.skeleton not in [NodePath(), NodePath("..")] or mesh.skin != null or mesh.material_override != null or mesh.material_overlay != null: continue
 		if mesh.layers != 1 or mesh.visibility_range_begin != 0.0 or mesh.visibility_range_end != 0.0 or mesh.visibility_parent != NodePath() or mesh.transparency != 0.0: continue
 		if mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON or mesh.gi_mode != GeometryInstance3D.GI_MODE_STATIC or mesh.extra_cull_margin != 0.0 or mesh.ignore_occlusion_culling or mesh.custom_aabb != AABB() or mesh.lod_bias != 1.0: continue
-		if not _simple_material(entry.material, reference): continue
+		if not _simple_material(entry.material, baseline_options): continue
 		var ancestor: Node3D = _ancestor(mesh)
 		if ancestor == null: continue
 		var local: Transform3D = ancestor.global_transform.affine_inverse() * mesh.global_transform
