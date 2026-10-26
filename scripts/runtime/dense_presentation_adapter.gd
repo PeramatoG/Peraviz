@@ -584,7 +584,8 @@ func set_mode(mode: String) -> void:
 	if mode == _mode or not is_installed(): return
 	if _trace: _totals["mode_transition_replays"] += 1
 	_mode = mode
-	refresh_renderer()
+	if not _lens_batches.batches.is_empty() or (mode == "full" and _lens_batches.source_outputs >= InstancedLensBatches.MIN_BATCH and RenderingServer.get_current_rendering_method() == "forward_plus" and OS.get_environment("PERAVIZ_GPU_LENSES") != "0"):
+		_install_lens_bindings()
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
 	_native.invalidate_renderer()
@@ -829,6 +830,10 @@ func _install_render_bindings() -> bool:
 	AggregateShaftResources.reconcile(self)
 	_install_groups()
 	if _trace: _totals["shaft_resource_binding_us"] = int(_totals.get("shaft_resource_binding_us", 0)) + Time.get_ticks_usec() - binding_start
+	return _install_lens_bindings()
+
+# Lens-only policy changes preserve existing shaft/gobo initialization and group resources.
+func _install_lens_bindings() -> bool:
 	_lens_batches.install(self)
 	var rids: Array = []
 	var owners := PackedInt32Array()
