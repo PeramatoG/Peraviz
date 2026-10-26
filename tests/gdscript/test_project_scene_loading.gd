@@ -64,16 +64,25 @@ func _run() -> void:
 	var physical: Array[PackedFloat32Array] = []
 	for index in range(adapter._outputs.size()): physical.append(adapter._native.physical_values(index))
 	test.check(not physical.is_empty() and physical[0][0] > 0.0, "Saved patch offset routes nonzero held DMX state to the native fixture")
+	var resources_before: Array = []
+	for row in adapter._render_bindings.rows:
+		for handle in row.output.lights:
+			if is_instance_valid(handle.beam): resources_before.append([handle.beam, handle.beam.mesh, handle.beam.material_override])
+	var revision_before: int = app._active_beam_renderer._resource_revision
 	var started := Time.get_ticks_usec()
 	app._apply_visual_settings({"beam_softness": 0.51, "beam_multiplier": 9.0})
 	var elapsed_ms := (Time.get_ticks_usec() - started) / 1000.0
 	var after: Dictionary = adapter.diagnostics()
-	test.check(int(after["forced_replays"]) - int(before["forced_replays"]) == 1, "A bulk visual update rebuilds all groups exactly once, not once per physical member")
+	test.check(int(after["forced_replays"]) == int(before["forced_replays"]), "Combined gain/profile edits perform zero structural group rebuilds")
+	test.check(app._active_beam_renderer._resource_revision == revision_before, "Uniform edits preserve renderer compatibility revisions")
+	for item in resources_before:
+		test.check(is_instance_valid(item[0]) and item[0].mesh == item[1] and item[0].material_override == item[2], "PVZ live settings retain actual shaft and material identities")
 	test.check(after["physical_outputs"] == 102 and after["aggregate_shaft_resources"] == 2 and after["final_render_rows"] == 4, "Bulk settings updates preserve physical identities and aggregate resource counts")
-	for index in range(physical.size()): test.check(adapter._native.physical_values(index) == physical[index], "Settings rebind preserves exact held native physical state")
+	for index in range(physical.size()): test.check(adapter._native.physical_values(index) == physical[index], "Live settings replay preserves exact held native physical state")
 	print("PROJECT_SETTINGS_BATCH ", JSON.stringify({"physical_outputs": after["physical_outputs"], "global_rebuilds": int(after["forced_replays"]) - int(before["forced_replays"]), "wall_ms": elapsed_ms}))
 	var original_renderer: BeamRendererBase = app._active_beam_renderer
 	app._apply_visual_settings({"beam_render_mode": 1})
+	test.check(int(adapter.diagnostics()["forced_replays"]) - int(after["forced_replays"]) == 1, "A genuine renderer replacement still performs one controlled structural replay")
 	for preset in ["Vector Prism + Native Footprints", "Vector Prism + Custom Footprints"]:
 		app._apply_visual_settings(preload("res://scripts/visual_settings_window.gd").QUICK_PRESETS[preset])
 		test.check(app._active_beam_renderer == original_renderer and app._visual_settings.beam_presentation == 1, "Preset changes preserve the atmospheric renderer")
