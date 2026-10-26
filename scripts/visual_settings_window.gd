@@ -105,6 +105,7 @@ const QUICK_PRESETS := {
 	},
 	"Vector Prism + Custom Footprints": {
 		"beam_presentation": 1,
+		"beam_render_mode": 0,
 		"footprint_backend": "custom",
 		"enable_realtime_spotlights": false,
 		"beam_multiplier": 20.0,
@@ -113,13 +114,14 @@ const QUICK_PRESETS := {
 		"bloom_multiplier": 0.0,
 		"volumetric_fog_density": 0.0,
 		"volumetric_fog_length": 110.0,
-		"light_volumetric_fog_energy": 0.0,
+		"light_volumetric_fog_energy": 12.0,
 		"shared_haze_density": 0.015,
 		"shared_haze_margin": 5.0,
 		"environment_current_preset": 1,
 	},
 	"Vector Prism + Native Footprints": {
 		"beam_presentation": 1,
+		"beam_render_mode": 0,
 		"footprint_backend": "native",
 		"enable_realtime_spotlights": false,
 		"beam_multiplier": 20.0,

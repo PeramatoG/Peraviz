@@ -30,6 +30,8 @@ func run() -> void:
 	test.check(not Migration.migrate({"beam_multiplier": 0.0}).has("footprint_backend"), "Partial live updates do not switch backend")
 	for preset in ["Vector Prism + Custom Footprints", "Vector Prism + Native Footprints"]:
 		test.check(WindowSettings.QUICK_PRESETS[preset].beam_presentation == 1, "Both presets retain Vector Prism shafts")
+	for key in WindowSettings.QUICK_PRESETS["Vector Prism + Custom Footprints"]:
+		test.check(WindowSettings.DEFAULT_SETTINGS[key] == WindowSettings.QUICK_PRESETS["Vector Prism + Custom Footprints"][key], "Default settings identify the preferred quick preset: " + key)
 	var loader := Harness.new()
 	loader.output_count = 128
 	loader.vector_prism = true

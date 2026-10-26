@@ -14,6 +14,8 @@ func _run() -> void:
 	root.add_child(app)
 	app._user_preferences.auto_load_last_file = false
 	await process_frame
+	var preferred: Dictionary = preload("res://scripts/visual_settings_window.gd").QUICK_PRESETS["Vector Prism + Custom Footprints"]
+	for key in preferred: test.check(app._visual_settings[key] == preferred[key], "Application defaults agree with preferred preset: " + key)
 	var settings: Dictionary = app._visual_settings.duplicate(true)
 	settings["beam_softness"] = 0.37
 	settings["beam_multiplier"] = 7.0
@@ -71,6 +73,7 @@ func _run() -> void:
 	for index in range(physical.size()): test.check(adapter._native.physical_values(index) == physical[index], "Settings rebind preserves exact held native physical state")
 	print("PROJECT_SETTINGS_BATCH ", JSON.stringify({"physical_outputs": after["physical_outputs"], "global_rebuilds": int(after["forced_replays"]) - int(before["forced_replays"]), "wall_ms": elapsed_ms}))
 	var original_renderer: BeamRendererBase = app._active_beam_renderer
+	app._apply_visual_settings({"beam_render_mode": 1})
 	for preset in ["Vector Prism + Native Footprints", "Vector Prism + Custom Footprints"]:
 		app._apply_visual_settings(preload("res://scripts/visual_settings_window.gd").QUICK_PRESETS[preset])
 		test.check(app._active_beam_renderer == original_renderer and app._visual_settings.beam_presentation == 1, "Preset changes preserve the atmospheric renderer")
