@@ -29,6 +29,7 @@ func _build_ui() -> void:
 	_add_slider_row("Footprint / surface intensity", "footprint_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Experimental realtime light intensity", "spot_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Beam / shaft intensity", "beam_multiplier", 0.0, 100.0, 0.01)
+	_add_slider_row("Experimental Wash intersection (m; 0 off)", "wash_intersection_width_m", 0.0, 0.5, 0.01)
 	_add_slider_row("Beam softness", "beam_softness", 0.0, 1.0, 0.01)
 	_add_slider_row("Beam radial falloff", "beam_radial_falloff", 0.25, 4.0, 0.01)
 	_add_slider_row("Beam axial decay", "beam_longitudinal_falloff", 0.0, 4.0, 0.01)

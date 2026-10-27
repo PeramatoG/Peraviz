@@ -6,6 +6,7 @@ const SHADER = preload("res://scripts/shaders/custom_footprint.gdshader")
 var visibility_callback: Callable
 var projection: RefCounted
 var max_range: float = 40.0
+var raster_range: float = 40.0
 var parameter_updates: int = 0
 var culled: bool = false
 var _geometry_revision: int = -1
@@ -13,6 +14,7 @@ var _profile_revision: int = -1
 var _source_id: int = -1
 var _softness: float = -1.0
 var _range_applied: float = -1.0
+var _world_inverse: Transform3D
 var _world: Transform3D
 var _known_world: bool = false
 var _bounds: AABB
@@ -68,7 +70,9 @@ func sync() -> void:
 		_range_applied = max_range
 		var tangent: float = tan(deg_to_rad(projection.half_angle_deg))
 		# Footprint range is independent of the atmospheric shaft's cutoff.
-		scale = Vector3(tangent * max_range, tangent * max_range, max_range)
+		# Receiver-aware raster bounds are applied after optical uniforms.
+		raster_range = max_range
+		scale = Vector3(tangent * raster_range, tangent * raster_range, raster_range)
 		_material.set_shader_parameter("aperture_tangent", tangent)
 		_material.set_shader_parameter("projection_range", max_range)
 		parameter_updates += 1
@@ -112,7 +116,8 @@ func _sync_world() -> void:
 	if _known_world and world.is_equal_approx(_world): return
 	_world = world
 	_known_world = true
-	_material.set_shader_parameter("world_to_projector", world.affine_inverse())
+	_world_inverse = world.affine_inverse()
+	_material.set_shader_parameter("world_to_projector", _world_inverse)
 	_material.set_shader_parameter("projector_origin", world.origin)
 	parameter_updates += 1
 	_update_bounds()
@@ -121,9 +126,25 @@ func set_receiver_bounds(bounds: AABB, known: bool) -> void:
 	# Setup/edit boundary only: conservative scene-bounds broad phase, not a
 	# collider-dependent center ray. Depth/frustum masks do the fine selection.
 	_bounds = bounds
-	_bounds_known = known
+	_bounds_known = known and bounds.position.is_finite() and bounds.size.is_finite() and bounds.size.x >= 0.0 and bounds.size.y >= 0.0 and bounds.size.z >= 0.0
 	_update_bounds()
 
+# AABB support along the projector depth axis is conservative under arbitrary
+# mechanical ancestry, inclination and parity. Unknown bounds retain full range.
 func _update_bounds() -> void:
+	if projection == null or not projection.configured: return
+	var limited: float = max_range
+	if _bounds_known and _known_world:
+		var inverse: Transform3D = _world_inverse
+		var half: Vector3 = _bounds.size * 0.5
+		var center: Vector3 = inverse * _bounds.get_center()
+		var extent: float = absf(inverse.basis.x.z) * half.x + absf(inverse.basis.y.z) * half.y + absf(inverse.basis.z.z) * half.z
+		var farthest: float = -center.z + extent
+		if is_finite(farthest):
+			limited = clampf(farthest + maxf(0.01, absf(farthest) * 0.00001), 0.01, max_range)
+	if raster_range != limited:
+		raster_range = limited
+		var tangent: float = tan(deg_to_rad(projection.half_angle_deg))
+		scale = Vector3(tangent * limited, tangent * limited, limited)
 	culled = _bounds_known and not (global_transform * mesh.get_aabb()).intersects(_bounds.grow(0.01))
 	visible = not culled

@@ -13,9 +13,10 @@ var last_setup_us: int = 0
 func _initialize() -> void:
 	call_deferred("_run")
 
-func _generate(pixels: bool, load_case: bool = false, independent: bool = false) -> String:
+func _generate(pixels: bool, load_case: bool = false, independent: bool = false, authored_angles: bool = false) -> String:
 	var path: String = ProjectSettings.globalize_path("user://render_group_%s_%s.mvr" % [str(pixels), str(load_case)])
 	var args := PackedStringArray([ProjectSettings.globalize_path("res://tests/integration/generate_render_group_fixture.py"), path])
+	if authored_angles: args.append("--authored-angles")
 	if pixels: args.append("--pixels")
 	if load_case: args.append("--load")
 	if independent: args.append("--independent")
@@ -223,6 +224,9 @@ func _run() -> void:
 	app._visual_settings["beam_presentation"] = 1
 	app._visual_settings["beam_render_mode"] = 0
 	app._update_beam_renderer_mode(true)
+	if "--scale-audit" in OS.get_cmdline_user_args():
+		await preload("res://tests/gdscript/helpers/optical_scale_probe.gd").run(self)
+		return
 	if "--live-settings-probe" in OS.get_cmdline_user_args():
 		await preload("res://tests/gdscript/helpers/live_settings_probe.gd").run(self)
 		return
@@ -324,6 +328,10 @@ func _run() -> void:
 		dmx[f*16+3] = 160
 		dmx[f*16+4] = 255
 	await _apply()
+	for output in adapter._outputs:
+		for handle in output.lights:
+			if handle.projected:
+				test.check(is_equal_approx(handle.projection.source_full_angle_deg, adapter._native.physical_values(output.index)[9]), "Every physical footprint consumes native Zoom behind aggregate shafts")
 	await preload("res://tests/gdscript/helpers/live_settings_probe.gd").exercise(self)
 	adapter.consume_diagnostics()
 	for f in range(20):

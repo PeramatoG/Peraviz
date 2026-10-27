@@ -351,6 +351,7 @@ func apply() -> void:
 		if render_row.presentation_class == 0 and not _payload.get("gain_replay", false):
 			var group: ControlGroup = _groups[render_row.output.index] if not _groups.is_empty() else null
 			if group != null: _apply_control_material(group, values, row * STRIDE)
+		CustomFootprints.sync_member_optics(self, render_row, values, row * STRIDE, indices[row * 2 + 1])
 		_apply_output(render_row.output, values, row * STRIDE, indices[row * 2 + 1], realtime, presentation)
 		if _trace and _mutation_serial != before: changed += 1
 	if _trace and _payload.has("candidates"):

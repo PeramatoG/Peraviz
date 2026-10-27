@@ -411,3 +411,81 @@ and optionally `--footprint-count=1095`. It uses the previous fragment algorithm
 with identical corrected profiles, not the obsolete square/planar geometry. The
 small scene includes authored and defaulted Wash, Spot, PNG/BMP artwork, wall,
 floor/incline, held Zoom/rotation/parity, range, camera-inside and blackout.
+
+### Bottleneck isolation and receiver-depth raster cap
+
+The production cone now ends just beyond the farthest registered opaque receiver
+AABB corner in projector depth. An AABB support function uses the cached optical
+inverse and a conservative margin; unknown bounds restore the full range. This
+changes raster geometry only: aperture, artwork, optical transform, shader range
+and distance fade remain identical. Existing receiver-change subscriptions update
+the bound; no per-frame scene search or extra worker work is introduced. It retains
+one independently controlled draw/material per output and PR #115's early rejects.
+
+Run on Windows with the usual Godot executable, Forward+, Vulkan and V-Sync off:
+
+```powershell
+Godot_v4.7.1-stable_win64.exe --path . --rendering-method forward_plus --rendering-driver vulkan --script tests/gdscript/test_custom_surface_footprints.gd -- --render-footprint-probe --bottleneck-probe --footprint-count=1095 --footprint-output=C:/Temp/peraviz-bottleneck
+```
+
+The generated scene needs no private MVR. `bottleneck.json` and case PNGs compare
+A full, B shafts only, C footprints only, D scene only, E trivial footprints with
+identical volume/draw coverage, F real footprints, G alternating native snapshots,
+H optional Wash depth feather, I original uncapped volumes, and J feathered shafts
+only. The six-output run also checks inclined and inside-camera contacts; the large
+run adds O, uncapped trivial coverage. `--footprint-resolution=1920x1080` and
+`--footprint-range=8` allow bounded pixel/range comparisons without altering DMX.
+Keep range large enough to retain the same receiver coverage. G measures native compose/application, excluding raw DMX/GDTF evaluation;
+other cases hold the same snapshot. CPU viewport submission, device viewport time,
+draws/primitives, native/script application counters, resource/memory and lit pixels
+are opt-in. Readback follows timing; ordinary frames incur no profiling stalls.
+C/F must match exactly, and I/C within one 8-bit raster unit. Lit pixels are an image
+coverage proxy, not fragment invocations or a hardware overdraw counter. Viewport
+GPU timers omit other windows/driver presentation; CPU/GPU work overlaps, and case
+differences must not be summed as an additive breakdown or inferred from FPS.
+
+Standard MultiMesh provides transform, color and four `INSTANCE_CUSTOM` components.
+An identical-profile/open subset could encode selected parameters, but mixed
+artwork, resolved optical profiles and independent native material-RID application
+need indexed parameter/texture storage and a generation-safe native instance route.
+Sharing a material alone would lose per-output state. This PR retains the working
+independent route rather than adding an unmeasured batching abstraction. If hardware
+shows submission dominates after this bounded improvement, that restricted subset
+is the next candidate; if fill dominates, investigate tighter receiver regions.
+
+Local isolation result (Godot 4.7.1 Forward+/Vulkan **llvmpipe software**, 960×640,
+1,095 outputs, 8 m shader range, identical receivers/optics/held values):
+
+| Case | CPU viewport ms | Software device ms | Visible draws |
+|---|---:|---:|---:|
+| A full | 2.353 | 371.23 | 2,195 |
+| B shafts | 1.155 | 248.73 | 1,100 |
+| C footprints | 1.260 | 127.31 | 1,100 |
+| D scene | 0.093 | 7.57 | 5 |
+| E trivial clipped | 0.647 | 72.47 | 1,100 |
+| F repeated real footprints | 1.299 | 123.84 | 1,100 |
+| G dynamic native snapshots | 2.349 | 364.62 | 2,195 |
+| H full + optional feather | 2.259 | 374.31 | 2,195 |
+| I real uncapped | 1.301 | 189.66 | 1,100 |
+| J shafts + optional feather | 1.287 | 298.60 | 1,100 |
+| O trivial uncapped | 0.755 | 110.68 | 1,100 |
+
+C/I preserve all 1,095 active footprints and 1,095 actual projector draw increments,
+with zero broad-phase culled outputs and zero native surface lights. Average raster
+depth is 5.676 m versus 8 m; displayed footprint coverage is 58,076 lit pixels in both.
+Only three pixels differ by one 8-bit level; the small scene matches exactly. E/O's
+white volume union covers 101,099 versus 118,558 pixels (14.7% less); this demonstrates
+less conservative raster coverage, not a measured fragment invocation count.
+The real projector software device time falls 32.9% in this same-run comparison;
+this is **not a Windows GPU performance claim**. Draws/primitives and resources are
+unchanged. Godot video-memory monitor reads 50,378,608 bytes for C/I (not an exact
+per-projector allocation measurement); no additional per-output resources are added.
+
+G's mean native compose/application wall time is 13.193 ms per alternating snapshot;
+held cases perform no physical application. Its colors/intensities change, so it is
+an application diagnostic rather than an identical-image comparison. Nested trace
+times overlap and must not be summed. On this software device shafts cost more than
+footprints, and even the trivial projector path has substantial cost; that does not
+establish the owner's RTX bottleneck. Hardware A–F plus C/I and E/O are the required
+next measurement. The owner's 55 FPS full coverage and seven-gobo Native 90 FPS
+remain unequal workloads. No hardware FPS gain or dominant RTX cost is claimed.

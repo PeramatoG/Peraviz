@@ -166,3 +166,15 @@ func _refresh_receivers() -> void:
 		_receiver_bounds = _receiver_bounds.merge(bounds) if _bounds_known else bounds
 		_bounds_known = true
 	for volume in volumes: volume.set_receiver_bounds(_receiver_bounds, _bounds_known)
+
+# Render Groups reduce shafts only. Their proven common Zoom must still update
+# each physical projector; Color/Dimmer never enters this optical path.
+static func sync_member_optics(adapter: RefCounted, row: RefCounted, values: PackedFloat32Array, base: int, mask: int) -> void:
+	if row.presentation_class != 1 or not (mask & (adapter.ZOOM | adapter.TOPOLOGY)): return
+	for index in row.members:
+		for handle in adapter._outputs[index].lights:
+			handle.params["beam_angle"] = values[base + 9]
+			handle.projection.configure(handle.params, handle.projection.pattern_texture)
+			handle.projection.apply_footprint(handle.light)
+			if adapter._renderer != null and adapter._renderer.has_method("refresh_surface_profile"):
+				adapter._renderer.refresh_surface_profile(handle.light)
