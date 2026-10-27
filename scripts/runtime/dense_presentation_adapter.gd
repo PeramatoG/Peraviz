@@ -868,6 +868,7 @@ func _install_lens_bindings() -> bool:
 	if not _native.install_materials(rids, owners, scales, routes): return false
 	# New lens bindings must immediately inherit the current diagnostic policy.
 	_native.set_materials_enabled(_mode != "transforms-only")
+	_native.set_lens_emission_gain(float(_loader._visual_settings.get("lens_emission_multiplier", 1.0)))
 	return true
 
 # Setup consumes native optical descriptors; this never classifies geometry or mixes live pixels.

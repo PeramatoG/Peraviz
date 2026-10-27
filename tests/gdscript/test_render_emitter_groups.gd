@@ -286,6 +286,7 @@ func _run() -> void:
 		adapter.consume_diagnostics()
 		dmx[0] = 0
 		await _apply()
+		preload("res://tests/gdscript/helpers/live_settings_probe.gd").check_lenses(self, 1.0)
 		var dark: Dictionary = adapter.consume_diagnostics()
 		test.check(not beam.visible and dark["beam_visibility_writes"] == 1, "A Dimmer zero crossing changes only the aggregate shaft visibility")
 		dmx[4] = 10 + iteration * 10
@@ -314,6 +315,7 @@ func _run() -> void:
 		var values: PackedFloat32Array = adapter._native.physical_values(index)
 		if values[1] > 0.99 and values[3] < 0.01: red_pixels += 1
 		if values[3] > 0.99 and values[1] < 0.01: blue_pixels += 1
+	preload("res://tests/gdscript/helpers/live_settings_probe.gd").check_lenses(self, 1.0)
 	test.check(red_pixels == 25 and blue_pixels == 25 and not first.is_empty(), "All individual native pixels remain exact behind the mixed shaft")
 	await _load(_generate(false, true))
 	counts = adapter.diagnostics()

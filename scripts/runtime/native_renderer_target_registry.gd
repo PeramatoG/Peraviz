@@ -66,6 +66,14 @@ func clear_renderer_targets() -> void:
 	_shaft_record_index_dirty = true
 	shaft_registry_calls = 0
 	shaft_registry_scans = 0
+	for targets in _lens_material_cache.values():
+		for entry in targets:
+			var mesh: MeshInstance3D = entry.mesh
+			if not is_instance_valid(mesh): continue
+			if entry.surface == -1:
+				if mesh.material_override == entry.material: mesh.material_override = entry.source_material
+			elif mesh.get_surface_override_material(entry.surface) == entry.material:
+				mesh.set_surface_override_material(entry.surface, entry.original_override)
 	_lens_material_cache.clear()
 	_render_emitter_groups.clear()
 	_aggregate_candidates.clear()
@@ -744,50 +752,51 @@ func _apply_lens_profiles(lens_material_targets: Array) -> void:
 			continue
 		entry["beam_optical_profile"] = _profile_for_geometry_key(str(entry.get("geometry_key", "")))
 
+# Bind the model owned by this exact Beam, never a fixture-wide housing subtree.
 func _prepare_lens_materials(cache_key: String, geometry_nodes: Array) -> Array:
 	if _lens_material_cache.has(cache_key):
 		return _lens_material_cache.get(cache_key, [])
 	var targets: Array = []
-	for geometry_node in geometry_nodes:
-		_prepare_lens_material_targets_recursive(geometry_node, targets)
+	for geometry_node: Node3D in geometry_nodes:
+		var verified: bool = bool(geometry_node.get_meta("peraviz_is_beam", false)) and not _profile_for_geometry_key(cache_key).is_empty()
+		var visual: Node3D = geometry_node.get_meta("peraviz_model_visual") as Node3D if geometry_node.has_meta("peraviz_model_visual") else null
+		if visual != null:
+			if not bool(visual.get_meta("peraviz_model_fallback", false)):
+				_prepare_lens_material_targets_recursive(visual, targets, cache_key, verified)
+		else:
+			_prepare_lens_material_targets_recursive(geometry_node, targets, cache_key, false)
 	_lens_material_cache[cache_key] = targets
 	return targets
 
-func _prepare_lens_material_targets_recursive(node: Node3D, output_targets: Array) -> void:
-	if node == null:
-		return
-	if node is MeshInstance3D:
-		_prepare_mesh_lens_material_targets(node as MeshInstance3D, output_targets)
+func _prepare_lens_material_targets_recursive(node: Node3D, output_targets: Array, owner_key: String, verified: bool) -> void:
+	if node == null or node is Light3D: return
+	var key: String = str(node.get_meta("peraviz_gdtf_geometry_key", ""))
+	if not key.is_empty() and key != owner_key: return
+	if node is MeshInstance3D and (verified or _is_emitter_lens_mesh(node)):
+		_prepare_mesh_lens_material_targets(node, output_targets, owner_key)
 	for child in node.get_children():
 		if child is Node3D:
-			_prepare_lens_material_targets_recursive(child, output_targets)
+			_prepare_lens_material_targets_recursive(child, output_targets, owner_key, verified)
 
-func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_targets: Array) -> void:
-	if not _is_emitter_lens_mesh(mesh_instance):
-		return
-	var surface_count: int = mesh_instance.get_surface_override_material_count()
-	if surface_count <= 0 and mesh_instance.mesh != null:
-		surface_count = mesh_instance.mesh.get_surface_count()
-	if surface_count <= 0:
-		return
-	for surface_index in range(surface_count):
-		var material: Material = mesh_instance.get_surface_override_material(surface_index)
-		if material == null and mesh_instance.mesh != null and surface_index < mesh_instance.mesh.get_surface_count():
-			material = mesh_instance.mesh.surface_get_material(surface_index)
+func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_targets: Array, owner_key: String) -> void:
+	if mesh_instance.mesh == null: return
+	var whole_override: bool = mesh_instance.material_override != null
+	var surface_count: int = 1 if whole_override else mesh_instance.mesh.get_surface_count()
+	for index in range(surface_count):
+		var surface_index: int = -1 if whole_override else index
+		var original_override: Material = mesh_instance.material_override if whole_override else mesh_instance.get_surface_override_material(index)
+		var material: Material = original_override if original_override != null else mesh_instance.mesh.surface_get_material(index)
 		var prepared: BaseMaterial3D = _prepare_lens_emissive_material(material)
-		if prepared == null:
-			continue
-		mesh_instance.set_surface_override_material(surface_index, prepared)
-		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "source_material": material, "geometry_key": str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")), "beam_optical_profile": _profile_for_geometry_key(str(mesh_instance.get_meta("peraviz_gdtf_geometry_key", "")))})
+		if prepared == null: continue
+		if whole_override: mesh_instance.material_override = prepared
+		else: mesh_instance.set_surface_override_material(index, prepared)
+		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "source_material": material, "original_override": original_override, "geometry_key": owner_key, "beam_optical_profile": _profile_for_geometry_key(owner_key)})
 
 func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
-	var prepared: BaseMaterial3D = null
-	if material is BaseMaterial3D:
-		prepared = (material as BaseMaterial3D).duplicate(true) as BaseMaterial3D
-	else:
-		prepared = StandardMaterial3D.new()
-	if prepared == null:
-		return null
+	# Unknown shader/pass behavior keeps its authored appearance and exact fallback.
+	if material != null and (not material is BaseMaterial3D or material.next_pass != null): return null
+	var prepared: BaseMaterial3D = material.duplicate(false) as BaseMaterial3D if material != null else StandardMaterial3D.new()
+	if prepared == null: return null
 	prepared.emission_enabled = true
 	prepared.emission = Color.WHITE
 	prepared.emission_energy_multiplier = 0.0
@@ -914,7 +923,7 @@ func _is_emitter_lens_mesh(mesh_instance: MeshInstance3D) -> bool:
 	if callback.is_valid():
 		return bool(callback.call(mesh_instance))
 	var name_hint: String = mesh_instance.name.to_lower()
-	return name_hint.contains("lens") or name_hint.contains("glass") or name_hint.contains("emitter") or name_hint.contains("beam")
+	return name_hint.contains("lens") or name_hint.contains("glass")
 
 func _call_array(callback_name: String, args: Array) -> Array:
 	var value: Variant = _call_variant(callback_name, args)

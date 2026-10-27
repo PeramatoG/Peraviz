@@ -38,6 +38,11 @@ void PeravizPresentationState::clear_lenses() { lenses_.clear(); }
 void PeravizPresentationState::set_lens_visible(int32_t batch,int32_t instance,bool visible) { lenses_.set_visible(batch,instance,visible); }
 // Coalesced cold visibility changes submit without waiting for another DMX packet.
 void PeravizPresentationState::flush_lenses() { lenses_.flush(); }
+// Presentation-only gain replays displayed lens caches; it never retires or polls native work.
+int64_t PeravizPresentationState::set_lens_emission_gain(double gain) {
+    lenses_.set_gain(gain);
+    return int64_t(materials_.set_lens_gain(gain));
+}
 // Exposes the actual retained instance buffer to focused renderer regression checks.
 PackedFloat32Array PeravizPresentationState::lens_buffer(int32_t batch) const { return lenses_.buffer(batch); }
 // Binds independently owned surface materials to canonical physical outputs, never aggregate shaft rows.

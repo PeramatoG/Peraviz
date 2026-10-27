@@ -86,7 +86,7 @@ func install(adapter: RefCounted) -> void:
 		if entries.size() != 1 or not entries[0] is Dictionary: continue
 		var entry: Dictionary = entries[0]
 		var mesh: MeshInstance3D = entry.get("mesh")
-		if not is_instance_valid(mesh) or mesh.mesh == null or mesh.mesh.get_surface_count() != 1 or mesh.get_blend_shape_count() != 0 or mesh.mesh.surface_get_primitive_type(0) != Mesh.PRIMITIVE_TRIANGLES: continue
+		if not is_instance_valid(mesh) or not mesh.mesh is ArrayMesh or mesh.mesh.get_surface_count() != 1 or mesh.get_blend_shape_count() != 0 or mesh.mesh.surface_get_primitive_type(0) != Mesh.PRIMITIVE_TRIANGLES: continue
 		if _has_visual_children(mesh): continue
 		if seen.has(mesh.get_instance_id()) or mesh.top_level or mesh.skeleton not in [NodePath(), NodePath("..")] or mesh.skin != null or mesh.material_override != null or mesh.material_overlay != null: continue
 		if mesh.layers != 1 or mesh.visibility_range_begin != 0.0 or mesh.visibility_range_end != 0.0 or mesh.visibility_parent != NodePath() or mesh.transparency != 0.0: continue

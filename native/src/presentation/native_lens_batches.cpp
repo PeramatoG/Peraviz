@@ -47,6 +47,19 @@ void NativeLensBatches::set_enabled(bool enabled) {
     }
     invalidate();
 }
+// Replays held per-instance energy without reallocating buffers or consulting a worker.
+void NativeLensBatches::set_gain(double gain) {
+    if (!main_thread() || !std::isfinite(gain)) return;
+    gain_=float(std::max(gain,0.0));
+    for (auto &batch:batches_) {
+        auto *data=batch.buffer.ptrw();
+        for (size_t slot=0;slot<batch.slots.size();++slot) {
+            const float energy=enabled_?batch.slots[slot].base_energy*gain_:0.0f;
+            if (data[slot*16+15]!=energy) { data[slot*16+15]=energy; batch.dirty=true; }
+        }
+    }
+    flush();
+}
 // Retains visibility separately from physical values; hidden instances use a zero transform, not transparent fragments.
 void NativeLensBatches::set_visible(int32_t b,int32_t s,bool visible) {
     if (!main_thread() || b<0 || size_t(b)>=batches_.size() || s<0 || size_t(s)>=batches_[b].slots.size()) return;
@@ -61,7 +74,8 @@ void NativeLensBatches::write(uint32_t index,const peraviz::presentation::Render
     if (index>=routes_.size()) return;
     for (const auto &route:routes_[index]) {
         auto &batch=batches_[route.batch]; auto *data=batch.buffer.ptrw()+route.slot*16+12;
-        const float values[4]={v[Red],v[Green],v[Blue],enabled_?v[MaterialEnergy]*batch.slots[route.slot].scale:0.0f};
+        auto &slot=batch.slots[route.slot]; slot.base_energy=v[MaterialEnergy]*slot.scale;
+        const float values[4]={v[Red],v[Green],v[Blue],enabled_?slot.base_energy*gain_:0.0f};
         for (int i=0;i<4;++i) if (data[i]!=values[i]) { data[i]=values[i]; batch.dirty=true; }
     }
 }

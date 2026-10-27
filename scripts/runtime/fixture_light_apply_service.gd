@@ -799,6 +799,8 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 	var material_phase_start: int = Time.get_ticks_usec()
 	var emissive_materials: Array = cached_materials if use_cached_materials else _prewarm_emissive_materials(loader, fixture_uuid, geometry_nodes)
 	var materials_mutated: int = 0
+	var settings: Variant = loader.get("_visual_settings")
+	var lens_gain: float = maxf(float(settings.get("lens_emission_multiplier", 1.0)), 0.0) if settings is Dictionary else 1.0
 	for material_entry in emissive_materials:
 		var material: BaseMaterial3D = null
 		if material_entry is Dictionary:
@@ -811,7 +813,7 @@ func _apply_visual_frame_materials(loader: Node, fixture_uuid: String, geometry_
 			var material_rid: RID = _get_cached_material_rid(material)
 			if material_rid.is_valid():
 				var emission_scale: float = _material_emission_scale(material_entry)
-				materials_mutated += _apply_cached_material_state(material_rid, beam_color, material_energy * emission_scale)
+				materials_mutated += _apply_cached_material_state(material_rid, beam_color, material_energy * emission_scale * lens_gain)
 	_track_phase("material_apply", material_phase_start)
 	return materials_mutated
 
@@ -955,7 +957,7 @@ func _apply_cached_material_state(material_rid: RID, color: Color, energy: float
 		previous["color"] = color
 		writes += 1
 	if not is_equal_approx(float(previous.get("energy", -1.0)), energy):
-		RenderingServer.material_set_param(material_rid, "emission_energy_multiplier", energy)
+		RenderingServer.material_set_param(material_rid, "emission_energy", energy)
 		previous["energy"] = energy
 		writes += 1
 	if writes > 0:

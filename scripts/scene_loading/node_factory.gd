@@ -70,6 +70,7 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	root.set_meta("peraviz_is_axis", is_axis)
 	root.set_meta("peraviz_is_emitter", is_emitter)
 	root.set_meta("peraviz_is_lens", is_lens)
+	root.set_meta("peraviz_is_beam", bool(data.get("is_beam", false)))
 	root.set_meta("peraviz_gdtf_geometry_key", str(data.get("gdtf_geometry_key", "")))
 	root.set_meta("peraviz_gdtf_geometry_path", str(data.get("gdtf_geometry_path", "")))
 	var geometry_key: String = str(data.get("gdtf_geometry_key", ""))

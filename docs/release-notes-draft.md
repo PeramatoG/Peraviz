@@ -1,5 +1,8 @@
 # Peraviz v0.x.x
 
+- Standardized new sessions, MVR imports and Reset on Vector Gobo Prism + Custom footprints with 0.5 m open Wash/Fresnel/PC intersections. Production selectors hide experimental modes and label Native as a gobo-only reference; saved numeric IDs and explicit zero/settings remain compatible. Missing saved values use production defaults, including Custom footprints.
+- Added independent Lens Emission Intensity (default 1.0) over canonical native Color/Dimmer emission, with immediate held-state gain replay for shared/individual materials and GPU lenses. Verified Beam-model ownership finds generically named lens meshes without lighting housing or replacing original shared materials. No dynamic lights, mandatory glow, physical-value changes or scalar resource rebuilds.
+
 - Fixed stale physical footprint Zoom for accepted Render Groups while preserving lazy member shafts. Tightened custom projector raster depth to conservative receiver bounds without changing optical range or coverage. Added an opt-in generated rendering-isolation diagnostic and synthetic angle/diameter audit. Added an experimental, default-off depth feather for open soft-type shaft contacts; Spot/gobo shafts retain the reference shader.
 
 - Preserved authored 50%/10% angular anchors through artistic controls and Zoom. Soft BeamTypes have a bounded outer tail beyond FieldAngle; fallback causes and optical provenance remain explicit. Custom footprints reject zero-contribution range pixels before normal/artwork reads and reuse squared distance without changing fixture coverage or native physical state.

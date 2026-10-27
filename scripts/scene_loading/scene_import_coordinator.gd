@@ -12,7 +12,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	if project_context.is_empty() and loaded_file_type == "mvr":
 		# A new MVR document has no saved presentation policy. PVZ restoration
 		# below instead preserves explicit and migrated legacy settings.
-		app._apply_visual_settings({"beam_render_mode": 0, "beam_presentation": 1, "footprint_backend": "custom", "enable_realtime_spotlights": false, "footprint_multiplier": 0.6, "footprint_softness": 0.10})
+		app._apply_visual_settings({"beam_render_mode": 0, "beam_presentation": 1, "footprint_backend": "custom", "enable_realtime_spotlights": false, "footprint_multiplier": 0.6, "footprint_softness": 0.10, "wash_intersection_width_m": 0.5, "lens_emission_multiplier": 1.0})
 		if app.visual_settings_window != null: app.visual_settings_window.configure(app._visual_settings)
 	app._scene_load_failed = false
 	app._scene_setup_resource_metrics.clear()
