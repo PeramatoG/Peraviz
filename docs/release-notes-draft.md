@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Fixed stale physical footprint Zoom for accepted Render Groups while preserving lazy member shafts. Tightened custom projector raster depth to conservative receiver bounds without changing optical range or coverage. Added an opt-in generated rendering-isolation diagnostic and synthetic angle/diameter audit. Added an experimental, default-off depth feather for open soft-type shaft contacts; Spot/gobo shafts retain the reference shader.
+
 - Preserved authored 50%/10% angular anchors through artistic controls and Zoom. Soft BeamTypes have a bounded outer tail beyond FieldAngle; fallback causes and optical provenance remain explicit. Custom footprints reject zero-contribution range pixels before normal/artwork reads and reuse squared distance without changing fixture coverage or native physical state.
 
 - Fixed live shaft/footprint intensity sliders rebuilding renderer associations. Gains now replay displayed native presentation values immediately during DMX hold or pending work, preserving physical state, gobo phase, aggregate shafts and GPU lenses. Profile uniforms and footprint range update their existing resources; no-op settings do no renderer work. Stabilized compatibility revisions, indexed real shaft resource replacements, and made optical preset matching include softness/range/profiles. Opt-in traces record CPU settings costs and resource deltas.

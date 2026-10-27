@@ -5,7 +5,7 @@ const VisualSettingsMigration = preload("res://scripts/visual_settings_migration
 # Only listed value domains bypass the controlled structural lifecycle. Unknown
 # optical/experimental settings retain the established replacement fallback.
 const GAINS := ["beam_multiplier", "footprint_multiplier", "spot_multiplier"]
-const PROFILES := ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier", "footprint_softness", "footprint_max_range", "light_volumetric_fog_energy"]
+const PROFILES := ["wash_intersection_width_m", "beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier", "footprint_softness", "footprint_max_range", "light_volumetric_fog_energy"]
 const ENVIRONMENT := ["ambient_multiplier", "bloom_multiplier", "background_color", "ambient_fog_density", "volumetric_fog_density", "volumetric_fog_length", "volumetric_fog_fade", "shared_haze_density", "shared_haze_margin"]
 
 static func changed(previous: Dictionary, current: Dictionary) -> Dictionary:
@@ -42,7 +42,7 @@ static func apply_values(loader: Node, changes: Dictionary) -> void:
 	if profiles:
 		loader._beam_params_template_cache.clear()
 		var renderer_profile: bool = false
-		for key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier"]:
+		for key in ["wash_intersection_width_m", "beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier"]:
 			if changes.has(key): renderer_profile = true
 		if renderer_profile:
 			for renderer in loader._beam_renderers.values(): renderer.configure(loader.camera, loader._visual_settings)
@@ -84,7 +84,7 @@ static func _profile(loader: Node, light: SpotLight3D, changes: Dictionary) -> v
 	var beam_profile: bool = false
 	for key in changes:
 		if key in PROFILES: params[key] = changes[key]
-		if key in ["beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier"]: beam_profile = true
+		if key in ["wash_intersection_width_m", "beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier"]: beam_profile = true
 	if changes.has("haze_density_multiplier"): params["haze_density"] = changes.haze_density_multiplier
 	if beam_profile:
 		if loader._active_beam_renderer.has_method("update_profile_uniforms"):

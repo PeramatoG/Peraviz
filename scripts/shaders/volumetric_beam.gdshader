@@ -16,11 +16,17 @@ instance uniform float haze_density = 0.22;
 // x = resolved exponent, y = coefficient, zw = rectangle half extents (or zero).
 instance uniform vec4 profile_parameters = vec4(8.0, 2.606038, 0.0, 0.0);
 
+// Opt-in soft particles for open soft BeamTypes only. Zero performs no depth read.
+#ifdef PERAVIZ_WASH_DEPTH
+uniform sampler2D scene_depth : hint_depth_texture, filter_nearest, repeat_disable;
+#endif // PERAVIZ_WASH_DEPTH
+
 uniform sampler2D gobo_coverage : filter_linear, repeat_disable;
 uniform sampler2D gobo_mask : filter_nearest, repeat_disable;
 uniform bool has_gobo_energy = false;
 instance uniform float gobo_transmission = 1.0;
 instance uniform float profile_feather_start = 0.86;
+uniform float wash_intersection_width = 0.0;
 
 varying vec3 optical_position;
 varying flat vec3 optical_camera;
@@ -101,6 +107,21 @@ void fragment() {
 	float tail = (1.0 - smoothstep(0.72, 0.98, d / cone_height)) * (1.0 - smoothstep(0.72, 0.98, optical_position.y / cone_height));
 	if (!has_gobo_energy) { topology_gain = sqrt(max(1.0 - radius * radius, 0.0)); }
 	float density = radial * decay * tail * max(haze_density, 0.0) * intensity_response * 0.8 * gobo_transmission * topology_gain;
+	#ifdef PERAVIZ_WASH_DEPTH
+	if (wash_intersection_width > 0.0) {
+		float depth = textureLod(scene_depth, SCREEN_UV, 0.0).r;
+		// Forward+ Vulkan Reverse-Z: zero is background, NDC Z is [0,1].
+		if (depth > 0.0) {
+			vec4 scene_h = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, depth, 1.0);
+			vec3 scene_view = scene_h.xyz / scene_h.w;
+			vec4 shell_h = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, FRAGCOORD.z, 1.0);
+			vec3 shell_view = shell_h.xyz / shell_h.w;
+			float ray_scale = length(scene_view) / max(-scene_view.z, 0.0001);
+			float gap = max((shell_view.z - scene_view.z) * ray_scale, 0.0);
+			density *= smoothstep(0.0, wash_intersection_width, gap);
+		}
+	}
+	#endif // PERAVIZ_WASH_DEPTH
 	// Additive blending multiplies emission by alpha; split density equally so
 	// the displayed radial envelope retains the shared photometric anchors.
 	float response = sqrt(max(density, 0.0));

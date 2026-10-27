@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS := {
 	"beam_noise_amount": 0.06,
 	"beam_noise_scale": 1.4,
 	"beam_softness": 0.32,
+	"wash_intersection_width_m": 0.0,
 	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.0,
 	"haze_density_multiplier": 0.22,
@@ -78,7 +79,7 @@ const DEFAULT_SETTINGS := {
 
 const OPTICAL_PRESET_KEYS := [
 	"beam_presentation", "beam_render_mode", "footprint_backend", "enable_realtime_spotlights",
-	"beam_multiplier", "footprint_multiplier", "footprint_softness", "footprint_max_range",
+	"wash_intersection_width_m", "beam_multiplier", "footprint_multiplier", "footprint_softness", "footprint_max_range",
 	"beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier",
 ]
 
@@ -120,6 +121,7 @@ const QUICK_PRESETS := {
 		"footprint_softness": 0.10,
 		"footprint_max_range": 40.0,
 		"beam_softness": 0.32,
+		"wash_intersection_width_m": 0.0,
 		"beam_radial_falloff": 1.0,
 		"beam_longitudinal_falloff": 1.0,
 		"haze_density_multiplier": 0.22,
@@ -142,6 +144,7 @@ const QUICK_PRESETS := {
 		"footprint_softness": 0.10,
 		"footprint_max_range": 40.0,
 		"beam_softness": 0.32,
+		"wash_intersection_width_m": 0.0,
 		"beam_radial_falloff": 1.0,
 		"beam_longitudinal_falloff": 1.0,
 		"haze_density_multiplier": 0.22,

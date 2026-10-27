@@ -96,6 +96,7 @@ func run() -> void:
 	test.check(is_equal_approx(dynamic[3], 11.2) and is_equal_approx(dynamic[0], 0.2), "Physical surface intensity/color remain independent of zero shaft gain")
 	service.refresh_dense_renderer()
 	test.check(adapter._footprints.volumes[0] == volume, "Unrelated presentation rebinding reuses custom mesh/material resources")
+	check_intersection_policy(loader, camera)
 	var updates: int = volume.parameter_updates
 	var texture_builds: int = loader.renderer._footprint_cache.creations
 	for iteration in range(8): apply(service, loader.frame(0.6, iteration * 0.1))
@@ -195,7 +196,48 @@ func check_optics(light: SpotLight3D, volume: MeshInstance3D) -> void:
 	volume.force_update_transform()
 	var inverse: Transform3D = volume.material_override.get_shader_parameter("world_to_projector")
 	test.check((inverse * light.global_transform).is_equal_approx(Transform3D.IDENTITY), "Mechanical transform updates cached projector inverse")
+	var receiver := light.global_transform * AABB(Vector3(-1,-1,-4), Vector3(2,2,1))
+	volume.set_receiver_bounds(receiver, true)
+	test.check(volume.raster_range < volume.max_range, "Known receivers bound raster depth without changing optical range")
+	for corner in range(8):
+		var point: Vector3 = receiver.position + receiver.size * Vector3(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1)
+		test.check(-(light.global_transform.affine_inverse() * point).z <= volume.raster_range + 0.0001, "Every conservative receiving-bound corner remains inside the far raster cap")
+	var physical_range: float = float(volume.material_override.get_shader_parameter("projection_range"))
+	test.check(physical_range == volume.max_range, "Raster cap leaves shader range/fade unchanged")
+	volume.set_receiver_bounds(receiver, false)
+	test.check(volume.raster_range == volume.max_range, "Unknown/moving bounds restore the complete optical range")
 	volume.set_receiver_bounds(AABB(Vector3(1000,1000,1000), Vector3.ONE), true)
 	test.check(volume.culled and not volume.visible, "Conservative bounds reject empty projection volumes")
 	volume.set_receiver_bounds(AABB(Vector3(-100,-100,-100), Vector3.ONE * 200), true)
 	test.check(not volume.culled and volume.visible, "Partial intersections are retained without center-ray assumptions")
+
+func check_intersection_policy(loader: Node, camera: Camera3D) -> void:
+	test.check(WindowSettings.DEFAULT_SETTINGS.wash_intersection_width_m == 0.0, "Depth feather is opt-in without measured hardware cost")
+	var renderer = loader.renderer
+	var revision: int = renderer._resource_revision
+	var light: SpotLight3D = loader.anchors[1]
+	var beam: MeshInstance3D = renderer.get_beam_resource(light)
+	var original_mesh: Mesh = beam.mesh
+	var original_material: Material = beam.material_override
+	loader._visual_settings.wash_intersection_width_m = 0.25
+	renderer.configure(camera, loader._visual_settings)
+	for kind in ["Wash", "Fresnel", "PC", "Spot"]:
+		renderer._sync_intersection_policy(beam, {"beam_type":kind})
+		var supported: bool = kind != "Spot" and RenderingServer.get_current_rendering_method() == "forward_plus"
+		test.check((beam.material_override.shader == renderer.soft_intersection_shader()) == supported, "Only compatible open soft BeamTypes use depth shader: " + kind)
+	light.set_meta("peraviz_gobo_texture", loader.anchors[0].get_meta("peraviz_gobo_texture"))
+	renderer._sync_intersection_policy(beam, {"beam_type":"Wash"})
+	test.check(beam.material_override.shader != renderer.soft_intersection_shader(), "Original selected artwork keeps the reference sharp shaft")
+	light.remove_meta("peraviz_gobo_texture")
+	loader._visual_settings.wash_intersection_width_m = 0.0
+	renderer.configure(camera, loader._visual_settings)
+	renderer._sync_intersection_policy(beam, {"beam_type":"Wash"})
+	test.check(beam.mesh == original_mesh and beam.material_override == original_material and renderer._resource_revision == revision, "Depth option restores shader without replacing resources or group revision")
+
+	var reference_shader: Shader = beam.material_override.shader
+	var unsupported := Shader.new()
+	unsupported.code = "shader_type spatial; void fragment(){ALBEDO=vec3(1.0);}"
+	beam.material_override.shader = unsupported
+	renderer._sync_intersection_policy(beam, {"beam_type":"Wash"})
+	test.check(beam.material_override.shader == unsupported, "Unknown shaft programs retain their explicit fallback ownership")
+	beam.material_override.shader = reference_shader

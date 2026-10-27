@@ -246,3 +246,65 @@ Review captures: [narrow Spot](images/vector-light-profile/narrow-spot.png),
 [Wash](images/vector-light-profile/wash.png),
 [gobo](images/vector-light-profile/gobo.png), and
 [inside camera](images/vector-light-profile/energy-inside.png).
+
+### Grouped Zoom and visual scale audit
+
+Accepted Render Groups previously updated the aggregate shaft's native Zoom but
+left member footprint states at their initial angle. The presentation adapter now
+refreshes those physical anchors from the admitted common native angle only on
+Zoom/topology dirtiness, without allocating member shafts or touching canonical
+optics. Color/Dimmer edits do not enter this path.
+
+The generated `test_render_emitter_groups.gd -- --scale-audit` uses explicit Wash
+BeamAngle 28°, FieldAngle 43.75° and selected-mode Zoom 0–40°. At a perpendicular
+receiver 10 m from the lens, `2 * distance * tan(full_angle / 2)` gives:
+
+| Zoom DMX | Current Beam° | Dynamic Field° | 50% diameter m | 10% diameter m | Visual support m |
+|---|---:|---:|---:|---:|---:|
+| 64 | 10.0392 | 16.1008 | 1.7567 | 2.8288 | 4.2431 |
+| 128 | 20.0784 | 31.8230 | 3.5407 | 5.7015 | 8.5522 |
+| 255 | 40 | 60.7490 | 7.2794 | 11.7220 | 17.5829 |
+
+These are synthetic authored metadata, not manufacturer measurements. Lens origin
+is `(0.036, 0, -0.072)` in this generated scene; gobo scale is 1, projection range
+40 m, and these cases encounter no angle/resource guard. Inclined receivers require
+projective intersection rather than this perpendicular-plane diameter formula.
+The authored tangent ratio is preserved through Zoom. The Peraviz soft outer tail
+extends to 1.5× the Field tangent: 50% more diameter and 2.25× circular support area
+than the 10% contour, without moving either official anchor. It can explain apparent
+scale differences after fixing stale Zoom; other visualizers may display a different
+threshold. No source angles or current tail are silently reduced. A shorter bounded
+tail could be compared as a presentation choice after hardware/image validation.
+
+### Optional Wash shaft intersection feather
+
+Advanced setting `wash_intersection_width_m` (0–0.5 m, default 0) selects a cached
+depth-enabled variant of the existing Vector Prism shader for open Wash/Fresnel/PC
+only. Actual selected artwork and Spot retain the original program. Both programs
+keep the same native instance/control-group interface; switching width reuses the
+mesh/material and held state, without rebuilding presentation bindings. At zero,
+the reference program declares no depth sampler and requests no depth copy.
+
+The prototype reconstructs opaque and shell positions with the inverse camera
+projection, Vulkan NDC Z [0,1] and Reverse-Z background rejection. A smoothstep of
+their separation along the camera ray feathers the contact region; it does not
+shorten, translate or deform the canonical shaft. It uses one depth sample and two
+matrix-vector products per affected fragment, with no matrix inversion or extra
+normal samples. This is a Peraviz soft-particle approximation, not integration of
+light scattering or fixture-space occlusion. Transparent receivers remain outside
+scope; visibility below/behind another surface retains the existing shaft behavior.
+
+The generated six-output diagnostic verifies horizontal and inclined opaque
+contact and an inside-camera view, with 0.5 m width. It changed 340, 205 and 86,782
+pixels respectively at 960×640; the inside view is close to the contact and covers
+more pixels. Spot/gobo programs stay unchanged. Reference and feathered captures:
+
+| Contact | Reference | Feathered |
+|---|---|---|
+| Horizontal receiver | ![Reference](images/footprint-bottleneck/wash-contact-reference.png) | ![Soft](images/footprint-bottleneck/wash-contact-soft.png) |
+| Inside camera | ![Reference](images/footprint-bottleneck/wash-inside-reference.png) | ![Soft](images/footprint-bottleneck/wash-inside-soft.png) |
+
+Software Vulkan validates images, not acceptable hardware cost. Keep the effect
+opt-in until the owner compares A/H and B/J on the RTX 3070. It can add fill/depth
+bandwidth and a depth copy when shafts are shown alone. If hardware cost is material,
+retain the default reference shader and investigate a cheaper intersection model.

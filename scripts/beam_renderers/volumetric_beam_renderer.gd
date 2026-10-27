@@ -45,6 +45,19 @@ var _presentation_mode: int = PRESENTATION_VECTOR_PRISM
 var _fog_controller: FogVolumeGoboBeamController = FogVolumeControllerScript.new()
 var _proxy_controller: ShaderBeamProxyController = ShaderBeamProxyControllerScript.new()
 
+static var _soft_intersection_shader: Shader
+
+# The opt-in variant has exactly the same instance/control-group interface.
+# Default materials never declare depth sampling or request an extra depth copy.
+static func soft_intersection_shader() -> Shader:
+	if _soft_intersection_shader == null:
+		_soft_intersection_shader = Shader.new()
+		_soft_intersection_shader.code = load("res://scripts/shaders/volumetric_beam.gdshader").code.replace("#ifdef PERAVIZ_WASH_DEPTH", "").replace("#endif // PERAVIZ_WASH_DEPTH", "")
+	return _soft_intersection_shader
+
+func _compatible_shader(shader: Shader) -> bool:
+	return shader == _beam_material_template.shader or (_soft_intersection_shader != null and shader == _soft_intersection_shader)
+
 func _init() -> void:
 	_beam_material_template = ShaderMaterial.new()
 	_beam_material_template.shader = load("res://scripts/shaders/volumetric_beam.gdshader")
@@ -163,6 +176,7 @@ func refresh_surface_profile(light: SpotLight3D) -> void:
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM or not light.has_meta(&"peraviz_optical_projection_state"): return
 	var projection: RefCounted = light.get_meta(&"peraviz_optical_projection_state")
 	if not projection.configured: return
+	_sync_intersection_policy(get_beam_resource(light), light.get_meta("peraviz_beam_last_params", {}))
 	if SurfacePolicy.custom_light(light):
 		projection.set_pattern(light.get_meta("peraviz_gobo_texture") as Texture2D if light.has_meta("peraviz_gobo_texture") else null)
 		projection.apply_footprint(light)
@@ -220,9 +234,27 @@ func update_profile_uniforms(light: SpotLight3D, params: Dictionary) -> void:
 		_set_bound_shader_parameter(beam, "profile_feather_start", projection.radial_profile.feather_start)
 	refresh_surface_profile(light)
 
+# Actual selected artwork, not RF coverage topology, determines open-shaft policy.
+func _sync_intersection_policy(beam: MeshInstance3D, params: Dictionary) -> void:
+	if beam == null: return
+	var light := beam.get_parent() as SpotLight3D
+	var artwork: bool = light != null and light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
+	var kind: String = str(params.get("beam_type", "Wash")).to_lower()
+	var width: float = clampf(float(_settings.get("wash_intersection_width_m", 0.0)), 0.0, 0.5) if kind in ["wash", "fresnel", "pc"] and RenderingServer.get_current_rendering_method() == "forward_plus" else 0.0
+	if artwork: width = 0.0
+	var material: ShaderMaterial = beam.material_override as ShaderMaterial
+	if material != null and _compatible_shader(material.shader):
+		var expected: Shader = soft_intersection_shader() if width > 0.0 and not artwork else _beam_material_template.shader
+		if material.shader != expected: material.shader = expected
+		if material.get_shader_parameter("wash_intersection_width") != width:
+			material.set_shader_parameter("wash_intersection_width", width)
+			renderer_shader_parameter_writes += 1
+
 func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void:
+	_sync_intersection_policy(beam, params)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.0)
 	var static_hash: int = _beam_settings_hash
+	static_hash = int((static_hash ^ hash(_settings.get("wash_intersection_width_m", 0.0))) * 16777619)
 	static_hash = int((static_hash ^ hash(haze_density)) * 16777619)
 	static_hash = int((static_hash ^ hash(float(params.get("beam_radial_falloff", 1.0)))) * 16777619)
 	static_hash = int((static_hash ^ hash(float(params.get("beam_longitudinal_falloff", 1.0)))) * 16777619)
@@ -466,7 +498,7 @@ func bind_control_group(beams: Array) -> ShaderMaterial:
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM or beams.size() < 2: return null
 	for beam in beams:
 		if not is_instance_valid(beam) or not beam.material_override is ShaderMaterial: return null
-		if beam.material_override.shader != _beam_material_template.shader: return null
+		if not _compatible_shader(beam.material_override.shader): return null
 		if beam.material_override.next_pass != null: return null
 		if beam.material_override.render_priority != beams[0].material_override.render_priority: return null
 		if beam.material_override.get_shader_parameter("has_gobo_energy") == true: return null
@@ -493,7 +525,7 @@ func supports_native_dynamic(light: SpotLight3D, beam: MeshInstance3D) -> bool:
 	if _presentation_mode != PRESENTATION_VECTOR_PRISM or not is_instance_valid(light) or not is_instance_valid(beam) or beam.mesh == null: return false
 	if not beam.material_override is ShaderMaterial: return false
 	var material := beam.material_override as ShaderMaterial
-	return material.shader == _beam_material_template.shader and material.next_pass == null and not beam.has_meta(&"peraviz_control_group_material") and material.get_shader_parameter("has_gobo_energy") != true and material.get_shader_parameter("gobo_coverage") == null and material.get_shader_parameter("gobo_mask") == null
+	return _compatible_shader(material.shader) and material.next_pass == null and not beam.has_meta(&"peraviz_control_group_material") and material.get_shader_parameter("has_gobo_energy") != true and material.get_shader_parameter("gobo_coverage") == null and material.get_shader_parameter("gobo_mask") == null
 
 # Immutable standard-resource description; unknown/custom resources retain their eager path.
 func shaft_compatibility(light: SpotLight3D) -> PackedInt64Array:
@@ -504,7 +536,7 @@ func shaft_compatibility(light: SpotLight3D) -> PackedInt64Array:
 	if beam != null:
 		if not beam.material_override is ShaderMaterial: return PackedInt64Array()
 		var material: ShaderMaterial = beam.material_override
-		if material.shader != _beam_material_template.shader or material.next_pass != null or material.render_priority != _beam_material_template.render_priority: return PackedInt64Array()
+		if not _compatible_shader(material.shader) or material.next_pass != null or material.render_priority != _beam_material_template.render_priority: return PackedInt64Array()
 		if material.get_shader_parameter("has_gobo_energy") == true or material.get_shader_parameter("gobo_coverage") != null or material.get_shader_parameter("gobo_mask") != null: return PackedInt64Array()
 	elif not is_member_deferred(light):
 		return PackedInt64Array()

@@ -81,6 +81,8 @@ static func exercise(owner: SceneTree) -> void:
 			var held: PackedFloat32Array = physical[adapter._outputs[index].index]
 			var energy: float = (held[5] if held[5] > 0 else held[4]) * gain if held[11] > 0 else 0.0
 			owner.test.check(is_equal_approx(values[3], energy), "Footprint gain replays original physical energy through zero without rebuilding volumes")
+	loader._apply_visual_settings({"wash_intersection_width_m": 0.25})
+	loader._apply_visual_settings({"wash_intersection_width_m": 0.0})
 	loader._apply_visual_settings({"beam_softness": 0.4})
 	loader._apply_visual_settings({"beam_softness": 0.32})
 	loader._apply_visual_settings({"beam_radial_falloff": 1.1})

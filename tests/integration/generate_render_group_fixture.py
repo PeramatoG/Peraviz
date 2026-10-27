@@ -13,13 +13,13 @@ def channel(offset: int, attribute: str, geometry: str, high: float = 1) -> str:
     return f'<DMXChannel Offset="{offset}" Geometry="{geometry}"><LogicalChannel Attribute="{attribute}"><ChannelFunction Attribute="{attribute}" DMXFrom="0" PhysicalFrom="0" PhysicalTo="{high}"/></LogicalChannel></DMXChannel>'
 
 
-def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False, independent: bool = False, apertures: bool = False) -> None:
+def generate(output: Path, pixels: bool = False, sources: int = 1, emission: bool = True, wheel: str = "", selected_mode: str = "", transforms: bool = False, independent: bool = False, apertures: bool = False, authored_angles: bool = False) -> None:
     """Retain fifty physical lenses, one emission-only output and a genuine mechanical chain."""
     geometries = []
     spacing = 0.5 if independent else 0.018
     for i in range(50):
         position = f'{{1,0,0}}{{0,1,0}}{{0,0,1}}{{{(i % 10)*spacing},{(i // 10)*spacing},0}}'
-        geometries.append(f'<Beam Name="Emitter{i}" Model="Lens" Position="{position}" LuminousFlux="320" BeamRadius="0.01" BeamAngle="25" FieldAngle="25" BeamType="Wash"/>')
+        geometries.append(f'<Beam Name="Emitter{i}" Model="Lens" Position="{position}" LuminousFlux="320" BeamRadius="0.01" BeamAngle="{28 if authored_angles else 25}" FieldAngle="{43.75 if authored_angles else 25}" BeamType="Wash"/>')
     if wheel == 'basic':
         geometries = []
         emitter = 0
@@ -96,4 +96,4 @@ def generate(output: Path, pixels: bool = False, sources: int = 1, emission: boo
 
 
 if __name__ == '__main__':
-    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv, '--independent' in sys.argv, '--apertures' in sys.argv)
+    generate(Path(sys.argv[1]), '--pixels' in sys.argv, next((int(a.split('=',1)[1]) for a in sys.argv if a.startswith('--instances=')), 20 if '--load' in sys.argv else 1), '--load' not in sys.argv, next((a.split('=',1)[1] for a in sys.argv if a.startswith('--wheel=')), ''), next((a.split('=',1)[1] for a in sys.argv if a.startswith('--mode=')), ''), '--transforms' in sys.argv, '--independent' in sys.argv, '--apertures' in sys.argv, '--authored-angles' in sys.argv)
