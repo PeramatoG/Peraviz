@@ -18,6 +18,7 @@ var aspect: Vector2 = Vector2.ONE
 var projected: bool = true
 var anchored: bool = false
 var field_ratio: float = 1.0
+var fallback_reason: String = "missing_authored_angles"
 var feather_start: float = 0.86
 var signature: Vector4 = Vector4.ZERO
 var _configured: bool = false
@@ -53,17 +54,26 @@ func configure(beam_type: String, beam_angle: float, field_angle: float, rectang
 	exponent = 2.0 if soft else 8.0
 	anchored = false
 	field_ratio = 1.0
+	fallback_reason = "missing_authored_angles" if not _explicit_pair else "invalid_or_equal_angles"
 	if _explicit_pair and is_finite(beam_angle) and is_finite(field_angle) and beam_angle > 0.0 and field_angle > beam_angle and field_angle < 178.0:
 		var ratio := tan(deg_to_rad(field_angle * 0.5)) / tan(deg_to_rad(beam_angle * 0.5))
+		fallback_reason = "unstable_angular_ratio"
 		var candidate := log(LN10 / LN2) / log(ratio)
 		if is_finite(candidate) and candidate >= 0.5 and candidate <= 32.0:
 			exponent = candidate
 			anchored = true
 			field_ratio = ratio
-	# Defaults retain the anchors. Artistic biases change the curve, never metadata.
-	exponent = clampf(exponent * pow(2.0, (0.32 - clampf(softness, 0.0, 1.0)) * 1.5) * clampf(radial_bias, 0.25, 4.0), 0.5, 32.0)
-	support_scale = field_ratio * FIELD_FEATHER if anchored else (1.65 if soft else 1.18)
-	feather_start = 1.0 / FIELD_FEATHER if anchored else (0.72 if soft else 0.86)
+			fallback_reason = "none"
+	# Authored anchors constrain the model. Artistic exponent controls apply only
+	# to fallback curves; changing an anchored exponent moves the 10% contour.
+	if not anchored:
+		exponent = clampf(exponent * pow(2.0, (0.32 - clampf(softness, 0.0, 1.0)) * 1.5) * clampf(radial_bias, 0.25, 4.0), 0.5, 32.0)
+	var outer_support: float = 1.5 if soft else FIELD_FEATHER
+	support_scale = field_ratio * outer_support if anchored else (1.65 if soft else 1.18)
+	feather_start = 1.0 / outer_support if anchored else (0.72 if soft else 0.86)
+	if anchored:
+		# Softness may shape only the unmeasured tail beyond the authored field.
+		feather_start = maxf(feather_start, 1.0 - clampf(softness / 0.32, 0.25, 1.0) * (1.0 - feather_start))
 	coefficient = LN2 * pow(support_scale, exponent)
 	var safe_ratio := clampf(rectangle_ratio if is_finite(rectangle_ratio) else 1.0, 0.01, 100.0)
 	aspect = Vector2(sqrt(safe_ratio), 1.0 / sqrt(safe_ratio)).normalized() if rectangular else Vector2.ONE

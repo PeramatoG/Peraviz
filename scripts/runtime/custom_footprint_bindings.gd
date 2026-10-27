@@ -70,6 +70,7 @@ func install(adapter: RefCounted) -> bool:
 	var owners := PackedInt32Array()
 	var scales := PackedFloat32Array()
 	var routes := PackedInt32Array()
+	var reported: Dictionary = {}
 	for output in adapter._outputs:
 		for handle in output.lights:
 			var light: SpotLight3D = handle.light
@@ -90,6 +91,12 @@ func install(adapter: RefCounted) -> bool:
 				light.set_meta(Volume.META, volume)
 			else: retained.erase(light.get_instance_id())
 			volume.configure(handle.projection, float(settings.get("footprint_max_range", 40.0)))
+			if bool(settings.get("beam_debug_optics", false)):
+				var profile: Dictionary = adapter._binding_records[output.index].get("beam_optical_profile", {})
+				var key := str([profile.get("beam_type"), profile.get("beam_type_explicit"), profile.get("beam_angle"), profile.get("field_angle"), profile.get("beam_angle_explicit"), profile.get("field_angle_explicit"), profile.get("official_beam_radius_m"), profile.get("rectangle_ratio"), profile.get("throw_ratio"), profile.get("effective_luminous_flux_lm"), profile.get("luminous_flux_source")])
+				if not reported.has(key):
+					reported[key] = true
+					print("[PeravizOpticalProfile] output=", output.canonical_id, " ", handle.projection.diagnostic(handle.params), " surface_gain=", settings.get("footprint_multiplier", 0.6), " flux_lm=", profile.get("effective_luminous_flux_lm", profile.get("luminous_flux", 10000)), " flux_source=", profile.get("luminous_flux_source", "gdtf_default"))
 			volumes.append(volume)
 			volume.set_receiver_bounds(_receiver_bounds, _bounds_known)
 			routes.append_array(PackedInt32Array([output.index, rids.size()]))
@@ -118,11 +125,13 @@ func _visibility_changed(native: Object, index: int, volume: MeshInstance3D) -> 
 func counts() -> Dictionary:
 	var culled: int = 0
 	var updates: int = 0
+	var anchored: int = 0
 	for volume in volumes:
 		if not is_instance_valid(volume): continue
 		culled += 1 if volume.culled else 0
 		updates += volume.parameter_updates
-	return {"custom_volumes_created": created, "custom_volumes_retired": retired, "custom_binding_installs": installs, "custom_footprint_supported": _supported, "custom_projector_resources": volumes.size(), "culled_custom_footprints": culled,
+		anchored += 1 if volume.projection.radial_profile.anchored else 0
+	return {"anchored_custom_profiles": anchored, "fallback_custom_profiles": volumes.size() - anchored, "custom_volumes_created": created, "custom_volumes_retired": retired, "custom_binding_installs": installs, "custom_footprint_supported": _supported, "custom_projector_resources": volumes.size(), "culled_custom_footprints": culled,
 		"custom_projector_parameter_updates": updates}
 
 # One setup traversal of scenery only. Do not subscribe fixtures, lenses, shafts

@@ -81,6 +81,12 @@ void fragment() {
 		? max(abs(point.x) / profile_parameters.z, abs(point.y) / profile_parameters.w)
 		: length(point);
 	if (metric >= 1.0) { discard; }
+	// The existing Euclidean fade is exactly zero outside this sphere. Reject
+	// before either normal or artwork sampling, including wide-cone end corners.
+	vec3 toward_source_view = toward_projector(view_position);
+	float distance_squared = dot(toward_source_view, toward_source_view);
+	if (distance_squared >= projection_range * projection_range) { discard; }
+	float inverse_distance = inversesqrt(max(distance_squared, 1e-30));
 	vec4 artwork = vec4(1.0);
 	if (has_artwork) {
 		// Godot spotlight reference maps +projector X to +U and +Y to -V.
@@ -92,13 +98,12 @@ void fragment() {
 	// Normals and both positions are in view space. Their difference is a
 	// direction, with no translation or row-vector inverse correction.
 	vec3 normal_view = normalize(textureLod(normal_texture, SCREEN_UV, 0.0).xyz * 2.0 - 1.0);
-	vec3 toward_source_view = toward_projector(view_position);
-	float incidence = max(dot(normal_view, normalize(toward_source_view)), 0.0);
+	float incidence = max(dot(normal_view, toward_source_view * inverse_distance), 0.0);
 	if (incidence == 0.0) { discard; }
 	float radial = exp(-profile_parameters.y * radial_power(metric, profile_parameters.x)) * footprint_feather(metric);
-	float distance_m = length(toward_source_view);
+	float distance_m = distance_squared * inverse_distance;
 	float fade = 1.0 - smoothstep(projection_range * 0.8, projection_range, distance_m);
-	float attenuation = fade / max(distance_m * distance_m, 0.01);
+	float attenuation = fade / max(distance_squared, 0.01);
 	ALBEDO = artwork.rgb * artwork.a * emission.rgb * emission_energy * radial * incidence * attenuation;
 	ALPHA = 1.0;
 }

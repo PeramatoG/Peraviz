@@ -365,3 +365,49 @@ physical outputs
 The last two presentation stages are a future milestone. This branch implements
 neither RenderEmitterGrouping nor a batched footprint renderer. Generic open
 profiles are ready as data; scalable visible open footprints remain deferred.
+
+## GPU/photometry follow-up: conservative fragment rejection
+
+The PR #114 geometry and independent resource ownership remain. The custom shader
+now rejects the existing zero-fade Euclidean range region before artwork/normal
+sampling and shares squared distance/inverse length across incidence, fade and
+attenuation. Depth remains necessary to reconstruct the receiver; no projector,
+normal or artwork detail is dropped. No draw batching, receiver-index expansion,
+material replacement or worker changes are introduced.
+
+Same corrected profiles, camera, geometry, native values, gain 0.6, softness 0.10,
+960×640, eight warm-up/six captured frames, generated 1,095-output workload:
+
+| Case | Previous fragment | New fragment |
+| --- | ---: | ---: |
+| Projector draws / scene draws | 1,095 / 1,100 | 1,095 / 1,100 |
+| Volume triangles including scene | 24,150 | 24,150 |
+| Range-bound case (4.1 m): lit pixels | 52,443 | 52,443 |
+| Range-bound case: saturated pixels | 1,568 | 1,568 |
+| CPU renderer submission ms, one sample | 1.332 | 1.297 |
+| Ordinary 8 m case: lit pixels | 58,076 | 58,076 |
+| Native projector / shadow lights | 0 / 0 | 0 / 0 |
+
+All 1,095 eligible volume resources remain; conservative scene-bound culling is
+unchanged. Range-bound images differ at eight pixels by at most 1/255; ordinary
+range images are identical. A test-only receiver-position diagnostic measured a
+48,556-pixel union of **open** opaque receivers whose normal lookup is now skipped.
+That union is a conservative lower bound on logical texture lookups avoided, not
+a hardware fragment-invocation/overdraw counter. Original gobos also avoid artwork
+sampling in that zero-contribution region. Production allocates no new resources;
+setup/native material routing and held writes are unchanged. Driver memory bytes
+and real GPU frame times are unavailable here.
+
+Validation used Godot 4.7.1 Forward+/Vulkan on llvmpipe solely for fidelity and the
+lookup-rejection image. Software device times (range case 80.5→84.3 ms, ordinary
+range 178.3→171.9 ms) are **not evidence of GPU speedup**. No RTX FPS gain is claimed.
+The owner’s 55 FPS full-coverage reference remains separate from Native’s seven-gobo
+90 FPS workload. Real hardware acceptance remains required. One draw/material per
+projector and overlap remain the next measured bottlenecks; no unsafe source
+collapse was made.
+
+Run the existing graphical test with `--render-footprint-probe --gpu-cost-probe`
+and optionally `--footprint-count=1095`. It uses the previous fragment algorithm
+with identical corrected profiles, not the obsolete square/planar geometry. The
+small scene includes authored and defaulted Wash, Spot, PNG/BMP artwork, wall,
+floor/incline, held Zoom/rotation/parity, range, camera-inside and blackout.

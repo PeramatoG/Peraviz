@@ -45,7 +45,7 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	var loader := Harness.new()
 	loader.output_count = count
 	loader.vector_prism = true
-	loader._visual_settings = {"beam_presentation": 1, "footprint_backend": "custom", "footprint_max_range": 25.0, "footprint_multiplier": 0.6, "footprint_softness": 0.10, "enable_realtime_spotlights": false, "beam_multiplier": 0.0}
+	loader._visual_settings = {"beam_presentation": 1, "footprint_backend": "custom", "footprint_max_range": (4.1 if "--gpu-cost-probe" in OS.get_cmdline_user_args() and count > 6 else 25.0), "footprint_multiplier": 0.6, "footprint_softness": 0.10, "enable_realtime_spotlights": false, "beam_multiplier": 0.0}
 	viewport.add_child(loader)
 	await tree.process_frame
 	loader.renderer.configure(camera, loader._visual_settings)
@@ -71,11 +71,12 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 		anchor.reparent(mechanical, true)
 		anchor.spot_range = 25.0
 		anchor.set_meta("test_beam_type", "Spot" if column != 1 else "Wash")
+		if i == 4 and count == 6: anchor.set_meta("test_authored_angles", true)
 		if column == 0: anchor.set_meta("peraviz_gobo_texture", textures[0 if i % 6 < 3 else 1])
 	if count > 6:
 		camera.position = Vector3(23,28,30)
 		camera.look_at(Vector3.ZERO)
-		loader._visual_settings.footprint_max_range = 8.0
+		loader._visual_settings.footprint_max_range = 4.1 if "--gpu-cost-probe" in OS.get_cmdline_user_args() else 8.0
 	var service = Service.new()
 	loader.dense_service = service
 	loader._fixture_light_apply_service = service
@@ -108,16 +109,19 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	_apply_style(loader, service, 0.6, 0.10)
 	var square := _square_volume()
 	var baseline := _math_baseline(false)
+	var fragment_reference := _fragment_reference()
 	var baseline_image: Image = null
 	# Equal receiver coverage and optical/physical state for all three variants.
-	for variant in ["square-original-math", "bounded-original-math", "custom"]:
+	for variant in (["pr114-fragment", "custom"] if "--gpu-cost-probe" in OS.get_cmdline_user_args() else ["square-original-math", "bounded-original-math", "custom"]):
 		for volume in adapter._footprints.volumes:
 			volume.mesh = square if variant == "square-original-math" else Volume.volume_mesh()
-			volume.material_override.shader = Volume.SHADER if variant == "custom" else baseline
+			volume.material_override.shader = Volume.SHADER if variant == "custom" else (fragment_reference if variant == "pr114-fragment" else baseline)
 		await RenderingServer.frame_post_draw
 		service.refresh_dense_renderer()
 		for anchor in loader.anchors: loader.renderer.get_beam_resource(anchor).visible = false
 		var stats := await _capture(tree, viewport, directory.path_join(variant + ".png"))
+		stats["range_m"] = adapter._footprints.volumes[0].max_range
+		stats["shader_range_m"] = RenderingServer.material_get_param(adapter._footprints.volumes[0].material_override.get_rid(), "projection_range")
 		stats["gain"] = loader._visual_settings.footprint_multiplier
 		stats["server_energy"] = RenderingServer.material_get_param(adapter._footprints.volumes[0].material_override.get_rid(), "emission_energy")
 		stats["energy"] = adapter._native.footprint_values(adapter._footprints.volumes[0].material_override.get_rid())[3]
@@ -137,6 +141,19 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 			_check_receivers(viewport, camera, loader, test, ramp)
 			var pixel := Vector2i(camera.unproject_position(Vector3(0,0,2)))
 			center_reference = viewport.get_texture().get_image().get_pixel(pixel.x,pixel.y)
+	if "--gpu-cost-probe" in OS.get_cmdline_user_args():
+		# Count the union of open-receiver pixels rejected before normal sampling.
+		# This is a conservative lower bound, not a hardware invocation counter.
+		var code: String = Volume.SHADER.code
+		var start := code.find("\tif (distance_squared >= projection_range")
+		code = code.substr(0, start) + "if (has_artwork || distance_squared < projection_range * projection_range) { discard; }\nALBEDO=vec3(1.0); ALPHA=1.0;\n}"
+		var diagnostic := Shader.new()
+		diagnostic.code = code
+		for volume in adapter._footprints.volumes: volume.material_override.shader = diagnostic
+		var rejected := await _capture(tree, viewport, directory.path_join("rejected-normal-samples.png"))
+		rejected["variant"] = "open_receiver_pixel_union_skipping_normal_sample"
+		results.append(rejected)
+		for volume in adapter._footprints.volumes: volume.material_override.shader = Volume.SHADER
 	if count == 6:
 		# Perspective, roll and hierarchy changes while physical input is held.
 		for i in range(count):
@@ -190,6 +207,17 @@ func _apply_style(loader: Node, service: RefCounted, gain: float, softness: floa
 	loader._visual_settings.merge(changes, true)
 	preload("res://scripts/runtime/visual_settings_update.gd").apply_values(loader, changes)
 	for anchor in loader.anchors: loader.renderer.get_beam_resource(anchor).visible = false
+
+func _fragment_reference() -> Shader:
+	var code: String = Volume.SHADER.code
+	var start := code.find("\t// The existing Euclidean fade")
+	var end := code.find("\tvec4 artwork", start)
+	code = code.substr(0, start) + code.substr(end)
+	code = code.replace("float incidence = max(dot(normal_view, toward_source_view * inverse_distance), 0.0);", "vec3 toward_source_view = toward_projector(view_position);\nfloat incidence = max(dot(normal_view, normalize(toward_source_view)), 0.0);")
+	code = code.replace("distance_squared * inverse_distance", "length(toward_source_view)").replace("max(distance_squared, 0.01)", "max(distance_m * distance_m, 0.01)")
+	var shader := Shader.new()
+	shader.code = code
+	return shader
 
 func _math_baseline(previous_style: bool) -> Shader:
 	# Test-only reference keeps identical optical/physical data and sampling.

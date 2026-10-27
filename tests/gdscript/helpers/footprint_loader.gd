@@ -17,4 +17,6 @@ func _build_cached_beam_params(light: SpotLight3D, angle: float, color: Color, d
 	var params: Dictionary = super._build_cached_beam_params(light, angle, color, dimmer, intensity, radius, defaults)
 	params["footprint_softness"] = float(_visual_settings.get("footprint_softness", 0.10))
 	params["beam_type"] = light.get_meta("test_beam_type", "Wash")
+	if light.get_meta("test_authored_angles", false):
+		params.merge({"profile_beam_angle": 20.0, "field_angle": 40.0, "beam_angle_explicit": true, "field_angle_explicit": true}, true)
 	return params

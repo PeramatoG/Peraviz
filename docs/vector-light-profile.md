@@ -6,6 +6,27 @@ This document describes the corrected presentation contract on the existing bran
 
 ## Canonical data and provenance
 
+Source of truth: [official GDTF Beam Geometry](https://www.gdtf.eu/gdtf/file-spec/geometry-collect/#geometry-type-beam).
+Its defaults and BeamType definitions are retained; the standard 50% Beam / 10% Field
+interpretation constrains our analytic interpolation, not a measured distribution.
+No IES/EULUMDAT data are synthesized.
+
+| Datum | Native compiler / manifest → presentation |
+| --- | --- |
+| BeamType, BeamAngle, FieldAngle | Selected-mode profile, values plus independent authored flags survive into `OpticalProjectionState` |
+| BeamRadius | Official value/source survives; measured model aperture may be selected for presentation, with mismatch diagnostics |
+| LuminousFlux | Raw/effective/source survive; native physical energy applies Dimmer once, renderer gain is separate |
+| RectangleRatio | Value survives into the rectangular metric; separate authored flag is not exported |
+| ThrowRatio | Value reaches native manifest but is not consumed by this angular projector; not silently interpreted as measured photometry |
+| Zoom | Native selected-mode aperture updates use retained base tangent ratio for dynamic FieldAngle |
+
+`runtime_scene_compiler.cpp` builds `CompiledBeamOpticalProfile`; `peraviz_loader.cpp`
+exports it; `fixture_light_apply_service.gd` passes type, angular provenance, base
+angles, aperture and aspect to the shared state. Radius and flux have source labels;
+ThrowRatio/RectangleRatio currently lose their separate authored/default flags at
+compilation. No native physical interpretation changes in this correction.
+
+
 The compiled native Beam profile and setup renderer manifest retain three flags:
 `beam_type_explicit`, `beam_angle_explicit`, `field_angle_explicit`. They originate
 from the scene model's `has_beam_type`, `has_beam_angle`, `has_field_angle`; no
@@ -24,10 +45,7 @@ surface gain once. No physical-light-unit calibration is claimed. Gobo selection
 contour count and support width never mutate canonical source flux. Shaft dimmer,
 mask transmission and presentation gains remain separate from the native source.
 
-Enable `beam_debug_optics` to log one concise optical diagnostic at explicit optics
-updates, including authored/default BeamType, current BeamAngle (source=zoom when
-changed), base BeamAngle, source FieldAngle, resolved dynamic FieldAngle and
-anchored/fallback status. Color/dimmer-only playback does not format these strings.
+Enable `beam_debug_optics` for one diagnostic per unique angle/type/provenance profile at Custom binding setup: canonical output ID, authored/default BeamType, base/current BeamAngle, authored/default and dynamic FieldAngle, model, fallback reason, effective support, surface gain and source flux/provenance. No playback logging is added. Existing surface inventory includes anchored/fallback output counts.
 
 ## Radial curve, dynamic FieldAngle and bounded support
 
@@ -57,7 +75,7 @@ Compatibility updates without a supplied base angle now retain the first authore
 base (or canonical 25° default), including when callers pass fresh parameter maps.
 They cannot repeatedly rebase the static FieldAngle profile on the current Zoom.
 
-For anchored profiles, support tangent is **1.06 × the resolved field tangent**.
+For anchored profiles, support tangent is **1.5 × the resolved field tangent** for Wash/Fresnel/PC, and **1.06 ×** for Spot/Rectangle. The former is a bounded Peraviz outer-tail approximation, not manufacturer data.
 The smooth final feather begins at FieldAngle (10%) and reaches zero at that
 support. Fallback Spot/Rectangle use a compact 1.18 × beam tangent; fallback
 Wash/Fresnel/PC use 1.65 × with a longer shoulder. There is no marketing-name
@@ -65,8 +83,7 @@ classification or huge missing-metadata halo. Rectangle uses its retained aspect
 metric with corner-normalized geometry fitting the shared projector support.
 None/Glow remain nonprojecting.
 
-Softness and radial falloff are bounded artistic exponent biases, neutral at 0.32
-and 1.0 respectively. They never overwrite canonical angles. Optical Projection
+For fallback profiles, softness and radial falloff are bounded artistic exponent biases, neutral at 0.32 and 1.0. For authored anchors the fitted exponent is immutable: softness adjusts only terminal feathering after FieldAngle; radial bias cannot move the 50%/10% contours. Optical Projection
 State resolves the common support, base transform, lens offset, Zoom, absolute
 roll/parity and resource guards. Shaft and footprint share that state and CPU cull
 bounds. The existing 89° half-aperture / 250 m radius guards still limit extreme
@@ -167,7 +184,7 @@ profile data do not create a projector or enable shadows. These texture paths us
 attenuation zero to avoid an additional unrelated radial curve. Original source
 textures/vector metadata are never blurred or resized in place.
 
-Advanced `footprint_softness` defaults to 0.04, accepts [0,0.25], and allows zero for
+Advanced `footprint_softness` defaults to 0.10 (legacy missing archives retain 0.04), accepts [0,0.25], and allows zero for
 sharp diagnostic comparison. At cached texture creation, premultiplied linear source
 RGB is filtered with two running-sum separable box passes; radius is bounded to 16
 pixels and source resolution is retained (minimum sampling 128×128). The radial
@@ -187,7 +204,7 @@ policy caused the user's measured regression to approximately 1 FPS at 1,095 out
 It is removed from production and retained only behind the explicit small-scene
 `--peraviz-open-footprint-lights=on` diagnostic. Fixed-size surface inventory exposes
 physical projected outputs, profiles, owned/active lights and open/projector/shadow
-counts. Scalable open footprints remain deferred to grouped/batched presentation.
+counts. Custom Footprints now provide full open/gobo coverage without native lights; batching remains deferred.
 The pre-regression 24–25 FPS full trace-OFF reference is a required Windows comparison,
 not a post-fix result measured here. See the linked exact commands and limitations.
 Published software captures demonstrate optical capabilities under the diagnostic;

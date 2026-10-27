@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Preserved authored 50%/10% angular anchors through artistic controls and Zoom. Soft BeamTypes have a bounded outer tail beyond FieldAngle; fallback causes and optical provenance remain explicit. Custom footprints reject zero-contribution range pixels before normal/artwork reads and reuse squared distance without changing fixture coverage or native physical state.
+
 - Fixed live shaft/footprint intensity sliders rebuilding renderer associations. Gains now replay displayed native presentation values immediately during DMX hold or pending work, preserving physical state, gobo phase, aggregate shafts and GPU lenses. Profile uniforms and footprint range update their existing resources; no-op settings do no renderer work. Stabilized compatibility revisions, indexed real shaft resource replacements, and made optical preset matching include softness/range/profiles. Opt-in traces record CPU settings costs and resource deltas.
 
 - Clarified footprint presets: unmatched values are “Modified settings”, with an always-visible active-backend/coverage status; preset application emits one settings transaction. New session/preset visual gain is 0.6 with softer, distinct Spot/Wash edges; saved values and physical GDTF/DMX remain unchanged. Tightened conservative raster coverage and moved repeated projector math to vertices with equal-coverage graphical validation. Fixed held gobo→open shaft readiness, stale renderer handles and diagnostic lens rebinding during clean startup.
