@@ -1,3 +1,4 @@
+#include "dmx/import_patch_compatibility.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 
 #include "dmx/gdtf_attribute_classifier.h"
@@ -536,6 +537,12 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         return fixture;
     }
     fixture.selected_modes_found = 1;
+    const auto patch_issue = dmx::unsupported_gdtf_patch(doc.RootElement(),selected_mode);
+    if (!patch_issue.empty()) {
+        fixture.dmx_patch_supported = false;
+        fixture.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",patch_issue,dmx_mode_name});
+        return fixture;
+    }
     parse_physical_color_resources(doc.RootElement(), fixture);
     parse_wheels(doc.RootElement(), fixture);
     const dmx::GoboWheelCatalog gobo_catalog = dmx::build_gobo_wheel_catalog(gdtf_path, doc.RootElement());

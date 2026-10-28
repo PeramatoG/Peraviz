@@ -1,3 +1,4 @@
+#include "dmx/import_patch_compatibility.h"
 #include "dmx/fixture_dmx_binding.h"
 
 #include "dmx/gdtf_attribute_classifier.h"
@@ -709,6 +710,11 @@ DimmerResolveCacheEntry resolve_uncached(const std::string &gdtf_path,
         return out;
     }
 
+    const auto patch_issue = peraviz::dmx::unsupported_gdtf_patch(root,selected_mode);
+    if (!patch_issue.empty()) {
+        out.reason = "PVZ-GDTF-DMX-PATCH-UNSUPPORTED: " + patch_issue;
+        return out;
+    }
     const peraviz::dmx::GoboWheelCatalog wheel_catalog = peraviz::dmx::build_gobo_wheel_catalog(gdtf_path, root);
     out.offsets.asset_cache_lease = wheel_catalog.cache_lease;
     for (const peraviz::dmx::GoboMediaDiagnostic &diagnostic : wheel_catalog.missing_media) {

@@ -165,6 +165,7 @@ struct RuntimeDiagnostic {
 };
 
 struct CompiledGdtfFixtureType {
+    bool dmx_patch_supported = true;
     std::string fixture_type_name;
     std::string dmx_mode_name;
     int32_t semantic_contract_version = 2;
