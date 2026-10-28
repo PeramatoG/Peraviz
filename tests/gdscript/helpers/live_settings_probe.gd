@@ -81,6 +81,9 @@ static func exercise(owner: SceneTree) -> void:
 			var held: PackedFloat32Array = physical[adapter._outputs[index].index]
 			var energy: float = (held[5] if held[5] > 0 else held[4]) * gain if held[11] > 0 else 0.0
 			owner.test.check(is_equal_approx(values[3], energy), "Footprint gain replays original physical energy through zero without rebuilding volumes")
+	for gain in [0.0, 0.25, 2.0, 1.0]:
+		loader._apply_visual_settings({"lens_emission_multiplier": gain})
+		check_lenses(owner, gain)
 	loader._apply_visual_settings({"wash_intersection_width_m": 0.25})
 	loader._apply_visual_settings({"wash_intersection_width_m": 0.0})
 	loader._apply_visual_settings({"beam_softness": 0.4})
@@ -118,7 +121,7 @@ static func exercise(owner: SceneTree) -> void:
 	owner.runtime._native_visual_runtime.submit_universe_frame(0, owner.dmx)
 	var frame: Dictionary = owner.service.consume_native_snapshot(owner.runtime._native_visual_runtime, owner.runtime._sectioned_visual_frame_applier.schema_generation())
 	if not frame.get("pending", false): owner.runtime._sectioned_visual_frame_applier.apply_snapshot(frame, loader, owner.service, 0.016, owner.runtime, owner.runtime._native_fixture_uuids_by_id, owner.runtime._fixture_nodes)
-	loader._apply_visual_settings({"beam_multiplier": 13.0, "footprint_multiplier": 0.35})
+	loader._apply_visual_settings({"beam_multiplier": 13.0, "footprint_multiplier": 0.35, "lens_emission_multiplier": 0.4})
 	frame = await owner._completed()
 	owner.runtime._sectioned_visual_frame_applier.apply_snapshot(frame, loader, owner.service, 0.016, owner.runtime, owner.runtime._native_fixture_uuids_by_id, owner.runtime._fixture_nodes)
 	for row in adapter._render_bindings.rows:
@@ -132,4 +135,26 @@ static func exercise(owner: SceneTree) -> void:
 		var held: PackedFloat32Array = adapter._native.physical_values(adapter._outputs[index].index)
 		var expected: float = (held[5] if held[5] > 0 else held[4]) * 0.35 if held[11] > 0 else 0.0
 		owner.test.check(is_equal_approx(adapter._native.footprint_values(volumes[index].material_override.get_rid())[3], expected), "Completed physical surface update retains the newest visual gain")
-	loader._apply_visual_settings({"beam_multiplier": 20.0, "footprint_multiplier": 0.6})
+	check_lenses(owner, 0.4)
+	loader._apply_visual_settings({"beam_multiplier": 20.0, "footprint_multiplier": 0.6, "lens_emission_multiplier": 1.0})
+
+# Compare actual native renderer caches with exact per-output physical Color/Dimmer.
+static func check_lenses(owner: SceneTree, gain: float) -> void:
+	var adapter: RefCounted = owner.adapter
+	var checked: int = 0
+	for output in adapter._outputs:
+		var held: PackedFloat32Array = adapter._native.physical_values(output.index)
+		if adapter._lens_batches.members.has(output.index):
+			var location: Vector2i = adapter._lens_batches.members[output.index]
+			var buffer: PackedFloat32Array = adapter._native.lens_buffer(location.x)
+			var scale: float = output.materials[0].scale
+			owner.test.check(is_equal_approx(buffer[location.y * 16 + 15], held[7] * scale * gain), "Instanced lens gain replays held physical energy through zero")
+			for channel in range(3): owner.test.check(is_equal_approx(buffer[location.y * 16 + 12 + channel], held[channel + 1]), "Instanced lens retains independent native RGB")
+			checked += 1
+		else:
+			for material in output.materials:
+				var values: PackedFloat32Array = adapter._native.material_values(material.rid)
+				owner.test.check(values.size() == 4 and is_equal_approx(values[3], held[7] * material.scale * gain), "Individual/shared lens gain follows exact native energy during hold and playback")
+				for channel in range(3): owner.test.check(is_equal_approx(values[channel], held[channel + 1]), "Lens emission color remains owned by its physical output")
+				checked += 1
+	owner.test.check(checked > 0, "Imported Beam models expose real lens materials")

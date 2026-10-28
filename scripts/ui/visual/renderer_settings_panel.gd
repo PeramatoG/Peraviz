@@ -10,6 +10,7 @@ signal setting_changed(key: String, value: Variant)
 const BASIC_KEYS := {
 	"footprint_multiplier": true,
 	"beam_multiplier": true,
+	"lens_emission_multiplier": true,
 	"bloom_multiplier": true,
 	"volumetric_fog_density": true,
 	"light_volumetric_fog_energy": true,
@@ -29,7 +30,8 @@ func _build_ui() -> void:
 	_add_slider_row("Footprint / surface intensity", "footprint_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Experimental realtime light intensity", "spot_multiplier", 0.0, 3.0, 0.01)
 	_add_slider_row("Beam / shaft intensity", "beam_multiplier", 0.0, 100.0, 0.01)
-	_add_slider_row("Experimental Wash intersection (m; 0 off)", "wash_intersection_width_m", 0.0, 0.5, 0.01)
+	_add_slider_row("Lens Emission Intensity", "lens_emission_multiplier", 0.0, 10.0, 0.01)
+	_add_slider_row("Wash intersection (m; 0 off)", "wash_intersection_width_m", 0.0, 0.5, 0.01)
 	_add_slider_row("Beam softness", "beam_softness", 0.0, 1.0, 0.01)
 	_add_slider_row("Beam radial falloff", "beam_radial_falloff", 0.25, 4.0, 0.01)
 	_add_slider_row("Beam axial decay", "beam_longitudinal_falloff", 0.0, 4.0, 0.01)
@@ -43,8 +45,8 @@ func _build_ui() -> void:
 	_add_slider_row("Volumetric fog length", "volumetric_fog_length", 1.0, 200.0, 1.0)
 	_add_slider_row("Volumetric fog fade", "volumetric_fog_fade", 0.0, 0.2, 0.005)
 	_add_slider_row("Native light fog energy", "light_volumetric_fog_energy", 0.0, 1500.0, 10.0)
-	_add_option_row("Beam presentation", "beam_presentation", BeamPresentationOptionsScript.LABELS)
-	_add_option_row("Footprint backend", "footprint_backend", ["Custom (Forward+ opaque surfaces)", "Native (gobo reference)"], ["custom", "native"])
+	_add_option_row("Beam presentation", "beam_presentation", [BeamPresentationOptionsScript.LABELS[1]])
+	_add_option_row("Footprint backend", "footprint_backend", ["Custom (Forward+ opaque surfaces)", "Native (gobo-only diagnostic/reference)"], ["custom", "native"])
 	_add_slider_row("Footprint maximum range (m)", "footprint_max_range", 1.0, 200.0, 1.0)
 	_add_color_row("Background color", "background_color")
 
@@ -61,6 +63,15 @@ func apply_settings(settings: Dictionary) -> void:
 			(control as HSlider).value = float(settings.get(key, (control as HSlider).value))
 		elif control is OptionButton:
 			var option: OptionButton = control as OptionButton
+			if key == "beam_presentation":
+				var active: int = int(settings.get(key, 1))
+				option.clear()
+				for id in BeamPresentationOptionsScript.visible_ids(active):
+					var label: String = BeamPresentationOptionsScript.LABELS[id] if id >= 0 and id < BeamPresentationOptionsScript.LABELS.size() else "Unknown renderer (%d)" % id
+					option.add_item(label, id)
+					option.set_item_disabled(option.item_count - 1, id != 1 and OS.get_environment("PERAVIZ_DIAGNOSTIC_RENDERERS") != "1")
+				option.select(option.get_item_index(active))
+				continue
 			var selected: int = ["custom", "native"].find(str(settings.get(key, "custom"))) if key == "footprint_backend" else int(settings.get(key, 0))
 			option.select(clampi(selected, 0, maxi(0, option.item_count - 1)))
 		elif control is ColorPickerButton:
@@ -117,9 +128,9 @@ func _add_option_row(label_text: String, key: String, options: Array[String], va
 	var option_button: OptionButton = OptionButton.new()
 	option_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for option_text in options:
-		option_button.add_item(option_text)
+		option_button.add_item(option_text, 1 if key == "beam_presentation" else -1)
 	option_button.item_selected.connect(func(index: int) -> void:
-		setting_changed.emit(key, values[index] if not values.is_empty() else index)
+		setting_changed.emit(key, option_button.get_item_id(index) if key == "beam_presentation" else (values[index] if not values.is_empty() else index))
 	)
 	row.add_child(option_button)
 

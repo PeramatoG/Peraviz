@@ -84,6 +84,7 @@ var _visual_settings := {
 	"footprint_multiplier": 0.6,
 	"enable_realtime_spotlights": false,
 	"beam_multiplier": 20.0,
+	"lens_emission_multiplier": 1.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
 	"beam_presentation": 1,
@@ -100,7 +101,7 @@ var _visual_settings := {
 	"beam_noise_amount": 0.06,
 	"beam_noise_scale": 1.4,
 	"beam_softness": 0.32,
-	"wash_intersection_width_m": 0.0,
+	"wash_intersection_width_m": 0.5,
 	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.0,
 	"haze_density_multiplier": 0.22,
@@ -762,9 +763,8 @@ func _restore_dmx_project_settings(settings: Dictionary) -> void:
 func _restore_visual_project_settings(settings: Variant) -> void:
 	if settings is not Dictionary:
 		return
-	var visual_settings: Dictionary = VisualSettingsMigration.migrate_saved(settings as Dictionary)
-	if visual_settings.is_empty():
-		return
+	var visual_settings: Dictionary = VisualSettingsWindow.DEFAULT_SETTINGS.duplicate(true)
+	visual_settings.merge(VisualSettingsMigration.migrate_saved(settings as Dictionary), true)
 	_apply_visual_settings(visual_settings)
 	if visual_settings_window != null and visual_settings_window.has_method("configure"):
 		visual_settings_window.call("configure", _visual_settings)

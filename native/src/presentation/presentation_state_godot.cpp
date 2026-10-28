@@ -33,6 +33,7 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("clear_lenses"), &PeravizPresentationState::clear_lenses);
     ClassDB::bind_method(D_METHOD("set_lens_visible", "batch", "instance", "visible"), &PeravizPresentationState::set_lens_visible);
     ClassDB::bind_method(D_METHOD("flush_lenses"), &PeravizPresentationState::flush_lenses);
+    ClassDB::bind_method(D_METHOD("set_lens_emission_gain", "gain"), &PeravizPresentationState::set_lens_emission_gain);
     ClassDB::bind_method(D_METHOD("lens_buffer", "batch"), &PeravizPresentationState::lens_buffer);
     ClassDB::bind_method(D_METHOD("clear_beams"), &PeravizPresentationState::clear_beams);
     ClassDB::bind_method(D_METHOD("set_beam_policy", "enabled", "multiplier"), &PeravizPresentationState::set_beam_policy);

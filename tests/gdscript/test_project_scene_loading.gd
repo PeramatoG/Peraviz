@@ -22,6 +22,8 @@ func _run() -> void:
 	settings["beam_presentation"] = 1
 	settings["footprint_backend"] = "custom"
 	settings["beam_render_mode"] = 0
+	settings["wash_intersection_width_m"] = 0.0
+	settings["lens_emission_multiplier"] = 0.0
 	var saved: Dictionary = app._project_archive.save_project(project_path, path, "test", settings, {"universe_offset": 2, "auto_start_dmx": false}, {})
 	var round_trip: Dictionary = app._project_archive.open_project(project_path)
 	test.check(round_trip.visual_settings.footprint_backend == "custom", "PVZ preserves explicit custom backend")
@@ -30,7 +32,8 @@ func _run() -> void:
 	var legacy_path := ProjectSettings.globalize_path("user://generated_legacy_footprint.pvz")
 	app._project_archive.save_project(legacy_path, path, "test", legacy_settings, {}, {})
 	var legacy: Dictionary = app._project_archive.open_project(legacy_path)
-	test.check(legacy.visual_settings.footprint_backend == "native" and legacy.visual_settings.beam_presentation == 1, "Legacy PVZ preserves Vector Prism with native footprint reference")
+	test.check(legacy.visual_settings.footprint_backend == "custom" and legacy.visual_settings.beam_presentation == 1, "PVZ missing backend adopts production defaults without changing its explicit renderer ID")
+	test.check(round_trip.visual_settings.wash_intersection_width_m == 0.0 and round_trip.visual_settings.lens_emission_multiplier == 0.0, "PVZ round trip preserves explicit zero intersection and lens emission")
 	test.check(saved.get("ok", false), "Save a generic PVZ with non-default visual and patch settings")
 	var phases: Array[String] = []
 	var observed: Array[Dictionary] = []
@@ -49,6 +52,7 @@ func _run() -> void:
 	for item in observed:
 		test.check(is_equal_approx(item.softness, 0.37) and item.offset == 2, "Every installed renderer already uses saved settings and patch offset")
 	test.check(app.last_loaded_file_type == "pvz" and app._user_preferences.last_file_path == project_path, "Publication remembers the original PVZ rather than its extracted MVR")
+	test.check(app._visual_settings.wash_intersection_width_m == 0.0 and app._visual_settings.lens_emission_multiplier == 0.0, "Installed PVZ renderer retains explicit saved zeros")
 	var adapter: RefCounted = app._fixture_light_apply_service._dense_adapter
 	app._fixture_light_apply_service.set_performance_trace_enabled(true)
 	# Seed nonzero native state without a live receiver, then verify replay preserves it.
@@ -93,9 +97,10 @@ func _run() -> void:
 	await app._open_project(project_path)
 	adapter = app._fixture_light_apply_service._dense_adapter
 	test.check(adapter._generation != old_generation and not app._scene_loading, "PVZ reload retires the old generation and completes readiness")
-	app._apply_visual_settings({"footprint_backend": "native"})
+	app._apply_visual_settings({"footprint_backend": "native", "wash_intersection_width_m": 0.0, "lens_emission_multiplier": 0.0})
 	await app._load_mvr_scene(path, "mvr", false)
 	test.check(app._visual_settings.footprint_backend == "custom" and app._visual_settings.beam_presentation == 1 and not app._visual_settings.enable_realtime_spotlights, "New MVR document does not inherit the prior project's native backend")
+	test.check(app._visual_settings.wash_intersection_width_m == 0.5 and app._visual_settings.lens_emission_multiplier == 1.0, "New MVR resets intersection and lens gain to production values")
 	app._clear_scene()
 	app.queue_free()
 	await process_frame

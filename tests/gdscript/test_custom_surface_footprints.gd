@@ -25,9 +25,13 @@ func run() -> void:
 	test.check(WindowSettings.DEFAULT_SETTINGS.footprint_backend == "custom" and not WindowSettings.DEFAULT_SETTINGS.enable_realtime_spotlights, "New-session defaults select custom without realtime lights")
 	for mode in [0, 1, 2, 3]:
 		var migrated: Dictionary = Migration.migrate_saved({"beam_presentation": mode})
-		test.check(migrated.beam_presentation == mode and migrated.footprint_backend == "native", "Legacy numeric mode retains native meaning")
+		test.check(migrated.beam_presentation == mode and migrated.footprint_backend == "custom", "Explicit numeric renderer ID survives while a missing backend uses production")
 	test.check(Migration.migrate_saved({"footprint_backend": "custom"}).footprint_backend == "custom", "Explicit saved backend survives migration")
 	test.check(not Migration.migrate({"beam_multiplier": 0.0}).has("footprint_backend"), "Partial live updates do not switch backend")
+	var empty_archive: Dictionary = Migration.migrate_saved({})
+	test.check(empty_archive.footprint_backend == "custom" and empty_archive.wash_intersection_width_m == 0.5 and empty_archive.footprint_multiplier == 0.6 and empty_archive.footprint_softness == 0.10, "Renderer-free archives use production defaults")
+	var explicit: Dictionary = Migration.migrate_saved({"beam_presentation": 3, "footprint_backend": "native", "wash_intersection_width_m": 0.0, "lens_emission_multiplier": 0.0})
+	test.check(explicit.wash_intersection_width_m == 0.0 and explicit.lens_emission_multiplier == 0.0 and explicit.beam_presentation == 3 and explicit.footprint_backend == "native", "Saved zero gains/intersection and explicit diagnostic policies survive")
 	for preset in ["Vector Prism + Custom Footprints", "Vector Prism + Native Footprints"]:
 		test.check(WindowSettings.QUICK_PRESETS[preset].beam_presentation == 1, "Both presets retain Vector Prism shafts")
 	for key in WindowSettings.QUICK_PRESETS["Vector Prism + Custom Footprints"]:
@@ -51,6 +55,13 @@ func run() -> void:
 	test.check(window._settings.footprint_backend == "custom" and window._preset_option.get_item_text(window._preset_option.selected) == "Modified settings" and window._backend_status.text.contains("Custom"), "Modified settings clearly retains active custom backend and open patterns")
 	window.configure({"footprint_multiplier": 0.35, "footprint_softness": 0.08, "footprint_backend": "native"})
 	test.check(window._settings.footprint_multiplier == 0.35 and window._settings.footprint_softness == 0.08 and window._backend_status.text.contains("gobos only"), "Explicit saved visual choices survive while native coverage is labelled")
+	window.configure({"beam_presentation": 3, "lens_emission_multiplier": 0.0})
+	var selector: OptionButton = window._renderer_panel._controls["beam_presentation"]
+	test.check(selector.get_selected_id() == 3 and selector.is_item_disabled(selector.selected), "Restored experimental ID is honestly displayed without becoming a production choice")
+	test.check(selector.item_count == 2 and selector.get_item_id(0) == 1, "Only production and the active restored legacy mode appear")
+	window._on_reset_pressed()
+	test.check(window._settings.wash_intersection_width_m == 0.5 and window._settings.lens_emission_multiplier == 1.0 and selector.item_count == 1 and selector.get_selected_id() == 1, "Reset restores production settings and removes stale experimental options")
+	test.check(window._preset_option.item_count == 2, "Normal quick presets contain one production choice and Modified settings")
 	window.queue_free()
 	await process_frame
 	var loader := Harness.new()
@@ -96,6 +107,7 @@ func run() -> void:
 	test.check(is_equal_approx(dynamic[3], 11.2) and is_equal_approx(dynamic[0], 0.2), "Physical surface intensity/color remain independent of zero shaft gain")
 	service.refresh_dense_renderer()
 	test.check(adapter._footprints.volumes[0] == volume, "Unrelated presentation rebinding reuses custom mesh/material resources")
+	check_lens_gain(loader, service)
 	check_intersection_policy(loader, camera)
 	var updates: int = volume.parameter_updates
 	var texture_builds: int = loader.renderer._footprint_cache.creations
@@ -212,7 +224,7 @@ func check_optics(light: SpotLight3D, volume: MeshInstance3D) -> void:
 	test.check(not volume.culled and volume.visible, "Partial intersections are retained without center-ray assumptions")
 
 func check_intersection_policy(loader: Node, camera: Camera3D) -> void:
-	test.check(WindowSettings.DEFAULT_SETTINGS.wash_intersection_width_m == 0.0, "Depth feather is opt-in without measured hardware cost")
+	test.check(WindowSettings.DEFAULT_SETTINGS.wash_intersection_width_m == 0.5, "Owner-tested Wash intersection is the production default")
 	var renderer = loader.renderer
 	var revision: int = renderer._resource_revision
 	var light: SpotLight3D = loader.anchors[1]
@@ -241,3 +253,37 @@ func check_intersection_policy(loader: Node, camera: Camera3D) -> void:
 	renderer._sync_intersection_policy(beam, {"beam_type":"Wash"})
 	test.check(beam.material_override.shader == unsupported, "Unknown shaft programs retain their explicit fallback ownership")
 	beam.material_override.shader = reference_shader
+
+# Actual native material caches cover gobo, open Spot and Wash without any light allocation.
+func check_lens_gain(loader: Node, service: RefCounted) -> void:
+	var adapter: RefCounted = service._dense_adapter
+	var ids: Array = []
+	for output in adapter._outputs: ids.append(output.materials[0].rid)
+	var counters: Array = [adapter._lens_batches.created, adapter._lens_batches.retired, adapter._footprints.created, adapter._footprints.retired, adapter._footprints.installs, loader.renderer._resource_revision]
+	var surfaces: Array = []
+	for volume in adapter._footprints.volumes: surfaces.append(adapter._native.footprint_values(volume.material_override.get_rid()))
+	var shafts: Array = []
+	for output in adapter._outputs:
+		for light_handle in output.lights:
+			shafts.append([light_handle.beam, light_handle.beam.get_instance_shader_parameter("beam_dynamic_state"), light_handle.beam.visible])
+	for gain in [0.0, 0.5, 2.0, 1.0]:
+		loader._visual_settings.lens_emission_multiplier = gain
+		preload("res://scripts/runtime/visual_settings_update.gd").apply_values(loader, {"lens_emission_multiplier": gain})
+		for index in [0,1,2]:
+			var physical: PackedFloat32Array = adapter._native.physical_values(index)
+			var values: PackedFloat32Array = adapter._native.material_values(ids[index])
+			test.check(is_equal_approx(values[3], physical[7] * gain) and values[0] == physical[1] and values[1] == physical[2] and values[2] == physical[3], "Gobo/Spot/Wash lenses independently replay canonical native Color/Dimmer during hold")
+		for index in range(adapter._footprints.volumes.size()):
+			var volume: MeshInstance3D = adapter._footprints.volumes[index]
+			test.check(adapter._native.footprint_values(volume.material_override.get_rid()) == surfaces[index], "Lens gain never changes footprint Color or intensity")
+		for shaft in shafts:
+			test.check(shaft[0].get_instance_shader_parameter("beam_dynamic_state") == shaft[1] and shaft[0].visible == shaft[2], "Lens gain never changes shaft Color/intensity/visibility")
+	var after: Array = [adapter._lens_batches.created, adapter._lens_batches.retired, adapter._footprints.created, adapter._footprints.retired, adapter._footprints.installs, loader.renderer._resource_revision]
+	test.check(counters == after, "Lens scalar retains renderer, lens batch and footprint ownership")
+	apply(service, loader.frame(0.0, 0.6))
+	for rid in ids: test.check(adapter._native.material_values(rid)[3] == 0.0, "Dimmer blackout removes lens emission")
+	var color_blackout: Dictionary = loader.frame(0.8, 0.3)
+	for index in range(loader.output_count): color_blackout.floats[loader.output_count * 5 + index * 4 + 3] = 0.0
+	apply(service, color_blackout)
+	for rid in ids: test.check(adapter._native.material_values(rid)[3] == 0.0, "Native Color blackout removes lens emission independently of dimmer")
+	apply(service, loader.frame(0.6, 0.2))

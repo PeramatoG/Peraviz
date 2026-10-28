@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS := {
 	"spot_multiplier": 1.0,
 	"footprint_multiplier": 0.6,
 	"beam_multiplier": 20.0,
+	"lens_emission_multiplier": 1.0,
 	"bloom_multiplier": 0.0,
 	"beam_render_mode": 0,
 	"enable_realtime_spotlights": false,
@@ -30,7 +31,7 @@ const DEFAULT_SETTINGS := {
 	"beam_noise_amount": 0.06,
 	"beam_noise_scale": 1.4,
 	"beam_softness": 0.32,
-	"wash_intersection_width_m": 0.0,
+	"wash_intersection_width_m": 0.5,
 	"beam_radial_falloff": 1.0,
 	"beam_longitudinal_falloff": 1.0,
 	"haze_density_multiplier": 0.22,
@@ -79,7 +80,7 @@ const DEFAULT_SETTINGS := {
 
 const OPTICAL_PRESET_KEYS := [
 	"beam_presentation", "beam_render_mode", "footprint_backend", "enable_realtime_spotlights",
-	"wash_intersection_width_m", "beam_multiplier", "footprint_multiplier", "footprint_softness", "footprint_max_range",
+	"wash_intersection_width_m", "lens_emission_multiplier", "beam_multiplier", "footprint_multiplier", "footprint_softness", "footprint_max_range",
 	"beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier",
 ]
 
@@ -112,6 +113,7 @@ const QUICK_PRESETS := {
 	},
 	"Vector Prism + Custom Footprints": {
 		"beam_presentation": 1,
+		"lens_emission_multiplier": 1.0,
 		"beam_render_mode": 0,
 		"footprint_backend": "custom",
 		"enable_realtime_spotlights": false,
@@ -121,7 +123,7 @@ const QUICK_PRESETS := {
 		"footprint_softness": 0.10,
 		"footprint_max_range": 40.0,
 		"beam_softness": 0.32,
-		"wash_intersection_width_m": 0.0,
+		"wash_intersection_width_m": 0.5,
 		"beam_radial_falloff": 1.0,
 		"beam_longitudinal_falloff": 1.0,
 		"haze_density_multiplier": 0.22,
@@ -135,6 +137,7 @@ const QUICK_PRESETS := {
 	},
 	"Vector Prism + Native Footprints": {
 		"beam_presentation": 1,
+		"lens_emission_multiplier": 1.0,
 		"beam_render_mode": 0,
 		"footprint_backend": "native",
 		"enable_realtime_spotlights": false,
@@ -144,7 +147,7 @@ const QUICK_PRESETS := {
 		"footprint_softness": 0.10,
 		"footprint_max_range": 40.0,
 		"beam_softness": 0.32,
-		"wash_intersection_width_m": 0.0,
+		"wash_intersection_width_m": 0.5,
 		"beam_radial_falloff": 1.0,
 		"beam_longitudinal_falloff": 1.0,
 		"haze_density_multiplier": 0.22,
@@ -318,6 +321,9 @@ func _apply_settings_to_controls() -> void:
 func _sync_quick_preset_selection() -> void:
 	if _backend_status != null:
 		_backend_status.text = "Footprints: Custom (Spot, Wash and gobos)" if str(_settings.get("footprint_backend", "custom")) == "custom" else "Footprints: Native reference (gobos only; open lights need the explicit diagnostic)"
+		var active: int = int(_settings.get("beam_presentation", 1))
+		var beam_label: String = BeamPresentationOptionsScript.LABELS[active] if active >= 0 and active < BeamPresentationOptionsScript.LABELS.size() else "Unknown (%d)" % active
+		_backend_status.text = "Beam: %s\n%s" % [beam_label, _backend_status.text]
 	if _preset_option == null:
 		return
 	for index in range(BeamPresentationOptionsScript.PRESET_NAMES.size()):

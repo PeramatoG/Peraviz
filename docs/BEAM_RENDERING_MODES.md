@@ -2,6 +2,44 @@
 
 Peraviz resolves GDTF/MVR and live DMX in the native runtime. The modes below consume the same resolved texture, color, dimmer, beam angle, range, index, and rotation state. They are Peraviz presentation choices and do not add or reinterpret GDTF semantics.
 
+## Production defaults and lens emission
+
+New sessions, new MVR imports and Reset use Vector Gobo Prism (serialized ID 1),
+Custom footprints on Forward+ opaque receivers, 0.6 surface gain, 0.10 softness,
+and 0.5 m Wash intersection. The existing adjustable intersection applies only to
+open Wash/Fresnel/PC shafts; Spot and selected gobo artwork remain sharp.
+Realtime surface lights stay off.
+
+The normal Quick Preset list contains the Custom production preset. Advanced
+controls retain a clearly labeled Native gobo-only diagnostic/reference backend.
+Shared Haze (0), Shared Haze + Gobo Shadow (2) and Shader Beam Proxy (3) remain
+implemented for restoration/tests. A restored selection is displayed as active
+but disabled for new selection. Internal sessions can expose these IDs with
+`PERAVIZ_DIAGNOSTIC_RENDERERS=1`; no serialized IDs are reassigned.
+
+PVZ restoration preserves every explicit value, including zero intersection,
+zero lens gain and diagnostic renderer IDs. Missing values use production defaults,
+including Custom footprints and 0.5 m intersection. Older archives without those
+keys therefore adopt the new defaults; there is no historical-default inference.
+Restoration starts from defaults, avoiding leakage from the previously open document.
+
+**Lens Emission Intensity** defaults to 1.0 (the existing canonical native emission
+energy, typically up to 4 before per-output optical scaling). It is independent
+of Beam/Shaft and Footprint/Surface gains. All three are presentation multipliers:
+GDTF values, native physical state and DMX output remain unchanged. Native Color,
+Dimmer and color blackout drive each physical lens even behind grouped shafts.
+The gain replays displayed material/instance energy during hold and pending native
+work, including recovery from zero, without retiring workers or rebuilding resources.
+No SpotLight/OmniLight, mandatory glow, flare or tone-mapping change is introduced.
+
+Verified GDTF Beam models bind their own visual meshes, even with generic mesh
+names. Other geometry owners, fixture housing, missing-model placeholders and
+runtime optical meshes are excluded. Conservative lens/glass name hints remain
+for legacy setup without verified model ownership. Prepared BaseMaterial3D copies
+retain textures, UVs and geometry; unknown shaders/passes keep authored materials.
+Shared Control Group materials and compatible GPU lens batches remain supported,
+with native exact per-output fallback and material restoration on retirement.
+
 ## Independent surface projection
 
 With `footprint_backend="native"`, an active gobo selection assigns the cached composed texture to `SpotLight3D.light_projector`. With `footprint_backend="custom"`, a bounded GPU volume samples the original cached image instead, without a native projector. Godot 4.7 requires shadows for reliable projector output, so Peraviz enables them while a projector is present and restores the prior policy when it is cleared. Projector roll is composed into the saved local optical basis around local `-Z`; it does not rewrite Euler angles, the emitter origin, or the beam direction. The Vector Prism child receives an explicit inverse presentation roll around its documented longitudinal axis, preserving its recovered topology and centerline.
@@ -12,7 +50,7 @@ The shadows-only aperture mask is a separate native-reference resource. It exist
 
 ### Vector Prism
 
-This is the recovered reference renderer. Its cached vectorized prism represents the gobo silhouette as geometry, with gobo-dependent primitive counts. Indexed and continuous rotation remain parametric and reuse topology. The shared haze is hidden and surface projection selects the independent Custom or Native backend. Custom is the new-session default and requires no realtime surface light. See [surface ownership](surface-light-ownership.md) for legacy migration and limitations.
+This is the production renderer. Its cached vectorized prism represents the gobo silhouette as geometry, with gobo-dependent primitive counts. Indexed and continuous rotation remain parametric and reuse topology. The shared haze is hidden and surface projection selects the independent Custom or Native backend. Custom is the new-session default and requires no realtime surface light. See [surface ownership](surface-light-ownership.md) for legacy migration and limitations.
 
 ### Shared Haze
 
@@ -62,7 +100,7 @@ Presentation ownership is explicit:
 - Projector textures do not shape stable Godot volumetric fog.
 - Native gobo shadows are limited by froxel and shadow-map resolution.
 - Shader proxy depth clipping is screen-space and does not provide physical shadowing or robust transparent-object occlusion.
-- Lens texture/mask presentation remains independent future work.
+- Authored lens textures are retained; additional optical lens-mask interpretation is outside this presentation feature.
 - A scene with many genuinely active physical emitters can still make native volumetric lighting expensive; future aggregation or culling is outside this experiment.
 - The broader live-DMX output/apply CPU bottleneck is separate work and is not solved by changing beam presentation.
 - Focus, Frost, Iris, prism, and shutter semantics remain limited exactly as documented in the [GDTF support matrix](gdtf-support-matrix.md).

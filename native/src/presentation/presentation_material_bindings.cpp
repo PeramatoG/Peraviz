@@ -70,6 +70,20 @@ size_t PresentationMaterialBindings::set_surface_gain(double gain) {
     writes_=writes;
     return writes;
 }
+// Replays only cached displayed lens energy, preserving optical scales and zero-gain recovery.
+size_t PresentationMaterialBindings::set_lens_gain(double gain) {
+    if (surface_ || !std::isfinite(gain)) return 0;
+    lens_gain_=float(std::max(gain,0.0));
+    size_t writes=0;
+    for (auto &b:bindings_) {
+        const float energy=enabled_?b.lens_base*lens_gain_:0.0f;
+        if (b.energy!=energy) {
+            RenderingServer::get_singleton()->material_set_param(b.rid,energy_,energy);
+            b.energy=energy; ++writes;
+        }
+    }
+    return writes;
+}
 // Invalidates cached renderer mutations without changing native semantic or material ownership.
 void PresentationMaterialBindings::invalidate() { for (auto &b:bindings_) b.red=b.green=b.blue=b.energy=-1; }
 // Coalesces shared lens RIDs in native main-thread glue; independent pixel lenses remain exact.
@@ -98,7 +112,8 @@ void PresentationMaterialBindings::nominate(uint32_t index,uint32_t mask) {
 void PresentationMaterialBindings::write(Binding &b,const peraviz::presentation::RenderValues &v,RenderingServer *server) {
     using namespace peraviz::presentation;
     if (surface_) b.surface_base=v[Visible]>0 ? (v[SpotEnergy]>0 ? v[SpotEnergy] : v[BeamEnergy]) : 0.0f;
-    const float energy=surface_ ? b.surface_base*b.scale : v[MaterialEnergy]*b.scale;
+    if (!surface_) b.lens_base=v[MaterialEnergy]*b.scale;
+    const float energy=surface_ ? b.surface_base*b.scale : b.lens_base*lens_gain_;
     const size_t before=writes_;
     if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
         server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));

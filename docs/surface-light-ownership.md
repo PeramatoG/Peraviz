@@ -13,12 +13,14 @@ Native Footprints** keeps presentation 1 and selects `footprint_backend="native"
 The shaft renderer is unchanged. The unmatched quick-preset entry is labelled
 **Modified settings**; it never selects a backend. A status line always identifies
 the active backend and Native's gobo-only coverage. Programmatic control updates
-emit no intermediate settings, so a preset commits once. Experimental numeric IDs 0/2/3 remain available
-in advanced settings and retain their saved meaning; the quick menu shows the two
-Vector Prism presets. PVZ archives without a backend migrate to native, while
-explicit backend choices round-trip. Partial live settings never apply archive
-migration. New MVR documents select the preferred custom route; opening a PVZ instead
-restores its explicit or migrated backend.
+emit no intermediate settings, so a preset commits once. Experimental numeric IDs
+0/2/3 retain their saved meaning and are exposed for new selection only with
+`PERAVIZ_DIAGNOSTIC_RENDERERS=1`; restored selections remain accurately displayed.
+The normal quick menu shows the Custom production preset; Native remains a clearly
+labeled gobo-only diagnostic backend in advanced controls. Missing PVZ values use
+production defaults, while explicit values round-trip. Partial live updates never
+apply archive defaults. New MVR documents and Reset select the same Custom route.
+See [production defaults and lens emission](BEAM_RENDERING_MODES.md#production-defaults-and-lens-emission).
 
 New sessions and both presets use `footprint_multiplier=0.6` and
 `footprint_softness=0.10`; explicit PVZ values remain intact. The surface shader

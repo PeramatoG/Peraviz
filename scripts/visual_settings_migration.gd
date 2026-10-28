@@ -9,13 +9,15 @@ static func migrate(settings: Dictionary) -> Dictionary:
 		result["footprint_multiplier"] = maxf(float(result.get("spot_multiplier", 1.0)), 0.0)
 	return result
 
-# Only archive/project restoration applies legacy defaults. Partial live UI updates
-# must never reinterpret a missing backend as a request to switch away from custom.
+# Restoration fills only missing values. Explicit selections and zero remain exact;
+# partial live updates never introduce defaults or change the backend.
 static func migrate_saved(settings: Dictionary) -> Dictionary:
 	var result := migrate(settings)
-	if not result.has("footprint_multiplier"): result["footprint_multiplier"] = 1.0
-	if not result.has("footprint_softness"): result["footprint_softness"] = 0.04
-	if not result.has("footprint_backend"): result["footprint_backend"] = "native"
+	if not result.has("footprint_multiplier"): result["footprint_multiplier"] = 0.6
+	if not result.has("footprint_softness"): result["footprint_softness"] = 0.10
+	if not result.has("footprint_backend"): result["footprint_backend"] = "custom"
+	if not result.has("wash_intersection_width_m"): result["wash_intersection_width_m"] = 0.5
+	if not result.has("lens_emission_multiplier"): result["lens_emission_multiplier"] = 1.0
 	return result
 
 static func surface_multiplier(settings: Dictionary) -> float:

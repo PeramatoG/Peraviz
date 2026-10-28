@@ -47,8 +47,8 @@ var _proxy_controller: ShaderBeamProxyController = ShaderBeamProxyControllerScri
 
 static var _soft_intersection_shader: Shader
 
-# The opt-in variant has exactly the same instance/control-group interface.
-# Default materials never declare depth sampling or request an extra depth copy.
+# Eligible open Wash/Fresnel/PC shafts use the existing depth variant.
+# Spot and gobo materials keep the sharp shader without depth sampling.
 static func soft_intersection_shader() -> Shader:
 	if _soft_intersection_shader == null:
 		_soft_intersection_shader = Shader.new()
@@ -240,7 +240,7 @@ func _sync_intersection_policy(beam: MeshInstance3D, params: Dictionary) -> void
 	var light := beam.get_parent() as SpotLight3D
 	var artwork: bool = light != null and light.has_meta("peraviz_gobo_texture") and light.get_meta("peraviz_gobo_texture") != null
 	var kind: String = str(params.get("beam_type", "Wash")).to_lower()
-	var width: float = clampf(float(_settings.get("wash_intersection_width_m", 0.0)), 0.0, 0.5) if kind in ["wash", "fresnel", "pc"] and RenderingServer.get_current_rendering_method() == "forward_plus" else 0.0
+	var width: float = clampf(float(_settings.get("wash_intersection_width_m", 0.5)), 0.0, 0.5) if kind in ["wash", "fresnel", "pc"] and RenderingServer.get_current_rendering_method() == "forward_plus" else 0.0
 	if artwork: width = 0.0
 	var material: ShaderMaterial = beam.material_override as ShaderMaterial
 	if material != null and _compatible_shader(material.shader):
@@ -254,7 +254,7 @@ func _apply_static_beam_params(beam: MeshInstance3D, params: Dictionary) -> void
 	_sync_intersection_policy(beam, params)
 	var haze_density: float = max(float(params.get("haze_density", params.get("haze_density_multiplier", 0.22))), 0.0)
 	var static_hash: int = _beam_settings_hash
-	static_hash = int((static_hash ^ hash(_settings.get("wash_intersection_width_m", 0.0))) * 16777619)
+	static_hash = int((static_hash ^ hash(_settings.get("wash_intersection_width_m", 0.5))) * 16777619)
 	static_hash = int((static_hash ^ hash(haze_density)) * 16777619)
 	static_hash = int((static_hash ^ hash(float(params.get("beam_radial_falloff", 1.0)))) * 16777619)
 	static_hash = int((static_hash ^ hash(float(params.get("beam_longitudinal_falloff", 1.0)))) * 16777619)

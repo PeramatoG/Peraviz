@@ -36,6 +36,7 @@ public:
     void clear_lenses();
     void set_lens_visible(int32_t batch,int32_t instance,bool visible);
     void flush_lenses();
+    int64_t set_lens_emission_gain(double gain);
     PackedFloat32Array lens_buffer(int32_t batch) const;
     void set_beam_policy(bool enabled,double multiplier);
     Dictionary replay_presentation_gains(bool shafts,bool surfaces,double surface_gain,bool trace);

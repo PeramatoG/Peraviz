@@ -4,7 +4,7 @@ const VisualSettingsMigration = preload("res://scripts/visual_settings_migration
 
 # Only listed value domains bypass the controlled structural lifecycle. Unknown
 # optical/experimental settings retain the established replacement fallback.
-const GAINS := ["beam_multiplier", "footprint_multiplier", "spot_multiplier"]
+const GAINS := ["lens_emission_multiplier", "beam_multiplier", "footprint_multiplier", "spot_multiplier"]
 const PROFILES := ["wash_intersection_width_m", "beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier", "footprint_softness", "footprint_max_range", "light_volumetric_fog_energy"]
 const ENVIRONMENT := ["ambient_multiplier", "bloom_multiplier", "background_color", "ambient_fog_density", "volumetric_fog_density", "volumetric_fog_length", "volumetric_fog_fade", "shared_haze_density", "shared_haze_margin"]
 
@@ -26,7 +26,7 @@ static func structural(changes: Dictionary) -> bool:
 
 static func refresh_shaft_optics(changes: Dictionary) -> bool:
 	for key in changes:
-		if key in ["footprint_backend", "enable_realtime_spotlights", "footprint_multiplier", "spot_multiplier", "light_volumetric_fog_energy"]: continue
+		if key in ["lens_emission_multiplier", "footprint_backend", "enable_realtime_spotlights", "footprint_multiplier", "spot_multiplier", "light_volumetric_fog_energy"]: continue
 		if key in ENVIRONMENT or str(key).begins_with("environment_"): continue
 		return true
 	return false
@@ -34,6 +34,7 @@ static func refresh_shaft_optics(changes: Dictionary) -> bool:
 static func apply_values(loader: Node, changes: Dictionary) -> void:
 	var service: RefCounted = loader._fixture_light_apply_service
 	var adapter: RefCounted = service._dense_adapter
+	var lenses: bool = changes.has("lens_emission_multiplier")
 	var shafts: bool = changes.has("beam_multiplier")
 	var surfaces: bool = changes.has("footprint_multiplier") or changes.has("spot_multiplier")
 	var profiles: bool = false
@@ -52,10 +53,13 @@ static func apply_values(loader: Node, changes: Dictionary) -> void:
 		else:
 			for lights in loader._fixture_emitter_light_cache.values():
 				for light in lights: _profile(loader, light, changes)
-	if adapter != null and (shafts or surfaces):
+	if adapter != null and (shafts or surfaces or lenses):
 		# Finish any main-thread payload first; a worker's pending snapshot is
 		# never consumed, cancelled or waited on by a settings edit.
 		adapter.apply()
+		if lenses:
+			var writes: int = adapter._native.set_lens_emission_gain(float(loader._visual_settings.get("lens_emission_multiplier", 1.0)))
+			adapter._record_mutation(&"material_parameter_writes", writes)
 		adapter._update_native_beam_policy()
 		var replay: Dictionary = adapter._native.replay_presentation_gains(shafts, surfaces, VisualSettingsMigration.surface_multiplier(loader._visual_settings), adapter._trace)
 		if shafts:

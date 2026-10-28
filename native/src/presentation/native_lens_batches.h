@@ -14,6 +14,7 @@ public:
     void clear();
     void invalidate();
     void set_enabled(bool enabled);
+    void set_gain(double gain);
     void set_visible(int32_t batch,int32_t instance,bool visible);
     void apply(const peraviz::presentation::DensePresentationState &physical,bool suppress,bool trace);
     void apply_completed(const std::vector<peraviz::presentation::PreparedOutput> &changes,
@@ -22,13 +23,14 @@ public:
     Dictionary stats() const;
     PackedFloat32Array buffer(int32_t batch) const;
 private:
-    struct Slot { uint32_t owner=0; float scale=1; bool visible=true; std::array<float,12> transform{}; };
+    struct Slot { uint32_t owner=0; float scale=1, base_energy=0; bool visible=true; std::array<float,12> transform{}; };
     struct Batch { RID rid; PackedFloat32Array buffer; std::vector<Slot> slots; bool dirty=true; };
     struct Route { uint32_t batch=0,slot=0; };
     void write(uint32_t index,const peraviz::presentation::RenderValues &values);
     std::vector<Batch> batches_;
     std::vector<std::vector<Route>> routes_;
     bool enabled_=true;
+    float gain_=1;
     int64_t bytes_=0,submissions_=0,pack_us_=0,submit_us_=0;
 };
 }

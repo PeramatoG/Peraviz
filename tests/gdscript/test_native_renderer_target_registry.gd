@@ -258,6 +258,43 @@ func _run() -> void:
 	quantum_harness.free()
 	call_deferred("_finish")
 
+# Imported model meshes need no name hint when their exact Beam ownership is verified.
+func _check_lens_ownership() -> void:
+	var owned := Node3D.new()
+	owned.set_meta("peraviz_is_beam", true)
+	owned.set_meta("peraviz_gdtf_geometry_key", "fixture/Lamp")
+	var visual := Node3D.new()
+	owned.add_child(visual)
+	owned.set_meta("peraviz_model_visual", visual)
+	var mesh := MeshInstance3D.new()
+	mesh.name = "Mesh_0"
+	mesh.mesh = BoxMesh.new()
+	var source := StandardMaterial3D.new()
+	var texture := GradientTexture1D.new()
+	source.albedo_texture = texture
+	source.uv1_scale = Vector3(2,3,1)
+	mesh.mesh.surface_set_material(0, source)
+	visual.add_child(mesh)
+	var housing := MeshInstance3D.new()
+	housing.mesh = mesh.mesh
+	owned.add_child(housing) # Outside the model owned by Beam.
+	var other := MeshInstance3D.new()
+	other.set_meta("peraviz_gdtf_geometry_key", "fixture/Other")
+	other.mesh = mesh.mesh
+	visual.add_child(other)
+	var registry := NativeRendererTargetRegistryScript.new()
+	registry._beam_profiles_by_geometry_key["fixture/Lamp"] = {"emission_lumen_scale": 0.25}
+	var targets: Array = registry._prepare_lens_materials("fixture/Lamp", [owned])
+	test.check(targets.size() == 1 and targets[0].mesh == mesh and targets[0].beam_optical_profile.emission_lumen_scale == 0.25, "Exact Beam model ownership supplies per-output lens/profile despite generic mesh names")
+	var prepared: BaseMaterial3D = targets[0].material
+	test.check(prepared != source and prepared.albedo_texture == texture and prepared.uv1_scale == source.uv1_scale and not source.emission_enabled and mesh.mesh.surface_get_material(0) == source, "Lens preparation retains textures, UVs and shared original material")
+	test.check(housing.get_surface_override_material(0) == null and other.get_surface_override_material(0) == null, "Housing and another canonical geometry never become this Beam's lens")
+	var shader_material := ShaderMaterial.new()
+	test.check(registry._prepare_lens_emissive_material(shader_material) == null, "Unknown material behavior retains original appearance")
+	registry.clear()
+	test.check(mesh.get_surface_override_material(0) == null and mesh.get_parent() == visual, "Retirement restores original material ownership and hierarchy")
+	owned.free()
+
 func _write_gobo_mask() -> String:
 	var image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
 	image.fill(Color.WHITE)
@@ -266,6 +303,7 @@ func _write_gobo_mask() -> String:
 	return path
 
 func _finish() -> void:
+	_check_lens_ownership()
 	await process_frame
 	await process_frame
 	test.finish(self)
