@@ -56,10 +56,12 @@ func check_material_exclusions(cache: RefCounted) -> void:
 	var source: ArrayMesh = Prototype.fixture_mesh(16,8)
 	var material: StandardMaterial3D = source.surface_get_material(1)
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	test.check(cache.derive(source).mesh == source and cache.entries.is_empty(), "Transparent surfaces retain exact original resources")
+	test.check(cache.derive(source).mesh == source and cache.generations == 0, "Transparent surfaces retain exact original resources")
 	material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	cache.clear()
 	material.emission_enabled = true
-	test.check(cache.derive(source).mesh == source and cache.entries.is_empty(), "Mixed optical/emissive meshes are conservatively excluded")
+	test.check(cache.derive(source).mesh == source and cache.generations == 0, "Mixed optical/emissive meshes are conservatively excluded")
+	cache.clear()
 	material.emission_enabled = false
 	var first: Dictionary = cache.derive(source,60,0)
 	var second: Dictionary = cache.derive(source,30,0)

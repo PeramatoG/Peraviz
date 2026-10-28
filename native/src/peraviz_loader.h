@@ -23,6 +23,7 @@ protected:
 public:
     Array load_mvr(const String &path, bool peraviz_debug_baseline = false,
                    bool peraviz_debug_coords = false);
+    bool set_gdtf_model_detail(const String &detail);
     Dictionary load_3ds_mesh_data(const String &path) const;
     bool begin_load_mvr(const String &path, int universe_offset = -1);
     bool is_load_mvr_ready() const;
@@ -41,6 +42,7 @@ public:
 
 private:
     Array serialize_scene_nodes(bool baseline_debug, bool coords_debug);
+    peraviz::GdtfModelDetail model_detail_ = peraviz::GdtfModelDetail::Default;
     peraviz::SceneSetupProgress load_progress_;
     std::future<peraviz::SceneSetupPreparation> preparation_;
     std::optional<peraviz::SceneSetupPreparation> prepared_;

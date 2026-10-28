@@ -766,7 +766,7 @@ void append_geometry_children(SceneModel &scene, tinyxml2::XMLElement *node, con
 namespace peraviz {
 
 SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
-                    bool peraviz_debug_coords) {
+                    bool peraviz_debug_coords, GdtfModelDetail model_detail) {
     peraviz::debug_runtime::set_baseline_debug_enabled(peraviz_debug_baseline);
     peraviz::debug_runtime::set_coordinate_debug_enabled(peraviz_debug_coords);
     peraviz::debug_runtime::log_coordinate_mapping_metadata();
@@ -860,7 +860,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                 const std::string gdtf_path = fixture_patch.gdtf_path;
 
                 if (!gdtf_path.empty()) {
-                    const GdtfBuildRequest request{gdtf_path, gdtf_mode, id, node.name};
+                    const GdtfBuildRequest request{gdtf_path, gdtf_mode, id, node.name, model_detail};
                     const auto geometry_start = std::chrono::steady_clock::now();
                     GdtfGeometryBuildResult fixture_geometry = reuse_templates
                         ? templates.instantiate(request, id, model.extracted_asset_count)

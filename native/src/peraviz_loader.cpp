@@ -122,6 +122,7 @@ namespace godot {
 
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_gdtf_model_detail", "detail"), &PeravizLoader::set_gdtf_model_detail);
     ClassDB::bind_method(D_METHOD("begin_load_mvr", "path", "universe_offset"), &PeravizLoader::begin_load_mvr, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("get_load_phase"), &PeravizLoader::get_load_phase);
     ClassDB::bind_method(D_METHOD("is_load_mvr_ready"), &PeravizLoader::is_load_mvr_ready);
@@ -147,6 +148,16 @@ void PeravizLoader::_bind_methods() {
                          DEFVAL(-1));
 }
 
+// Selects the next import's authored model quality; an active task keeps its snapshot.
+bool PeravizLoader::set_gdtf_model_detail(const String &detail) {
+    if (preparation_.valid()) return false;
+    if (detail == "default") model_detail_ = peraviz::GdtfModelDetail::Default;
+    else if (detail == "low") model_detail_ = peraviz::GdtfModelDetail::Low;
+    else if (detail == "high") model_detail_ = peraviz::GdtfModelDetail::High;
+    else return false;
+    return true;
+}
+
 // Starts one owned CPU import; future destruction joins before loader data can disappear.
 bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
     if (preparation_.valid()) return false;
@@ -157,8 +168,8 @@ bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
     prepared_.reset();
     load_metrics_.clear();
     load_progress_ = std::make_shared<std::atomic<peraviz::SceneSetupPhase>>(peraviz::SceneSetupPhase::ArchiveGeometry);
-    preparation_=std::async(std::launch::async, [native_path, universe_offset, progress=load_progress_] {
-        return peraviz::prepare_scene_setup(native_path,universe_offset,progress);
+    preparation_=std::async(std::launch::async, [native_path, universe_offset, progress=load_progress_, detail=model_detail_] {
+        return peraviz::prepare_scene_setup(native_path,universe_offset,progress,detail);
     });
     return true;
 }
@@ -207,7 +218,7 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
     const auto load_start = std::chrono::steady_clock::now();
     last_scene_model_ = peraviz::load_mvr(std::string(path.utf8().get_data()),
                                           peraviz_debug_baseline,
-                                          peraviz_debug_coords);
+                                          peraviz_debug_coords, model_detail_);
 
     load_metrics_["native_mvr_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - load_start).count();
     return serialize_scene_nodes(peraviz_debug_baseline, peraviz_debug_coords);
@@ -215,6 +226,7 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
 
 // Serializes instance-local node records only on the main thread after native preparation.
 Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool peraviz_debug_coords) {
+    load_metrics_["gdtf_model_detail"] = model_detail_ == peraviz::GdtfModelDetail::Low ? "low" : model_detail_ == peraviz::GdtfModelDetail::High ? "high" : "default";
     load_metrics_["archive_xml_ms"] = last_scene_model_.archive_xml_ms;
     load_metrics_["geometry_ms"] = last_scene_model_.geometry_ms;
     load_metrics_["geometry_definitions"] = int64_t(last_scene_model_.geometry_definitions);
@@ -246,6 +258,8 @@ Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool per
         d["asset_kind"] = String::utf8(node.asset_kind.c_str());
         d["asset_path"] = String::utf8(node.asset_path.c_str());
         d["asset_reference"] = String::utf8(node.asset_reference.c_str());
+        d["asset_archive_path"] = String::utf8(node.asset_archive_path.c_str());
+        d["model_quality"] = String::utf8(node.model_quality.c_str());
         d["asset_error"] = String::utf8(node.asset_error.c_str());
         d["gdtf_source"] = String::utf8(node.gdtf_source.c_str());
         d["gdtf_fixture_type"] = String::utf8(node.gdtf_fixture_type.c_str());
@@ -263,6 +277,7 @@ Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool per
         d["is_emitter"] = node.is_emitter;
         d["is_lens"] = node.is_lens;
         d["is_beam"] = node.is_beam;
+        d["is_model_lod_candidate"] = node.is_model_lod_candidate;
         d["has_luminous_flux"] = node.has_luminous_flux;
         d["luminous_flux"] = node.luminous_flux;
         d["has_color_temperature"] = node.has_color_temperature;

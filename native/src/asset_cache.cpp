@@ -250,8 +250,9 @@ void ZipAssetCache::extract_model_dependencies(const std::string &entry) {
 }
 
 // Resolves models without substituting a different explicit format or ambiguous stem.
-std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, bool gdtf_basename) {
+std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, bool gdtf_basename, GdtfModelDetail detail) {
     last_error_.clear();
+    model_entry_.clear(); model_quality_.clear();
     const auto normalized = normalize_archive_path(reference);
     if (normalized.empty()) { last_error_ = "invalid_resource_reference"; return {}; }
     const auto extension = path_extension_lower(normalized);
@@ -263,10 +264,20 @@ std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, 
         const auto filename = std::filesystem::u8path(normalized).filename().u8string();
         // Model.File is an extensionless basename: periods are ordinary name characters.
         // Known extensions/subfolders are accepted only as compatibility references.
-        for (const auto *folder : {"3ds", "gltf", "3ds_low", "gltf_low", "3ds_high", "gltf_high"}) {
-            const std::string format = std::string(folder).rfind("gltf", 0) == 0 ? ".glb" : ".3ds";
-            if (!explicit_format || extension == format)
-                candidates.push_back("models/" + std::string(folder) + "/" + filename + (explicit_format ? "" : format));
+        // Authored quality tiers contain independent models, not index-buffer LODs.
+        // Preserve 3DS-first compatibility inside each requested/fallback tier.
+        const std::vector<std::string> tiers = detail == GdtfModelDetail::Low
+            ? std::vector<std::string>{"_low", "", "_high"}
+            : detail == GdtfModelDetail::High ? std::vector<std::string>{"_high", "", "_low"}
+                                            : std::vector<std::string>{"", "_low", "_high"};
+        // A compatibility path pins an archive identity. Never redirect a missing
+        // explicit path to an unrelated model with a matching filename.
+        if (normalized.find('/') == std::string::npos) for (const auto &tier : tiers) {
+            for (const auto *folder : {"3ds", "gltf"}) {
+                const std::string format = std::string(folder) == "gltf" ? ".glb" : ".3ds";
+                if (!explicit_format || extension == format)
+                    candidates.push_back("models/" + std::string(folder) + tier + "/" + filename + (explicit_format ? "" : format));
+            }
         }
     }
     if (!gdtf_basename && !extension.empty()) candidates.push_back(normalized);
@@ -274,6 +285,7 @@ std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, 
     // Exact paths across all candidate formats take priority over basename heuristics.
     for (bool fallback : {false, true}) {
         for (const auto &candidate : candidates) {
+            if (gdtf_basename && normalized.find('/') != std::string::npos && fallback) continue;
             const auto entry = resolve_entry(candidate, fallback);
             if (!last_error_.empty()) return {};
             if (entry.empty()) continue;
@@ -281,6 +293,11 @@ std::string ZipAssetCache::ensure_model_extracted(const std::string &reference, 
             if (extracted.empty()) return {};
             extract_model_dependencies(entry);
             last_error_.clear();
+            model_entry_ = entry;
+            const auto folded = to_lower_ascii(entry);
+            model_quality_ = (folded.rfind("models/3ds_low/",0)==0 || folded.rfind("models/gltf_low/",0)==0) ? "low"
+                : (folded.rfind("models/3ds_high/",0)==0 || folded.rfind("models/gltf_high/",0)==0) ? "high"
+                : (folded.rfind("models/3ds/",0)==0 || folded.rfind("models/gltf/",0)==0) ? "default" : "explicit";
             return extracted;
         }
     }
@@ -294,8 +311,8 @@ std::string ZipAssetCache::ensure_mvr_model_extracted(const std::string &referen
 }
 
 // Resolves GDTF File basenames, including standard models/3ds and models/gltf directories.
-std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &reference) {
-    return ensure_model_extracted(reference, true);
+std::string ZipAssetCache::ensure_gdtf_model_extracted(const std::string &reference, GdtfModelDetail detail) {
+    return ensure_model_extracted(reference, true, detail);
 }
 
 } // namespace peraviz

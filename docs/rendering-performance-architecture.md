@@ -8,9 +8,96 @@
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
 
+## GDTF source detail and bounded runtime LOD (2026-10-28)
+
+Advanced settings now expose two **next-import** preferences: Default GDTF
+geometry (the default), Prefer GDTF Low, Prefer GDTF High; and an independent,
+**default-off** Automatic casing LOD checkbox. Turning LOD off and reimporting
+restores original presentation. These are local import preferences, not changes
+to GDTF/MVR packages, DMX, or the live visual-settings replay path.
+
+### Authored source selection
+
+[GDTF 1.2 Model Collect, Table 33](https://github.com/mvrdevelopment/spec/blob/main/gdtf-spec.md)
+defines independent optional Low/High files, not alternative index buffers of
+Default geometry. Model dimensions and mechanical transforms still apply.
+
+| Request | Deterministic quality fallback |
+| --- | --- |
+| Default | Default → Low → High |
+| Prefer Low | Low → Default → High |
+| Prefer High | High → Default → Low |
+
+Each tier searches `models/3ds{,_low,_high}` before
+`models/gltf{,_low,_high}` (GLB). This retains existing Default 3DS-first behavior;
+requesting Low/High intentionally prioritizes that tier across formats. Explicit
+`.3ds`/`.glb` compatibility references retain their format. An explicit archive
+path pins that exact identity, irrespective of quality; a missing explicit path
+now fails instead of substituting a similar basename. Case/ambiguity checks remain
+in force. Import metadata records the **actual archive path and selected quality**.
+MVR scenery resolution and package serialization are unchanged.
+
+### Limited generated LOD path
+
+After winding repair, before picking/optical installation, the scene-owned
+`runtime_mesh_lod_cache.gd` derives a separate ArrayMesh through native
+`ImporterMesh.from_mesh/generate_lods/get_mesh`. Only indexed, opaque static 3DS
+fixture models on ordinary Geometry/Axis nodes qualify. Sources used by any
+Beam/emitter/lens or special geometry are excluded, even on another instance.
+GLB scenes, scenery, primitives, special shaders, transparency/alpha test, emission,
+material passes, skinning/morphs and custom vertex data keep original resources.
+No collision geometry is simplified; existing picking bounds, hierarchy and
+canonical identities remain unchanged. No global culling change is made.
+
+Limits per scene are eight attempts, 8,192 triangles / 16,384 vertices per mesh,
+32,768 triangles / 65,536 vertices total, four surfaces per mesh, and a soft 32 ms
+cumulative processing budget. Large inputs skip before copying/generation. The
+native call cannot be preempted; these bounds reduce risk, not guarantee a frame
+time on every machine. No work occurs during camera movement or DMX playback.
+Absent engine capabilities or useful valid LOD indices retain the original.
+
+The generation-local cache includes source resource identity, content-addressed
+extracted path/revision, selected quality/format, reflected winding variant,
+simplification parameters, policy and engine version. Repeated fixtures reuse
+results, including rejected attempts. Retirement clears derived references.
+Original resources remain available for source fidelity and existing ownership;
+source plus derived base buffers therefore cost memory. There is no persistent
+cache or new worker system. Godot selects index levels using viewport
+`mesh_lod_threshold` and existing instance `lod_bias`; no distance polling is used.
+
+### Compatibility proof and measured limits
+
+Generated public archives exercise real imports, exact source identity, package
+hash preservation, missing tiers, both formats, reflection, dimensions/hierarchy,
+three shared fixtures, mixed optics, special geometry, exclusion/budget fallbacks,
+DMX hold/lens gain, reload retirement and cancellation.
+
+| Selected authored source | Vertices | Base triangles | Packed base bytes |
+| --- | ---: | ---: | ---: |
+| Default 3DS | 561 | 960 | 21,468 |
+| Low 3DS | 153 | 224 | 5,628 |
+| High 3DS | 2,145 | 3,968 | 83,868 |
+
+For High, one shared generation took 4.6–6.7 ms locally and produced index counts
+5,952 / 2,976 / 1,488 / 768. Added index storage was 22,368 bytes; source plus
+derived packed buffers total 190,104 bytes (not driver allocation or RSS).
+Headless High import including LOD took about 92 ms in the measured run; this is
+setup cost, not a portable performance claim. A 16,128-triangle source skipped
+with `load_budget` and kept its original mesh.
+
+Forward+ software rendering at 512², threshold 1, displayed 3,968 / 992 / 496 /
+496 triangles at 1 / 4 / 16 / 64 m, against 3,968 at each distance for the same
+original High source. Near→far→near recovered previous levels without generation.
+Mean RGB error was below 0.0001 at these positions, with visible edge differences;
+LOD is not pixel-identical. A 128² probe also exercises screen-size selection.
+CPU/GPU driver memory and hardware FPS gains are not established. The isolated
+dense prototype remains available; broader GLB/scenery integration and persistent
+preparation require separate ownership, material and loading-cost validation.
+
 ## Runtime GDTF mesh LOD audit (2026-10-28)
 
-**Decision: defer production enablement.** Godot-native runtime LOD works in the
+**Historical PR #118 baseline; superseded for the bounded subset above.**
+The audit recommended deferring general production enablement. Godot-native runtime LOD works in the
 installed official **4.7.1 / a13da4feb** executable. The isolated proof uses its
 existing meshoptimizer integration; no dependency, quality UI, application mesh
 replacement, culling-default change or footprint optimization is introduced.

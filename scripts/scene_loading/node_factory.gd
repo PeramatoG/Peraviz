@@ -3,6 +3,7 @@ class_name NodeFactory
 
 var _missing_cache_roots_reported: Dictionary = {}
 var asset_load_summary: Dictionary = {}
+var fixture_casing_lod: bool = false
 const ModelGeometry = preload("res://scripts/scene_loading/model_geometry.gd")
 const AssetDiagnostics = preload("res://scripts/scene_loading/scene_asset_diagnostics.gd")
 var asset_diagnostics: RefCounted = AssetDiagnostics.new()
@@ -42,6 +43,7 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 
 	_apply_mesh_orientation_corrections(proxies_root, false, loader, asset_cache)
 	_remove_redundant_dummy_meshes(proxies_root)
+	if fixture_casing_lod and not await preload("res://scripts/scene_loading/housing_lod_installation.gd").install(nodes,node_index,asset_cache.derived_lods,budget): return false
 	rebuild_loaded_bounds.call()
 	for item: Dictionary in nodes:
 		var created: Node3D = node_index.get(str(item.get("node_id", "")))
@@ -67,6 +69,8 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	var root := Node3D.new()
 	root.name = "%s_%s" % [item_class, node_name]
 	root.set_meta("peraviz_type", item_type)
+	root.set_meta("peraviz_asset_archive_path",str(data.get("asset_archive_path","")))
+	root.set_meta("peraviz_model_quality",str(data.get("model_quality","")))
 	root.set_meta("peraviz_is_axis", is_axis)
 	root.set_meta("peraviz_is_emitter", is_emitter)
 	root.set_meta("peraviz_is_lens", is_lens)

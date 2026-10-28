@@ -1,6 +1,8 @@
 extends RefCounted
 class_name PeravizRuntimeAssetCache
 
+var derived_lods = preload("res://scripts/scene_loading/runtime_mesh_lod_cache.gd").new()
+
 var _mesh_cache: Dictionary = {}
 var _scene_cache: Dictionary = {}
 var _material_cache: Dictionary = {}
@@ -28,6 +30,7 @@ func configure_debug_logging(enabled: bool, log_interval: int = 50) -> void:
 	_debug_log_interval = max(log_interval, 1)
 
 func clear() -> void:
+	derived_lods.clear()
 	_mesh_cache.clear()
 	_scene_cache.clear()
 	_material_cache.clear()

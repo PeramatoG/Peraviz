@@ -404,6 +404,7 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
         node.is_lens = looks_like_lens_geometry(geometry_tag, geometry_name, parent_is_lens);
         node.is_emitter = looks_like_emitter(geometry->Name(), geometry_name, node.is_lens);
         node.is_beam = lower_ascii(geometry_tag) == "beam";
+        node.is_model_lod_candidate = lower_ascii(geometry_tag) == "geometry" || lower_ascii(geometry_tag) == "axis";
         node.local_transform = peraviz::coordinate_mapper::to_godot_transform(local);
 
         if (lower_ascii(geometry_tag) == "beam") {
@@ -458,7 +459,9 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
             if (model_it != model_visual_by_name.end()) {
                 if (!model_it->second.file.empty()) {
                     node.asset_reference = model_it->second.file;
-                    node.asset_path = gdtf_cache.ensure_gdtf_model_extracted(model_it->second.file);
+                    node.asset_path = gdtf_cache.ensure_gdtf_model_extracted(model_it->second.file, request.model_detail);
+                    node.asset_archive_path = gdtf_cache.model_entry();
+                    node.model_quality = gdtf_cache.model_quality();
                     if (node.asset_path.empty()) node.asset_error = gdtf_cache.last_error();
                 }
                 node.primitive_type = model_it->second.primitive_type;
@@ -499,10 +502,10 @@ GdtfGeometryBuildResult FixtureGeometryTemplates::instantiate(const GdtfBuildReq
     const auto path=std::filesystem::u8path(request.gdtf_archive_path);
     const auto revision=std::filesystem::last_write_time(path,error);
     const auto size=std::filesystem::file_size(path,error);
-    const auto key = std::make_tuple(request.gdtf_archive_path, request.gdtf_mode, revision, size);
+    const auto key = std::make_tuple(request.gdtf_archive_path, request.gdtf_mode, revision, size, request.model_detail);
     auto found = templates_.find(key);
     if (found == templates_.end()) {
-        const GdtfBuildRequest definition{request.gdtf_archive_path, request.gdtf_mode, "", ""};
+        const GdtfBuildRequest definition{request.gdtf_archive_path, request.gdtf_mode, "", "", request.model_detail};
         found = templates_.emplace(key, build_fixture_geometry_nodes(definition, "", MatrixUtils::Identity(), extracted_asset_count)).first;
     } else ++hits_;
     GdtfGeometryBuildResult result = found->second;
