@@ -15,6 +15,13 @@ const BeamPresentationOptionsScript = preload("res://scripts/ui/visual/beam_pres
 const CUSTOM_PRESET_NAME := "Modified settings"
 
 const DEFAULT_SETTINGS := {
+	"fake_smoke_enabled": false,
+	"fake_smoke_density": 1.0,
+	"fake_smoke_variation": 0.35,
+	"fake_smoke_scale_m": 12.0,
+	"fake_smoke_animation_speed": 0.03,
+	"fake_smoke_wind_direction_deg": 35.0,
+	"fake_smoke_wind_speed": 0.12,
 	"ambient_multiplier": 0.08,
 	"spot_multiplier": 1.0,
 	"footprint_multiplier": 0.6,
@@ -189,6 +196,7 @@ const QUICK_PRESETS := {
 
 var _settings: Dictionary = DEFAULT_SETTINGS.duplicate(true)
 var _ui_visibility_policy = UiVisibilityPolicyScript
+var _fake_smoke_panel: RendererSettingsPanel
 var _tabs: TabContainer
 var _preset_option: OptionButton
 var _backend_status: Label
@@ -297,6 +305,11 @@ func _build_ui() -> void:
 	_debug_panel.visible = _is_debug_visible()
 	_tabs.add_child(_debug_panel)
 
+	_fake_smoke_panel = preload("res://scripts/ui/visual/fake_smoke_settings_panel.gd").new()
+	_fake_smoke_panel.name = "Fake Smoke"
+	_fake_smoke_panel.setting_changed.connect(_on_panel_setting_changed)
+	_tabs.add_child(_fake_smoke_panel)
+
 	var actions_row: HBoxContainer = HBoxContainer.new()
 	actions_row.alignment = BoxContainer.ALIGNMENT_END
 	layout.add_child(actions_row)
@@ -308,6 +321,7 @@ func _build_ui() -> void:
 
 func _apply_settings_to_controls() -> void:
 	_applying_controls = true
+	if _fake_smoke_panel != null: _fake_smoke_panel.apply_settings(_settings)
 	if _renderer_panel != null:
 		_renderer_panel.apply_settings(_settings)
 	if _environment_panel != null:

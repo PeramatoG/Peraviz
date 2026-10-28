@@ -151,6 +151,12 @@ independent opaque lenses now use the bounded MultiMesh path described below;
 volumetric shafts retain their reference rendering. Large independent Vector Prism scenes now use the exact native main-thread batch described below. See [dense presentation state](native-dense-presentation-state.md)
 for ownership, remaining allocations, stage telemetry and the exact Windows A/B.
 
+Vector Prism optionally samples one shared world-space Fake Smoke density field.
+An application-owned presentation controller updates shader globals only on settings
+changes; native simulation, Render Groups, optics, footprints and lenses are unchanged.
+See [Fake Smoke phase 1](rendering-performance-architecture.md#shared-fake-smoke--vector-prism-phase-1-2026-10-28)
+for approximation, lifetime and graphical comparison.
+
 ## Independent emitter presentation, phase 1
 
 `NativeBeamBindings` applies final native render rows directly to weak, indexed

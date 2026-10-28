@@ -29,7 +29,7 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	camera.fov = 45.0
 	stage.add_child(camera)
 	camera.look_at(Vector3(0, 2, -1))
-	if count == 6 and "--bottleneck-probe" in OS.get_cmdline_user_args():
+	if count == 6 and ("--bottleneck-probe" in OS.get_cmdline_user_args() or "--shared-smoke-probe" in OS.get_cmdline_user_args()):
 		camera.position = Vector3(10,2,12)
 		camera.look_at(Vector3(0,1,0))
 	var camera_transform: Transform3D = camera.transform
@@ -44,7 +44,7 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	stage.add_child(environment)
 	_add_box(stage, Vector3(0,-0.15,0), Vector3(20,0.3,18))
 	for x in [-5.0, 0.0, 5.0]: _add_box(stage, Vector3(x,3,-5), Vector3(4.8,6,0.2))
-	if count == 6 and "--bottleneck-probe" in OS.get_cmdline_user_args():
+	if count == 6 and ("--bottleneck-probe" in OS.get_cmdline_user_args() or "--shared-smoke-probe" in OS.get_cmdline_user_args()):
 		var shelf := _add_box(stage, Vector3(0,4,3),Vector3(3,0.2,3))
 		shelf.name = "IntersectionReceiver"
 	var ramp := _add_box(stage, Vector3(5,0.9,2), Vector3(4,0.2,5))
@@ -52,7 +52,7 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	var loader := Harness.new()
 	loader.output_count = count
 	loader.vector_prism = true
-	loader._visual_settings = {"beam_presentation": 1, "footprint_backend": "custom", "footprint_max_range": (4.1 if "--gpu-cost-probe" in OS.get_cmdline_user_args() and count > 6 else 25.0), "footprint_multiplier": 0.6, "footprint_softness": 0.10, "enable_realtime_spotlights": false, "beam_multiplier": (20.0 if "--bottleneck-probe" in OS.get_cmdline_user_args() else 0.0)}
+	loader._visual_settings = {"beam_presentation": 1, "footprint_backend": "custom", "footprint_max_range": (4.1 if "--gpu-cost-probe" in OS.get_cmdline_user_args() and count > 6 else 25.0), "footprint_multiplier": 0.6, "footprint_softness": 0.10, "enable_realtime_spotlights": false, "beam_multiplier": (20.0 if ("--bottleneck-probe" in OS.get_cmdline_user_args() or "--shared-smoke-probe" in OS.get_cmdline_user_args()) else 0.0)}
 	viewport.add_child(loader)
 	await tree.process_frame
 	loader.renderer.configure(camera, loader._visual_settings)
@@ -77,7 +77,7 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 		loader.add_child(mechanical)
 		anchor.reparent(mechanical, true)
 		anchor.spot_range = 25.0
-		anchor.set_meta("test_beam_type", "Wash" if column == 1 or (i == 2 and "--bottleneck-probe" in OS.get_cmdline_user_args()) else "Spot")
+		anchor.set_meta("test_beam_type", "Wash" if column == 1 or (i == 2 and ("--bottleneck-probe" in OS.get_cmdline_user_args() or "--shared-smoke-probe" in OS.get_cmdline_user_args())) else "Spot")
 		if i == 4 and count == 6: anchor.set_meta("test_authored_angles", true)
 		if column == 0: anchor.set_meta("peraviz_gobo_texture", textures[0 if i % 6 < 3 else 1])
 	if count > 6:
@@ -115,6 +115,9 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	service.compose_dense_snapshot(frame.descriptors, frame.integers, frame.floats)
 	service.end_visual_snapshot()
 	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
+	if "--shared-smoke-probe" in OS.get_cmdline_user_args():
+		await preload("res://tests/gdscript/helpers/shared_fake_smoke_probe.gd").run(self,tree,test,viewport,loader,service,directory)
+		return
 	if "--bottleneck-probe" in OS.get_cmdline_user_args():
 		await preload("res://tests/gdscript/helpers/footprint_bottleneck_probe.gd").run(self, tree, test, viewport, loader, service, directory)
 		return

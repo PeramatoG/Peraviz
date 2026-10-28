@@ -8,6 +8,76 @@
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
 
+## Shared Fake Smoke — Vector Prism phase 1 (2026-10-28)
+
+Settings → **Fake Smoke** exposes Enable, Density, Variation, Spatial scale in
+metres, Animation rise in m/s, and horizontal Wind direction/speed. Default is
+**off**; enabled defaults are density 1, variation 0.35, 12 m repeat tile, 0.03 m/s
+rise and 0.12 m/s wind at 35°. Settings save/restore with normal visual project
+settings; Reset disables it. They never interpret GDTF/DMX Fog/Haze channels.
+
+This Peraviz-specific approximation modulates the existing Vector Prism density
+at its analytic closest-axis ray sample. The same affine ray parameter locates
+that sample in world space, using the fragment's view position and camera matrix.
+A single shared periodic 3D field drifts through those positions using shader TIME,
+independent of fixture UVs, gobo roll and mechanical ancestry. Pan/Tilt moves the
+fixture through the field; held DMX does not stop atmospheric animation. It is not
+physical scattering, an integrated raymarch, or an independently visible cloud;
+it inherits the shaft's single-sample, camera-dependent approximation.
+
+One 32³ L8 seamless field (32 KiB raw) is precomputed with Godot FastNoiseLite
+Simplex Smooth, seed 17041, frequency 0.085, no fractal octaves, seamless skirt 0.25.
+`tests/integration/generate_fake_smoke_texture.gd` regenerates its Image resource.
+First enable uploads one ImageTexture3D; the application-owned controller reuses it
+across individual/shared/aggregate shafts, edits and scene reload, then unbinds
+and releases it on application exit. No per-fixture texture/material, FogVolume,
+light, worker, frame callback or CPU noise/geometry generation is introduced.
+
+Enabled spatial variation adds one filtered repeating 3D texture lookup and world
+coordinate/advection arithmetic per surviving fragment. A small precomputed field
+avoids repeated analytic 3D hash/corner evaluation or structured sine bands;
+32 KiB keeps the working set bounded. No mip chain is used. The uniform disabled
+branch skips both coordinates and sampling, without extra varyings or passes;
+variation zero also skips the sample. Density remains a presentation multiplier,
+with neutral mean modulation at density 1 and noise 0.5. Native Color/Dimmer,
+profiles, attenuation, gobo masking/alignment, Wash depth feather, surface footprints
+and emitted lenses retain their existing owners. Smoke settings have their own
+nonstructural classification and update global uniforms, without renderer revision,
+registry scanning, resource recreation or native worker retirement.
+
+The established six-shaft Forward+ scene compares the prior shader (only the smoke
+block removed), modest smoke, disabled after use and a zero-variation diagnostic.
+It retains all six Custom footprints and the same shaft/receiver coverage. Pixel
+checks require exact disabled/reference and footprint-only equivalence, visible
+variation, and unchanged draw/primitive counts. A frozen field changes when the
+whole camera/fixture/receiver setup translates through world space and returns
+when the setup returns. Existing imported grouped/independent live-settings tests
+check exact physical/lens state and cold resource identity; gobo selection and
+PosRotate lifecycle tests also run with smoke enabled.
+
+Reproduce with the existing probe (GPU-rendered, not headless):
+
+```sh
+godot --path . --rendering-method forward_plus --script tests/gdscript/test_custom_surface_footprints.gd -- --render-footprint-probe --shared-smoke-probe --footprint-output=/tmp/peraviz-smoke
+```
+
+The report records renderer/device, per-viewport CPU/device times, draws, triangles,
+footprints and image differences. The uniform-field case removes spatial lookup
+and coordinate work while retaining density modulation, helping isolate added
+fragment work from unchanged draw submission. Timings use the existing warm-up
+and capture helper, exclude readback, and have no CI FPS gates. Local 960×640 llvmpipe draws were 18 calls / 784 triangles / six footprints in
+all cases. Modest smoke changed 51,804 pixels (maximum 11/255); disabling changed
+zero pixels. The measured device-time samples (47.3 ms original, 57.4 ms modest,
+57.3 ms disabled, 58.9 ms uniform) did not isolate sampling cost above software
+renderer/program/workload variance: they do **not** show a physical GPU speedup,
+prove disabled hardware overhead, or establish texture-read dominance. The code's
+added work is per-fragment sampling/coordinates, not CPU update or draw submission.
+Software llvmpipe results cannot establish physical-GPU bottlenecks or Windows FPS. The owner's
+**40–50 FPS** with established effects is a Windows comparison baseline only;
+compare the same scene/settings/resolution there. Keep smoke opt-in until that
+hardware comparison establishes acceptable cost. No footprint/coverage reductions
+are used to improve the measurement.
+
 ## GDTF source detail and bounded runtime LOD (2026-10-28)
 
 Settings → **Geometry** separates authored GDTF source quality (next import)
