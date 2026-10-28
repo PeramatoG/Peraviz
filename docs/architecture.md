@@ -48,6 +48,10 @@ partial resources; native code never mutates the SceneTree from that task.
 
 Legacy fixture bindings and Godot-side semantic helpers remain in limited compatibility, inspection, or transitional areas. They are not authoritative for native-supported live attributes.
 
+Runtime mesh LOD remains an isolated test prototype; active 3DS/runtime glTF and
+primitive construction is unchanged. See the [geometry/LOD audit](rendering-performance-architecture.md#runtime-gdtf-mesh-lod-audit-2026-10-28)
+for path ownership, measured costs, fidelity limits and the opt-in cache proposal.
+
 ## Setup and playback contracts
 
 Structural setup occurs before live playback. The loader and compiler install fixture instances, patch records, ordered DMX byte sources, property contributors, stable component/render-target IDs, renderer manifests, Beam profiles, wheel resources, and gobo resources. Godot builds and caches the corresponding target records and reusable materials, meshes, textures, and nodes.
