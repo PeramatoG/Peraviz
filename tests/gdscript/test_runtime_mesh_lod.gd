@@ -80,6 +80,10 @@ func check_explicit_lods() -> void:
 		lods[importer.get_surface_lod_size(0,lod)] = importer.get_surface_lod_indices(0,lod)
 	var explicit := ArrayMesh.new()
 	explicit.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, source.surface_get_arrays(0), [], lods)
+	explicit.surface_set_material(0,StandardMaterial3D.new())
+	var cache := preload("res://scripts/scene_loading/runtime_mesh_lod_cache.gd").new()
+	cache.minimum_triangles = 0
+	test.check(cache.derive(explicit).excluded == "imported_lods" and cache.generations == 0,"Production service retains pre-existing imported LODs without regeneration")
 	test.check(ImporterMesh.from_mesh(explicit).get_surface_lod_count(0) == lods.size() and lods.size() > 0, "Public ArrayMesh LOD dictionaries round-trip through native mesh resources")
 
 func check_runtime_gltf(source: ArrayMesh) -> void:

@@ -1,6 +1,6 @@
 # Peraviz v0.x.x
 
-- Added next-import GDTF Default/Low/High model selection with deterministic fallback and exact archive identity. Added independent, default-off Godot LOD for bounded opaque 3DS fixture casing, shared per scene and safely retired. Original geometry, optics, picking and DMX remain unchanged; oversized or unsupported meshes keep full detail.
+- Added next-import GDTF Default/Low/High model selection with deterministic fallback and exact archive identity. Added independent, default-on Godot LOD for compatible bounded opaque static 3DS/glTF fixture casing, shared per scene and safely retired. Settings → Geometry provides immediate exact-original comparison and on-demand resource/LOD diagnostics; explicit saved preferences remain respected. Original geometry, optics, picking and DMX remain unchanged; oversized or unsupported meshes keep full detail.
 
 - Audited GDTF/MVR mesh construction and Godot 4.7.1 native LOD. Added an isolated synthetic proof with source/material/cache contracts and an opt-in graphical near/far comparison. Runtime ImporterMesh generation works, but added memory, loading cost and fidelity/ownership limits keep production enablement deferred; geometry, optics, culling and quality defaults remain unchanged.
 

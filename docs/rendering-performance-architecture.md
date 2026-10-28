@@ -10,11 +10,21 @@ This document records presentation and performance decisions that complement the
 
 ## GDTF source detail and bounded runtime LOD (2026-10-28)
 
-Advanced settings now expose two **next-import** preferences: Default GDTF
-geometry (the default), Prefer GDTF Low, Prefer GDTF High; and an independent,
-**default-off** Automatic casing LOD checkbox. Turning LOD off and reimporting
-restores original presentation. These are local import preferences, not changes
-to GDTF/MVR packages, DMX, or the live visual-settings replay path.
+Settings → **Geometry** separates authored GDTF source quality (next import)
+from Automatic mesh LOD (**enabled by default**). Missing preferences enable it;
+explicit saved false remains Original. Changing authored quality requires reimport.
+LOD drawing changes immediately: Automatic uses viewport `mesh_lod_threshold=1.0`
+and prepared derived resources; Original uses `0.0` **and restores exact retained
+source ArrayMeshes**, avoiding the claim that a re-encoded highest-detail copy is
+byte-identical. Reimport prepares eligible resources loaded while disabled.
+These local preferences do not modify project packages or optical settings.
+
+The on-demand **Inspect loaded geometry / refresh report** button reports exact
+selected archive paths, requested/actual quality, formats/routes, unique resources
+and instances, original counts, generated/imported levels, eligible/generated/
+excluded counts and reasons, generation time, cache hits, retained derived count
+and packed buffers. Viewport rendered primitives include the whole scene (not just
+housing); headless counters can be zero. Nothing polls or logs assets per frame.
 
 ### Authored source selection
 
@@ -39,31 +49,45 @@ MVR scenery resolution and package serialization are unchanged.
 
 ### Limited generated LOD path
 
-After winding repair, before picking/optical installation, the scene-owned
-`runtime_mesh_lod_cache.gd` derives a separate ArrayMesh through native
-`ImporterMesh.from_mesh/generate_lods/get_mesh`. Only indexed, opaque static 3DS
-fixture models on ordinary Geometry/Axis nodes qualify. Sources used by any
-Beam/emitter/lens or special geometry are excluded, even on another instance.
-GLB scenes, scenery, primitives, special shaders, transparency/alpha test, emission,
-material passes, skinning/morphs and custom vertex data keep original resources.
-No collision geometry is simplified; existing picking bounds, hierarchy and
-canonical identities remain unchanged. No global culling change is made.
+After import/winding corrections and before picking/optical installation, the
+scene-owned `runtime_mesh_lod_cache.gd` derives a separate ArrayMesh through native
+`ImporterMesh.from_mesh/generate_lods/get_mesh`. The same service handles ordinary
+Geometry/Axis **opaque static 3DS and runtime GLB/glTF fixture models**. It preserves
+embedded glTF hierarchy/transforms and existing per-instance double-sided overrides.
+Sources used by Beam/emitter/lens or special geometry are excluded everywhere.
+Animated GLB scenes/Skeletons, skinning/morphs, custom vertex data, special shaders,
+transparency/alpha test, emission, billboards, vertex growth and extra passes keep
+original resources. Primitive/fallback and MVR scenery policies remain separate:
+scenery is **deferred**, with actual excluded resource counts in the report.
+Collision/picking geometry is untouched. No global winding/culling changes occur.
 
-Limits per scene are eight attempts, 8,192 triangles / 16,384 vertices per mesh,
-32,768 triangles / 65,536 vertices total, four surfaces per mesh, and a soft 32 ms
-cumulative processing budget. Large inputs skip before copying/generation. The
-native call cannot be preempted; these bounds reduce risk, not guarantee a frame
-time on every machine. No work occurs during camera movement or DMX playback.
-Absent engine capabilities or useful valid LOD indices retain the original.
+Already imported LODs are retained. NodeFactory's ResourceLoader/PackedScene route
+can preserve editor-baked levels; runtime GLTFDocument does not generate them by
+itself. Primitives use fixed tessellation; optical/projector/procedural meshes never
+enter this service. NodeFactory remains the single production installation path;
+legacy construction helpers in load_scene are not extended.
 
-The generation-local cache includes source resource identity, content-addressed
-extracted path/revision, selected quality/format, reflected winding variant,
-simplification parameters, policy and engine version. Repeated fixtures reuse
-results, including rejected attempts. Retirement clears derived references.
-Original resources remain available for source fidelity and existing ownership;
-source plus derived base buffers therefore cost memory. There is no persistent
-cache or new worker system. Godot selects index levels using viewport
-`mesh_lod_threshold` and existing instance `lod_bias`; no distance polling is used.
+Simple meshes below 1,024 triangles skip. Limits are 32 attempts, 32,768 triangles /
+65,536 vertices per mesh, 131,072 triangles / 262,144 vertices per scene, four surfaces
+per mesh and a **soft cumulative 100 ms setup budget**. This admits the 16k fixture
+previously skipped, while the audited 83k/330k resources (about 92/372 ms generation)
+remain original. A native call cannot be preempted: these limits bound input/work,
+not guarantee a machine-independent frame duration. Setup runs behind the loading
+shield, with cancellation checkpoints between models; no camera/DMX-time work.
+For larger scanned models the next step is a versioned persistent/offline derived
+cache with engine/policy/content keys and import-time preparation, not unbounded
+main-thread generation or a new Godot worker subsystem in this PR.
+
+The generation cache includes source resource identity, content-addressed archive
+path/revision, quality/format, reflected variant, simplification policy and engine.
+Repeated instances reuse successes/rejections; retirement clears mesh references
+and weak instance bindings. Originals remain retained for exact comparison and
+resource ownership, so source plus derived base buffers cost memory. Conversion
+validates unchanged indices/UV/color/material references, position error ≤0.0001
+of source AABB diagonal, and normal/tangent error ≤0.001 before installation;
+otherwise it retains the original. Missing engine functionality or useful levels
+also retains the original. Godot selects existing index levels with its viewport
+threshold and existing instance `lod_bias`, without per-frame distance checks.
 
 ### Compatibility proof and measured limits
 
@@ -82,17 +106,27 @@ For High, one shared generation took 4.6–6.7 ms locally and produced index cou
 5,952 / 2,976 / 1,488 / 768. Added index storage was 22,368 bytes; source plus
 derived packed buffers total 190,104 bytes (not driver allocation or RSS).
 Headless High import including LOD took about 92 ms in the measured run; this is
-setup cost, not a portable performance claim. A 16,128-triangle source skipped
-with `load_budget` and kept its original mesh.
+setup cost, not a portable performance claim. The updated policy generated a shared 16,128-triangle source in about 30 ms;
+a 48,768-triangle source skipped with `load_budget`.
 
 Forward+ software rendering at 512², threshold 1, displayed 3,968 / 992 / 496 /
 496 triangles at 1 / 4 / 16 / 64 m, against 3,968 at each distance for the same
 original High source. Near→far→near recovered previous levels without generation.
 Mean RGB error was below 0.0001 at these positions, with visible edge differences;
 LOD is not pixel-identical. A 128² probe also exercises screen-size selection.
+The actual two-surface textured GLB case also shares one derived resource across
+three fixtures; highest-detail position re-encoding was about 21 μm on its 0.9 m
+source, with exact UV/index buffers. Transparent/animated GLB retain originals.
 CPU/GPU driver memory and hardware FPS gains are not established. The isolated
-dense prototype remains available; broader GLB/scenery integration and persistent
-preparation require separate ownership, material and loading-cost validation.
+dense prototype remains available; scenery and larger models need separate work.
+
+Editor 4.7.1 LSP reproduced `INTEGER_DIVISION` in runtime_mesh_lod_cache.gd
+(original lines 34/105) and runtime_mesh_lod_prototype.gd (21/35), plus
+`SHADOWED_VARIABLE_BASE_CLASS` for `reference` in runtime_mesh_lod_graphics.gd (76).
+Explicit integer conversion after float division and renaming the parameter fixed
+them; no warning suppression was added. Modified LOD scripts report zero LSP
+warnings. Graphical initialization/reload is tested on Linux; a Windows GUI run
+is not available in this environment.
 
 ## Runtime GDTF mesh LOD audit (2026-10-28)
 

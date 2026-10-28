@@ -49,10 +49,11 @@ partial resources; native code never mutates the SceneTree from that task.
 Legacy fixture bindings and Godot-side semantic helpers remain in limited compatibility, inspection, or transitional areas. They are not authoritative for native-supported live attributes.
 
 GDTF source model detail is selected during native preparation; exact selected
-archive identity and quality accompany setup metadata. An independent default-off
-Godot LOD path derives and caches bounded opaque 3DS fixture-casing resources at
-setup, after reflection repair. Optical/shared-special resources, scenery and
-picking stay original; retirement clears the generation cache. See
+archive identity and quality accompany setup metadata. An independent default-on
+Godot LOD path derives and caches bounded opaque static 3DS/glTF fixture-casing resources at
+setup, after reflection repair. Optical/shared-special resources, animated scenes, scenery and
+picking stay original; retirement clears the generation cache. Settings → Geometry
+offers immediate exact-source/automatic comparison and an on-demand coverage report. See
 [source detail and runtime LOD](rendering-performance-architecture.md#gdtf-source-detail-and-bounded-runtime-lod-2026-10-28)
 for eligibility, fallback policy, budgets and measured limits.
 

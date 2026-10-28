@@ -73,18 +73,18 @@ static func run(owner: SceneTree, source: ArrayMesh, derived: ArrayMesh, foregro
 	print("RUNTIME_MESH_LOD_SWEEP ",JSON.stringify({"primitives":sweep,"renderer":RenderingServer.get_video_adapter_name()}))
 	viewport.free()
 
-static func compare(reference: Image, actual: Image, foreground_level: float = 0.2) -> Dictionary:
+static func compare(reference_image: Image, actual: Image, foreground_level: float = 0.2) -> Dictionary:
 	var total: float = 0.0
 	var maximum: float = 0.0
 	var changed: int = 0
 	var foreground: int = 0
-	for y in range(reference.get_height()):
-		for x in range(reference.get_width()):
-			var a: Color = reference.get_pixel(x,y)
+	for y in range(reference_image.get_height()):
+		for x in range(reference_image.get_width()):
+			var a: Color = reference_image.get_pixel(x,y)
 			var b: Color = actual.get_pixel(x,y)
 			var error: float = maxf(absf(a.r-b.r),maxf(absf(a.g-b.g),absf(a.b-b.b)))
 			total += error
 			maximum = maxf(maximum,error)
 			if error > 1.0/255.0: changed += 1
 			if maxf(a.r,maxf(a.g,a.b)) > foreground_level: foreground += 1
-	return {"mean_error":total/(reference.get_width()*reference.get_height()),"max_error":maximum,"changed_pixels":changed,"foreground_pixels":foreground}
+	return {"mean_error":total/(reference_image.get_width()*reference_image.get_height()),"max_error":maximum,"changed_pixels":changed,"foreground_pixels":foreground}

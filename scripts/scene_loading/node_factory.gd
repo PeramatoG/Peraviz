@@ -3,7 +3,7 @@ class_name NodeFactory
 
 var _missing_cache_roots_reported: Dictionary = {}
 var asset_load_summary: Dictionary = {}
-var fixture_casing_lod: bool = false
+var fixture_casing_lod: bool = true
 const ModelGeometry = preload("res://scripts/scene_loading/model_geometry.gd")
 const AssetDiagnostics = preload("res://scripts/scene_loading/scene_asset_diagnostics.gd")
 var asset_diagnostics: RefCounted = AssetDiagnostics.new()
@@ -43,7 +43,8 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 
 	_apply_mesh_orientation_corrections(proxies_root, false, loader, asset_cache)
 	_remove_redundant_dummy_meshes(proxies_root)
-	if fixture_casing_lod and not await preload("res://scripts/scene_loading/housing_lod_installation.gd").install(nodes,node_index,asset_cache.derived_lods,budget): return false
+	asset_cache.derived_lods.automatic = fixture_casing_lod
+	if not await preload("res://scripts/scene_loading/housing_lod_installation.gd").install(nodes,node_index,asset_cache.derived_lods,budget): return false
 	rebuild_loaded_bounds.call()
 	for item: Dictionary in nodes:
 		var created: Node3D = node_index.get(str(item.get("node_id", "")))

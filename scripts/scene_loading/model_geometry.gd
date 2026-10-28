@@ -16,7 +16,8 @@ static func _collect(node: Node3D, parent_transform: Transform3D, inherited_visi
 			if vertex_count >= 3:
 				renderable = true
 		if renderable:
-			var bounds: AABB = combined * node.get_aabb()
+			var local_bounds: AABB = node.get_meta("peraviz_source_mesh_bounds",node.get_aabb())
+			var bounds: AABB = combined * local_bounds
 			result.meshes += 1
 			if locally_visible: result.locally_visible_meshes += 1
 			if node.is_inside_tree() and node.is_visible_in_tree(): result.visible_meshes += 1

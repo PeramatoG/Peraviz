@@ -8,7 +8,7 @@ var app: Node
 func _initialize() -> void: call_deferred("run")
 
 func generate(options: Array[String] = []) -> String:
-	var path := ProjectSettings.globalize_path("user://model_detail_integration.mvr")
+	var path := ProjectSettings.globalize_path("user://model_detail_integration_%d.mvr" % OS.get_process_id())
 	var arguments := PackedStringArray([ProjectSettings.globalize_path("res://tests/integration/generate_model_detail_fixture.py"),path])
 	arguments.append_array(PackedStringArray(options))
 	test.check(OS.execute("python3",arguments) == 0,"Generate public authored quality archive")
@@ -25,9 +25,9 @@ func meshes(root_node: Node3D) -> Array:
 	if root_node is MeshInstance3D: result.append(root_node)
 	return result
 
-func load_case(path: String, quality: String, enabled: bool) -> void:
+func load_case(path: String, quality: String, enabled: Variant = null) -> void:
 	app._user_preferences.gdtf_model_detail = quality
-	app._user_preferences.fixture_casing_lod = enabled
+	if enabled != null: app._user_preferences.fixture_casing_lod = enabled
 	var package_hash: String = FileAccess.get_sha256(path)
 	var start := Time.get_ticks_usec()
 	var loaded: Dictionary = await app._load_mvr_scene(path,"mvr",false)
@@ -35,9 +35,10 @@ func load_case(path: String, quality: String, enabled: bool) -> void:
 	test.check(loaded.get("ok",false),"Production import completes with requested model/LOD policy")
 	var records: Array = []
 	for node in housings(): records.append({"source":node.get_meta("peraviz_asset_archive_path"),"quality":node.get_meta("peraviz_model_quality"),"geometry":Cache.buffers(meshes(node)[0].mesh),"lod":node.get_meta("peraviz_housing_lod") if node.has_meta("peraviz_housing_lod") else "original"})
-	print("MODEL_DETAIL_IMPORT ",JSON.stringify({"requested":quality,"casing_lod":enabled,"setup_us":Time.get_ticks_usec()-start,"records":records,"cache_generations":app._asset_cache.derived_lods.generations,"skips":app._asset_cache.derived_lods.skips}))
+	print("MODEL_DETAIL_IMPORT ",JSON.stringify({"requested":quality,"casing_lod":app._user_preferences.fixture_casing_lod,"setup_us":Time.get_ticks_usec()-start,"records":records,"cache_generations":app._asset_cache.derived_lods.generations,"skips":app._asset_cache.derived_lods.skips}))
 
 func run() -> void:
+	check_preference_defaults()
 	var path: String = generate()
 	app = load("res://test.tscn").instantiate()
 	root.add_child(app)
@@ -60,9 +61,11 @@ func run() -> void:
 		for node in housings(): test.check(node.get_meta("peraviz_asset_archive_path") == "models/3ds/housing.3ds" and node.get_meta("peraviz_model_quality") == "default","Missing optional quality falls back to the exact Default source")
 	path = generate(["--formats=glb"])
 	await load_case(path,"high",true)
-	for node in housings(): test.check(node.get_meta("peraviz_asset_archive_path") == "models/gltf_high/housing.glb" and not node.has_meta("peraviz_housing_lod"),"Authored GLB remains separate; nested scenes are not auto simplified")
+	for node in housings(): test.check(node.get_meta("peraviz_asset_archive_path") == "models/gltf_high/housing.glb" and node.get_meta("peraviz_housing_lod").excluded in ["simple_mesh","optical_transparent_or_unknown_material","nonindexed_or_missing_normals"],"Small authored GLB keeps original; its exact identity remains independent")
+	await check_glb_routes()
 	path = generate()
-	await load_case(path,"high",true)
+	app._user_preferences.fixture_casing_lod = UserPreferences.new().fixture_casing_lod
+	await load_case(path,"high")
 	var cache: RefCounted = app._asset_cache.derived_lods
 	test.check(cache.generations == 1,"One unique source/winding/policy produces one derived mesh")
 	var original: Mesh
@@ -79,6 +82,20 @@ func run() -> void:
 	if "--render-model-detail-probe" in OS.get_cmdline_user_args():
 		await preload("res://tests/gdscript/helpers/runtime_mesh_lod_graphics.gd").run(self,original,derived,0.05)
 	check_dmx_and_lens(cache)
+	check_source_fidelity(cache)
+	var geometry_tab: Node = app.visual_settings_window._tabs.get_node("Geometry")
+	test.check(geometry_tab != null and geometry_tab.get_node("SourceQuality") != null,"Geometry controls are in Settings independently of hidden Advanced module")
+	var automatic_control: OptionButton = geometry_tab.get_node("AutomaticLOD")
+	automatic_control.item_selected.emit(1)
+	test.check(app.get_viewport().mesh_lod_threshold == 0.0 and not app._user_preferences.fixture_casing_lod,"Original mode updates viewport and saved preference immediately")
+	for node in housings(): test.check(meshes(node)[0].mesh == original,"Original mode restores the exact retained source resource")
+	automatic_control.item_selected.emit(0)
+	for node in housings(): test.check(meshes(node)[0].mesh == derived,"Automatic mode immediately reuses the derived resource without rebuilding")
+	test.check(app.get_viewport().mesh_lod_threshold == 1.0,"Automatic comparison uses Godot's normal viewport threshold")
+	var report: Dictionary = cache.report(app.get_viewport())
+	test.check(report.generated_resources == 1 and report.cache_hits == 2 and report.mesh_resources == 2 and report.mesh_instances == 6,"On-demand report distinguishes unique resources, instances and cache reuse")
+	test.check(report.reasons.has("optical_or_mixed_ownership") and report.derived_packed_bytes > 0,"Diagnostics include optical exclusions and retained mesh storage")
+	print("MODEL_DETAIL_DIAGNOSTICS ",JSON.stringify(report))
 	var generated: int = cache.generations
 	app.camera.position += Vector3(2,1,2)
 	await process_frame
@@ -95,6 +112,11 @@ func run() -> void:
 	test.check(app._asset_cache.derived_lods.generations == 0,"Special GDTF optical geometry types are never nominated as casing")
 	path = generate(["--dense"])
 	await load_case(path,"default",true)
+	test.check(app._asset_cache.derived_lods.generations == 1,"A 16k-triangle housing now benefits from one shared bounded generation")
+	path = generate(["--oversized","--scenery"])
+	await load_case(path,"default",true)
+	var large_report: Dictionary = app._asset_cache.derived_lods.report(app.get_viewport())
+	test.check(int(large_report.reasons.get("scenery_deferred",0)) == 1,"Scenery deferral reports actual unique excluded source count")
 	test.check(app._asset_cache.derived_lods.generations == 0 and app._asset_cache.derived_lods.skips.has("load_budget"),"Oversized sources retain original rendering without running the expensive simplifier")
 	check_materials_and_budget()
 	# Cancellation at the first checkpoint must install nothing.
@@ -124,6 +146,9 @@ func check_materials_and_budget() -> void:
 	cache.clear(); material.grow = false; cache.generation_limit = 0
 	test.check(cache.derive(source).excluded == "load_budget" and cache.generations == 0,"Per-scene generation budget skips preprocessing")
 
+	cache.clear(); cache.generation_limit = 32; cache.processing_limit_us = 0
+	test.check(cache.derive(source).excluded == "load_budget" and cache.generations == 0,"Exhausted cumulative setup budget skips without a hardware timing assertion")
+	cache.processing_limit_us = 100000
 	cache.clear()
 	var triangle := ArrayMesh.new()
 	var arrays: Array = []
@@ -134,6 +159,7 @@ func check_materials_and_budget() -> void:
 	triangle.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	triangle.surface_set_material(0,StandardMaterial3D.new())
 	cache.generation_limit = 8
+	cache.minimum_triangles = 0
 	test.check(cache.derive(triangle).mesh == triangle and cache.derive(triangle).excluded == "no_useful_levels","No useful native LOD retains the original mesh and caches the decision")
 
 func check_dmx_and_lens(cache: RefCounted) -> void:
@@ -154,3 +180,62 @@ func check_dmx_and_lens(cache: RefCounted) -> void:
 		for material in output.materials:
 			test.check(is_equal_approx(adapter._native.material_values(material.rid)[3],physical[7]*material.scale*0.5),"Optical lens materials remain exact while casing uses generated LOD")
 	test.check(cache.generations == generations,"DMX and held presentation gain never regenerate LOD")
+
+func check_preference_defaults() -> void:
+	var preferences := UserPreferences.new()
+	test.check(preferences.fixture_casing_lod and preferences.gdtf_model_detail == "default","New preference defaults enable safe LOD independently of authored detail")
+	var previous: String = FileAccess.get_file_as_string(UserPreferences.SETTINGS_FILE_PATH) if FileAccess.file_exists(UserPreferences.SETTINGS_FILE_PATH) else ""
+	var config := ConfigFile.new()
+	config.save(UserPreferences.SETTINGS_FILE_PATH)
+	preferences.load_from_disk()
+	test.check(preferences.fixture_casing_lod,"Missing preference migrates to automatic LOD enabled")
+	config.set_value("ui","fixture_casing_lod",false)
+	config.save(UserPreferences.SETTINGS_FILE_PATH)
+	preferences.load_from_disk()
+	test.check(not preferences.fixture_casing_lod,"Explicit saved Original preference remains disabled")
+	FileAccess.open(UserPreferences.SETTINGS_FILE_PATH,FileAccess.WRITE).store_string(previous)
+
+func check_glb_routes() -> void:
+	var path: String = generate(["--formats=glb","--lod-glb"])
+	await load_case(path,"high",true)
+	var cache: RefCounted = app._asset_cache.derived_lods
+	test.check(cache.generations == 1 and cache.cache_hits == 2,"Opaque static multi-surface runtime GLB reuses the same derived service")
+	check_source_fidelity(cache)
+	for node in housings():
+		var instances: Array = meshes(node)
+		test.check(instances.size() == 1 and instances[0].name == "EmbeddedMirror" and instances[0].transform.basis.determinant() < 0,"Runtime glTF retains embedded hierarchy and mirrored local transform")
+		var pick_shape: CollisionShape3D = instances[0].get_node("FixturePickBody").get_child(0)
+		var source_bounds: AABB = instances[0].get_meta("peraviz_source_mesh_bounds")
+		test.check(pick_shape.shape.size == source_bounds.size and pick_shape.position == source_bounds.get_center(),"GLB picking uses exact original-source bounds despite derived position re-encoding")
+		for surface in range(instances[0].mesh.get_surface_count()):
+			test.check(instances[0].get_active_material(surface).cull_mode == BaseMaterial3D.CULL_DISABLED,"Existing per-instance double-sided material compatibility survives LOD")
+	if "--render-model-detail-probe" in OS.get_cmdline_user_args():
+		for entry: Dictionary in cache.entries.values():
+			if entry.excluded.is_empty(): await preload("res://tests/gdscript/helpers/runtime_mesh_lod_graphics.gd").run(self,entry.source,entry.mesh,0.05)
+	path = generate(["--formats=glb","--lod-glb","--transparent"])
+	await load_case(path,"high",true)
+	test.check(app._asset_cache.derived_lods.generations == 0,"Transparent runtime GLB retains original resource")
+	path = generate(["--formats=glb","--lod-glb","--animated"])
+	await load_case(path,"high",true)
+	test.check(app._asset_cache.derived_lods.generations == 0,"Animated runtime GLB retains original resource")
+	var report: Dictionary = app._asset_cache.derived_lods.report(app.get_viewport())
+	test.check(report.reasons.has("animated_scene"),"Animation exclusion is visible in the real scene report")
+
+func check_source_fidelity(cache: RefCounted) -> void:
+	for entry: Dictionary in cache.entries.values():
+		if not entry.excluded.is_empty(): continue
+		var source: ArrayMesh = entry.source
+		var derived: ArrayMesh = entry.mesh
+		for surface in range(source.get_surface_count()):
+			var a: Array = source.surface_get_arrays(surface)
+			var b: Array = derived.surface_get_arrays(surface)
+			var position_delta: float = 0.0
+			for index in range(a[Mesh.ARRAY_VERTEX].size()): position_delta = maxf(position_delta,a[Mesh.ARRAY_VERTEX][index].distance_to(b[Mesh.ARRAY_VERTEX][index]))
+			print("MODEL_DETAIL_POSITION_DELTA ",position_delta)
+			test.check(position_delta < source.get_aabb().size.length()*0.0001,"Actual imported derived positions stay within bounded re-encoding tolerance")
+			for channel in [Mesh.ARRAY_INDEX,Mesh.ARRAY_TEX_UV]:
+				test.check(a[channel] == b[channel],"Actual imported highest-detail channel %d remains exact" % channel)
+			var normals: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			for index in range(normals.size()):
+				test.check(normals[index].distance_to(b[Mesh.ARRAY_NORMAL][index]) < 0.001,"Actual imported normals preserve facing within re-encoding tolerance")
+			test.check(source.surface_get_name(surface) == derived.surface_get_name(surface) and source.surface_get_material(surface) == derived.surface_get_material(surface),"Actual source surface identities and material/texture references remain shared")

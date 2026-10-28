@@ -2,6 +2,7 @@ extends "res://scripts/scene_loading/runtime_mesh_lod_cache.gd"
 
 # Audit-only limits; the application always uses the bounded production cache.
 func _init() -> void:
+	minimum_triangles = 0
 	vertex_limit = 400000
 	total_vertex_limit = 2000000
 	processing_limit_us = 10000000
@@ -18,7 +19,7 @@ static func fixture_mesh(segments: int, rings: int) -> ArrayMesh:
 	sphere.height = 0.9
 	var collar := CylinderMesh.new()
 	collar.radial_segments = segments
-	collar.rings = maxi(1, rings / 4)
+	collar.rings = maxi(1, int(rings / 4.0))
 	collar.top_radius = 0.28
 	collar.bottom_radius = 0.32
 	collar.height = 0.14
@@ -32,7 +33,7 @@ static func fixture_mesh(segments: int, rings: int) -> ArrayMesh:
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var image := Image.create(16,16,false,Image.FORMAT_RGBA8)
 	for y in range(16):
-		for x in range(16): image.set_pixel(x,y,Color(0.25,0.4,0.6) if (x/4+y/4)%2 == 0 else Color(0.7,0.7,0.7))
+		for x in range(16): image.set_pixel(x,y,Color(0.25,0.4,0.6) if (int(x/4.0)+int(y/4.0))%2 == 0 else Color(0.7,0.7,0.7))
 	var casing := StandardMaterial3D.new()
 	casing.albedo_texture = ImageTexture.create_from_image(image)
 	var base := StandardMaterial3D.new()

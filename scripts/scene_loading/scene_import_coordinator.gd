@@ -11,7 +11,9 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	app._scene_loading = true
 	var detail: String = app._user_preferences.gdtf_model_detail if app._user_preferences != null else "default"
 	app._loader.set_gdtf_model_detail(detail)
-	app._node_factory.fixture_casing_lod = app._user_preferences != null and app._user_preferences.fixture_casing_lod
+	app._asset_cache.derived_lods.requested_quality = detail
+	app._node_factory.fixture_casing_lod = app._user_preferences == null or app._user_preferences.fixture_casing_lod
+	app.get_viewport().mesh_lod_threshold = 1.0 if app._node_factory.fixture_casing_lod else 0.0
 	if project_context.is_empty() and loaded_file_type == "mvr":
 		# A new MVR document has no saved presentation policy. PVZ restoration
 		# below instead preserves explicit and migrated legacy settings.
