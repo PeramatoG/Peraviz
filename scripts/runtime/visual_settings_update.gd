@@ -4,6 +4,8 @@ const VisualSettingsMigration = preload("res://scripts/visual_settings_migration
 
 # Only listed value domains bypass the controlled structural lifecycle. Unknown
 # optical/experimental settings retain the established replacement fallback.
+const ATMOSPHERE = preload("res://scripts/runtime/shared_fake_smoke.gd")
+
 const GAINS := ["lens_emission_multiplier", "beam_multiplier", "footprint_multiplier", "spot_multiplier"]
 const PROFILES := ["wash_intersection_width_m", "beam_softness", "beam_radial_falloff", "beam_longitudinal_falloff", "haze_density_multiplier", "footprint_softness", "footprint_max_range", "light_volumetric_fog_energy"]
 const ENVIRONMENT := ["ambient_multiplier", "bloom_multiplier", "background_color", "ambient_fog_density", "volumetric_fog_density", "volumetric_fog_length", "volumetric_fog_fade", "shared_haze_density", "shared_haze_margin"]
@@ -21,13 +23,13 @@ static func environment_changed(changes: Dictionary) -> bool:
 
 static func structural(changes: Dictionary) -> bool:
 	for key in changes:
-		if key not in GAINS and key not in PROFILES and key not in ENVIRONMENT and not str(key).begins_with("environment_"): return true
+		if key not in ATMOSPHERE.KEYS and key not in GAINS and key not in PROFILES and key not in ENVIRONMENT and not str(key).begins_with("environment_"): return true
 	return false
 
 static func refresh_shaft_optics(changes: Dictionary) -> bool:
 	for key in changes:
 		if key in ["lens_emission_multiplier", "footprint_backend", "enable_realtime_spotlights", "footprint_multiplier", "spot_multiplier", "light_volumetric_fog_energy"]: continue
-		if key in ENVIRONMENT or str(key).begins_with("environment_"): continue
+		if key in ATMOSPHERE.KEYS or key in ENVIRONMENT or str(key).begins_with("environment_"): continue
 		return true
 	return false
 
@@ -40,6 +42,7 @@ static func apply_values(loader: Node, changes: Dictionary) -> void:
 	var profiles: bool = false
 	for key in PROFILES:
 		if changes.has(key): profiles = true
+	if not profiles and not shafts and not surfaces and not lenses: return
 	if profiles:
 		loader._beam_params_template_cache.clear()
 		var renderer_profile: bool = false

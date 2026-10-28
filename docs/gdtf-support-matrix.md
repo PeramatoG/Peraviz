@@ -2,6 +2,8 @@
 
 This is the single capability source of truth for GDTF semantics in the active production runtime. A parser recognizing a name does not imply a rendered feature.
 
+Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF/DMX Fog or Haze channel semantics.
+
 ## Status definitions
 
 - **Supported (verified scope):** compiled, evaluated, applied by the active native-to-Godot path, and covered by focused tests.

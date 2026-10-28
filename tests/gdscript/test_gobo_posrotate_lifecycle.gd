@@ -20,10 +20,13 @@ class MultiTargetLoader:
 var test = HeadlessTestCaseScript.new()
 
 func _init() -> void:
+	var smoke = preload("res://scripts/runtime/shared_fake_smoke.gd").new()
+	smoke.apply({"fake_smoke_enabled":true})
 	var failures := PackedStringArray()
 	_test_protocol_mask(failures)
 	_test_rotation_lifecycle(failures)
 	_test_eight_target_clear_reapply(failures)
+	smoke.release()
 	if failures.is_empty():
 		print("Gobo PosRotate lifecycle checks passed.")
 		quit(0)

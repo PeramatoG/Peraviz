@@ -37,3 +37,22 @@ rendering/lights_and_shadows/positional_shadow/atlas_size=1024
 rendering/environment/volumetric_fog/volume_size=64
 rendering/environment/volumetric_fog/volume_depth=64
 rendering/environment/volumetric_fog/use_filter=true
+
+[shader_globals]
+
+peraviz_fake_smoke_enabled={
+"type": "bool",
+"value": false
+}
+peraviz_fake_smoke_shape={
+"type": "vec3",
+"value": Vector3(1, 0.35, 0.0833333)
+}
+peraviz_fake_smoke_velocity={
+"type": "vec3",
+"value": Vector3(0.098298, 0.03, 0.068829)
+}
+peraviz_fake_smoke_noise={
+"type": "sampler3D",
+"value": ""
+}

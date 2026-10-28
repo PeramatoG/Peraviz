@@ -1,6 +1,12 @@
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
 
+// Shared presentation only; the uniform branch skips all smoke work when off.
+global uniform bool peraviz_fake_smoke_enabled;
+global uniform vec3 peraviz_fake_smoke_shape; // density, variation, inverse tile metres
+global uniform vec3 peraviz_fake_smoke_velocity; // world metres/second
+global uniform sampler3D peraviz_fake_smoke_noise : filter_linear, repeat_enable;
+
 uniform bool use_control_group_state = false;
 uniform vec4 control_group_dynamic_state : source_color = vec4(1.0, 1.0, 1.0, 0.0);
 
@@ -107,6 +113,19 @@ void fragment() {
 	float tail = (1.0 - smoothstep(0.72, 0.98, d / cone_height)) * (1.0 - smoothstep(0.72, 0.98, optical_position.y / cone_height));
 	if (!has_gobo_energy) { topology_gain = sqrt(max(1.0 - radius * radius, 0.0)); }
 	float density = radial * decay * tail * max(haze_density, 0.0) * intensity_response * 0.8 * gobo_transmission * topology_gain;
+	if (peraviz_fake_smoke_enabled) {
+		float modulation = 1.0;
+		if (peraviz_fake_smoke_shape.y > 0.0) {
+			// The optical sample's affine ray parameter also locates it in world space.
+			// VERTEX is already interpolated view-space position in the fragment stage.
+			vec3 shell_world = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+			vec3 world_sample = mix(CAMERA_POSITION_WORLD, shell_world, t);
+			vec3 field = (world_sample - peraviz_fake_smoke_velocity * TIME) * peraviz_fake_smoke_shape.z;
+			float atmosphere = textureLod(peraviz_fake_smoke_noise, field, 0.0).r;
+			modulation = mix(1.0, 0.25 + 1.5 * atmosphere, peraviz_fake_smoke_shape.y);
+		}
+		density *= peraviz_fake_smoke_shape.x * modulation;
+	}
 	#ifdef PERAVIZ_WASH_DEPTH
 	if (wash_intersection_width > 0.0) {
 		float depth = textureLod(scene_depth, SCREEN_UV, 0.0).r;

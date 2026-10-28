@@ -84,6 +84,11 @@ static func exercise(owner: SceneTree) -> void:
 	for gain in [0.0, 0.25, 2.0, 1.0]:
 		loader._apply_visual_settings({"lens_emission_multiplier": gain})
 		check_lenses(owner, gain)
+	# One global field reaches independent, shared-material and aggregate shafts.
+	# Preserve actual native physical values and all cold renderer identities.
+	for smoke in [{"fake_smoke_enabled":true},{"fake_smoke_density":0.8,"fake_smoke_variation":0.5},{"fake_smoke_scale_m":8.0,"fake_smoke_animation_speed":0.1},{"fake_smoke_wind_direction_deg":120.0,"fake_smoke_wind_speed":0.2},{"fake_smoke_enabled":false}]:
+		loader._apply_visual_settings(smoke)
+		check_lenses(owner,1.0)
 	loader._apply_visual_settings({"wash_intersection_width_m": 0.25})
 	loader._apply_visual_settings({"wash_intersection_width_m": 0.0})
 	loader._apply_visual_settings({"beam_softness": 0.4})

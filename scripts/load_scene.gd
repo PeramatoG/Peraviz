@@ -48,6 +48,7 @@ var _loaded_bounds: AABB
 var _has_loaded_bounds: bool = false
 var _node_index: Dictionary = {}
 var _asset_cache := PeravizRuntimeAssetCache.new()
+var _fake_smoke = preload("res://scripts/runtime/shared_fake_smoke.gd").new()
 var _debug_coords_enabled: bool = false
 var _debug_asset_cache_enabled: bool = false
 var _debug_gizmos_root: Node3D
@@ -147,7 +148,7 @@ var _visual_settings := {
 	"gobo_debug_shake_amplitude_deg": 1.0,
 	"gobo_debug_shake_frequency_hz": 1.0,
 	"gobo_debug_shake_waveform": 0,
-}
+}.merged(preload("res://scripts/runtime/shared_fake_smoke.gd").DEFAULTS)
 
 
 var _beam_renderers: Dictionary = {}
@@ -480,6 +481,7 @@ func _apply_visual_settings(settings: Dictionary, initialize_environment: bool =
 			_shared_haze_controller = SharedHazeControllerScript.new()
 		_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) in [0, 2], _visual_settings)
 		_refresh_day_night_environment_controller()
+	_fake_smoke.apply_changed(_visual_settings, changed, initialize_environment)
 	if updates.structural(changed):
 		_beam_params_template_cache.clear()
 		_update_beam_renderer_mode(false)
@@ -2949,6 +2951,7 @@ func _notification(what: int) -> void:
 		_loader.free()
 
 func _exit_tree() -> void:
+	_fake_smoke.release()
 	_save_user_preferences()
 	if _dmx_controller != null:
 		_dmx_controller.exit_tree()
