@@ -8,6 +8,187 @@
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
 
+## Runtime GDTF mesh LOD audit (2026-10-28)
+
+**Decision: defer production enablement.** Godot-native runtime LOD works in the
+installed official **4.7.1 / a13da4feb** executable. The isolated proof uses its
+existing meshoptimizer integration; no dependency, quality UI, application mesh
+replacement, culling-default change or footprint optimization is introduced.
+
+### Geometry paths and ownership
+
+| Path | Construction and sharing | Native LOD today |
+| --- | --- | --- |
+| Embedded GDTF/MVR 3DS | Native `mesh_3ds_loader.cpp` decodes indexed positions, generated normals, UVs, aggregate color/one texture; active `node_factory.gd::_build_3ds_mesh()` creates one ArrayMesh surface. `asset_runtime_cache.gd` shares it by extracted asset path + `#flipped` parity. | None: no LOD dictionary or ImporterMesh step. Native 3DS decoding already flattens material groups; LOD cannot restore lost slots/smoothing groups. |
+| GDTF primitives | `_create_gdtf_primitive_mesh()` creates per-instance Sphere/Cylinder/BoxMesh; dimensions are fitted through local visual scale. | Fixed primitive tessellation, no generated LOD. Usually too small to justify preprocessing. |
+| Embedded GDTF/MVR GLB/glTF | `_load_3d_asset()` calls GLTFDocument append/generate, caches a PackedScene and instantiates it; embedded transforms/material surfaces and mesh sharing are retained. | Runtime conversion does **not** run editor LOD generation. Tested round trip has zero LODs. |
+| Other embedded extensions | Native GDTF/MVR classifiers label OBJ/DAE/FBX/STL as `scene`; that hint currently enters the GLTFDocument branch too. Unsupported decoding falls back with diagnostics. | Recognition is not proof of a working importer or LOD. No new format support in this audit. |
+| Godot scene resources | The remaining ResourceLoader/PackedScene branch instantiates cached resources. | Can retain LOD baked by an editor scene import; depends on resource/import policy. Editor-imported scenes normally generate LOD; mesh-only OBJ does not by default. Extracted runtime assets do not inherit that editor process. |
+| Missing/invalid model fallbacks | Primitive substitutes or colored Box/Cylinder placeholders; materials have per-instance overrides, dummy materials use cache clones. | No LOD; retain diagnostics and cheap original bounds. |
+| Optical meshes/lenses | GoboPrismMeshBuilder caches aperture/vector topology; footprint/proxy volumes use shared procedural ArrayMesh; legacy cone meshes use primitives. Physical lenses remain imported Beam models, with prepared per-surface materials or compatible MultiMesh batches. | Deliberately exclude from generic casing/scenery simplification. Optical coverage, UVs, per-output materials and exact fallback remain authoritative. |
+
+`SceneImportService` uses NodeFactory. `load_scene.gd::_create_scene_node()` delegates
+to it, but substantial older `_load_3d_asset`, 3DS/primitive/dummy builders and
+material/orientation helpers remain duplicated in load_scene. Do not add a second
+LOD authority there; consolidation is separate work.
+The direct ArrayMesh paths also omit editor-generated shadow meshes and any explicit
+vertex-cache/fetch optimization stage. Runtime glTF conversion only realizes its
+ImporterMesh; no import post-processing is requested by Peraviz. Those are audit
+findings, not additional optimizations introduced here.
+
+Native geometry expansion retains canonical names, geometry keys/UUIDs, model
+provenance, parent IDs and local transforms. NodeFactory installs parents in a
+second pass, then repairs reflected 3DS winding. `ModelGeometry` fits GDTF model
+dimensions in an outer visual wrapper, retaining embedded glTF transforms and the
+raw shared mesh. FixtureBindingService attaches **BoxShape3D picking bounds**, not
+LOD triangle colliders. A derived mesh belongs only on the visual MeshInstance;
+axes, pivots, emitter origins, node identity and original picking bounds must stay.
+Neither prototype nor audit changes parsing, coordinates, DMX or optical resources.
+
+Native `ZipAssetCache::ensure_model_extracted()` searches standard, low and high
+model folders in fixed fallback order (3ds/gltf, then low, then high), with exact
+format/reference and ambiguity rules. This is asset resolution, not screen-space
+LOD or an existing quality preference. No geometry-detail preference was found in
+UserPreferences. Extraction leases and Godot asset caches retire with the scene.
+
+### Native API verification
+
+[ImporterMesh](https://docs.godotengine.org/en/4.7/classes/class_importermesh.html)
+provides from_mesh, generate_lods and get_mesh; each generated level exposes size
+and index data. Do not pass the original as get_mesh's optional base_mesh: it is
+mutated. The split-normal angle argument is unused in 4.7.1. The prototype drops
+the ImporterMesh after conversion and explicitly copies provenance metadata:
+from_mesh copies it into the importer, but get_mesh did not forward it to the
+result in the installed engine.
+
+[ArrayMesh](https://docs.godotengine.org/en/4.7/classes/class_arraymesh.html)
+accepts float-keyed LOD index dictionaries in add_surface_from_arrays. The test
+round-trips this public alternative too. No new lower-detail vertex buffers are
+required: levels select subsets of existing vertex indices.
+
+[Native LOD selection](https://docs.godotengine.org/en/4.7/tutorials/3d/mesh_lod.html)
+uses projected screen size, viewport resolution and FOV. Each viewport has
+mesh_lod_threshold (default 1 pixel); zero disabled LOD in the probe, while 4 was
+more aggressive. GeometryInstance3D.lod_bias allows per-object adjustments.
+MultiMesh shares one selected LOD across the batch's bounds, another reason to
+keep optical batches separate. There is no universal five-metre threshold.
+
+Exact engine sources:
+[meshoptimizer registration](https://github.com/godotengine/godot/blob/4.7.1-stable/modules/meshoptimizer/register_types.cpp),
+[ImporterMesh](https://github.com/godotengine/godot/blob/4.7.1-stable/scene/resources/3d/importer_mesh.cpp),
+[runtime glTF conversion](https://github.com/godotengine/godot/blob/4.7.1-stable/modules/gltf/extensions/gltf_document_extension_convert_importer_mesh.cpp).
+Registration is at scene initialization without a tools-only guard; glTF conversion
+calls get_mesh without generate_lods. An export template/custom build without
+meshoptimizer can silently produce no LODs; count levels and retain the original.
+The installed editor executable was tested in game mode, not a separate export template.
+
+### Isolated proof and measured cost
+
+`tests/gdscript/test_runtime_mesh_lod.gd` and its two helpers are test-only; no
+production code preloads them. A generated textured two-surface casing/collar is
+compared as original ArrayMesh A and native ImporterMesh-derived ArrayMesh B.
+Headless checks also exercise the actual 3DS builder, explicit LOD dictionaries,
+runtime GLB conversion, material exclusions, source immutability, cache sharing,
+policy invalidation, retirement and canonical node/picking identity.
+
+One warm Linux x86-64 run, milliseconds; observations, **not CI timing gates** or
+Windows/hardware forecasts. Source creation includes synthetic tessellation and
+materials; conversion is additional to existing asset decode/setup.
+
+| Vertices / base triangles | Source build | Copy / generate / finalize | LOD levels per surface | Base packed bytes | Added LOD index bytes |
+| --- | ---: | ---: | --- | ---: | ---: |
+| 274 / 416 | 0.63 | 0.02 / 0.38 / 0.05 | 5 / 4 | 10,168 | 2,388 |
+| 2,992 / 5,504 | 0.40 | 0.08 / 3.91 / 0.12 | 9 / 8 | 116,800 | 32,928 |
+| 42,664 / 83,456 | 6.67 | 1.29 / 91.91 / 0.95 | 10 / 11 | 1,695,328 | 500,316 |
+| 167,240 / 330,752 | 30.97 | 4.60 / 372.21 / 4.09 | 9 / 13 | 8,246,240 | 3,557,292 |
+
+For the 83,456-triangle sample, casing LOD index counts are
+99,072 → 49,536 → 24,768 → 12,384 → 6,192 → 3,096 → 1,548 → 774 → 384 → 210;
+collar counts are 26,112 → 13,056 → 6,528 → 3,264 → 1,632 → 816 → 408 → 204 → 102 → 48 → 24.
+Original base indices and vertex positions/UVs remain exact and source arrays never
+change. Materials, names and texture references remain shared. Normals/tangents
+are re-encoded: observed normal vector delta ≤0.000130 and tangent component
+delta ≤0.000050; this is not a byte-lossless
+normal/tangent round trip. No normals or smoothing are intentionally regenerated.
+
+Packed buffer sizes come from RenderingServer, not RSS/driver allocation guesses.
+Keeping source + derived costs two base buffers plus LOD indices (about 3.89 MB
+versus 1.70 MB for the medium sample; 20.05 MB versus 8.25 MB dense). Vertices do
+not disappear. Headless Godot static allocation deltas after generation were about
+5.05/19.93 MB and after importer release 2.21/11.82 MB for medium/dense; these are
+snapshots, not transient peaks, and omit driver memory. Real-renderer static deltas
+were much smaller because renderer allocations are accounted differently.
+The cache retains two mesh resources per source, shared existing materials/textures,
+and no ImporterMesh. Twenty requests reuse one result. Persistent keys would also
+need source content identity, decode/parity/format policy and engine/algorithm version.
+
+The opt-in `--render-mesh-lod-probe` ran on Godot 4.7.1 Forward+ Vulkan/llvmpipe,
+without MSAA or shadows. Viewport primitive counters, not estimated index counts:
+
+| Viewport | Camera distance (m) | A triangles | B triangles, threshold 1 | Frame mean maximum-channel color error |
+| --- | ---: | ---: | ---: | ---: |
+| 512² | 1 / 4 / 16 / 64 | 83,456 each | 8,528 / 1,168 / 584 / 274 | 0.000578 / 0.000360 / 0.000061 / 0.000016 |
+| 128² | 1 / 4 / 16 / 64 | 83,456 each | 2,200 / 584 / 274 / 266 | 0.002944 / 0.000969 / 0.000261 / 0.000007 |
+
+At threshold 0, primitive counts match A and mean image error is below 0.000001;
+maximum error reached one 8-bit color step. At threshold 4, the 512² near sample
+fell to 2,200 triangles, with mean error 0.002838 and visible edge/texture changes.
+Large individual edge errors (up to 0.87) and only 51 foreground pixels at 512²/64 m
+make low full-frame means insufficient evidence of visual equivalence.
+A near→far→near camera sweep returned the same primitive counts using one mesh:
+8,528 → 2,200 → 1,168 → 1,100 → 584 → 550 → 274 → … → 8,528.
+Native auto selection can already reduce a very dense near model; choose Original
+if exact full-detail drawing is required. Mesh assignment CPU samples were roughly
+16–440 µs; preprocessing and first shader/driver upload costs are separate. This
+isolated setup measurement is not complete MVR scene-load cost or a playback FPS claim.
+
+### Production boundary and next step
+
+Exclude Beam/lens/emission/laser geometry, projector masks, shafts, footprints,
+transparent/alpha-scissored surfaces, unknown shaders/passes, skinning/morphs,
+custom attributes/deformation and collision meshes. Reject a mixed optical/housing
+resource conservatively until surface ownership is explicit. Never classify an
+opaque lens as housing just because emission is not yet enabled. Preserve all
+surface slots/overrides and imported UVs, normals, handedness and picking identity.
+The prototype's material gate is intentionally insufficient as production ownership policy.
+
+Forced double-sided handling in NodeFactory clones BaseMaterial3D into per-instance
+surface/whole overrides (already-double-sided resources are reused); shader
+materials are untouched. 3DS builders and primitive materials disable culling too.
+This protects thin/open/uncertain imported geometry, but overrides valid glTF
+single-sided casing and can waste backface work. Winding repair for reflected 3DS
+is separate. Keep defaults until closed/open, mirrored, transparent and emissive
+fixtures have visual compatibility coverage; LOD does not justify a global change.
+
+Next integration step: an **opt-in, generation-owned derived asset-cache stage**
+for verified static opaque housing/scenery only, after source/parity resolution
+and before per-instance dimension/material/lens binding. Preserve raw source and
+BoxShape picking; let Godot select precomputed indices. Key by content/source
+revision + parity + merge policy + engine/algorithm version, bound memory, cancel
+and retire with the scene, and retain source on failure/no useful levels. A cache
+hit must never invoke generation, especially on camera movement. A single 0.37 s
+mesh already exceeds frame-budgeted setup; larger scans need explicit loading
+feedback/budget limits and preferably persistent/offline derived data. Do not add
+Godot worker threads or per-frame simplification.
+
+Eventually offer **Original / Automatic native LOD / Aggressive distant detail**
+separately for fixture casing and scenery, retaining original optical resources.
+Use per-instance lod_bias alongside the viewport screen-space policy, not distance
+scripts. First validate a real fixture/scenery corpus, hard edges, thin parts,
+UV seams, mirrored winding, material/optical exclusions, exported builds and memory
+limits. Small fixtures may save too few triangles to repay preprocessing; very
+dense repeated casing can benefit, but scan topology may resist simplification.
+The synthetic sample proves capability, not typical-fixture benefit. Keep the
+current production defaults and the existing footprint workload unchanged.
+
+Reproduce with the pinned engine (`GODOT_BIN` from the cloud setup):
+
+```sh
+"$GODOT_BIN" --headless --audio-driver Dummy --path . --script tests/gdscript/test_runtime_mesh_lod.gd
+# Real Forward+ display/driver required; optional image output directory:
+"$GODOT_BIN" --audio-driver Dummy --rendering-method forward_plus --path . --script tests/gdscript/test_runtime_mesh_lod.gd -- --render-mesh-lod-probe --lod-output=/tmp/peraviz-lod-images
+```
+
 ## Scene setup and loading
 
 PR #105 owner validation retained 1,095 physical outputs, grouped 1,000 compact
