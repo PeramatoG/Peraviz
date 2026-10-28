@@ -1,5 +1,6 @@
 #pragma once
 #include "scene_model.h"
+#include "asset_cache.h"
 #include <atomic>
 #include <memory>
 #ifdef PERAVIZ_ENABLE_DMX
@@ -22,5 +23,5 @@ struct SceneSetupPreparation {
 // Progress is setup-only and monotonic; the main thread polls without sharing mutable scene data.
 enum class SceneSetupPhase : int32_t { ArchiveGeometry = 0, CompileMode, ControlGroups, RenderGroups, Complete };
 using SceneSetupProgress = std::shared_ptr<std::atomic<SceneSetupPhase>>;
-SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress = {});
+SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress = {}, GdtfModelDetail model_detail = GdtfModelDetail::Default);
 }

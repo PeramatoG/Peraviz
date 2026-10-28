@@ -119,7 +119,7 @@ func _attach_fixture_pick_colliders_recursive(fixture_uuid: String, node: Node) 
 func _attach_pick_collider_to_mesh(mesh_instance: MeshInstance3D, fixture_uuid: String) -> void:
 	if mesh_instance == null or mesh_instance.mesh == null:
 		return
-	var mesh_bounds: AABB = mesh_instance.get_aabb()
+	var mesh_bounds: AABB = mesh_instance.get_meta("peraviz_source_mesh_bounds",mesh_instance.get_aabb())
 	if mesh_bounds.size == Vector3.ZERO:
 		return
 

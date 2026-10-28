@@ -361,6 +361,7 @@ func _ready() -> void:
 	var manual_fixture_test_enabled: bool = _read_manual_fixture_test_setting()
 	_fixture_debug_controller.set_manual_fixture_test_enabled(manual_fixture_test_enabled)
 	_load_user_preferences()
+	preload("res://scripts/ui/geometry_quality_controls.gd").install(visual_settings_window._tabs,_user_preferences,_asset_cache.derived_lods,get_viewport())
 	preload("res://scripts/ui/fps_overlay.gd").install(topbar_row, $UIRoot/RootVBox/ContentRow/MainViewportArea, _user_preferences)
 	_refresh_ui_module_visibility()
 	_asset_cache.configure_debug_logging(_debug_asset_cache_enabled, 100)

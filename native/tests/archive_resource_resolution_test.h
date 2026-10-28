@@ -11,7 +11,10 @@ bool write_raw_resource_zip(const std::filesystem::path &path) {
                              "models/3ds/base.v2.1.3ds", "models/gltf/head.v2.1.glb",
                              u8"models/3ds/base.\u00f1.1.3ds", "unrelated/base_1.1.3ds",
                              "models/3ds/dual.3ds", "models/gltf/dual.glb",
-                             "preferred/exact.3ds", "models/3ds/exact.3ds"}) {
+                             "preferred/exact.3ds", "models/3ds/exact.3ds",
+                             "models/3ds_low/dual.3ds", "models/gltf_low/dual.glb",
+                             "models/3ds_high/dual.3ds", "models/gltf_high/dual.glb",
+                             "models/3ds/crossover.3ds", "models/gltf_low/crossover.glb"}) {
         auto *source = zip_source_buffer(archive, "geometry", 8, 0);
         if (!source || zip_file_add(archive, name, source, ZIP_FL_ENC_UTF_8) < 0) {
             if (source) zip_source_free(source);
@@ -63,6 +66,21 @@ int test_archive_resource_resolution(const std::filesystem::path &root) {
             return fail("Dual-format preference or explicit GLB identity was not preserved");
         if (cache.ensure_gdtf_model_extracted("preferred/exact.3ds").find("/preferred/exact.3ds") == std::string::npos)
             return fail("Explicit GDTF compatibility path was substituted by a same-name standard resource");
+        using Detail = peraviz::GdtfModelDetail;
+        if (cache.ensure_gdtf_model_extracted("dual", Detail::Low).find("/3ds_low/dual.3ds") == std::string::npos ||
+            cache.model_entry() != "models/3ds_low/dual.3ds" || cache.model_quality() != "low")
+            return fail("Low quality did not select its exact authored identity");
+        if (cache.ensure_gdtf_model_extracted("dual", Detail::High).find("/3ds_high/dual.3ds") == std::string::npos ||
+            cache.ensure_gdtf_model_extracted("dual.glb", Detail::High).find("/gltf_high/dual.glb") == std::string::npos)
+            return fail("High quality or explicit format constraint was lost");
+        if (cache.ensure_gdtf_model_extracted("base_1.1", Detail::Low).find("/3ds/base_1.1.3ds") == std::string::npos || cache.model_quality() != "default")
+            return fail("Missing optional Low did not fall back to Default");
+        if (cache.ensure_gdtf_model_extracted("crossover", Detail::Low).find("/gltf_low/crossover.glb") == std::string::npos ||
+            cache.ensure_gdtf_model_extracted("crossover.3ds", Detail::Low).find("/3ds/crossover.3ds") == std::string::npos)
+            return fail("Quality-first selection or explicit 3DS fallback constraint failed");
+        if (cache.ensure_gdtf_model_extracted("preferred/exact.3ds", Detail::High).find("/preferred/exact.3ds") == std::string::npos ||
+            !cache.ensure_gdtf_model_extracted("missing/exact.3ds", Detail::High).empty())
+            return fail("Explicit archive path was substituted by basename");
         const auto copy = directory / "ascii.mvr";
         std::filesystem::copy_file(source, copy);
         peraviz::ZipAssetCache shared(copy.u8string());

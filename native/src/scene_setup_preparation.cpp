@@ -8,13 +8,13 @@
 
 namespace peraviz {
 // Parses and classifies CPU-only data; no SceneTree, resources or RenderingServer access.
-SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress) {
+SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress, GdtfModelDetail model_detail) {
     using Clock = std::chrono::steady_clock;
     const auto elapsed = [](Clock::time_point start) { return std::chrono::duration<double, std::milli>(Clock::now()-start).count(); };
     SceneSetupPreparation out;
     out.universe_offset=universe_offset;
     auto start=Clock::now();
-    out.model=load_mvr(path,false,false);
+    out.model=load_mvr(path,false,false,model_detail);
     out.load_ms=elapsed(start);
 #ifdef PERAVIZ_ENABLE_DMX
     start=Clock::now();

@@ -35,6 +35,9 @@ const DEFAULT_MVR_XCHANGE_GROUP: String = "Default"
 const DEFAULT_MVR_XCHANGE_BIND_IP: String = ""
 const DEFAULT_MVR_XCHANGE_AUTO_UPDATE: bool = false
 
+var gdtf_model_detail: String = "default"
+var fixture_casing_lod: bool = true
+
 var show_fps: bool = true
 var sidebar_open: bool = DEFAULT_SIDEBAR_OPEN
 var advanced_mode: bool = DEFAULT_ADVANCED_MODE
@@ -54,6 +57,9 @@ func load_from_disk() -> void:
 		_apply_defaults()
 		return
 
+	gdtf_model_detail = str(config.get_value(SETTINGS_SECTION,"gdtf_model_detail","default"))
+	if gdtf_model_detail not in ["default","low","high"]: gdtf_model_detail = "default"
+	fixture_casing_lod = bool(config.get_value(SETTINGS_SECTION,"fixture_casing_lod",true))
 	show_fps = bool(config.get_value(SETTINGS_SECTION, "show_fps", true))
 	sidebar_open = bool(config.get_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, DEFAULT_SIDEBAR_OPEN))
 	advanced_mode = bool(config.get_value(SETTINGS_SECTION, KEY_ADVANCED_MODE, DEFAULT_ADVANCED_MODE))
@@ -74,6 +80,8 @@ func load_from_disk() -> void:
 
 func save_to_disk() -> void:
 	var config := ConfigFile.new()
+	config.set_value(SETTINGS_SECTION,"gdtf_model_detail",gdtf_model_detail)
+	config.set_value(SETTINGS_SECTION,"fixture_casing_lod",fixture_casing_lod)
 	config.set_value(SETTINGS_SECTION, "show_fps", show_fps)
 	config.set_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, sidebar_open)
 	config.set_value(SETTINGS_SECTION, KEY_ADVANCED_MODE, advanced_mode)
@@ -100,6 +108,8 @@ func set_module_visible(module_name: StringName, visible: bool) -> void:
 	module_visibility[str(module_name)] = visible
 
 func _apply_defaults() -> void:
+	gdtf_model_detail = "default"
+	fixture_casing_lod = true
 	show_fps = true
 	sidebar_open = DEFAULT_SIDEBAR_OPEN
 	advanced_mode = DEFAULT_ADVANCED_MODE

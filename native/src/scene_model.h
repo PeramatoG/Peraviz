@@ -47,6 +47,7 @@ struct SceneNode {
     std::string asset_kind;
     std::string asset_path;
     std::string asset_reference;
+    std::string asset_archive_path, model_quality; // Selected presentation source, not canonical model data.
     std::string asset_error;
     std::string gdtf_source;
     std::string gdtf_fixture_type;
@@ -65,6 +66,7 @@ struct SceneNode {
     bool is_emitter = false;
     bool is_lens = false;
     bool is_beam = false;
+    bool is_model_lod_candidate = false; // Only ordinary Geometry/Axis models, never special optical types.
 
     bool has_luminous_flux = false;
     float luminous_flux = 10000.0F;

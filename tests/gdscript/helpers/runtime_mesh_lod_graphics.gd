@@ -1,7 +1,7 @@
 extends RefCounted
 
 # Opt-in real-renderer companion to the normal headless contract test; no timing/FPS assertions.
-static func run(owner: SceneTree, source: ArrayMesh, derived: ArrayMesh) -> void:
+static func run(owner: SceneTree, source: ArrayMesh, derived: ArrayMesh, foreground_level: float = 0.2) -> void:
 	var viewport := SubViewport.new()
 	viewport.own_world_3d = true
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -48,7 +48,7 @@ static func run(owner: SceneTree, source: ArrayMesh, derived: ArrayMesh) -> void
 					setup.append(Time.get_ticks_usec()-start)
 					for frame in range(3): await RenderingServer.frame_post_draw
 					samples.append({"image":viewport.get_texture().get_image(), "primitives":viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE,Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME)})
-				var metrics: Dictionary = compare(samples[0].image,samples[1].image)
+				var metrics: Dictionary = compare(samples[0].image,samples[1].image,foreground_level)
 				if threshold == 0.0:
 					owner.test.check(samples[0].primitives == samples[1].primitives and metrics.mean_error < 0.0001, "LOD disabled preserves highest-detail geometry and shaded textured appearance")
 				if size == 512 and distance == 1.0 and threshold == 1.0: near_count = samples[1].primitives
@@ -73,18 +73,18 @@ static func run(owner: SceneTree, source: ArrayMesh, derived: ArrayMesh) -> void
 	print("RUNTIME_MESH_LOD_SWEEP ",JSON.stringify({"primitives":sweep,"renderer":RenderingServer.get_video_adapter_name()}))
 	viewport.free()
 
-static func compare(reference: Image, actual: Image) -> Dictionary:
+static func compare(reference_image: Image, actual: Image, foreground_level: float = 0.2) -> Dictionary:
 	var total: float = 0.0
 	var maximum: float = 0.0
 	var changed: int = 0
 	var foreground: int = 0
-	for y in range(reference.get_height()):
-		for x in range(reference.get_width()):
-			var a: Color = reference.get_pixel(x,y)
+	for y in range(reference_image.get_height()):
+		for x in range(reference_image.get_width()):
+			var a: Color = reference_image.get_pixel(x,y)
 			var b: Color = actual.get_pixel(x,y)
 			var error: float = maxf(absf(a.r-b.r),maxf(absf(a.g-b.g),absf(a.b-b.b)))
 			total += error
 			maximum = maxf(maximum,error)
 			if error > 1.0/255.0: changed += 1
-			if maxf(a.r,maxf(a.g,a.b)) > 0.2: foreground += 1
-	return {"mean_error":total/(reference.get_width()*reference.get_height()),"max_error":maximum,"changed_pixels":changed,"foreground_pixels":foreground}
+			if maxf(a.r,maxf(a.g,a.b)) > foreground_level: foreground += 1
+	return {"mean_error":total/(reference_image.get_width()*reference_image.get_height()),"max_error":maximum,"changed_pixels":changed,"foreground_pixels":foreground}
