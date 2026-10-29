@@ -61,7 +61,7 @@ size_t PresentationMaterialBindings::set_surface_gain(double gain) {
     size_t writes=0;
     for (size_t i=0;i<bindings_.size();++i) {
         auto &b=bindings_[i]; b.scale=float(std::max(gain,0.0));
-        const float energy=enabled_?b.surface_base*b.scale:0.0f;
+        const float energy=enabled_?b.surface_base*b.scale*shutter(b.owner):0.0f;
         if (b.energy!=energy) {
             RenderingServer::get_singleton()->material_set_param(b.rid,energy_,energy); b.energy=energy; ++writes;
         }
@@ -76,7 +76,7 @@ size_t PresentationMaterialBindings::set_lens_gain(double gain) {
     lens_gain_=float(std::max(gain,0.0));
     size_t writes=0;
     for (auto &b:bindings_) {
-        const float energy=enabled_?b.lens_base*lens_gain_:0.0f;
+        const float energy=enabled_?b.lens_base*lens_gain_*shutter(b.owner):0.0f;
         if (b.energy!=energy) {
             RenderingServer::get_singleton()->material_set_param(b.rid,energy_,energy);
             b.energy=energy; ++writes;
@@ -113,7 +113,7 @@ void PresentationMaterialBindings::write(Binding &b,const peraviz::presentation:
     using namespace peraviz::presentation;
     if (surface_) b.surface_base=v[Visible]>0 ? (v[SpotEnergy]>0 ? v[SpotEnergy] : v[BeamEnergy]) : 0.0f;
     if (!surface_) b.lens_base=v[MaterialEnergy]*b.scale;
-    const float energy=surface_ ? b.surface_base*b.scale : b.lens_base*lens_gain_;
+    const float energy=(surface_ ? b.surface_base*b.scale : b.lens_base*lens_gain_)*shutter(b.owner);
     const size_t before=writes_;
     if (b.red!=v[Red] || b.green!=v[Green] || b.blue!=v[Blue]) {
         server->material_set_param(b.rid,emission_,Color(v[Red],v[Green],v[Blue],1));
@@ -153,4 +153,17 @@ PackedFloat32Array PresentationMaterialBindings::values(const RID &rid) const {
     }
     return values;
 }
+// Applies only energy multipliers on already owned RIDs, preserving original Color and canonical bases.
+void PresentationMaterialBindings::apply_shutters(const std::vector<uint32_t> &owners) {
+    writes_=0;
+    if (!enabled_) return;
+    auto *server=RenderingServer::get_singleton();
+    for (uint32_t owner:owners) if (owner<routes_.size()) for (uint32_t index:routes_[owner]) {
+        auto &b=bindings_[index];
+        const float energy=(surface_?b.surface_base*b.scale:b.lens_base*lens_gain_)*shutter(b.owner);
+        if (energy!=b.energy) { server->material_set_param(b.rid,energy_,energy); b.energy=energy; ++writes_; }
+        if (surface_) update_surface_visible(index);
+    }
+}
+
 }

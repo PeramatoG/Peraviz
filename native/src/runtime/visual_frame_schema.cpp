@@ -40,6 +40,7 @@ VisualFrameSchema make_visual_frame_schema(int32_t schema_generation, const Visu
     if (capabilities.has_temporal) add_section(schema.sections, VisualSectionType::TemporalOutput, 4, 2);
     if (capabilities.has_gobo_selection) add_section(schema.sections, VisualSectionType::GoboSelection, 9, 1);
     if (capabilities.has_gobo_rotation) add_section(schema.sections, VisualSectionType::GoboRotation, 7, 3);
+    if (capabilities.has_shutter) add_section(schema.sections, VisualSectionType::ShutterState, 7, 7);
     return schema;
 }
 

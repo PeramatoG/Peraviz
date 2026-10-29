@@ -6,6 +6,7 @@
 #include <tuple>
 #include <optional>
 #include "presentation/setup_index.h"
+#include "presentation/shutter_authority.h"
 
 namespace peraviz::presentation {
 namespace {
@@ -18,13 +19,14 @@ struct ControlSignature {
     int32_t fixture = 0;
     std::vector<int32_t> dimmer, zoom, approximated_effects;
     std::vector<ColorInput> color;
+    std::vector<ShutterAuthority> shutters;
     std::vector<WheelControlSignature> wheels;
     bool additive = false;
     std::tuple<std::string, bool, bool, double, double, double, double, double, double, double, double, double, double> optics;
     // Orders exact setup authority and optics without hashing collisions or live values.
     bool operator<(const ControlSignature &other) const {
-        return std::tie(fixture, dimmer, zoom, approximated_effects, color, wheels, additive, optics) <
-            std::tie(other.fixture, other.dimmer, other.zoom, other.approximated_effects, other.color, other.wheels, other.additive, other.optics);
+        return std::tie(fixture, dimmer, zoom, approximated_effects, color, shutters, wheels, additive, optics) <
+            std::tie(other.fixture, other.dimmer, other.zoom, other.approximated_effects, other.color, other.shutters, other.wheels, other.additive, other.optics);
     }
 };
 // Uses canonical GDTF ancestry, never fixture names or geometry-name heuristics.
@@ -49,6 +51,7 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
         const auto found = std::find_if(scene.source_programs.begin(), scene.source_programs.end(), [&](const auto &p) { return p.program_id == id; });
         return found == scene.source_programs.end() ? nullptr : &*found;
     };
+    auto shutter_index=shutter_authorities(scene);
     std::map<ControlSignature, size_t> signatures;
     ControlGroupAnalysis analysis;
     auto &groups = analysis.groups;
@@ -56,6 +59,7 @@ ControlGroupAnalysis analyze_control_groups(const runtime::CompiledRuntimeScene 
     for (const auto &beam : scene.beam_profiles) {
         ControlSignature s;
         s.fixture = beam.fixture_id;
+        s.shutters = shutter_index[beam.render_target_id];
         s.approximated_effects=beam.approximated_color_source_programs;
         s.optics = {beam.beam_type, beam.beam_angle_explicit, beam.field_angle_explicit, beam.effective_luminous_flux_lm, beam.beam_angle_deg, beam.field_angle_deg, beam.beam_radius_m,
             beam.throw_ratio, beam.rectangle_ratio, beam.color_temperature, beam.luminous_flux,

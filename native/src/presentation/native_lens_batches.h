@@ -12,6 +12,9 @@ class NativeLensBatches {
 public:
     bool install(size_t physical_count,const Array &rids,const Array &owners,const Array &buffers,const Array &scales);
     void clear();
+    // Borrows the generation-owned presentation envelope; physical resource ownership does not change.
+    void set_shutters(const std::vector<float> *values) { shutters_=values; }
+    size_t apply_shutters(const std::vector<uint32_t> &owners);
     void invalidate();
     void set_enabled(bool enabled);
     void set_gain(double gain);
@@ -23,6 +26,9 @@ public:
     Dictionary stats() const;
     PackedFloat32Array buffer(int32_t batch) const;
 private:
+    const std::vector<float> *shutters_=nullptr;
+    // Uses identity modulation for resources without an admitted shutter.
+    float shutter(uint32_t owner) const { return shutters_ && owner<shutters_->size()?(*shutters_)[owner]:1; }
     struct Slot { uint32_t owner=0; float scale=1, base_energy=0; bool visible=true; std::array<float,12> transform{}; };
     struct Batch { RID rid; PackedFloat32Array buffer; std::vector<Slot> slots; bool dirty=true; };
     struct Route { uint32_t batch=0,slot=0; };

@@ -6,6 +6,7 @@
 #include "gdtf_runtime/gdtf_geometry_identity.h"
 #include "gdtf_runtime/instance_dmx_routing.h"
 #include "gdtf_runtime/gobo_motion_contract.h"
+#include "gdtf_runtime/shutter_compilation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -615,6 +616,8 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (!wheel_link.empty() && resolved_wheel_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-LINK-MISSING", "warning", "ChannelFunction references an unknown Wheel.", attribute_name + " wheel=" + wheel_link});
                 ChannelProgram program;
                 program.id = next_program_id++;
+                program.physical_range_declared=has_physical;
+                program.shutter_subsets_present=!dmx::collect_elements_by_name(fn,"subchannelset").empty();
                 const std::string source_break=read_attr(channel,"DMXBreak","dmxbreak");
                 if (source_break=="Overwrite") program.dmx_break=0;
                 else if (!source_break.empty()) dmx::patch_number(source_break,program.dmx_break,1);
@@ -639,6 +642,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (gobo_semantic.recognized && gobo_semantic.kind != GoboSemanticKind::Selection && program.wheel_id == 0) {
                     fixture.diagnostics.push_back({"PVZ-GDTF-GOBO-MOTION-WHEEL-MISSING", "error", "Gobo motion ChannelFunction has no resolved Wheel link.", attribute_name});
                 }
+                if (shutter_attribute(attribute_name).recognized) program.shutter_channel_sets=parse_shutter_sets(fn,offsets.size(),dmx_from,dmx_to,physical_from,physical_to,program.shutter_sets_valid);
                 program.snap = parse_gdtf_bool(read_attr(logical, "Snap", "snap"), false);
                 program.dmx_channel_name = dmx_channel_node_name;
                 program.dmx_channel_id = dmx_channel_id;

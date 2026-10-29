@@ -7,6 +7,7 @@ namespace godot {
 
 // Registers the visual runtime methods for GDScript callers.
 void PeravizVisualRuntime::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_runtime_now_seconds_for_testing","seconds"),&PeravizVisualRuntime::set_runtime_now_seconds_for_testing);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizVisualRuntime::clear);
     ClassDB::bind_method(D_METHOD("install_compiled_scene", "packed_scene"), &PeravizVisualRuntime::install_compiled_scene);
     ClassDB::bind_method(D_METHOD("submit_universe_frame", "universe_id", "data"), &PeravizVisualRuntime::submit_universe_frame);

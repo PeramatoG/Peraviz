@@ -4,6 +4,7 @@
 #include "dmx/gdtf_xml_reader.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 #include "gdtf_runtime/resolved_dmx_addresses.h"
+#include "gdtf_runtime/shutter_compilation.h"
 #include "gdtf_runtime/physical_resource_templates.h"
 
 #include <algorithm>
@@ -901,6 +902,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         for (const ComponentBinding &component : fixture_type.components) append_property(out, patch, fixture_type, component, programs_by_component[component.component_id], artnet_universe, fixture_id, next_program_id);
         append_color_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
         append_wheel_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
+        append_shutter_targets(out,patch,fixture_type,fixture_id,next_program_id,[&](const ChannelProgram &p){return make_sources(patch,p,artnet_universe);});
         append_activation_master_sources(out, patch, fixture_type, artnet_universe, source_program_start, next_program_id);
         finalize_fixture_activations(out, patch, source_program_start, motion_binding_start);
         if (out.properties.size() == property_start && out.color_targets.empty()) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});

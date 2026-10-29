@@ -10,6 +10,7 @@ const SECTION_WHEEL_MOTION: int = 6
 const SECTION_TEMPORAL_OUTPUT: int = 8
 const SECTION_GOBO_SELECTION: int = 14
 const SECTION_GOBO_ROTATION: int = 15
+const SECTION_SHUTTER_STATE: int = 16
 const DESCRIPTOR_STRIDE: int = 5
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
@@ -107,7 +108,7 @@ func apply_snapshot(snapshot: Dictionary, loader: Node, light_apply_service: Fix
 			var row_float_base: int = float_offset + (row_index * float_stride)
 			# Lighting fan-out and state composition already ran in one native call.
 			# The production path does not resolve UUIDs or allocate row results here.
-			if dense and section_type in [SECTION_EMITTER_INTENSITY, SECTION_EMITTER_COLOR, SECTION_BEAM_OPTICS]:
+			if dense and section_type in [SECTION_EMITTER_INTENSITY, SECTION_EMITTER_COLOR, SECTION_BEAM_OPTICS, SECTION_SHUTTER_STATE]:
 				updated_fixtures[_fixture_id_for_row(row_int_base, integers)] = true
 				applied_rows += 1
 				if _performance_trace_enabled:

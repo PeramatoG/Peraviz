@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added native persistent Shutter/Strobe playback for numbered shutters: periodic flashes, triangular pulses and opening/closing ramps continue during DMX hold. Independent cells and supported ModeMaster/reference/multibreak routing modulate existing shafts, footprints and lenses without changing physical Color/Dimmer or rebuilding resources. Random modes and unresolved semantics remain explicitly diagnosed; generic Open/Closed labels use a documented presentation convention.
+
 - Added native multi-break DMX routing and one-level GeometryReference addressing, including independent Overwrite/numbered offsets and instance-qualified ModeMaster links. Ordered bytes resolve against exact MVR break entries across universes; hold, blackout, lens output and reload remain independent. Invalid/unresolved mappings retain explicit diagnostics and source geometry. Public production-path regressions cover serial and native worker playback; nested references and cross-universe reference offsets remain guarded.
 
 - Added deterministic public MVR/GDTF import compatibility coverage for source identities, reflected hierarchy, shared assets and cleanup. Fixed diagnostic mesh retention during fallback cleanup without changing rendering/material policy.

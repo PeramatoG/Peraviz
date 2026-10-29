@@ -923,4 +923,5 @@ func _invalidate_native_beams() -> void:
 func _update_native_beam_policy() -> void:
 	var settings: Dictionary = _loader.get("_visual_settings")
 	var enabled: bool = _mode == "full" and not bool(settings.get("enable_realtime_spotlights", false)) and not bool(settings.get("beam_debug_optics", false)) and int(settings.get("beam_presentation", 1)) == 1 and not _diagnostic_open_surface_lights
+	_native.set_shutter_policy(_mode == "full", maxf(float(settings.get("beam_multiplier",20.0)),0.0)/20.0,_surface_multiplier)
 	_native.set_beam_policy(enabled, maxf(float(settings.get("beam_multiplier", 20.0)), 0.0) / 20.0)

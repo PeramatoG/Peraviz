@@ -3,6 +3,7 @@ extends RefCounted
 # Cold resource admission only. Native final render rows supply every live value.
 # Preserve the legacy loop for small scenes and all unsupported optical/resource policies.
 static func install(adapter: RefCounted) -> void:
+	preload("res://scripts/runtime/native_shutter_bindings.gd").install(adapter)
 	var objects := PackedInt64Array()
 	var thresholds := PackedFloat64Array()
 	objects.resize(adapter._render_bindings.rows.size())

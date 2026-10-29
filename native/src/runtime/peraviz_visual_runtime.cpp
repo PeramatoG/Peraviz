@@ -68,6 +68,7 @@ void PeravizVisualRuntimeCore::clear() {
     diagnosed_ambiguous_gobo_pos_layers_.clear();
     diagnosed_ambiguous_gobo_posrotate_layers_.clear();
     diagnosed_simultaneous_gobo_posrotate_layers_.clear();
+    shutter_states_.clear(); shutter_unsupported_fixtures_.clear();
     runtime_epoch_ = std::chrono::steady_clock::now();
     test_runtime_now_seconds_ = -1.0;
     gobo_asset_by_wheel_slot_.clear();
@@ -134,6 +135,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         auto &wheel_binding_indices=universe.dirty_wheels; wheel_binding_indices.clear();
         auto &gobo_selection_layers=universe.dirty_gobo_selections; gobo_selection_layers.clear();
         auto &gobo_motion_layers=universe.dirty_gobo_motions; gobo_motion_layers.clear();
+        universe.dirty_shutters.clear();
         if (!prepared_inputs) universe.plan.begin_update(changed_offsets);
         if (prefetch_) prefetch_->inject_sources(universe_id);
         if (performance_trace_enabled_) for (int offset:changed_offsets) {
@@ -156,6 +158,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
                 case EvaluationDomain::Color: color_target_indices.push_back(index); break;
                 case EvaluationDomain::Wheel: wheel_binding_indices.insert(&index,&index+1); break;
                 case EvaluationDomain::GoboSelection: gobo_selection_layers.push_back(consumer.target); break;
+                case EvaluationDomain::Shutter: universe.dirty_shutters.push_back(consumer.target); break;
                 case EvaluationDomain::GoboMotion: gobo_motion_layers.push_back(consumer.target); break;
             }
             ++scheduled;
@@ -165,6 +168,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             stats_.evaluation_consumers_avoided+=universe.plan.consumer_count()-scheduled;
         }
 
+        evaluate_shutters(universe,frame);
         for (int64_t layer_key : gobo_selection_layers) {
             const auto layer_it = universe.gobo_binding_indices_by_layer.find(layer_key);
             if (layer_it == universe.gobo_binding_indices_by_layer.end()) continue;

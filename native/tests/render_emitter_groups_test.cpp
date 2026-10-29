@@ -155,6 +155,18 @@ static void test_color_wheel_eligibility() {
 }
 // Exercises geometry counterexamples, mixed pixel radiometry, compact rows and allocation-free scaling.
 int main() {
+    {
+        auto temporal=make_rig();
+        for (const auto &beam:temporal.scene.beam_profiles) {
+            CompiledShutterBinding binding; binding.fixture_id=beam.fixture_id; binding.beam_target_id=beam.render_target_id;
+            binding.source_program_id=1; binding.wave=gdtf_runtime::ShutterWave::Strobe;
+            temporal.scene.shutter_bindings.push_back(binding);
+        }
+        check(groups(temporal).size()==1,"Identical shared shutter authority preserves an aggregate");
+        temporal.scene.shutter_bindings.front().duration=0.05;
+        const auto split=groups(temporal);
+        check(split.size()==2 && split.front().presentation==RenderPresentationClass::Individual,"Different declared duration cannot share one envelope even with the same scalar source");
+    }
     test_color_wheel_eligibility();
     auto rig=make_rig();
     auto render=groups(rig);

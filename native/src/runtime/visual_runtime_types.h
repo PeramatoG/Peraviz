@@ -5,10 +5,11 @@
 #include <vector>
 #include "gdtf_runtime/gobo_motion_contract.h"
 #include "gdtf_runtime/mode_master.h"
+#include "gdtf_runtime/shutter_contract.h"
 
 namespace peraviz::runtime {
 
-constexpr int32_t kCompiledRuntimeSceneContractVersion = 7;
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 8;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
@@ -324,6 +325,15 @@ struct CompiledBeamOpticalProfile {
     std::vector<int32_t> approximated_color_source_programs;
 };
 
+struct CompiledShutterBinding {
+    int32_t fixture_id=0, beam_target_id=0, shutter_index=1, source_program_id=0;
+    gdtf_runtime::ShutterWave wave=gdtf_runtime::ShutterWave::Unsupported;
+    double duration=0.025, duty=1, offset=1;
+    uint32_t dmx_from=0, dmx_to=255;
+    double physical_from=0, physical_to=1;
+    int32_t status=0; // 0 standard waveform; 1 explicit-label polarity; 2 unsupported source semantics.
+};
+
 struct CompiledRuntimeDiagnostic {
     std::string code;
     std::string severity;
@@ -358,6 +368,7 @@ struct CompiledRuntimeScene {
     std::vector<CompiledGoboAsset> gobo_assets;
     std::vector<CompiledGoboSelectionBinding> gobo_bindings;
     std::vector<CompiledGoboMotionBinding> gobo_motion_bindings;
+    std::vector<CompiledShutterBinding> shutter_bindings;
     std::vector<CompiledBeamOpticalProfile> beam_profiles;
     std::vector<CompiledRuntimeDiagnostic> diagnostics;
 };

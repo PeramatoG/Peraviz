@@ -1238,3 +1238,7 @@ func _track_phase(phase: String, phase_start_usec: int) -> void:
 func record_dmx_decode_elapsed(elapsed_usec: int) -> void:
 	var start: int = Time.get_ticks_usec() - max(elapsed_usec, 0)
 	_track_phase("dmx_decode", start)
+
+# One native call scales with active shutter outputs; idle scenes perform no resource work.
+func advance_temporal() -> void:
+	if _dense_adapter != null: _dense_adapter._native.advance_shutters(_dense_adapter._generation)

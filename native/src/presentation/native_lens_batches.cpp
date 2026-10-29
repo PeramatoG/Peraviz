@@ -54,7 +54,7 @@ void NativeLensBatches::set_gain(double gain) {
     for (auto &batch:batches_) {
         auto *data=batch.buffer.ptrw();
         for (size_t slot=0;slot<batch.slots.size();++slot) {
-            const float energy=enabled_?batch.slots[slot].base_energy*gain_:0.0f;
+            const float energy=enabled_?batch.slots[slot].base_energy*gain_*shutter(batch.slots[slot].owner):0.0f;
             if (data[slot*16+15]!=energy) { data[slot*16+15]=energy; batch.dirty=true; }
         }
     }
@@ -75,7 +75,7 @@ void NativeLensBatches::write(uint32_t index,const peraviz::presentation::Render
     for (const auto &route:routes_[index]) {
         auto &batch=batches_[route.batch]; auto *data=batch.buffer.ptrw()+route.slot*16+12;
         auto &slot=batch.slots[route.slot]; slot.base_energy=v[MaterialEnergy]*slot.scale;
-        const float values[4]={v[Red],v[Green],v[Blue],enabled_?slot.base_energy*gain_:0.0f};
+        const float values[4]={v[Red],v[Green],v[Blue],enabled_?slot.base_energy*gain_*shutter(slot.owner):0.0f};
         for (int i=0;i<4;++i) if (data[i]!=values[i]) { data[i]=values[i]; batch.dirty=true; }
     }
 }
@@ -116,4 +116,17 @@ Dictionary NativeLensBatches::stats() const {
 }
 // Inspection returns derived GPU presentation data only, for focused equivalence checks.
 PackedFloat32Array NativeLensBatches::buffer(int32_t batch) const { return batch>=0 && size_t(batch)<batches_.size()?batches_[batch].buffer:PackedFloat32Array(); }
+// Updates existing instance custom alpha only, then coalesces one submission per dirty batch.
+size_t NativeLensBatches::apply_shutters(const std::vector<uint32_t> &owners) {
+    if (!enabled_) return 0;
+    for (uint32_t owner:owners) if (owner<routes_.size()) for (const auto &route:routes_[owner]) {
+        auto &batch=batches_[route.batch]; const auto &slot=batch.slots[route.slot];
+        const float value=slot.base_energy*gain_*shutter(owner);
+        auto *data=batch.buffer.ptrw();
+        if (data[route.slot*16+15]!=value) { data[route.slot*16+15]=value; batch.dirty=true; }
+    }
+    flush(false);
+    return size_t(submissions_);
+}
+
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "presentation/control_groups.h"
+#include "presentation/shutter_authority.h"
 #include "scene_model.h"
 #include <array>
 
@@ -18,6 +19,7 @@ struct EmitterSpatialDescriptor {
     int32_t physical_id = 0, fixture_id = 0;
     std::string anchor_geometry_key;
     std::vector<std::string> axis_lineage;
+    std::vector<ShutterAuthority> shutter_authority;
     EmitterVector origin{}, direction{0, -1, 0};
     double aperture_radius = 0.0, nominal_flux = 0.0;
     bool reliable = false, approximate_color = false;

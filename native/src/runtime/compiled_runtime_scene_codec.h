@@ -10,6 +10,7 @@
 namespace peraviz::runtime {
 
 constexpr int32_t kPackedSceneV7HeaderIntegers = 11;
+constexpr int32_t kPackedSceneV8HeaderIntegers = 12;
 constexpr int32_t kPackedSceneV7SourceFixedIntegers = 14;
 constexpr int32_t kPackedSceneV6SourceFixedIntegers = 8;
 constexpr int32_t kPackedSceneFixtureIntegers = 6;

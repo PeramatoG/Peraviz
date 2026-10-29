@@ -4,6 +4,7 @@
 #include "presentation/presentation_material_bindings.h"
 #include "presentation/native_beam_bindings.h"
 #include "presentation/native_lens_batches.h"
+#include "presentation/shutter_playback.h"
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -40,6 +41,10 @@ public:
     PackedFloat32Array lens_buffer(int32_t batch) const;
     void set_beam_policy(bool enabled,double multiplier);
     Dictionary replay_presentation_gains(bool shafts,bool surfaces,double surface_gain,bool trace);
+    bool install_shutter_resources(int64_t generation,const PackedInt64Array &beams,const PackedFloat64Array &thresholds,const Array &group_materials,const PackedInt64Array &lights,const PackedInt32Array &owners);
+    void set_shutter_policy(bool enabled,double beam_gain,double surface_gain);
+    int64_t advance_shutters(int64_t generation,double test_now=-1);
+    PackedFloat32Array shutter_values() const;
     void clear();
     void invalidate_renderer();
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
@@ -51,7 +56,17 @@ private:
     // Main-thread displayed render rows, independent of an in-flight physical snapshot.
     std::vector<peraviz::presentation::PreparedRenderRow> held_renderer_, gain_rows_;
     std::vector<bool> held_renderer_valid_;
-    NativeBeamBindings beams_;
+    NativeBeamBindings beams_, shutter_beams_;
+    peraviz::presentation::ShutterPlayback shutters_;
+    std::vector<std::vector<uint64_t>> shutter_lights_;
+    std::vector<peraviz::presentation::PreparedRenderRow> shutter_rows_;
+    std::vector<int32_t> shutter_row_slots_,shutter_fallback_;
+    std::vector<std::vector<uint32_t>> shutter_owners_by_row_;
+    bool shutter_enabled_=true;
+    double shutter_surface_gain_=1,shutter_beam_gain_=1;
+    uint64_t shutter_beam_writes_=0,shutter_material_writes_=0,shutter_ticks_=0,shutter_us_=0,shutter_lens_submissions_=0;
+    void ingest_shutters(const peraviz::runtime::SectionedVisualFrame &frame);
+
     NativeLensBatches lenses_;
     PackedInt32Array script_rows_;
     void retire_async(bool replay_domains=true);

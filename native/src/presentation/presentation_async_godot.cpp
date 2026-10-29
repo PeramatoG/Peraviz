@@ -54,6 +54,7 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
     async_sizes_=snapshot->sizes; async_snapshot_bytes_=snapshot->buffer_bytes()*2; async_worker_bytes_=snapshot->parallel.retained_bytes;
     for (const auto &row:snapshot->physical_rows) displayed_physical_[row.index]=row.values;
     runtime->accept_completed(*snapshot);
+    ingest_shutters(snapshot->domains);
     Dictionary presentation;
     apply_beams(snapshot->render_rows,trace,presentation);
     auto *indices=indices_masks_.ptrw(); auto *values=values_.ptrw(); size_t count=0;

@@ -24,6 +24,8 @@ public:
     ~PeravizVisualRuntime();
     void clear();
     void install_compiled_scene(const Dictionary &packed_scene);
+    // A deterministic clock may be injected only while the runtime has exclusive main-thread ownership.
+    bool set_runtime_now_seconds_for_testing(double seconds) { if (!async_session_.expired()) return false; core_->set_runtime_now_seconds_for_testing(seconds); return true; }
     void submit_universe_frame(int universe_id, const PackedByteArray &data);
     Dictionary consume_latest_visual_frame();
     Dictionary get_visual_frame_schema() const;
