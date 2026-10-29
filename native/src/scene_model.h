@@ -98,13 +98,20 @@ struct SceneNode {
 
 struct SceneModel {
     std::vector<SceneNode> nodes;
+    struct FixturePatchAddress {
+        int mvr_break = 0; // Zero-based MVR identity, not a universe offset.
+        int universe = -1, address = -1;
+        int order = 0;
+        bool explicit_break = false;
+    };
     struct FixturePatch {
         std::string fixture_uuid;
         int mvr_universe = -1;
         int mvr_address = -1;
         std::string dmx_mode;
         std::string gdtf_path;
-        std::string dmx_import_error; // Raw source evidence for unsupported patching; geometry remains intact.
+        std::string dmx_import_error; // Bounded validation failure; source archive remains intact.
+        std::vector<FixturePatchAddress> addresses; // Authority when standard Addresses is present.
     };
 
     // Setup-only observations, outside canonical fixture and runtime semantics.

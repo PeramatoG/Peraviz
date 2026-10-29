@@ -16,7 +16,7 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 | Domain | Status | Current verified scope and limits |
 | --- | --- | --- |
 | Static model geometry | Partial | Selected-mode hierarchy and GeometryReference expansion; dotted/Unicode Model.File basenames; 3DS and GLB resources with selectable authored Low/Default/High tiers and deterministic fallback; default-on bounded native LOD is derived presentation for eligible opaque static 3DS/glTF casing, with exact original selectable; declared positive model dimensions fitted to transformed bounds; retained GLB hierarchy and shared raw resources. Named primitive approximations and tagged missing-part placeholders are presentation fallbacks, not exact standard-library meshes. No new animated/deforming-model support is claimed. |
-| Selected DMX mode and patch | Partial | Native selected-mode `DMXChannel`/`LogicalChannel`/`ChannelFunction` compilation, ordered 1–4 byte sources, explicit or inferred ranges, and target IDs. Current playback supports one primary MVR break (0), default/explicit GDTF break 1; unsupported multi-break/reference remapping is diagnosed and withheld. See the baseline below. |
+| Selected DMX mode and patch | Partial | Native selected-mode `DMXChannel`/`LogicalChannel`/`ChannelFunction` compilation, ordered 1–4 byte sources, explicit or inferred ranges, and target IDs. Native routing resolves numbered breaks and supported GeometryReference instances; see the bounded addressing contract below. |
 | Dimmer | Supported (verified scope) | Physical/normalized native evaluation and dirty target-oriented Intensity rows, including repeated targets. |
 | Pan / Tilt | Supported (verified scope) | Physical-degree evaluation and component-oriented Transform rows. |
 | Zoom | Supported (verified scope) | Native selected-mode physical full-angle evaluation, target-oriented BeamOptics rows, and cached Lightweight Prism aperture/spread mutation. |
@@ -35,57 +35,57 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
 | Unsupported attributes | Parsed only or unsupported | Preserve/report data when possible; never infer support from legacy Godot helpers or generic enum values. |
 
-## MVR/GDTF import compatibility baseline — phase 1
+## MVR/GDTF import and native addressing
 
 Expectations follow [MVR 1.6 Address, Tables 50–51](https://github.com/mvrdevelopment/spec/blob/main/mvr-spec.md#node-definition-address)
-(unique break IDs, default 0, absolute integer or one-based `Universe.Address`)
-and [GDTF 1.2 Tables 48–49/DMXChannel](https://github.com/mvrdevelopment/spec/blob/main/gdtf-spec.md)
-(top-level GeometryReference, one-based DMX offsets, default break 1, reference
-Break remapping and `Overwrite`). A break ID is not a universe offset.
+and [GDTF 1.2 Tables 48–49/DMXChannel](https://github.com/mvrdevelopment/spec/blob/main/gdtf-spec.md).
+MVR entries retain their unique, zero-based break identity (default 0), original
+order, explicit/default flag and parsed absolute or one-based `Universe.Address`.
+GDTF numbered break **n** resolves only to MVR break **n−1**, independent of entry
+order; no break identifier is added to a universe. GDTF's absent DMXBreak means 1.
 
-| Case | Existing coverage → additional baseline coverage | Current result |
+| Case | Verified production coverage | Status |
 | --- | --- | --- |
-| Independent physical targets | Render-emitter-group and DMX binding suites → real import of three fixtures/two selected modes, six Beams, exact UUID/component/target ownership, 16-bit Pan, pivots, independent RGB/Dimmer and hold across universes | Verified scoped support |
-| Repeated GeometryReference | Geometry/template tests → actual repeated Beam nodes, distinct placements, common ancestor DMX control, original GLB sharing and correct native renderer records | Geometry and ancestor control verified; per-instance source remapping deferred |
-| Standard primary patch | Lifetime/Unicode and byte-source tests → dotted/absolute MVR addresses, nonzero start offsets, universe offset -1/0 and exact received output values | Verified for MVR break 0 and GDTF default/1 |
-| Multiple/non-primary MVR breaks; duplicate IDs | No comparable production regression → native loader/compiler and Godot preparation reject affected bindings while retaining all geometry | Unsupported/invalid, explicitly guarded; no silent first-entry projection into playback |
-| GDTF break 2/Overwrite, reference DMXOffset, ambiguous repeated source name | No comparable production regression → selected-mode guards and legacy-metadata non-bypass checks | Unsupported, explicitly guarded; full break/context evaluation remains failing/deferred |
-| Shared source/media and reload | Asset lifetime/Unicode tests → deterministic ZIPs, two modes of one GDTF, shared raw meshes/media with independent state, stable IDs after reload, retired nodes and next-preparation cache cleanup | Verified within existing lease policy |
-| Cross-fixture address overlap | Existing shared-control tests → intentional co-patch retains six unique physical targets | Allowed shared input, not duplicate fixture identity; no new collision-warning feature |
+| Primary patch and independent targets | Absolute/dotted addresses, universe offset −1/0, nonzero starts, UUID/component/target identities, reflected hierarchy/pivots, independent RGB/Dimmer, gobo media | Existing behavior preserved |
+| Multiple and sparse breaks | One fixture reads distinct universes; native sparse MVR break 7 → GDTF break 8, without requiring primary 0 | Supported |
+| Ordered source bytes | Native noncontiguous 16/32-bit sources; actual renderer 16-bit Pan and 24-bit Tilt on explicit break 2 | Supported up to four bytes; never truncate an invalid fine byte |
+| Repeated GeometryReference | Distinct qualified source paths, numbered-break offsets, final-child Overwrite mapping, independent RGB/Dimmer, same-instance ModeMaster and common-ancestor controls | Supported for one reference level |
+| Shared assets and lifecycle | Immutable models/media shared; fixture state independent; archive SHA-256, held universes, per-instance blackout/restore, serial/forced native async playback, renderer replacement and reload | Verified scoped support |
+| Co-patching | Six physical outputs retain independent identities with shared cross-fixture input | Allowed; no automatic identity merging |
+| Duplicate/malformed/missing patches; ambiguous geometry | Bounded native diagnostics, no legacy-metadata bypass, source geometry retained | Invalid/unresolved; affected fixture bindings withheld |
+| Nested reference routing, cross-instance ModeMaster, cross-universe reference offsets | Explicit native guard rather than guessed routing | Follow-up; no support claimed |
 
-`test_import_compatibility_baseline.gd` uses the real application import, native
-compilation/frames and cached lens setters. Its public generator fixes ZIP metadata
-and includes unknown XML/archive entries; SHA-256 remains identical through import,
-playback and reload. `import_compatibility_test.h` extends the existing native scene
-asset suite. This is behavioral coverage, not schema certification or vendor-corpus
-coverage. FixtureTypeID/unknown content remain in the untouched source archive;
-no editable or round-trip representation is claimed.
+Reference children correspond in ascending order to the numbered breaks used by
+referenced channels; their DMXBreak must identify that source break. The final
+child supplies Overwrite's effective break/offset. Offsets are one-based and added
+to every ordered byte; supported reference DMXAddress forms are 1–512 and `1.Address`.
+Offsets or patch-adjusted bytes crossing a 512-slot break remain guarded. Mechanical
+hierarchies and source geometries are not rewritten. Existing inherited control
+ownership and ChannelFunction/ModeMaster evaluation remain unchanged; this adds
+addressing, not new composition/Relation semantics.
 
-**Confirmed defects and bounded correction:** main selected the first MVR Address
-and ignored later breaks; GDTF compilation ignored DMXBreak and reference offsets,
-and the geometry-name map selected the last repeated source path. This PR adds
-`PVZ-MVR-DMX-PATCH-UNSUPPORTED` / `PVZ-GDTF-DMX-PATCH-UNSUPPORTED`, withholds only
-the affected fixture's compiled/compatibility bindings, forwards a bounded setup
-warning and full `compile_diagnostics` in the existing native setup summary, and decodes absolute
-addresses independently of break ID. The baseline also reproduced a fallback
-cleanup error: optional LOD inventory held strong primitive-mesh references beyond
-node retirement. It now uses weak provenance; active source/derived owners remain
-unchanged. No material, culling or drawing policy changes. This PR does not add
-multi-break support. Only
-the selected mode/tree is checked; unused modes cannot reject a valid mode.
+`test_import_compatibility_baseline.gd` and `import_compatibility_test.h` extend the
+existing production harnesses with deterministic public ZIPs, native compilation,
+universe snapshots and actual renderer/lens checks. The forced-worker variant has
+no gobo domains: existing gobo scenes deliberately retain their serial transaction.
+This is behavioral coverage, not full specification compliance, schema certification,
+a vendor corpus or external hardware validation. Unknown data stays in the untouched
+source archive; no editor/export representation is added.
 
-Follow-up must carry all patch entries/break identities and expand instance-aware
-GDTF channel/reference contexts before compiling byte sources, then validate them
-through independent universes and renderer targets. Replace these guards only
-when that end-to-end contract exists. The existing parsed compatibility-offset
-cache can retain media after SceneTree owner removal; the next native preparation
-clears that owner (tested). Immediate SceneTree-only extraction retirement would
-require a separate ownership change; no new cache subsystem is added here.
+`PVZ-MVR-DMX-PATCH-UNSUPPORTED` validates standard entries; the GDTF equivalent
+validates effective instance sources and dependencies. Each failure withholds the
+affected fixture atomically, preserving independent valid fixtures and graphical
+geometry. Warnings remain bounded; complete structured issues are available in
+`compile_diagnostics`, without raw XML dumps. The legacy single-universe metadata API
+withholds complex patches; only compiled native routing drives production playback.
+Nonstandard scalar MVR addresses remain a compatibility fallback only when standard
+Addresses is absent. Parser-only legacy definitions without geometry trees retain
+existing identities; this does not establish geometry validity.
 
-Perastage reference: [address reader](https://github.com/PeramatoG/Perastage/blob/78a70c2d467e4147ce3a5f25935638b73ccd237a/mvr/mvr_fixture_addresses.cpp),
-[patch service](https://github.com/PeramatoG/Perastage/blob/78a70c2d467e4147ce3a5f25935638b73ccd237a/core/fixture_patch_service.h)
-and its `mvr_fixture_addresses_test.cpp` informed raw-entry retention, normalized
-break identity and duplicate rejection. No editor/rendering code was transplanted.
+Perastage's [address reader](https://github.com/PeramatoG/Perastage/blob/78a70c2d467e4147ce3a5f25935638b73ccd237a/mvr/mvr_fixture_addresses.cpp)
+and patch tests informed entry retention/duplicate rejection; no editor/rendering
+code is transplanted. Existing compatibility-offset media leases retire at the next
+native preparation; immediate SceneTree-only retirement remains a separate follow-up.
 
 ## Interpretation boundary
 

@@ -25,11 +25,13 @@ def mode(name, root, channels):
 
 
 def generate(path: Path, case='supported'):
+    async_case = case == 'multibreak_async'
+    if async_case: case = 'multibreak'
     direct = channel(1, 'Pan', 'Pan', 180, 2) + channel(3, 'Tilt', 'Tilt', 90)
     for start, geometry in [(4, 'Left'), (8, 'Right')]:
         direct += ''.join(channel(start+i, attribute, geometry) for i, attribute in enumerate(['Dimmer', 'ColorAdd_R', 'ColorAdd_G', 'ColorAdd_B']))
     gobo = '<DMXChannel Offset="12" Geometry="Base"><LogicalChannel Attribute="Gobo1"><ChannelFunction Attribute="Gobo1" Wheel="Pattern" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1"><ChannelSet DMXFrom="0/1" WheelSlotIndex="1"/><ChannelSet DMXFrom="128/1" WheelSlotIndex="2"/></ChannelFunction></LogicalChannel></DMXChannel>'
-    direct += gobo
+    if not async_case: direct += gobo
     repeated = ''.join(channel(4+i, attribute, 'Panel') for i, attribute in enumerate(['Dimmer', 'ColorAdd_R', 'ColorAdd_G', 'ColorAdd_B']))
     references = '<GeometryReference Name="CellA" Geometry="Cell" Position="{1,0,0}{0,1,0}{0,0,1}{-0.2,0,0}"/><GeometryReference Name="CellB" Geometry="Cell" Position="{1,0,0}{0,1,0}{0,0,1}{0.2,0,0}"/>'
     models = '<Models><Model Name="Lens" File="lens" Length="0.02" Width="0.02" Height="0.002"/></Models>'
@@ -58,6 +60,29 @@ def generate(path: Path, case='supported'):
     if case == 'overwrite': selected[2] = 'Overwrite'
     if case == 'ambiguous_reference': selected[2] = 'AmbiguousReference'
     if case == 'copatched': addresses[1] = addresses[0]
+    if case in ['multibreak', 'numbered_references']:
+        split = direct.replace('Offset="1,2"', 'DMXBreak="2" Offset="2,1"')
+        split = split.replace('Offset="3" Geometry="Tilt"', 'DMXBreak="2" Offset="13,15,14" Geometry="Tilt"')
+        for slot in [5,6,7,8,9,10,11]:
+            split = split.replace(f'Offset="{slot}"', f'DMXBreak="2" Offset="{slot}"')
+        modes += mode('Split', 'Base', split)
+        # Shared ancestor motion is independent of per-cell Dimmer/RGB.
+        cell = ''.join(channel(1+i, attribute, 'Pixel', extra='DMXBreak="Overwrite"' if case == 'multibreak' else 'DMXBreak="1"') for i, attribute in enumerate(['Dimmer','ColorAdd_R','ColorAdd_G','ColorAdd_B']))
+        modes += mode('Cells', 'Panel', cell + channel(30, 'Pan', 'Panel', 180))
+        geometries = geometries.replace('{-0.2,0,0}"/>', '{-0.2,0,0}"><Break DMXBreak="1" DMXOffset="1"/></GeometryReference>')
+        target = 2 if case == 'multibreak' else 1
+        geometries = geometries.replace('{0.2,0,0}"/>', f'{{0.2,0,0}}"><Break DMXBreak="{target}" DMXOffset="1.9"/></GeometryReference>')
+        selected = ['Direct','Split','Cells']
+        addresses[1] += '<Address break="1">5.101</Address>'
+        addresses[2] += '<Address break="1">6.101</Address>'
+        xml = '<GDTF DataVersion="1.2"><FixtureType Name="Public Compatibility Fixture" ShortName="Compatibility" Manufacturer="Peraviz Tests" FixtureTypeID="20000000-0000-0000-0000-000000000001">'+wheels+models+geometries+'<DMXModes>'+modes+'</DMXModes></FixtureType></GDTF>'
+        packed = io.BytesIO()
+        with zipfile.ZipFile(packed,'w') as archive:
+            entry(archive,'description.xml',xml)
+            entry(archive,'models/gltf/lens.glb',lens_glb(simple_opaque=True))
+            entry(archive,'wheels/pattern.png',gobo_png())
+            entry(archive,'public-extension.bin',b'unknown source bytes\0\xff')
+
     fixtures = ''
     for index, uuid in enumerate(UUIDS):
         basis = '-1,0,0' if index == 1 else '1,0,0'
@@ -73,6 +98,6 @@ def generate(path: Path, case='supported'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('path',type=Path)
-    parser.add_argument('--case',default='supported',choices=['supported','multiple_breaks','duplicate_break','nonprimary_break','gdtf_break','overwrite','ambiguous_reference','reference_offset','copatched'])
+    parser.add_argument('--case',default='supported',choices=['supported','multiple_breaks','duplicate_break','nonprimary_break','gdtf_break','overwrite','ambiguous_reference','reference_offset','copatched','multibreak','numbered_references','multibreak_async'])
     args = parser.parse_args()
     generate(args.path,args.case)

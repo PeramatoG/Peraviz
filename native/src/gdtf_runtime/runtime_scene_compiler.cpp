@@ -3,6 +3,7 @@
 #include "dmx/gdtf_attribute_classifier.h"
 #include "dmx/gdtf_xml_reader.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
+#include "gdtf_runtime/resolved_dmx_addresses.h"
 #include "gdtf_runtime/physical_resource_templates.h"
 
 #include <algorithm>
@@ -103,22 +104,16 @@ void apply_physical_fallback(runtime::CompiledRuntimeScene &scene,
 }
 
 // Builds ordered patch-adjusted source bytes for one parser-owned ChannelFunction program.
-std::vector<runtime::CompiledDmxByteSource> make_sources(runtime::CompiledRuntimeScene &scene,
-                                                         const SceneModel::FixturePatch &patch,
+std::vector<runtime::CompiledDmxByteSource> make_sources(const SceneModel::FixturePatch &patch,
                                                          const ChannelProgram &program,
                                                          int artnet_universe) {
     std::vector<runtime::CompiledDmxByteSource> sources;
-    for (size_t index = 0; index < program.dmx_offsets_1_based.size() && index < 4; ++index) {
-        const int address = (patch.mvr_address - 1) + (program.dmx_offsets_1_based[index] - 1);
-        if (address < 0 || address >= 512) {
-            scene.diagnostics.push_back({"PVZ-GDTF-SOURCE-OUT-OF-RANGE", "warning", "Patch-adjusted DMX source address is outside the 512-slot universe.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(address + 1) + " attribute=" + program.attribute_name + " function=" + program.function_name});
-            continue;
-        }
-        sources.push_back({artnet_universe, address, static_cast<int32_t>(index)});
-    }
-    if (program.dmx_offsets_1_based.size() > 4) {
-        scene.diagnostics.push_back({"PVZ-GDTF-UNSUPPORTED-BIT-DEPTH", "warning", "Runtime compiler supports up to 32-bit source values.", patch.fixture_uuid});
-    }
+    const auto entry=source_patch(patch,program.dmx_break);
+    const int base_universe=patch.mvr_universe>0 ? patch.mvr_universe : patch.addresses.front().universe;
+    const int universe=entry.universe+(artnet_universe-base_universe);
+    for (size_t index=0; index<program.dmx_offsets_1_based.size(); ++index)
+        sources.push_back({universe,entry.address+program.dmx_offsets_1_based[index]-2,static_cast<int32_t>(index)});
+
     return sources;
 }
 
@@ -249,7 +244,7 @@ void append_property(runtime::CompiledRuntimeScene &scene,
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;
         runtime_program.semantic = semantic;
-        runtime_program.sources = make_sources(scene, patch, *parser_program, artnet_universe);
+        runtime_program.sources = make_sources(patch, *parser_program, artnet_universe);
         if (runtime_program.sources.empty()) continue;
         runtime_program.dmx_from = parser_program->dmx_from;
         runtime_program.dmx_to = parser_program->dmx_to;
@@ -296,7 +291,7 @@ void append_color_targets(runtime::CompiledRuntimeScene &scene,
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;
         runtime_program.semantic = semantic;
-        runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+        runtime_program.sources = make_sources(patch, parser_program, artnet_universe);
         if (runtime_program.sources.empty()) continue;
         runtime_program.dmx_from = parser_program.dmx_from;
         runtime_program.dmx_to = parser_program.dmx_to;
@@ -536,7 +531,7 @@ int32_t retain_unsupported_color_source(runtime::CompiledRuntimeScene &scene, co
         int universe, int32_t &next_program_id) {
     runtime::CompiledDmxSourceProgram program;
     program.program_id=next_program_id++;
-    program.sources=make_sources(scene,patch,parser_program,universe);
+    program.sources=make_sources(patch,parser_program,universe);
     program.dmx_from=parser_program.dmx_from; program.dmx_to=parser_program.dmx_to;
     program.physical_from=parser_program.physical_from; program.physical_to=parser_program.physical_to;
     program.attribute_name=parser_program.attribute_name; program.function_name=parser_program.function_name;
@@ -646,7 +641,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
             if (parser_program.wheel_channel_sets.empty()) continue;
             runtime::CompiledDmxSourceProgram runtime_program;
             runtime_program.program_id = next_program_id++;
-            runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+            runtime_program.sources = make_sources(patch, parser_program, artnet_universe);
             if (runtime_program.sources.empty()) continue;
             runtime_program.dmx_from = parser_program.dmx_from;
             runtime_program.dmx_to = parser_program.dmx_to;
@@ -676,7 +671,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         if (attribute_it->second->gobo_kind != GoboSemanticKind::None) {
             runtime::CompiledDmxSourceProgram runtime_program;
             runtime_program.program_id = next_program_id++;
-            runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+            runtime_program.sources = make_sources(patch, parser_program, artnet_universe);
             if (runtime_program.sources.empty()) continue;
             runtime_program.dmx_from = parser_program.dmx_from;
             runtime_program.dmx_to = parser_program.dmx_to;
@@ -729,7 +724,7 @@ void append_wheel_targets(runtime::CompiledRuntimeScene &scene,
         runtime::CompiledDmxSourceProgram runtime_program;
         runtime_program.program_id = next_program_id++;
         runtime_program.semantic = runtime::CompiledSemantic::Unknown;
-        runtime_program.sources = make_sources(scene, patch, parser_program, artnet_universe);
+        runtime_program.sources = make_sources(patch, parser_program, artnet_universe);
         if (runtime_program.sources.empty()) continue;
         runtime_program.dmx_from = parser_program.dmx_from;
         runtime_program.dmx_to = parser_program.dmx_to;
@@ -789,7 +784,7 @@ void append_activation_master_sources(runtime::CompiledRuntimeScene &scene,
             if (!master) continue;
             runtime::CompiledDmxSourceProgram source;
             source.program_id = next_program_id++;
-            source.sources = make_sources(scene, patch, *master, artnet_universe);
+            source.sources = make_sources(patch, *master, artnet_universe);
             if (source.sources.empty()) continue;
             source.dmx_from = master->dmx_from;
             source.dmx_to = master->dmx_to;
@@ -859,11 +854,11 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
             out.diagnostics.push_back({"PVZ-MVR-DMX-PATCH-UNSUPPORTED","error",patch.dmx_import_error,patch.fixture_uuid});
             continue;
         }
-        if (patch.fixture_uuid.empty() || patch.mvr_universe <= 0 || patch.mvr_address <= 0 || patch.mvr_address > 512 || patch.dmx_mode.empty() || patch.gdtf_path.empty()) {
+        if (patch.fixture_uuid.empty() || (patch.addresses.empty() && (patch.mvr_universe <= 0 || patch.mvr_address <= 0 || patch.mvr_address > 512)) || patch.dmx_mode.empty() || patch.gdtf_path.empty()) {
             out.diagnostics.push_back({"PVZ-GDTF-FIXTURE-SKIPPED", "warning", "Fixture patch is missing UUID, mode, GDTF path, universe, or address.", patch.fixture_uuid});
             continue;
         }
-        const int artnet_universe = patch.mvr_universe + universe_offset;
+        const int base_universe=patch.mvr_universe>0 ? patch.mvr_universe : patch.addresses.front().universe;
         const int32_t fixture_id = stable_id(patch.fixture_uuid, "fixture");
         check_generated_id(generated_ids, out, fixture_id, patch.fixture_uuid);
         const std::string cache_key = fixture_type_cache_key(patch);
@@ -877,6 +872,12 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
         if (!fixture_type.dmx_patch_supported) continue;
+        const auto address_issue=validate_resolved_addresses(patch,fixture_type,universe_offset);
+        if (!address_issue.empty()) {
+            out.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",address_issue,patch.fixture_uuid});
+            continue;
+        }
+        const int artnet_universe = static_cast<int>(static_cast<int64_t>(base_universe)+universe_offset);
         auto resources_it = physical_resources.find(cache_key);
         if (resources_it == physical_resources.end()) {
             auto resources=compile_physical_resource_templates(fixture_type);
@@ -890,7 +891,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
             resource.resource_id = stable_id(patch.fixture_uuid, "filter:" + std::to_string(resource.resource_id));
             out.filter_resources.push_back(std::move(resource));
         }
-        out.fixtures.push_back({fixture_id, patch.fixture_uuid, patch.gdtf_path, patch.dmx_mode, artnet_universe, patch.mvr_address, 10000.0, 25.0, 1.0, 20.0});
+        out.fixtures.push_back({fixture_id, patch.fixture_uuid, patch.gdtf_path, patch.dmx_mode, artnet_universe, patch.mvr_address>0 ? patch.mvr_address : patch.addresses.front().address, 10000.0, 25.0, 1.0, 20.0});
         const size_t source_program_start = out.source_programs.size();
         const size_t motion_binding_start = out.gobo_motion_bindings.size();
         append_beam_profiles(out, beams_by_fixture[patch.fixture_uuid], patch, fixture_id);

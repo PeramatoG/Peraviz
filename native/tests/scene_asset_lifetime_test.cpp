@@ -10,6 +10,7 @@
 #include "scene_model.h"
 #include "gdtf_scene_builder.h"
 #include <chrono>
+#include <algorithm>
 #include <tuple>
 
 #include <filesystem>

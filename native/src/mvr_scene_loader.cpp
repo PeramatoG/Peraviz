@@ -1,4 +1,4 @@
-#include "dmx/import_patch_compatibility.h"
+#include "dmx/mvr_patch_addresses.h"
 #include "mvr_scene_loader.h"
 #include "scene_setup_options.h"
 #include <chrono>
@@ -248,37 +248,6 @@ int parse_int_text(const char *value) {
     return static_cast<int>(parsed);
 }
 
-// Decodes standard absolute or Universe.Address values independently of break identity.
-bool try_parse_fixture_address_text(const std::string &text,
-                                    int &out_universe,
-                                    int &out_address) {
-    const std::string trimmed = trim_ascii(text);
-    if (trimmed.empty()) {
-        return false;
-    }
-
-    const std::size_t dot = trimmed.find('.');
-    if (dot != std::string::npos) {
-        const int universe = parse_int_text(trimmed.substr(0, dot).c_str());
-        const int address = parse_int_text(trimmed.substr(dot + 1).c_str());
-        if (universe > 0 && address >= 1 && address <= 512) {
-            out_universe = universe;
-            out_address = address;
-            return true;
-        }
-        return false;
-    }
-
-    const int absolute_or_channel = parse_int_text(trimmed.c_str());
-    if (absolute_or_channel <= 0) {
-        return false;
-    }
-
-    out_universe = 1 + ((absolute_or_channel - 1) / 512);
-    out_address = ((absolute_or_channel - 1) % 512) + 1;
-    return true;
-}
-
 // Reads an integer value from an XML attribute.
 int read_int_attribute(tinyxml2::XMLElement *node, std::initializer_list<const char *> names) {
     if (!node) {
@@ -324,13 +293,12 @@ int read_int_child_value(tinyxml2::XMLElement *node, std::initializer_list<const
     return -1;
 }
 
-// Retains source identity and unsupported address evidence while loading graphical geometry.
+// Retains source identity and validates all standard patch entries during import.
 SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
                                              const std::string &fixture_uuid,
                                              peraviz::ZipAssetCache &mvr_cache) {
     SceneModel::FixturePatch patch;
     patch.fixture_uuid = fixture_uuid;
-    patch.dmx_import_error = peraviz::dmx::unsupported_mvr_patch(fixture_node);
 
     std::string gdtf_spec;
     if (const char *spec_text = child_text_ci(fixture_node, "gdtfspec")) {
@@ -354,41 +322,6 @@ SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
                            ? absolute_address
                            : read_int_child_value(fixture_node, {"AbsoluteAddress", "AbsDMXAddress", "DMXAbsoluteAddress"});
 
-    if (tinyxml2::XMLElement *addresses = fixture_node->FirstChildElement("Addresses"); addresses) {
-        for (tinyxml2::XMLElement *address_node = addresses->FirstChildElement("Address"); address_node;
-             address_node = address_node->NextSiblingElement("Address")) {
-            if (universe <= 0) {
-                universe = read_int_attribute(address_node, {"Universe", "universe", "DMXUniverse"});
-            }
-            if (address <= 0) {
-                address = read_int_attribute(address_node, {"Address", "address", "DMXAddress"});
-            }
-            if (absolute_address <= 0) {
-                absolute_address = read_int_attribute(address_node, {"AbsoluteAddress", "absoluteAddress", "DMXAbsoluteAddress"});
-            }
-
-            int parsed_universe = -1;
-            int parsed_address = -1;
-            if (try_parse_fixture_address_text(address_node->GetText() ? address_node->GetText() : "",
-                                               parsed_universe,
-                                               parsed_address)) {
-                if (universe <= 0) {
-                    universe = parsed_universe;
-                }
-                if (address <= 0) {
-                    address = parsed_address;
-                }
-                if (absolute_address <= 0 && parsed_universe > 0 && parsed_address > 0) {
-                    absolute_address = ((parsed_universe - 1) * 512) + parsed_address;
-                }
-            }
-
-            if (universe > 0 && address > 0) {
-                break;
-            }
-        }
-    }
-
     if (absolute_address > 0 && (universe <= 0 || address <= 0)) {
         universe = ((absolute_address - 1) / 512) + 1;
         address = ((absolute_address - 1) % 512) + 1;
@@ -396,6 +329,7 @@ SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
 
     patch.mvr_universe = universe;
     patch.mvr_address = address;
+    peraviz::dmx::read_mvr_patch_addresses(fixture_node,patch);
     return patch;
 }
 

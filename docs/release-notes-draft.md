@@ -1,6 +1,8 @@
 # Peraviz v0.x.x
 
-- Added a deterministic public MVR/GDTF import compatibility baseline for independent/referenced Beam outputs, standard addresses, shared resources and reload. Unsupported multi-break/reference DMX remapping now produces explicit diagnostics and withholds affected bindings instead of silently aliasing sources; geometry and source archives remain intact. Multi-break playback remains deferred. Fixed diagnostic mesh retention during fallback cleanup without changing rendering/material policy.
+- Added native multi-break DMX routing and one-level GeometryReference addressing, including independent Overwrite/numbered offsets and instance-qualified ModeMaster links. Ordered bytes resolve against exact MVR break entries across universes; hold, blackout, lens output and reload remain independent. Invalid/unresolved mappings retain explicit diagnostics and source geometry. Public production-path regressions cover serial and native worker playback; nested references and cross-universe reference offsets remain guarded.
+
+- Added deterministic public MVR/GDTF import compatibility coverage for source identities, reflected hierarchy, shared assets and cleanup. Fixed diagnostic mesh retention during fallback cleanup without changing rendering/material policy.
 
 - Added optional shared world-space Fake Smoke for Vector Prism, with modest density/variation, scale, animation and wind controls in Settings. One shared precomputed 3D texture modulates shafts without new lights, per-fixture fog, optical/DMX changes or live resource rebuilding. Disabled presentation preserves the prior shader appearance; footprints and lenses remain independent.
 

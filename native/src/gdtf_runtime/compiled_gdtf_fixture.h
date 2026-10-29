@@ -147,6 +147,7 @@ struct ChannelProgram {
     std::string mode_to_source;
     std::vector<ParsedWheelChannelSet> wheel_channel_sets;
     std::string wheel_reference; // Original ChannelFunction link, including unresolved references.
+    int32_t dmx_break = 1; // Effective one-based GDTF break; zero is unresolved Overwrite.
 };
 
 struct ParsedDmxChannel {

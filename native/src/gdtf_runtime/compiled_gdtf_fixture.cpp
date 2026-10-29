@@ -1,10 +1,10 @@
-#include "dmx/import_patch_compatibility.h"
 #include "gdtf_runtime/compiled_gdtf_fixture.h"
 
 #include "dmx/gdtf_attribute_classifier.h"
 #include "dmx/gdtf_xml_reader.h"
 #include "dmx/gdtf_gobo_catalog.h"
 #include "gdtf_runtime/gdtf_geometry_identity.h"
+#include "gdtf_runtime/instance_dmx_routing.h"
 #include "gdtf_runtime/gobo_motion_contract.h"
 
 #include <algorithm>
@@ -190,50 +190,6 @@ int32_t count_mode_dmxchannels_containers(tinyxml2::XMLElement *selected_mode) {
         if (dmx::lower_ascii(child->Name() ? child->Name() : "") == "dmxchannels") ++count;
     }
     return count;
-}
-
-// Builds a best-effort geometry-name to hierarchical path map from the parsed GDTF geometry tree.
-std::unordered_map<std::string, std::string> build_geometry_paths(tinyxml2::XMLElement *root, const std::string &root_geometry_name) {
-    std::unordered_map<std::string, tinyxml2::XMLElement *> geometry_by_name;
-    std::function<void(tinyxml2::XMLElement *)> collect = [&](tinyxml2::XMLElement *element) {
-        if (!element) return;
-        const std::string name = dmx::trim_ascii(read_attr(element, "Name", "name"));
-        if (!name.empty()) geometry_by_name[name] = element;
-        for (tinyxml2::XMLElement *child = element->FirstChildElement(); child; child = child->NextSiblingElement()) collect(child);
-    };
-    for (tinyxml2::XMLElement *geometries : dmx::collect_elements_by_name(root, "geometries")) {
-        for (tinyxml2::XMLElement *geometry = geometries->FirstChildElement(); geometry; geometry = geometry->NextSiblingElement()) collect(geometry);
-    }
-    tinyxml2::XMLElement *root_geometry = nullptr;
-    if (!root_geometry_name.empty()) {
-        auto it = geometry_by_name.find(root_geometry_name);
-        if (it != geometry_by_name.end()) root_geometry = it->second;
-    }
-    if (!root_geometry && !geometry_by_name.empty()) root_geometry = geometry_by_name.begin()->second;
-    std::unordered_map<std::string, std::string> paths;
-    std::function<void(tinyxml2::XMLElement *, const std::string &)> visit = [&](tinyxml2::XMLElement *geometry, const std::string &parent_path) {
-        if (!geometry) return;
-        const std::string tag = dmx::lower_ascii(geometry->Name() ? geometry->Name() : "");
-        if (tag == "geometryreference") {
-            const std::string reference_name = dmx::trim_ascii(read_attr(geometry, "Geometry", "geometry"));
-            auto referenced = geometry_by_name.find(reference_name);
-            if (referenced != geometry_by_name.end()) {
-                const std::string instance_name = dmx::trim_ascii(read_attr(geometry, "Name", "name"));
-                const std::string reference_path = append_geometry_path(parent_path, instance_name);
-                visit(referenced->second, reference_path);
-            }
-            return;
-        }
-        const std::string name = dmx::trim_ascii(read_attr(geometry, "Name", "name"));
-        if (name.empty()) return;
-        const std::string path = append_geometry_path(parent_path, name);
-        paths[name] = path;
-        for (tinyxml2::XMLElement *child = geometry->FirstChildElement(); child; child = child->NextSiblingElement()) {
-            visit(child, path);
-        }
-    };
-    visit(root_geometry, "");
-    return paths;
 }
 
 // Returns an existing attribute ID or creates a new parser-owned identity.
@@ -537,7 +493,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         return fixture;
     }
     fixture.selected_modes_found = 1;
-    const auto patch_issue = dmx::unsupported_gdtf_patch(doc.RootElement(),selected_mode);
+    const auto patch_issue = validate_channel_addresses(selected_mode);
     if (!patch_issue.empty()) {
         fixture.dmx_patch_supported = false;
         fixture.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",patch_issue,dmx_mode_name});
@@ -559,8 +515,6 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         fixture.diagnostics.push_back({"PVZ-GDTF-GOBO-MEDIA-MISSING", "warning", "Gobo media reference could not be extracted; no stale path is published.", diagnostic.wheel_name + ":" + std::to_string(diagnostic.slot_index) + ":" + diagnostic.media_reference});
     }
     fixture.dmxchannels_containers_found = count_mode_dmxchannels_containers(selected_mode);
-    const std::unordered_map<std::string, std::string> geometry_paths =
-        build_geometry_paths(doc.RootElement(), dmx::trim_ascii(read_attr(selected_mode, "Geometry", "geometry")));
     std::unordered_map<std::string, int32_t> attribute_ids;
     std::unordered_map<std::string, int32_t> geometry_ids;
     int32_t next_component_id = 1;
@@ -590,8 +544,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         for (int offset : offsets) parsed_channel.dmx_offsets_1_based.push_back(offset);
         fixture.dmx_channels.push_back(parsed_channel);
         const int32_t dmx_channel_id = parsed_channel.id;
-        const auto geometry_path_it = geometry_paths.find(geometry_name);
-        const std::string geometry_path = geometry_path_it == geometry_paths.end() ? geometry_name : geometry_path_it->second;
+        const std::string geometry_path = geometry_name;
         const int32_t geometry_id = geometry_id_for(fixture, geometry_ids, geometry_name, geometry_path);
         for (tinyxml2::XMLElement *logical : logical_channels) {
             ++fixture.logical_channels_found;
@@ -662,6 +615,9 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (!wheel_link.empty() && resolved_wheel_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-LINK-MISSING", "warning", "ChannelFunction references an unknown Wheel.", attribute_name + " wheel=" + wheel_link});
                 ChannelProgram program;
                 program.id = next_program_id++;
+                const std::string source_break=read_attr(channel,"DMXBreak","dmxbreak");
+                if (source_break=="Overwrite") program.dmx_break=0;
+                else if (!source_break.empty()) dmx::patch_number(source_break,program.dmx_break,1);
                 for (int offset : offsets) program.dmx_offsets_1_based.push_back(offset);
                 program.bit_depth = static_cast<int32_t>(std::min<size_t>(offsets.size(), 4) * 8U);
                 program.attribute_id = attribute_id;
@@ -731,6 +687,11 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
     for (const ChannelProgram &program : fixture.channel_programs) activation_graph.push_back({program.id, program.id, program.dmx_from, program.dmx_to, program.mode_master});
     std::string graph_diagnostic;
     if (!validate_mode_master_graph(activation_graph, graph_diagnostic)) fixture.diagnostics.push_back({graph_diagnostic.substr(0, graph_diagnostic.find(':')), "error", "ModeMaster dependency graph is unresolved or cyclic.", graph_diagnostic});
+    const auto route_issue=expand_instance_dmx_routes(fixture,doc.RootElement(),selected_mode);
+    if (!route_issue.empty()) {
+        fixture.dmx_patch_supported=false;
+        fixture.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",route_issue,dmx_mode_name});
+    }
     parse_attribute_metadata(doc.RootElement(), fixture);
     if (fixture.dmxchannel_records_found == 0) {
         fixture.diagnostics.push_back({"PVZ-GDTF-DMXCHANNELS-MISSING", "error", "Selected DMX mode contains no DMXChannel records after scoped parser traversal.", dmx_mode_name});
