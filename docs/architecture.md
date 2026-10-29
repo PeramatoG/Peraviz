@@ -57,10 +57,16 @@ offers immediate exact-source/automatic comparison and an on-demand coverage rep
 [source detail and runtime LOD](rendering-performance-architecture.md#gdtf-source-detail-and-bounded-runtime-lod-2026-10-28)
 for eligibility, fallback policy, budgets and measured limits.
 
-The [import compatibility baseline](gdtf-support-matrix.md#mvrgdtf-import-compatibility-baseline--phase-1)
-records verified multi-instance ownership and the current single-primary-break limit.
-Native preparation withholds unsupported break/reference DMX bindings with explicit
-diagnostics while preserving source archives and graphical hierarchy.
+The [native addressing contract](gdtf-support-matrix.md#mvrgdtf-import-and-native-addressing)
+retains all typed MVR patch entries in `SceneModel::FixturePatch`; scalar universe/address
+fields project primary break 0 for compatibility only. Selected-mode GDTF templates
+expand source programs/components per qualified reference path once at setup, resolving
+same-instance/common-ancestor ModeMaster links. Effective GDTF break/ordered byte offsets
+resolve against MVR entries before the existing packed runtime contract is installed.
+Unresolved fixtures publish bounded diagnostics and retain graphical geometry. No new
+playback cache, worker ownership, Godot DMX semantics or packed/PVZ format is introduced.
+Fixture-type templates and immutable assets remain shared; derived routing lists belong
+to their existing scene generation and retire with it.
 
 ## Setup and playback contracts
 
