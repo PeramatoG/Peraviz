@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added a deterministic public MVR/GDTF import compatibility baseline for independent/referenced Beam outputs, standard addresses, shared resources and reload. Unsupported multi-break/reference DMX remapping now produces explicit diagnostics and withholds affected bindings instead of silently aliasing sources; geometry and source archives remain intact. Multi-break playback remains deferred. Fixed diagnostic mesh retention during fallback cleanup without changing rendering/material policy.
+
 - Added optional shared world-space Fake Smoke for Vector Prism, with modest density/variation, scale, animation and wind controls in Settings. One shared precomputed 3D texture modulates shafts without new lights, per-fixture fog, optical/DMX changes or live resource rebuilding. Disabled presentation preserves the prior shader appearance; footprints and lenses remain independent.
 
 - Added next-import GDTF Default/Low/High model selection with deterministic fallback and exact archive identity. Added independent, default-on Godot LOD for compatible bounded opaque static 3DS/glTF fixture casing, shared per scene and safely retired. Settings → Geometry provides immediate exact-original comparison and on-demand resource/LOD diagnostics; explicit saved preferences remain respected. Original geometry, optics, picking and DMX remain unchanged; oversized or unsupported meshes keep full detail.

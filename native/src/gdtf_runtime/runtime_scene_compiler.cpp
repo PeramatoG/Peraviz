@@ -855,6 +855,10 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
     using PhysicalResources = PhysicalResourceTemplates;
     std::unordered_map<std::string, PhysicalResources> physical_resources;
     for (const SceneModel::FixturePatch &patch : scene.fixture_patches) {
+        if (!patch.dmx_import_error.empty()) {
+            out.diagnostics.push_back({"PVZ-MVR-DMX-PATCH-UNSUPPORTED","error",patch.dmx_import_error,patch.fixture_uuid});
+            continue;
+        }
         if (patch.fixture_uuid.empty() || patch.mvr_universe <= 0 || patch.mvr_address <= 0 || patch.mvr_address > 512 || patch.dmx_mode.empty() || patch.gdtf_path.empty()) {
             out.diagnostics.push_back({"PVZ-GDTF-FIXTURE-SKIPPED", "warning", "Fixture patch is missing UUID, mode, GDTF path, universe, or address.", patch.fixture_uuid});
             continue;
@@ -872,6 +876,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
+        if (!fixture_type.dmx_patch_supported) continue;
         auto resources_it = physical_resources.find(cache_key);
         if (resources_it == physical_resources.end()) {
             auto resources=compile_physical_resource_templates(fixture_type);

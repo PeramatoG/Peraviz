@@ -57,6 +57,11 @@ offers immediate exact-source/automatic comparison and an on-demand coverage rep
 [source detail and runtime LOD](rendering-performance-architecture.md#gdtf-source-detail-and-bounded-runtime-lod-2026-10-28)
 for eligibility, fallback policy, budgets and measured limits.
 
+The [import compatibility baseline](gdtf-support-matrix.md#mvrgdtf-import-compatibility-baseline--phase-1)
+records verified multi-instance ownership and the current single-primary-break limit.
+Native preparation withholds unsupported break/reference DMX bindings with explicit
+diagnostics while preserving source archives and graphical hierarchy.
+
 ## Setup and playback contracts
 
 Structural setup occurs before live playback. The loader and compiler install fixture instances, patch records, ordered DMX byte sources, property contributors, stable component/render-target IDs, renderer manifests, Beam profiles, wheel resources, and gobo resources. Godot builds and caches the corresponding target records and reusable materials, meshes, textures, and nodes.

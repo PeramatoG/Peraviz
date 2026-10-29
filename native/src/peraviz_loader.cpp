@@ -44,6 +44,7 @@ godot::Array serialize_fixture_patches(const peraviz::SceneModel &model) {
         d["mvr_address"] = patch.mvr_address;
         d["dmx_mode"] = godot::String::utf8(patch.dmx_mode.c_str());
         d["gdtf_path"] = godot::String::utf8(patch.gdtf_path.c_str());
+        d["dmx_import_error"] = godot::String::utf8(patch.dmx_import_error.c_str());
         out[index++] = d;
     }
     return out;
@@ -713,6 +714,7 @@ Dictionary PeravizLoader::build_fixture_dmx_bindings(int universe_offset) {
     std::vector<peraviz::dmx::FixturePatch> patches;
     patches.reserve(last_scene_model_.fixture_patches.size());
     for (const auto &patch : last_scene_model_.fixture_patches) {
+        if (!patch.dmx_import_error.empty()) continue;
         peraviz::dmx::FixturePatch copy;
         copy.fixture_uuid = patch.fixture_uuid;
         copy.mvr_universe = patch.mvr_universe;

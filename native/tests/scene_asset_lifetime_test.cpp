@@ -168,6 +168,7 @@ int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
 
 #include "fixture_geometry_templates_test.h"
 #include "archive_resource_resolution_test.h"
+#include "import_compatibility_test.h"
 
 } // namespace
 
@@ -180,6 +181,7 @@ int main() {
     if (const int result = test_mvr_gdtf_active_scene_lifetime(root); result != 0) return result;
     if (const int result = test_fixture_geometry_templates(root); result != 0) return result;
     if (const int result = test_archive_resource_resolution(root); result != 0) return result;
+    if (const int result = test_import_compatibility(root); result != 0) return result;
     peraviz::runtime_storage::cleanup_current_session();
     peraviz::runtime_storage::reset_runtime_root_for_tests();
     std::filesystem::remove_all(root);

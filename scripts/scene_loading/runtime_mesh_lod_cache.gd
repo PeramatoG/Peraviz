@@ -145,7 +145,7 @@ func set_automatic(enabled: bool, viewport: Viewport) -> void:
 		var instance: MeshInstance3D = binding.instance.get_ref()
 		if instance != null: instance.mesh = binding.derived if enabled else binding.source
 
-# Inventory is setup-only. Expensive packed-buffer inspection happens only on request.
+# Diagnostics must not become mesh owners. Packed-buffer inspection is on demand.
 func record(instance: MeshInstance3D, data: Dictionary, route: String, reason: String) -> void:
 	var source: Mesh = instance.mesh
 	if source == null: return
@@ -153,7 +153,7 @@ func record(instance: MeshInstance3D, data: Dictionary, route: String, reason: S
 	var asset: String = str(data.get("asset_archive_path",""))
 	if asset.is_empty(): asset = str(data.get("asset_reference",data.get("asset_path","")))
 	if not inventory.has(key):
-		inventory[key] = {"mesh":source,"instances":0,"route":route,"source":asset,"quality":data.get("model_quality",""),"format":str(data.get("asset_path","")).get_extension(),"excluded":reason}
+		inventory[key] = {"mesh":weakref(source),"instances":0,"route":route,"source":asset,"quality":data.get("model_quality",""),"format":str(data.get("asset_path","")).get_extension(),"excluded":reason}
 	inventory[key].instances += 1
 
 func report(viewport: Viewport) -> Dictionary:
@@ -165,7 +165,8 @@ func report(viewport: Viewport) -> Dictionary:
 	var source_bytes: int = 0
 	for value: Dictionary in inventory.values():
 		var row: Dictionary = value.duplicate()
-		var source: Mesh = row.mesh
+		var source: Mesh = row.mesh.get_ref()
+		if source == null: continue
 		row.erase("mesh")
 		instances += row.instances
 		for entry: Dictionary in entries.values():
@@ -187,7 +188,7 @@ func report(viewport: Viewport) -> Dictionary:
 		if not value.excluded.is_empty(): continue
 		retained_derived += 1
 		derived_bytes += value.derived_buffers.base_bytes + value.derived_buffers.lod_bytes
-	return {"scope":"imported model geometry (procedural optical renderer resources not inventoried)","automatic":automatic,"requested_gdtf_quality":requested_quality,"viewport_lod_threshold":viewport.mesh_lod_threshold,"mesh_resources":inventory.size(),"mesh_instances":instances,"eligible_resources":generations+int(reasons.get("load_budget",0))+int(reasons.get("simple_mesh",0))+int(reasons.get("imported_lods",0)),"generated_resources":retained_derived,"excluded_resources":inventory.size()-retained_derived-int(reasons.get("imported_lods",0)),"reasons":reasons,"generation_attempts":generations,"cache_hits":cache_hits,"processing_us":processing_us,"retained_derived_resources":retained_derived,"derived_packed_bytes":derived_bytes,"inventoried_source_packed_bytes":source_bytes,"memory_note":"Packed buffers only; retained source resources remain shared. Driver/RSS not measured.","rendered_primitives_viewport_total":viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE,Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME),"assets":records}
+	return {"scope":"imported model geometry (procedural optical renderer resources not inventoried)","automatic":automatic,"requested_gdtf_quality":requested_quality,"viewport_lod_threshold":viewport.mesh_lod_threshold,"mesh_resources":records.size(),"mesh_instances":instances,"eligible_resources":generations+int(reasons.get("load_budget",0))+int(reasons.get("simple_mesh",0))+int(reasons.get("imported_lods",0)),"generated_resources":retained_derived,"excluded_resources":records.size()-retained_derived-int(reasons.get("imported_lods",0)),"reasons":reasons,"generation_attempts":generations,"cache_hits":cache_hits,"processing_us":processing_us,"retained_derived_resources":retained_derived,"derived_packed_bytes":derived_bytes,"inventoried_source_packed_bytes":source_bytes,"memory_note":"Packed buffers only; retained source resources remain shared. Driver/RSS not measured.","rendered_primitives_viewport_total":viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE,Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME),"assets":records}
 
 # Godot may re-encode compressed positions/normals. Reject incompatible conversions
 # before binding; Original always uses the untouched source resource.

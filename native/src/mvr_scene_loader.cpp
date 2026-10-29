@@ -1,3 +1,4 @@
+#include "dmx/import_patch_compatibility.h"
 #include "mvr_scene_loader.h"
 #include "scene_setup_options.h"
 #include <chrono>
@@ -247,8 +248,8 @@ int parse_int_text(const char *value) {
     return static_cast<int>(parsed);
 }
 
+// Decodes standard absolute or Universe.Address values independently of break identity.
 bool try_parse_fixture_address_text(const std::string &text,
-                                    int break_index_zero_based,
                                     int &out_universe,
                                     int &out_address) {
     const std::string trimmed = trim_ascii(text);
@@ -273,14 +274,7 @@ bool try_parse_fixture_address_text(const std::string &text,
         return false;
     }
 
-    if (absolute_or_channel <= 512) {
-        out_universe = std::max(1, break_index_zero_based + 1);
-        out_address = absolute_or_channel;
-        return true;
-    }
-
-    const int base_universe = std::max(1, break_index_zero_based + 1);
-    out_universe = base_universe + ((absolute_or_channel - 1) / 512);
+    out_universe = 1 + ((absolute_or_channel - 1) / 512);
     out_address = ((absolute_or_channel - 1) % 512) + 1;
     return true;
 }
@@ -330,11 +324,13 @@ int read_int_child_value(tinyxml2::XMLElement *node, std::initializer_list<const
     return -1;
 }
 
+// Retains source identity and unsupported address evidence while loading graphical geometry.
 SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
                                              const std::string &fixture_uuid,
                                              peraviz::ZipAssetCache &mvr_cache) {
     SceneModel::FixturePatch patch;
     patch.fixture_uuid = fixture_uuid;
+    patch.dmx_import_error = peraviz::dmx::unsupported_mvr_patch(fixture_node);
 
     std::string gdtf_spec;
     if (const char *spec_text = child_text_ci(fixture_node, "gdtfspec")) {
@@ -373,9 +369,7 @@ SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
 
             int parsed_universe = -1;
             int parsed_address = -1;
-            const int break_index = std::max(0, read_int_attribute(address_node, {"break", "Break"}));
             if (try_parse_fixture_address_text(address_node->GetText() ? address_node->GetText() : "",
-                                               break_index,
                                                parsed_universe,
                                                parsed_address)) {
                 if (universe <= 0) {

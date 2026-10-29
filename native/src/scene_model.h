@@ -104,6 +104,7 @@ struct SceneModel {
         int mvr_address = -1;
         std::string dmx_mode;
         std::string gdtf_path;
+        std::string dmx_import_error; // Raw source evidence for unsupported patching; geometry remains intact.
     };
 
     // Setup-only observations, outside canonical fixture and runtime semantics.

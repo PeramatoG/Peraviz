@@ -558,6 +558,7 @@ func _report_native_setup_summary() -> void:
 
 func _register_compiled_runtime_setup_metadata(compiled_scene: Dictionary) -> void:
 	_native_setup_summary = compiled_scene.get("setup_summary", {}).duplicate(true)
+	preload("res://scripts/runtime/import_diagnostics.gd").attach(_native_setup_summary,compiled_scene.get("diagnostics",[]))
 
 func _register_native_renderer_manifest(renderer_manifest: Array) -> void:
 	for item in renderer_manifest:
