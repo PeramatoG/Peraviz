@@ -64,7 +64,7 @@ struct ShutterParameters {
     int32_t function_id=0, revision=0, status=0;
     double frequency=0, duration=0.025, duty=1, offset=1, phase=0, reference=0;
     int32_t activation=0;
-    uint32_t seed=0; // Canonical physical output identity, implicit in each section row's target ID.
+    uint32_t seed=0; // Deterministic immutable control-authority seed, independent of physical member identity.
 };
 // Wraps a phase consistently for negative offsets and explicit test timestamps.
 inline double shutter_fraction(double value) { return value-std::floor(value); }

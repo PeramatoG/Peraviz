@@ -43,6 +43,8 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("install_shutter_resources","generation","beams","thresholds","group_materials","lights","owners"),&PeravizPresentationState::install_shutter_resources);
     ClassDB::bind_method(D_METHOD("advance_shutters","generation","test_now"),&PeravizPresentationState::advance_shutters,DEFVAL(-1.0));
     ClassDB::bind_method(D_METHOD("set_shutter_policy","enabled","beam_gain","surface_gain"),&PeravizPresentationState::set_shutter_policy);
+    ClassDB::bind_method(D_METHOD("shutter_authority_ids","index"),&PeravizPresentationState::shutter_authority_ids,DEFVAL(1));
+    ClassDB::bind_method(D_METHOD("shutter_beam_energy","row"),&PeravizPresentationState::shutter_beam_energy);
     ClassDB::bind_method(D_METHOD("shutter_values"),&PeravizPresentationState::shutter_values);
     ClassDB::bind_method(D_METHOD("get_sizes"), &PeravizPresentationState::get_sizes);
 }
@@ -305,6 +307,7 @@ Dictionary PeravizPresentationState::get_sizes() const {
     for (const auto &routes:shutter_lights_) shutter_bytes+=routes.capacity()*sizeof(uint64_t);
     sizes["shutter_cpu_bytes_estimate"]=int64_t(shutter_bytes);
     sizes["shutter_active_outputs"]=int64_t(shutters_.active()); sizes["shutter_layers"]=int64_t(shutters_.layers());
+    sizes["shutter_temporal_authorities"]=int64_t(shutters_.authorities()); sizes["shutter_active_authorities"]=int64_t(shutters_.active_authorities());
     sizes["shutter_waveform_evaluations"]=int64_t(shutters_.evaluations()); sizes["shutter_envelope_changes"]=int64_t(shutters_.changes());
     sizes["shutter_beam_writes"]=int64_t(shutter_beam_writes_); sizes["shutter_material_writes"]=int64_t(shutter_material_writes_);
     sizes["shutter_lens_submissions"]=int64_t(shutter_lens_submissions_);

@@ -21,6 +21,8 @@ public:
     void invalidate(uint32_t row);
     // Identifies the existing shared-uniform route without material inspection during playback.
     bool uses_group_material(uint32_t row) const { return row<entries_.size() && entries_[row].group>=0; }
+    // Reports the last committed renderer scalar, including shared material routes, only on diagnostic demand.
+    float energy(uint32_t row) const { if (row>=entries_.size()) return 0; const auto &entry=entries_[row]; return entry.group>=0?groups_[entry.group].dynamic.a:entry.dynamic.a; }
     void set_policy(bool enabled,double multiplier);
     NativeBeamApplyStats apply(const std::vector<peraviz::presentation::PreparedRenderRow> &rows,int32_t *fallback,size_t &fallback_count);
     // Reports admitted weak renderer bindings without scanning scene resources.

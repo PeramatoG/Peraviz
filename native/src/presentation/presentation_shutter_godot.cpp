@@ -75,4 +75,10 @@ PackedFloat32Array PeravizPresentationState::shutter_values() const {
     PackedFloat32Array out; out.resize(shutters_.envelopes().size());
     std::copy(shutters_.envelopes().begin(),shutters_.envelopes().end(),out.ptrw()); return out;
 }
+// Reports generation-local authority routing without exposing or mutating canonical source state.
+PackedInt32Array PeravizPresentationState::shutter_authority_ids(int32_t index) const {
+    const auto ids=shutters_.authority_ids(index); PackedInt32Array result; result.resize(ids.size());
+    std::copy(ids.begin(),ids.end(),result.ptrw()); return result;
+}
+
 }

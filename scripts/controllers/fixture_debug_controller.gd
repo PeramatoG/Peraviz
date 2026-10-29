@@ -392,5 +392,13 @@ func _copy_shutter_diagnostic() -> void:
 	var native: RefCounted = runtime.get("_native_visual_runtime") if runtime != null else null
 	var fixture_uuid: String = _selected_fixture_uuid if not _selected_fixture_uuid.is_empty() else OS.get_environment("PERAVIZ_SHUTTER_TRACE")
 	var report: Dictionary = native.get_shutter_trace(fixture_uuid) if native != null else {"available":false,"reason":"No native runtime is installed."}
+	if _owner.get("_fixture_light_apply_service") != null:
+		var adapter: RefCounted = _owner.get("_fixture_light_apply_service").get("_dense_adapter")
+		if adapter != null:
+			report["renderer_group_rejections"] = adapter._render_bindings.binding_rejections.duplicate()
+			for row: Dictionary in report.get("rows",[]):
+				for output in adapter._outputs:
+					if output.canonical_id == int(row.get("target_id",0)):
+						row["actual_aggregate"] = adapter._render_bindings.rows[adapter._render_bindings.membership[output.index]].presentation_class == 1
 	report["selected_fixture_uuid"] = fixture_uuid
 	DisplayServer.clipboard_set(JSON.stringify(report,"\t"))

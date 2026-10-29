@@ -45,6 +45,9 @@ public:
     void set_shutter_policy(bool enabled,double beam_gain,double surface_gain);
     int64_t advance_shutters(int64_t generation,double test_now=-1);
     PackedFloat32Array shutter_values() const;
+    // Reads the cached successful beam mutation, not a derived physical/semantic estimate.
+    float shutter_beam_energy(int32_t row) const { return shutter_beams_.energy(uint32_t(row)); }
+    PackedInt32Array shutter_authority_ids(int32_t index=1) const;
     void clear();
     void invalidate_renderer();
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,

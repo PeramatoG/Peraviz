@@ -380,7 +380,6 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     const auto &scene=reuse_prepared ? prepared_->compiled : *local_scene;
     load_metrics_["mode_compile_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compile_start).count();
     load_metrics_["unique_selected_modes"] = scene.gdtf_files_opened;
-    out["shutter_trace_metadata"]=shutter_setup_metadata(scene,universe_offset);
     const auto contract_start = std::chrono::steady_clock::now();
     const peraviz::runtime::PackedCompiledRuntimeScene packed = peraviz::runtime::encode_compiled_runtime_scene(scene);
     integers.resize(static_cast<int64_t>(packed.integers.size()));
@@ -421,6 +420,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     const auto groups_start = std::chrono::steady_clock::now();
     const auto render_groups = reuse_prepared ? prepared_->groups : peraviz::presentation::compile_render_emitter_groups(scene, last_scene_model_, control_analysis.groups, setup_options.indexed_classification);
     load_metrics_["render_groups_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - groups_start).count();
+    out["shutter_trace_metadata"]=shutter_setup_metadata(scene,universe_offset,render_groups);
     const auto manifest_start = std::chrono::steady_clock::now();
     load_metrics_["physical_outputs"] = int64_t(scene.beam_profiles.size());
     std::unordered_map<int32_t, int32_t> control_group_by_physical_id;

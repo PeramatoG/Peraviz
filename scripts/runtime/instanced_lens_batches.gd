@@ -78,9 +78,8 @@ func install(adapter: RefCounted) -> void:
 	var candidates: Dictionary = {}
 	var seen: Dictionary = {}
 	for output in adapter._outputs:
-		# Grouped physical controls keep their established shared lens resources.
+		# Control groups may share materials; physical lens ownership and all material/optical checks still apply.
 		if output.materials.size() != 1 or output.lights.size() != 1: continue
-		if not adapter._groups.is_empty() and adapter._groups[output.index] != null: continue
 		var light = output.lights[0]
 		var entries: Array = adapter._binding_records[output.index].get("lens_material_targets", [])
 		if entries.size() != 1 or not entries[0] is Dictionary: continue

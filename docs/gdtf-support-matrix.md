@@ -70,7 +70,8 @@ masters retain the existing native activation-chain evaluation.
 StrobeModeRandom variants use the declared nominal Hz, with one deterministic event
 per nominal cycle. Event positions are uniformly jittered in the middle half of each
 cycle; intervals lie in [0.5,1.5]/Hz and the long-run rate converges to the declared Hz.
-Counter hashing keys physical target, activation revision, function and event index.
+Counter hashing keys fixture-local compiled control authority, activation revision, function
+and event index; physical outputs sharing one ancestor shutter share exactly one sequence.
 Hold/identical DMX preserve the sequence; frequency changes retain its event position;
 new function/waveform activations restart it. Square flashes retain Duration. Random
 pulses reuse triangle/increasing/decreasing shapes, declared shape parameters or
@@ -80,8 +81,10 @@ random pulse timing. Only two candidate events are sampled, without RNG state or
 
 All envelopes multiply existing shafts, footprints, material/GPU lenses and owned
 Native/reference light energy independently of canonical Color/Dimmer. Render/Control
-Groups require identical complete temporal authority; any independently seeded random
-path uses the existing individual fallback at setup, never regrouping per flash.
+Groups require identical complete temporal authority plus the existing optical/control
+proofs. Shared Random controls retain eligible aggregate shafts and GPU lens batching;
+independent cells/banks use separate sequences and unsafe groups fall back at setup,
+never regrouping per flash. Co-patched fixtures remain independent.
 Unknown custom effects, ambiguous activation, SubChannelSets and cross-universe
 shutter parameter chains remain open with bounded `PVZ-SHUTTER-*` diagnostics/status 2.
 
@@ -91,7 +94,9 @@ use serial evaluation, then click **Copy shutter diagnostic** in Debug. The sele
 fixture or configured UUID is inspected; manual fixture overrides need not be enabled.
 The native `get_shutter_trace(uuid, target)` API returns at most 64 cached rows: identities,
 reference path, MVR/native addressing, raw/resolution, function/set/mode ranges, physical
-endpoints, effective Hz/waveform/parameters and status. No XML or sources are re-evaluated.
+endpoints, effective Hz/waveform/parameters, status, authority ID/member count and native
+aggregation eligibility/reason. The Debug report adds actual aggregation/rejection state.
+No XML or sources are re-evaluated.
 Worker ownership returns an explicit unavailable reason. Its frozen-parameter 20-event
 sampling probe compares exact windows with 15/30/60/120 FPS; missed windows diagnose visual
 aliasing, not incorrect Hz. No smoothing or brightness compensation changes the reference.

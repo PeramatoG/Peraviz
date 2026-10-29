@@ -1,6 +1,7 @@
 #include "runtime/peraviz_visual_runtime.h"
 #include <algorithm>
 #include <set>
+#include "gdtf_runtime/shutter_control_authority.h"
 
 namespace peraviz::runtime {
 namespace {
@@ -8,9 +9,9 @@ namespace {
 int64_t shutter_key(int32_t target,int32_t index) { return (int64_t(target)<<32)|uint32_t(index); }
 // Publishes persistent parameters only; no flash generates a semantic snapshot.
 void append_shutter_row(SectionedVisualFrame &frame,int fixture,int target,int index,
-        const gdtf_runtime::ShutterParameters &p,double now) {
+        const gdtf_runtime::ShutterParameters &p,double now,int32_t authority) {
     const int io=int(frame.integers.size()),fo=int(frame.floats.size());
-    frame.integers.insert(frame.integers.end(),{fixture,target,index,int(p.wave),p.revision,p.status,p.function_id,p.activation});
+    frame.integers.insert(frame.integers.end(),{fixture,target,index,int(p.wave),p.revision,p.status,p.function_id,p.activation,authority,int32_t(p.seed)});
     frame.floats.insert(frame.floats.end(),{float(p.frequency),float(p.duration),float(p.duty),float(p.offset),
         float(p.phase),float(p.reference),float(now)});
     auto &d=frame.descriptors;
@@ -20,6 +21,7 @@ void append_shutter_row(SectionedVisualFrame &frame,int fixture,int target,int i
 }
 // Installs source-graph activation contexts once, refusing unresolved or cross-universe layers explicitly.
 void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scene,VisualFrameSchemaCapabilities &capabilities) {
+    const auto layout=gdtf_runtime::shutter_control_layout(scene);
     struct Pending { CompiledShutterBinding binding; int universe=-1; std::vector<int32_t> ids; std::vector<int> offsets; };
     std::vector<Pending> pending;
     std::unordered_map<int64_t,int> universe_by_layer;
@@ -52,18 +54,28 @@ void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scen
     for (const auto &entry:pending) if (invalid.count(shutter_key(entry.binding.beam_target_id,entry.binding.shutter_index)) && reported.insert(entry.binding.fixture_id).second)
         diagnostics_.push_back({"PVZ-SHUTTER-ACTIVATION-UNRESOLVED","warning",
             "Shutter parameters/ModeMaster must resolve within one universe; unresolved layers stay open.",std::to_string(entry.binding.fixture_id)});
+    std::unordered_set<int64_t> representatives;
     for (auto &entry:pending) {
         const auto &binding=entry.binding;
         const auto key=shutter_key(binding.beam_target_id,binding.shutter_index);
         if (invalid.count(key)) continue;
-        auto &universe=universes_[entry.universe];
-        ShutterBindingRuntime context; context.binding=binding; context.dependency_program_ids=std::move(entry.ids);
-        universe.shutter_layers[key].push_back(int(universe.shutters.size()));
-        universe.shutters.push_back(std::move(context));
-        universe.interest_offsets.insert(universe.interest_offsets.end(),entry.offsets.begin(),entry.offsets.end());
-        shutter_states_[key]={binding.fixture_id,binding.beam_target_id,binding.shutter_index,false,{}};
+        const auto id=layout.by_layer.at(key);
+        auto found=shutter_authorities_.find(id);
+        if (found==shutter_authorities_.end()) {
+            const auto &authority=layout.authorities[id-1];
+            ShutterAuthorityState state; state.fixture_id=binding.fixture_id; state.index=binding.shutter_index; state.seed=authority.seed;
+            shutter_authorities_.emplace(id,std::move(state)); representatives.insert(key);
+        }
+        if (shutter_states_.emplace(key,ShutterState{binding.fixture_id,binding.beam_target_id,binding.shutter_index,id}).second)
+            shutter_authorities_.at(id).targets.push_back(binding.beam_target_id);
         installed_visual_mask_by_fixture_[binding.fixture_id]|=VisualChangeStrobe;
         capabilities.has_shutter=true;
+        if (!representatives.count(key)) continue;
+        auto &universe=universes_[entry.universe];
+        ShutterBindingRuntime context; context.binding=binding; context.dependency_program_ids=std::move(entry.ids);
+        universe.shutter_layers[id].push_back(int(universe.shutters.size()));
+        universe.shutters.push_back(std::move(context));
+        universe.interest_offsets.insert(universe.interest_offsets.end(),entry.offsets.begin(),entry.offsets.end());
     }
 }
 // Selects effective functions through the existing source cache and cycle-safe ModeMaster evaluator.
@@ -72,8 +84,8 @@ void PeravizVisualRuntimeCore::evaluate_shutters(UniverseState &universe,Section
     if (universe.dirty_shutters.empty()) return;
     const double now=runtime_now_seconds();
     for (int64_t key:universe.dirty_shutters) {
-        auto &held=shutter_states_.at(key);
-        ShutterParameters next; next.seed=uint32_t(held.target_id);
+        auto &held=shutter_authorities_.at(int32_t(key));
+        ShutterParameters next; next.seed=held.seed;
         int active=0,durations=0;
         double duration=0.025;
         for (int index:universe.shutter_layers.at(key)) {
@@ -98,17 +110,17 @@ void PeravizVisualRuntimeCore::evaluate_shutters(UniverseState &universe,Section
                 (shutter_periodic(next.wave) && next.frequency<0)) {
             next.wave=ShutterWave::Unsupported; next.status=2;
             next.frequency=0; next.duration=0.025; next.duty=1; next.offset=1;
-            if (!held.diagnosed && shutter_unsupported_fixtures_.insert(held.fixture_id).second) diagnostics_.push_back({"PVZ-SHUTTER-STATE-UNSUPPORTED","warning","Ambiguous/invalid shutter state remains open; no periodic approximation is inferred.",std::to_string(held.target_id)});
+            if (!held.diagnosed && shutter_unsupported_fixtures_.insert(held.fixture_id).second) diagnostics_.push_back({"PVZ-SHUTTER-STATE-UNSUPPORTED","warning","Ambiguous/invalid shutter state remains open; no periodic approximation is inferred.",std::to_string(held.fixture_id)});
         }
         if (next.status==2) held.diagnosed=true;
-        if (update_shutter(held.parameters,next,now)) append_shutter_row(frame,held.fixture_id,held.target_id,held.index,held.parameters,now);
+        if (update_shutter(held.parameters,next,now)) for (int32_t target:held.targets) append_shutter_row(frame,held.fixture_id,target,held.index,held.parameters,now,int32_t(key));
     }
 }
 // Rehydrates persistent parameters after renderer retirement without changing activation or phase.
 void PeravizVisualRuntimeCore::replay_shutters(SectionedVisualFrame &frame) const {
     const double now=runtime_now_seconds();
-    for (const auto &[key,state]:shutter_states_) if (state.parameters.revision)
-        append_shutter_row(frame,state.fixture_id,state.target_id,state.index,state.parameters,now);
+    for (const auto &[id,state]:shutter_authorities_) if (state.parameters.revision)
+        for (int32_t target:state.targets) append_shutter_row(frame,state.fixture_id,target,state.index,state.parameters,now,id);
 }
 // Reads only cached evaluated state for a selected fixture/output, capped at 64 rows and never per flash.
 std::vector<ShutterTrace> PeravizVisualRuntimeCore::shutter_trace(int32_t fixture,int32_t target) const {
@@ -116,11 +128,14 @@ std::vector<ShutterTrace> PeravizVisualRuntimeCore::shutter_trace(int32_t fixtur
     if (fixture<=0) return result;
     for (const auto &[id,universe]:universes_) for (const auto &context:universe.shutters) {
         const auto &b=context.binding;
-        if (b.fixture_id!=fixture || (target && b.beam_target_id!=target) || result.size()>=64) continue;
+        if (b.fixture_id!=fixture || result.size()>=64) continue;
+        const auto route=shutter_states_.find(shutter_key(target?target:b.beam_target_id,b.shutter_index));
+        const auto representative=shutter_states_.at(shutter_key(b.beam_target_id,b.shutter_index)).authority;
+        if (route==shutter_states_.end() || route->second.authority!=representative) continue;
         const auto source=context.sources.front(); const auto &value=universe.plan.value(source);
         const auto &program=source_programs_by_id_.at(b.source_program_id).program;
-        const auto &state=shutter_states_.at(shutter_key(b.beam_target_id,b.shutter_index));
-        ShutterTrace row; row.fixture=fixture; row.target=b.beam_target_id; row.index=b.shutter_index; row.source=b.source_program_id;
+        const auto &state=shutter_authorities_.at(representative);
+        ShutterTrace row; row.fixture=fixture; row.target=target?target:b.beam_target_id; row.index=b.shutter_index; row.source=b.source_program_id;
         row.from=b.dmx_from; row.to=b.dmx_to; row.raw=value.raw_value; row.bytes=int32_t(program.sources.size());
         row.physical_from=b.physical_from; row.physical_to=b.physical_to; row.initialized=state.parameters.revision>0 && value.valid;
         row.active=row.initialized && universe.plan.activation_cached(source) && universe.plan.activation(source) && row.raw>=row.from && row.raw<=row.to;
@@ -132,6 +147,7 @@ std::vector<ShutterTrace> PeravizVisualRuntimeCore::shutter_trace(int32_t fixtur
             const auto mode=guarded?universe.plan.value(context.sources[1]).raw_value:0;
             row.active&=guarded && mode>=row.mode_from && mode<=row.mode_to;
         }
+        row.authority=representative; row.authority_members=int32_t(state.targets.size());
         row.parameters=state.parameters; result.push_back(row);
     }
     return result;

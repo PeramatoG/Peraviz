@@ -52,7 +52,7 @@ struct Probe {
         const auto held=core.held_domain_replay();
         for (size_t b=0;b<held.descriptors.size();b+=5) if (held.descriptors[b]==int(VisualSectionType::ShutterState)) {
             const auto *i=held.integers.data()+held.descriptors[b+2]; const auto *f=held.floats.data()+held.descriptors[b+3];
-            ShutterParameters p{ShutterWave(i[3]),i[6],i[4],i[5],f[0],f[1],f[2],f[3],f[4],f[5]}; p.activation=i[7]; p.seed=uint32_t(i[1]); return p;
+            ShutterParameters p{ShutterWave(i[3]),i[6],i[4],i[5],f[0],f[1],f[2],f[3],f[4],f[5]}; p.activation=i[7]; p.seed=uint32_t(i[9]); return p;
         }
         return {};
     }

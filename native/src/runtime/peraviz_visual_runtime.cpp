@@ -68,7 +68,7 @@ void PeravizVisualRuntimeCore::clear() {
     diagnosed_ambiguous_gobo_pos_layers_.clear();
     diagnosed_ambiguous_gobo_posrotate_layers_.clear();
     diagnosed_simultaneous_gobo_posrotate_layers_.clear();
-    shutter_states_.clear(); shutter_unsupported_fixtures_.clear();
+    shutter_states_.clear(); shutter_authorities_.clear(); shutter_unsupported_fixtures_.clear();
     runtime_epoch_ = std::chrono::steady_clock::now();
     test_runtime_now_seconds_ = -1.0;
     gobo_asset_by_wheel_slot_.clear();

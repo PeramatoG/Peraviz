@@ -30,7 +30,8 @@ func open_scene(flags: Array = [], count: int = 32) -> void:
 	runtime = app._dmx_controller._dmx_fixture_runtime
 	runtime._native_visual_runtime.set_runtime_now_seconds_for_testing(0)
 	runtime._native_visual_runtime.set_performance_trace_enabled(true)
-	test.check(adapter._outputs.size() == count,"Every referenced emitter retains a physical identity")
+	var fixture_count: int = int(flags[flags.find("--fixtures")+1]) if flags.has("--fixtures") else 1
+	test.check(adapter._outputs.size() == count*fixture_count,"Every referenced emitter retains a physical identity")
 
 func packet() -> PackedByteArray:
 	var bytes := PackedByteArray(); bytes.resize(512)

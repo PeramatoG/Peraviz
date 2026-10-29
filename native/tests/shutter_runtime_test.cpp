@@ -1,6 +1,7 @@
 #include "runtime/peraviz_visual_runtime.h"
 #include "runtime/compiled_runtime_scene_codec.h"
 #include "presentation/shutter_playback.h"
+#include "gdtf_runtime/shutter_control_authority.h"
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -130,5 +131,38 @@ bool test_shutter_runtime() {
     bool diagnosed=false;
     for (const auto &d:core.diagnostics()) diagnosed|=d.code=="PVZ-SHUTTER-ACTIVATION-UNRESOLVED";
     if (!check(diagnosed && parameters(frame).revision==0,"Cross-universe activation remains explicit and unbound")) return false;
+    // Shared ancestor source programs define one effect despite independent physical target identities.
+    auto shared=fixture();
+    shared.shutter_bindings[2].wave=ShutterWave::RandomStrobe;
+    const auto first=shared.shutter_bindings;
+    for (auto binding:first) { binding.beam_target_id=78; shared.shutter_bindings.push_back(binding); }
+    auto controls=shutter_control_layout(shared);
+    if (!check(controls.authorities.size()==1 && controls.authorities[0].targets.size()==2,"Complete control identity merges a common source, never the physical targets")) return false;
+    const auto decoded_shared=decode_compiled_runtime_scene(encode_compiled_runtime_scene(shared).integers,encode_compiled_runtime_scene(shared).floats);
+    if (!check(decoded_shared.valid && shutter_control_layout(decoded_shared.scene).authorities[0].seed==controls.authorities[0].seed,"Authority seed survives native setup transport precision")) return false;
+    core.install_compiled_scene(shared); core.set_runtime_now_seconds_for_testing(0); secondary[100]=119;
+    playback.install({{77,1},{78,1}}); core.submit_universe_frame(2,secondary.data(),512);
+    frame=core.consume_latest_visual_frame(); ingest(playback,frame); playback.tick(0);
+    if (!check(playback.authorities()==1 && playback.layers()==2 && playback.active_authorities()==1,"One temporal instance broadcasts to two physical layer routes")) return false;
+    const auto samples=playback.evaluations();
+    for (int tick=0;tick<240;++tick) {
+        playback.tick(0.001+tick/120.0);
+        if (!check(playback.envelopes()[0]==playback.envelopes()[1],"Common random control is bitwise synchronized")) return false;
+    }
+    if (!check(playback.evaluations()-samples==240,"Waveform work scales with one shared authority, not physical member count")) return false;
+    const auto trace=core.shutter_trace(1,78);
+    if (!check(!trace.empty() && trace[0].target==78 && trace[0].authority_members==2,"Nonrepresentative physical outputs retain bounded authority diagnostics")) return false;
+    // Equal addresses/current values never establish common control: independently compiled instance sources remain distinct.
+    auto independent=fixture(); independent.shutter_bindings[2].wave=ShutterWave::RandomStrobe;
+    for (auto source:independent.source_programs) if (source.program_id>1) { source.program_id+=100; shared.source_programs.push_back(source); }
+    for (auto &binding:shared.shutter_bindings) if (binding.beam_target_id==78) binding.source_program_id+=100;
+    core.install_compiled_scene(shared); core.set_runtime_now_seconds_for_testing(0); playback.install({{77,1},{78,1}});
+    core.submit_universe_frame(2,secondary.data(),512); ingest(playback,core.consume_latest_visual_frame());
+    bool different=false;
+    for (int tick=0;tick<240;++tick) { playback.tick(0.001+tick/120.0); different|=playback.envelopes()[0]!=playback.envelopes()[1]; }
+    if (!check(playback.authorities()==2 && different,"Independent co-patched source identities retain separate deterministic sequences")) return false;
+    // Fixture identity is part of the proof even if a producer shares immutable program definitions.
+    for (auto &binding:shared.shutter_bindings) if (binding.beam_target_id==78) { binding.source_program_id-=100; binding.fixture_id=2; }
+    if (!check(shutter_control_layout(shared).authorities.size()==2,"Fixture-local authority never merges cross-fixture co-patching")) return false;
     return true;
 }

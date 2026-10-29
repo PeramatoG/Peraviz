@@ -3,6 +3,8 @@
 #include <unordered_map>
 #include <cstdlib>
 #include "gdtf_runtime/shutter_sampling.h"
+#include "gdtf_runtime/shutter_control_authority.h"
+#include "presentation/render_emitter_groups.h"
 
 namespace godot {
 namespace {
@@ -28,10 +30,13 @@ const char *wave_name(peraviz::gdtf_runtime::ShutterWave wave) {
 }
 }
 // Retains names/provenance at setup only. This immutable diagnostic sidecar never drives playback semantics.
-Array shutter_setup_metadata(const peraviz::runtime::CompiledRuntimeScene &scene,int universe_offset) {
+Array shutter_setup_metadata(const peraviz::runtime::CompiledRuntimeScene &scene,int universe_offset,const std::vector<peraviz::presentation::RenderEmitterGroup> &groups) {
     Array rows;
     const char *selected=std::getenv("PERAVIZ_SHUTTER_TRACE");
     if (!selected || !*selected) return rows;
+    const auto controls=peraviz::gdtf_runtime::shutter_control_layout(scene);
+    std::unordered_map<int32_t,const peraviz::presentation::RenderEmitterGroup *> group_by_target;
+    for (const auto &group:groups) for (int32_t target:group.physical_ids) group_by_target[target]=&group;
     const char *target_text=std::getenv("PERAVIZ_SHUTTER_TRACE_TARGET");
     int64_t selected_target=target_text?std::strtoll(target_text,nullptr,10):0;
     std::unordered_map<int32_t,const peraviz::runtime::CompiledDmxSourceProgram *> sources;
@@ -46,6 +51,12 @@ Array shutter_setup_metadata(const peraviz::runtime::CompiledRuntimeScene &scene
         const auto &s=*source->second; const auto &f=*fixture->second;
         Dictionary row;
         row["fixture_id"]=b.fixture_id; row["target_id"]=b.beam_target_id; row["shutter_index"]=b.shutter_index;
+        const auto authority=controls.by_layer.at(peraviz::gdtf_runtime::shutter_control_layer(b.beam_target_id,b.shutter_index));
+        row["authority_id"]=authority; row["authority_members"]=int64_t(controls.authorities[authority-1].targets.size());
+        const auto group=group_by_target.find(b.beam_target_id);
+        const bool eligible=group!=group_by_target.end() && group->second->presentation==peraviz::presentation::RenderPresentationClass::Aggregated;
+        row["native_aggregate_eligible"]=eligible;
+        row["aggregate_rejection_reason"]=eligible?String():group==group_by_target.end()?String("no_render_group"):String::utf8(group->second->rejection_reason.c_str());
         row["source_id"]=b.source_program_id; row["binding_activation_id"]=b.activation_function_id; row["dmx_from"]=int64_t(b.dmx_from); row["dmx_to"]=int64_t(b.dmx_to);
         row["fixture_uuid"]=String::utf8(f.fixture_uuid.c_str()); row["dmx_mode"]=String::utf8(f.dmx_mode_name.c_str());
         row["geometry_path"]=String::utf8(s.geometry_name.c_str()); row["attribute"]=String::utf8(s.attribute_name.c_str());
@@ -72,6 +83,7 @@ Dictionary PeravizVisualRuntime::get_shutter_trace(const String &fixture_uuid,in
         Dictionary row=shutter_metadata_[i];
         if (String(row.get("fixture_uuid",String()))==fixture_uuid && (!target || int64_t(row.get("target_id",0))==target)) { fixture=int32_t(row["fixture_id"]); break; }
     }
+    if (!target && !shutter_metadata_.is_empty()) { Dictionary first=shutter_metadata_[0]; target=int64_t(first["target_id"]); }
     const auto traces=core_->shutter_trace(fixture,int32_t(target));
     for (const auto &trace:traces) {
         Dictionary row;
@@ -79,6 +91,7 @@ Dictionary PeravizVisualRuntime::get_shutter_trace(const String &fixture_uuid,in
             const Dictionary candidate=shutter_metadata_[i];
             if (int32_t(candidate["target_id"])==trace.target && int32_t(candidate["source_id"])==trace.source && int64_t(candidate["dmx_from"])==trace.from && int64_t(candidate["dmx_to"])==trace.to && int64_t(candidate["mode_from"])==trace.mode_from && int64_t(candidate["mode_to"])==trace.mode_to && int32_t(candidate["binding_activation_id"])==trace.activation_function_id) { row=candidate.duplicate(); break; }
         }
+        row["authority_id"]=trace.authority; row["authority_members"]=trace.authority_members;
         row["initialized"]=trace.initialized; row["active"]=trace.active; row["raw_dmx"]=int64_t(trace.raw); row["mode_master_raw_dmx"]=trace.master_raw; row["resolution_bits"]=trace.bytes*8;
         row["physical_from"]=trace.physical_from; row["physical_to"]=trace.physical_to; row["resolved_physical"]=trace.active?Variant(trace.physical):Variant();
         const auto &p=trace.parameters;

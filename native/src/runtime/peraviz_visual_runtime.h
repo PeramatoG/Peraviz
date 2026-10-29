@@ -192,7 +192,13 @@ private:
         bool has_last_relevant_values = false;
     };
 
-    struct ShutterState { int32_t fixture_id=0,target_id=0,index=1; bool diagnosed=false; gdtf_runtime::ShutterParameters parameters; };
+    struct ShutterState { int32_t fixture_id=0,target_id=0,index=1,authority=0; };
+    struct ShutterAuthorityState {
+        int32_t fixture_id=0,index=1; uint32_t seed=0; bool diagnosed=false;
+        std::vector<int32_t> targets;
+        gdtf_runtime::ShutterParameters parameters;
+    };
+    std::unordered_map<int32_t,ShutterAuthorityState> shutter_authorities_;
     std::unordered_map<int64_t,ShutterState> shutter_states_;
     std::unordered_set<int32_t> shutter_unsupported_fixtures_;
     void install_shutters(const CompiledRuntimeScene &scene,VisualFrameSchemaCapabilities &capabilities);
