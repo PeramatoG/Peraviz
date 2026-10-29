@@ -16,8 +16,10 @@ static func run(owner: SceneTree) -> void:
 	var before: Dictionary = owner.adapter._native.get_sizes()
 	owner.test.check(before.gpu_lens_instances > 0,"Compatible independent shutters retain native GPU-instanced lenses")
 	var report: Array = []
-	for active in [0,2,count]:
-		for index in range(count): packets[2+int(index/500.0)][index%500] = 119 if index<active else 10
+	for scenario in [[0,false],[2,false],[count,false],[0,true],[2,true],[count,true]]:
+		var active: int = scenario[0]
+		var random_mode: bool = scenario[1]
+		for index in range(count): packets[2+int(index/500.0)][index%500] = (249 if random_mode else 119) if index<active else 10
 		owner.send(packets,0)
 		var native = owner.adapter._native
 		var start_values: Dictionary = native.get_sizes()
@@ -27,14 +29,16 @@ static func run(owner: SceneTree) -> void:
 		var elapsed: int = Time.get_ticks_usec()-started
 		var end: Dictionary = native.get_sizes()
 		native.advance_shutters(owner.adapter._generation,0.08)
-		preload("res://tests/gdscript/helpers/shutter_output_probe.gd").check(owner,baseline,0,1.0)
+		preload("res://tests/gdscript/helpers/shutter_output_probe.gd").check(owner,baseline,0,native.shutter_values()[owner.cell_index(0)] if random_mode else 1.0)
 		native.advance_shutters(owner.adapter._generation,0.11)
-		preload("res://tests/gdscript/helpers/shutter_output_probe.gd").check(owner,baseline,0,0.0 if active>0 else 1.0)
+		preload("res://tests/gdscript/helpers/shutter_output_probe.gd").check(owner,baseline,0,native.shutter_values()[owner.cell_index(0)] if random_mode else (0.0 if active>0 else 1.0))
 		owner.test.check(owner.runtime._native_visual_runtime.get_stats().source_programs_evaluated == evaluations,"Stress playback performs no new source evaluation during hold")
 		owner.test.check(end.shutter_cpu_bytes_estimate == start_values.shutter_cpu_bytes_estimate,"Temporal buffers do not grow while the effect advances")
 		owner.test.check(end.unique_lens_material_rids == before.unique_lens_material_rids,"Temporal work never allocates materials as flashes advance")
 		if active == 0: owner.test.check(end.shutter_waveform_evaluations == start_values.shutter_waveform_evaluations,"Stable open outputs add zero numerical waveform work")
-		report.append({"outputs":count,"active":active,"samples":240,"boundary_us":elapsed,"native_us":end.shutter_presentation_us-start_values.shutter_presentation_us,"waveforms":end.shutter_waveform_evaluations-start_values.shutter_waveform_evaluations,"beam_writes":end.shutter_beam_writes-start_values.shutter_beam_writes,"material_writes":end.shutter_material_writes-start_values.shutter_material_writes,"lens_submissions":end.shutter_lens_submissions-start_values.shutter_lens_submissions,"cpu_bytes_estimate":end.shutter_cpu_bytes_estimate})
+		report.append({"waveform":"random" if random_mode else "periodic","outputs":count,"active":active,"samples":240,"boundary_us":elapsed,"native_us":end.shutter_presentation_us-start_values.shutter_presentation_us,"waveforms":end.shutter_waveform_evaluations-start_values.shutter_waveform_evaluations,"beam_writes":end.shutter_beam_writes-start_values.shutter_beam_writes,"material_writes":end.shutter_material_writes-start_values.shutter_material_writes,"lens_submissions":end.shutter_lens_submissions-start_values.shutter_lens_submissions,"cpu_bytes_estimate":end.shutter_cpu_bytes_estimate})
+	owner.adapter._native.advance_shutters(owner.adapter._generation,0.08)
+	var expected: PackedFloat32Array = owner.adapter._native.shutter_values()
 	# Exercise the real native asynchronous handoff after the serial deterministic comparison.
 	var runtime: RefCounted = owner.runtime
 	var service: RefCounted = owner.app._fixture_light_apply_service
@@ -46,7 +50,7 @@ static func run(owner: SceneTree) -> void:
 	runtime._sectioned_visual_frame_applier.apply_snapshot(frame,owner.app,service,0.016,runtime,runtime._native_fixture_uuids_by_id,runtime._fixture_nodes)
 	owner.test.check(owner.adapter._native.get_sizes().native_async_active,"Shutter parameter snapshots retain supported native async ownership")
 	owner.adapter._native.advance_shutters(owner.adapter._generation,0.08)
-	owner.test.check_close(owner.adapter._native.shutter_values()[0],1,0.0001,"Async handoff preserves the serial 10 Hz held phase")
+	owner.test.check(owner.adapter._native.shutter_values() == expected,"Async handoff preserves every independent serial random phase")
 	print("SHUTTER_PRESENTATION ",JSON.stringify(report))
 	await owner.close_scene()
 	OS.unset_environment("PERAVIZ_NATIVE_EVALUATION")

@@ -59,7 +59,7 @@ static func parameters(frame: Dictionary, target: int) -> Dictionary:
 	for b in range(0,d.size(),5):
 		if d[b] != 16: continue
 		for row in range(d[b+1]):
-			if ints[d[b+2]+row*7+1] == target:
+			if ints[d[b+2]+row*8+1] == target:
 				var f: int = d[b+3]+row*7
-				return {"frequency":floats[f],"phase":floats[f+4],"mode":ints[d[b+2]+row*7+3],"status":ints[d[b+2]+row*7+5]}
+				return {"frequency":floats[f],"phase":floats[f+4],"mode":ints[d[b+2]+row*8+3],"status":ints[d[b+2]+row*8+5],"activation":ints[d[b+2]+row*8+7]}
 	return {"frequency":-1.0,"phase":-1.0}

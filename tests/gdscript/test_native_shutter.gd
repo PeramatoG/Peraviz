@@ -96,7 +96,12 @@ func run() -> void:
 	cells[4] = 240
 	var random_frame: Dictionary = send({2:cells},3)
 	var unsupported: Dictionary = Probe.parameters(random_frame,adapter._outputs[cell_index(4)].canonical_id)
-	test.check(unsupported.mode == -1 and unsupported.status == 2,"Random shutter is explicitly unsupported, never an ordinary periodic fallback")
+	test.check(unsupported.mode == 9 and unsupported.status == 1,"Random shutter is an explicit deterministic visual approximation")
+	Probe.check(self,baseline,4,0.0)
+	cells[4] = 250
+	var unknown_frame: Dictionary = send({2:cells},3.1)
+	var unknown: Dictionary = Probe.parameters(unknown_frame,adapter._outputs[cell_index(4)].canonical_id)
+	test.check(unknown.mode == -1 and unknown.status == 2,"Unknown manufacturer shutter polarity stays explicitly unsupported")
 	Probe.check(self,baseline,4,1.0)
 	for now in [3.01,3.08,3.11,4.08,8.08]: adapter._native.advance_shutters(adapter._generation,now)
 	Probe.resources(self,baseline)
@@ -133,6 +138,7 @@ func run() -> void:
 	test.check(retired_native.get_sizes().shutter_layers == 0 and retired_native.advance_shutters(old_generation,2.125) == -1,"Reload clears retired temporal state and resource routes")
 	test.check(adapter._native.advance_shutters(old_generation+1000,2.125) == -1,"Stale renderer generation cannot advance retired shutter bindings")
 	await close_scene()
+	await preload("res://tests/gdscript/helpers/shutter_fidelity_probe.gd").run(self)
 	await split_modes()
 	await shared_groups()
 	await absent_shutter()

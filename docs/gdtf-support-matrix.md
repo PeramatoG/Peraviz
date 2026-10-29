@@ -29,7 +29,7 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 | Beam geometry profile | Partial | Setup-time BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, and ColorTemperature are retained for current renderer use. BeamType None and Glow remain emission-only and never allocate a projected cone. The reference Vector Prism and existing gobo surface path use a [shared approximate radial profile](vector-light-profile.md) anchored by BeamAngle/FieldAngle, with BeamType fallbacks. This is Peraviz presentation, not measured photometry. Authored/default provenance is retained; open Spot/Wash/Fresnel/PC retain native unshadowed surface parameters without automatically owning realtime lights; see [bounded surface ownership](surface-light-ownership.md). Scalable visible open footprints, grouped presentation, measured photometry and Focus semantics remain incomplete. |
 | Focus / Iris / Frost | Unsupported/deferred | No authoritative live renderer contract. |
 | Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
-| Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen and PulseClose; persistent native phase, frequency/constant subphysical parameters, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
+| Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen/PulseClose and explicitly approximate Random variants; persistent native phase, frequency/constant subphysical parameters, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
 | ModeMaster | Partial/native | Exact selected-mode Node paths resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, reach the production setup contract, and evaluate cycle-safely for instantaneous native scalars. Malformed, ambiguous, unresolved, and cyclic graphs are diagnosed during compilation. |
 | Relations | Unsupported/deferred | GDTF Relations are not parsed or evaluated by the compiled production runtime. |
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
@@ -37,38 +37,70 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 
 ## Shutter/strobe temporal playback
 
-Semantics follow [GDTF 1.2](https://gdtf-share.com/help/developers/gdtf_1_2/file-format-definition/index.html)
+Semantics follow [GDTF 1.2 Tables 60–62](https://gdtf-share.com/help/developers/gdtf_1_2/file-format-definition/index.html)
 and [Annexes B/F](https://gdtf-share.com/help/developers/gdtf_1_2/annex/index.html).
-Selected ChannelFunctions and ChannelSets determine ranges and physical frequency;
-no fixed DMX window is assumed. Square flashes use Duration (default 0.025 s).
-Triangle/ramp pulses use DutyCycle (default 100%). TimeOffset is the pulse's end
-position (default 100%), not an extra flash duration. Constant SubPhysicalUnits are
-supported; variable SubChannelSets are explicitly guarded.
+ChannelFunction PhysicalFrom/PhysicalTo default independently to 0/1. ChannelSet
+DMXFrom defaults to 0/1; its end is the next set minus one or the parent boundary.
+Set physical endpoints inherit the parent's values unless explicitly overridden.
+Ranges are intersected with their parent, inclusive, and interpolated locally in
+ordered 8/16/24/32-bit source resolution; descending ranges remain descending.
+Malformed/nonfinite supplied values and duplicate sets are diagnosed, not defaulted.
+The existing bounded nonstandard DMXTo compatibility is retained inside the natural
+function boundary. Unnamed function prefixes retain their parent physical mapping.
 
-Generic Shutter has no inferred linear-dimmer semantics. Exact English Open/Closed
-function or ChannelSet labels establish steady polarity as an explicitly labeled
-presentation convention (status 1), not a universal standard polarity rule.
-StrobeFrequency controlled by supported StrobeMode ModeMaster functions and a
-separate StrobeDuration are supported within one universe per shutter layer.
-The shutter layer may use a different break/universe from Color/Dimmer. Cross-universe
-shutter parameter/activation chains remain guarded. Random/random-pulse, effects,
-unproven polarity, invalid frequency and ambiguous active functions remain open with
-compact `PVZ-SHUTTER-*` diagnostics/status 2; none becomes a generic square wave.
+Square flashes use Duration (default 0.025 s for standard Shutter strobe).
+Annex F triangle/ramp pulses use DutyCycle (default 100%) and TimeOffset at the
+pulse's end (default 100%). Constant SubPhysicalUnits are supported; SubChannelSets
+and variable parameter ranges remain guarded. Zero Hz produces no temporal modulation
+(unmodulated/open presentation policy); negative/unrepresentable Hz never becomes an
+arbitrary flashing rate. Explicit English polarity labels use a normalized, exact
+whitelist (status 1), not a normative universal 0=closed/255=open rule or substring
+matching. Unknown/misleading labels remain diagnosed.
 
-An identical publication preserves phase; frequency edits integrate the previous
-phase, while function/waveform activation starts a new phase. DMX hold needs no new
-packets or source evaluation. The independent envelope multiplies existing shafts,
-Custom footprints, material and GPU-batched lenses, and owned Native/reference light
-energy without changing canonical Color/Dimmer. Render/Control Groups require the
-same complete static shutter authority; incompatible cells split at setup, never
-per flash. Multiple numbered shutters compose multiplicatively.
+Split StrobeFrequency/Duration use the existing ModeMaster graph. A ChannelFunction
+master selects its typed mode; channel-wide masters select among the current typed
+mode ranges without a generic selector overriding the waveform. StrobeRate means
+time between flashes and remains explicitly unsupported; it is never treated as Hz.
+A shutter may use a different break/universe from Color/Dimmer, but a shutter's own
+parameter/activation chain must resolve within one universe. Channel-wide typed mode
+candidates with additional ModeMaster conditions remain guarded; direct ChannelFunction
+masters retain the existing native activation-chain evaluation.
 
-`shutter_runtime_test.cpp` and `test_native_shutter.gd` cover deterministic timestamps,
-real MVR/reference/multibreak playback, hold, mode/frequency changes, gobo rotation,
-independent cells, shared groups, source hashes, renderer replacement and retirement.
-Visible flashes are sampled at presentation frequency; this does not guarantee
-resolved 10 Hz flashes at arbitrarily low frame rates. Random distributions, vendor
-macros, hardware timing and full GDTF compliance are not claimed.
+**Peraviz random approximation (status 1):** all four numbered Random families and
+StrobeModeRandom variants use the declared nominal Hz, with one deterministic event
+per nominal cycle. Event positions are uniformly jittered in the middle half of each
+cycle; intervals lie in [0.5,1.5]/Hz and the long-run rate converges to the declared Hz.
+Counter hashing keys physical target, activation revision, function and event index.
+Hold/identical DMX preserve the sequence; frequency changes retain its event position;
+new function/waveform activations restart it. Square flashes retain Duration. Random
+pulses reuse triangle/increasing/decreasing shapes, declared shape parameters or
+Peraviz defaults of full-period duty/end offset; overlapping windows combine by maximum,
+never additive brightness. GDTF does not prescribe this distribution or manufacturer-exact
+random pulse timing. Only two candidate events are sampled, without RNG state or catch-up loops.
+
+All envelopes multiply existing shafts, footprints, material/GPU lenses and owned
+Native/reference light energy independently of canonical Color/Dimmer. Render/Control
+Groups require identical complete temporal authority; any independently seeded random
+path uses the existing individual fallback at setup, never regrouping per flash.
+Unknown custom effects, ambiguous activation, SubChannelSets and cross-universe
+shutter parameter chains remain open with bounded `PVZ-SHUTTER-*` diagnostics/status 2.
+
+For real-scene diagnosis, set `PERAVIZ_SHUTTER_TRACE=<fixture UUID>` before import
+(optional `PERAVIZ_SHUTTER_TRACE_TARGET=<physical target ID>`, otherwise first output),
+use serial evaluation, then click **Copy shutter diagnostic** in Debug. The selected
+fixture or configured UUID is inspected; manual fixture overrides need not be enabled.
+The native `get_shutter_trace(uuid, target)` API returns at most 64 cached rows: identities,
+reference path, MVR/native addressing, raw/resolution, function/set/mode ranges, physical
+endpoints, effective Hz/waveform/parameters and status. No XML or sources are re-evaluated.
+Worker ownership returns an explicit unavailable reason. Its frozen-parameter 20-event
+sampling probe compares exact windows with 15/30/60/120 FPS; missed windows diagnose visual
+aliasing, not incorrect Hz. No smoothing or brightness compensation changes the reference.
+
+Production ZIP/native and Godot regressions cover defaults, range edges, split modes,
+independent random outputs, hold, gobo concurrency, renderer parity/replacement, async
+handoff and unchanged archives. Visible flashing remains limited by presentation sampling;
+full GDTF compliance, Windows GUI/hardware timing and manufacturer-exact random effects
+are not claimed by this synthetic coverage.
 
 ## MVR/GDTF import and native addressing
 

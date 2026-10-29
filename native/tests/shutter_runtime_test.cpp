@@ -50,7 +50,7 @@ void ingest(ShutterPlayback &playback,const SectionedVisualFrame &frame) {
 // Verifies Annex F, persistent hold, source routing, state transitions and generation-independent phase.
 bool test_shutter_runtime() {
     using namespace peraviz::gdtf_runtime;
-    if (!check(shutter_attribute("Shutter12StrobePulseClose").index==12 && shutter_attribute("Shutter12StrobePulseClose").wave==ShutterWave::PulseClose && shutter_attribute("Shutter3StrobeRandom").wave==ShutterWave::Unsupported,"Official numbered families and explicit random exclusion")) return false;
+    if (!check(shutter_attribute("Shutter12StrobePulseClose").index==12 && shutter_attribute("Shutter12StrobePulseClose").wave==ShutterWave::PulseClose && shutter_attribute("Shutter3StrobeRandom").wave==ShutterWave::RandomStrobe,"Official numbered periodic and random families")) return false;
     ShutterParameters p; p.wave=ShutterWave::Strobe; p.frequency=10;
     if (!check(close(shutter_envelope(p,0),0) && close(shutter_envelope(p,0.074),0) && close(shutter_envelope(p,0.08),1) && close(shutter_envelope(p,0.11),0),"10 Hz uses a 25 ms end-offset flash, not a 50% square wave")) return false;
     p.frequency=2;

@@ -12,6 +12,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <cmath>
 #include <sstream>
 #include <unordered_map>
@@ -217,8 +218,18 @@ void parse_attribute_metadata(tinyxml2::XMLElement *root, CompiledGdtfFixtureTyp
                 record.physical_unit = dmx::trim_ascii(read_attr(sub, "PhysicalUnit", "physicalunit"));
                 if (record.physical_unit.empty()) record.physical_unit = "None";
                 record.physical_to = 1.0;
-                read_float_attr(sub, "PhysicalFrom", "physicalfrom", record.physical_from);
-                read_float_attr(sub, "PhysicalTo", "physicalto", record.physical_to);
+                if (shutter_attribute(attribute.name).recognized) {
+                    bool valid=true;
+                    record.physical_from=shutter_physical(sub,"PhysicalFrom",0,valid);
+                    record.physical_to=shutter_physical(sub,"PhysicalTo",1,valid);
+                    if (!valid) {
+                        record.physical_from=std::numeric_limits<double>::quiet_NaN();
+                        fixture.diagnostics.push_back({"PVZ-SHUTTER-PHYSICAL-INVALID","warning","Supplied shutter SubPhysicalUnit is malformed or nonfinite.",name+" "+record.type});
+                    }
+                } else {
+                    read_float_attr(sub, "PhysicalFrom", "physicalfrom", record.physical_from);
+                    read_float_attr(sub, "PhysicalTo", "physicalto", record.physical_to);
+                }
                 attribute.subphysical_units.push_back(record);
             }
         }
@@ -553,12 +564,16 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
             std::vector<tinyxml2::XMLElement *> functions = collect_logical_channel_functions(logical);
             std::unordered_map<tinyxml2::XMLElement *, size_t> declared_function_numbers;
             for (size_t index = 0; index < functions.size(); ++index) declared_function_numbers[functions[index]] = index + 1;
+            const bool shutter_functions=std::any_of(functions.begin(),functions.end(),[&](auto *fn){
+                const auto name=read_attr(fn,"Attribute","attribute");
+                return shutter_attribute(name.empty()?logical_attribute:name).recognized;
+            });
             std::sort(functions.begin(), functions.end(), [&](tinyxml2::XMLElement *lhs, tinyxml2::XMLElement *rhs) {
                 uint32_t lhs_from = 0;
                 uint32_t rhs_from = 0;
                 parse_dmx_value(read_attr(lhs, "DMXFrom", "dmxfrom"), offsets.size(), lhs_from);
                 parse_dmx_value(read_attr(rhs, "DMXFrom", "dmxfrom"), offsets.size(), rhs_from);
-                return lhs_from < rhs_from;
+                return lhs_from < rhs_from || (shutter_functions && lhs_from==rhs_from && declared_function_numbers[lhs]<declared_function_numbers[rhs]);
             });
             uint32_t previous_to = 0;
             bool has_previous = false;
@@ -588,6 +603,11 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                         }
                     }
                 }
+                const bool is_shutter=shutter_attribute(attribute_name).recognized;
+                if (is_shutter && !shutter_function_range(fn,functions,offsets.size(),dmx_from,dmx_to)) {
+                    fixture.diagnostics.push_back({"PVZ-SHUTTER-RANGE-INVALID","warning","Invalid supplied shutter range; no default-range binding is inferred.",attribute_name});
+                    continue;
+                }
                 if (dmx_to < dmx_from) {
                     fixture.diagnostics.push_back({"PVZ-GDTF-DMX-RANGE-INVALID", "warning", "ChannelFunction DMXTo is smaller than DMXFrom.", attribute_name});
                     continue;
@@ -601,7 +621,13 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 has_previous = true;
                 double physical_from = 0.0;
                 double physical_to = 1.0;
-                const bool has_physical = read_float_attr(fn, "PhysicalFrom", "physicalfrom", physical_from) && read_float_attr(fn, "PhysicalTo", "physicalto", physical_to);
+                bool shutter_physical_valid=true;
+                bool has_physical=true;
+                if (is_shutter) {
+                    physical_from=shutter_physical(fn,"PhysicalFrom",0,shutter_physical_valid);
+                    physical_to=shutter_physical(fn,"PhysicalTo",1,shutter_physical_valid);
+                    if (!shutter_physical_valid) fixture.diagnostics.push_back({"PVZ-SHUTTER-PHYSICAL-INVALID","warning","Supplied shutter physical value is malformed or nonfinite; standard defaults apply only to omitted fields.",attribute_name});
+                } else has_physical = read_float_attr(fn, "PhysicalFrom", "physicalfrom", physical_from) && read_float_attr(fn, "PhysicalTo", "physicalto", physical_to);
                 if (!has_physical) fixture.diagnostics.push_back({"PVZ-GDTF-PHYSICAL-MISSING", "warning", "ChannelFunction is missing PhysicalFrom/PhysicalTo.", attribute_name});
                 const std::string read_function_name = dmx::trim_ascii(read_attr(fn, "Name", "name"));
                 const std::string function_name = read_function_name.empty() ? attribute_name + " " + std::to_string(declared_function_numbers[fn]) : read_function_name;
@@ -616,7 +642,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 if (!wheel_link.empty() && resolved_wheel_id < 0) fixture.diagnostics.push_back({"PVZ-GDTF-WHEEL-LINK-MISSING", "warning", "ChannelFunction references an unknown Wheel.", attribute_name + " wheel=" + wheel_link});
                 ChannelProgram program;
                 program.id = next_program_id++;
-                program.physical_range_declared=has_physical;
+                program.shutter_physical_valid=shutter_physical_valid;
                 program.shutter_subsets_present=!dmx::collect_elements_by_name(fn,"subchannelset").empty();
                 const std::string source_break=read_attr(channel,"DMXBreak","dmxbreak");
                 if (source_break=="Overwrite") program.dmx_break=0;

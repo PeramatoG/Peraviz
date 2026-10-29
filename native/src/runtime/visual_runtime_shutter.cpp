@@ -10,7 +10,7 @@ int64_t shutter_key(int32_t target,int32_t index) { return (int64_t(target)<<32)
 void append_shutter_row(SectionedVisualFrame &frame,int fixture,int target,int index,
         const gdtf_runtime::ShutterParameters &p,double now) {
     const int io=int(frame.integers.size()),fo=int(frame.floats.size());
-    frame.integers.insert(frame.integers.end(),{fixture,target,index,int(p.wave),p.revision,p.status,p.function_id});
+    frame.integers.insert(frame.integers.end(),{fixture,target,index,int(p.wave),p.revision,p.status,p.function_id,p.activation});
     frame.floats.insert(frame.floats.end(),{float(p.frequency),float(p.duration),float(p.duty),float(p.offset),
         float(p.phase),float(p.reference),float(now)});
     auto &d=frame.descriptors;
@@ -73,7 +73,7 @@ void PeravizVisualRuntimeCore::evaluate_shutters(UniverseState &universe,Section
     const double now=runtime_now_seconds();
     for (int64_t key:universe.dirty_shutters) {
         auto &held=shutter_states_.at(key);
-        ShutterParameters next;
+        ShutterParameters next; next.seed=uint32_t(held.target_id);
         int active=0,durations=0;
         double duration=0.025;
         for (int index:universe.shutter_layers.at(key)) {
@@ -81,16 +81,21 @@ void PeravizVisualRuntimeCore::evaluate_shutters(UniverseState &universe,Section
             const auto value=evaluate_cached_source(universe,context.sources.front());
             const auto &binding=context.binding;
             if (!evaluate_cached_activation(universe,context) || value.raw_value<binding.dmx_from || value.raw_value>binding.dmx_to) continue;
+            if (binding.mode_from || binding.mode_to!=UINT32_MAX) {
+                if (context.sources.size()<2) continue;
+                const auto mode=evaluate_cached_source(universe,context.sources[1]).raw_value;
+                if (mode<binding.mode_from || mode>binding.mode_to) continue;
+            }
             const double local=binding.dmx_to>binding.dmx_from ? double(value.raw_value-binding.dmx_from)/double(binding.dmx_to-binding.dmx_from) : 0;
             const double physical=binding.physical_from+local*(binding.physical_to-binding.physical_from);
             if (binding.wave==ShutterWave::Duration) { duration=physical; ++durations; continue; }
-            ++active; next.wave=binding.wave; next.function_id=binding.source_program_id;
-            next.frequency=binding.wave>=ShutterWave::Strobe?physical:0;
+            ++active; next.wave=binding.wave; next.function_id=binding.activation_function_id?binding.activation_function_id:binding.source_program_id;
+            next.frequency=shutter_periodic(binding.wave)?physical:0;
             next.duration=binding.duration; next.duty=binding.duty; next.offset=binding.offset; next.status=binding.status;
         }
         if (durations) next.duration=duration;
         if (active>1 || durations>1 || !std::isfinite(float(next.frequency)) || !std::isfinite(float(next.duration)) || !std::isfinite(float(next.duty)) || !std::isfinite(float(next.offset)) || next.duration<0 ||
-                (next.wave>=ShutterWave::Strobe && next.frequency<=0)) {
+                (shutter_periodic(next.wave) && next.frequency<0)) {
             next.wave=ShutterWave::Unsupported; next.status=2;
             next.frequency=0; next.duration=0.025; next.duty=1; next.offset=1;
             if (!held.diagnosed && shutter_unsupported_fixtures_.insert(held.fixture_id).second) diagnostics_.push_back({"PVZ-SHUTTER-STATE-UNSUPPORTED","warning","Ambiguous/invalid shutter state remains open; no periodic approximation is inferred.",std::to_string(held.target_id)});
@@ -105,4 +110,31 @@ void PeravizVisualRuntimeCore::replay_shutters(SectionedVisualFrame &frame) cons
     for (const auto &[key,state]:shutter_states_) if (state.parameters.revision)
         append_shutter_row(frame,state.fixture_id,state.target_id,state.index,state.parameters,now);
 }
+// Reads only cached evaluated state for a selected fixture/output, capped at 64 rows and never per flash.
+std::vector<ShutterTrace> PeravizVisualRuntimeCore::shutter_trace(int32_t fixture,int32_t target) const {
+    std::vector<ShutterTrace> result;
+    if (fixture<=0) return result;
+    for (const auto &[id,universe]:universes_) for (const auto &context:universe.shutters) {
+        const auto &b=context.binding;
+        if (b.fixture_id!=fixture || (target && b.beam_target_id!=target) || result.size()>=64) continue;
+        const auto source=context.sources.front(); const auto &value=universe.plan.value(source);
+        const auto &program=source_programs_by_id_.at(b.source_program_id).program;
+        const auto &state=shutter_states_.at(shutter_key(b.beam_target_id,b.shutter_index));
+        ShutterTrace row; row.fixture=fixture; row.target=b.beam_target_id; row.index=b.shutter_index; row.source=b.source_program_id;
+        row.from=b.dmx_from; row.to=b.dmx_to; row.raw=value.raw_value; row.bytes=int32_t(program.sources.size());
+        row.physical_from=b.physical_from; row.physical_to=b.physical_to; row.initialized=state.parameters.revision>0 && value.valid;
+        row.active=row.initialized && universe.plan.activation_cached(source) && universe.plan.activation(source) && row.raw>=row.from && row.raw<=row.to;
+        row.physical=b.physical_from+(b.physical_to-b.physical_from)*(b.dmx_to>b.dmx_from?double(std::clamp(row.raw,b.dmx_from,b.dmx_to)-b.dmx_from)/double(b.dmx_to-b.dmx_from):0);
+        row.mode_from=b.mode_from; row.mode_to=b.mode_to; row.activation_function_id=b.activation_function_id;
+        if (context.sources.size()>1) row.master_raw=universe.plan.value(context.sources[1]).raw_value;
+        if (row.mode_from || row.mode_to!=UINT32_MAX) {
+            const bool guarded=context.sources.size()>1;
+            const auto mode=guarded?universe.plan.value(context.sources[1]).raw_value:0;
+            row.active&=guarded && mode>=row.mode_from && mode<=row.mode_to;
+        }
+        row.parameters=state.parameters; result.push_back(row);
+    }
+    return result;
+}
+
 }

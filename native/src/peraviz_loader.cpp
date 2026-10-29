@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "scene_setup_options.h"
 #include "runtime/compiled_runtime_scene_codec.h"
+#include "runtime/shutter_diagnostics_godot.h"
 
 #include "mvr_scene_loader.h"
 #include "mesh_3ds_loader.h"
@@ -379,6 +380,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     const auto &scene=reuse_prepared ? prepared_->compiled : *local_scene;
     load_metrics_["mode_compile_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compile_start).count();
     load_metrics_["unique_selected_modes"] = scene.gdtf_files_opened;
+    out["shutter_trace_metadata"]=shutter_setup_metadata(scene,universe_offset);
     const auto contract_start = std::chrono::steady_clock::now();
     const peraviz::runtime::PackedCompiledRuntimeScene packed = peraviz::runtime::encode_compiled_runtime_scene(scene);
     integers.resize(static_cast<int64_t>(packed.integers.size()));

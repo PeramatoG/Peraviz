@@ -74,8 +74,8 @@ Structural setup occurs before live playback. The loader and compiler install fi
 
 The versioned compiled setup payload is encoded and decoded by the shared native `CompiledRuntimeScene` codec. The codec owns field order, version-specific strides, complete cursor validation, and deterministic rejection of truncated or trailing payloads; Godot wrappers only convert packed array containers.
 
-Setup contract 8 adds typed shutter bindings (older versions remain decodable).
-Visual protocol 2.4 adds `ShutterState` section 16: seven integer identity/mode/revision
+Setup contract 9 retains typed shutter bindings and adds dynamic mode-range guards and distinct mode activation identities (older versions remain decodable).
+Visual protocol 2.5 retains `ShutterState` section 16: eight integer identity/mode/revision/activation
 fields and seven float timing/publication fields. Legacy `TemporalOutput` and normalized
 strobe fields remain diagnostic-only; they are not an alternative semantic authority.
 
@@ -98,24 +98,29 @@ or require a second evaluator. Cached handles, reused arrays, coalesced material
 and dirty MultiMesh batches avoid per-flash resources and per-output GDScript dictionaries.
 Steady states do not repeatedly write renderer state; scenes without shutter have an
 early-return presentation call. Canonical physical values and visual gain controls remain
-independent. Static Render/Control Group proofs include source identity, range, waveform,
-status and timing parameters; incompatible temporal authorities cannot aggregate.
+independent. Random event counters use stable physical identity and activation revision; frequency
+edits preserve the unwrapped event position. Static Render/Control Group proofs include source identity, range, waveform,
+status and timing parameters; incompatible temporal authorities cannot aggregate. Random-capable outputs use the
+individual fallback because independently seeded timing cannot share a shaft.
+Opt-in bounded diagnostic metadata is a cold name/provenance sidecar, not a second
+evaluation state; normal imports retain no diagnostic dictionaries per output.
 
 The generated 1,000-output probe uses 240 explicit 120 Hz samples in the same scene:
 
-| Active outputs | Native presentation total | Waveform samples | Beam writes | Material energy writes | Lens batch submissions |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 0 | 0 µs | 0 | 0 | 0 | 0 |
-| 2 | 100 µs | 480 | 78 | 78 | 39 |
-| 1,000 | 94,720 µs | 240,000 | 39,000 | 39,000 | 663 |
+| Version / mode | Active | Native total | Beam writes | Material energy writes | Lens batch submissions | Temporal CPU estimate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Reference `6d75fd6`, periodic | 1,000 | 91,420 µs | 39,000 | 39,000 | 663 | 302,000 B |
+| Corrected, idle | 0 | 0 µs | 0 | 0 | 0 | 310,000 B |
+| Corrected, periodic | 1,000 | 79,598 µs | 39,000 | 39,000 | 663 | 310,000 B |
+| Corrected, random | 1,000 | 86,346 µs | 38,000 | 38,000 | 3,094 | 310,000 B |
 
-These are Linux headless CPU counters, not GPU/FPS results or timing thresholds.
-The native/Godot call boundary totals were 211/559/95,696 µs respectively. Retained
-temporal presentation CPU buffers were approximately 302,000 bytes; this estimate
-excludes compiled sources, allocator precision and GPU memory. Resource counts/buffer
-capacities stayed stable and source evaluation counts did not advance during hold.
-Counters count the named submissions, not every RenderingServer operation. The optional
-Forward+/Vulkan pixel probe is skipped when no rendering device exists.
+These are illustrative Linux headless CPU runs, not GPU/FPS results, speedup claims
+or timing thresholds. Corrected two-output totals were 85/89 µs for periodic/random.
+Uncorrelated random flashes require more bounded lens-batch submissions than synchronized
+periodic flashes. Resource identities and capacities stayed stable; hold produced no new
+physical-source evaluations or structural rebuilds. CPU estimates exclude compiled graphs,
+allocator precision and GPU memory; named counters do not count every RenderingServer call.
+The optional Forward+/Vulkan pixel probe is skipped without a rendering device.
 
 ## Active data flow
 
@@ -321,7 +326,7 @@ startup validation and beam/footprint lifecycle coverage.
 
 Godot creates and retains renderer-facing resources during setup. Live section application mutates those cached resources without rebuilding the scene tree. Lightweight Prism owns parametric beam aperture/spread updates, including setup-time Beam profiles and native target-oriented Zoom rows. Optional realtime spotlights and volumetric/lightweight beam resources remain presentation choices; they do not interpret GDTF DMX semantics.
 
-Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Indexed selected-gobo angles and continuous selected-gobo AngularSpeed use `GoboRotation` motion-state rows (introduced in protocol 2.3/setup contract 7, retained in 2.4/8). C++ owns authoritative phase, signed velocity, ModeMaster arbitration, and dirty transitions; Godot advances active layers locally and mutates presentation parameters without topology regeneration. Gobo selection and rotation ownership is keyed by Beam render target plus one-based wheel instance; binding IDs remain diagnostic identities and never arbitrate Pos against PosRotate. Logical gobo control and temporal state outlive renderer target generations; target rebuilds explicitly rehydrate current resources and phase, while true runtime rebuilds seed the new native generation once from the latest held snapshots for used universes. Godot may compose and cache a bounded static multi-wheel mask, but independently moving compositions remain deferred. See [Gobo control](GDTF_GOBO_CONTROL.md).
+Static seated gobos use native `GoboSelection` rows and setup-time `NativeGoboResourceRegistry` resources. Indexed selected-gobo angles and continuous selected-gobo AngularSpeed use `GoboRotation` motion-state rows (introduced in protocol 2.3/setup contract 7, retained in 2.5/9). C++ owns authoritative phase, signed velocity, ModeMaster arbitration, and dirty transitions; Godot advances active layers locally and mutates presentation parameters without topology regeneration. Gobo selection and rotation ownership is keyed by Beam render target plus one-based wheel instance; binding IDs remain diagnostic identities and never arbitrate Pos against PosRotate. Logical gobo control and temporal state outlive renderer target generations; target rebuilds explicitly rehydrate current resources and phase, while true runtime rebuilds seed the new native generation once from the latest held snapshots for used universes. Godot may compose and cache a bounded static multi-wheel mask, but independently moving compositions remain deferred. See [Gobo control](GDTF_GOBO_CONTROL.md).
 
 Live visual settings compare actual old/new values before dispatch. Gains replay
 main-thread displayed renderer rows and cached unscaled surface/lens energy,

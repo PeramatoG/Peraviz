@@ -31,6 +31,7 @@ public:
     Dictionary get_visual_frame_schema() const;
     Dictionary get_stats() const;
     Dictionary get_state_sizes() const;
+    Dictionary get_shutter_trace(const String &fixture_uuid,int64_t target=0) const;
     void set_performance_trace_enabled(bool enabled);
     peraviz::runtime::PeravizVisualRuntimeCore &native_core();
     std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> native_core_handle() const;
@@ -47,6 +48,7 @@ private:
     static Dictionary stats_to_dictionary(const peraviz::runtime::VisualFrameStats &stats);
 
     bool performance_trace_enabled_ = false;
+    Array shutter_metadata_;
     std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> core_=std::make_shared<peraviz::runtime::PeravizVisualRuntimeCore>();
     std::weak_ptr<peraviz::presentation::AsyncPresentationPipeline> async_session_;
     peraviz::runtime::VisualFrameSchema schema_cache_=core_->schema();

@@ -9,7 +9,7 @@ from generate_import_compatibility_fixture import entry, channel, mode
 from generate_presentation_lifecycle_fixture import lens_glb, gobo_png
 
 
-def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1):
+def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False):
     xml_attributes = ''
     for name, unit, subs in [
         ('Shutter1', 'None', ''),
@@ -37,12 +37,19 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
     offset = 7 if shared and gobo else 5 if shared else 1
     if not absent:
         if split:
-            functions = '<ChannelFunction Name="Closed" Attribute="StrobeModeShutter" DMXFrom="0/1"/><ChannelFunction Name="Open" Attribute="StrobeModeShutter" DMXFrom="10/1"/><ChannelFunction Name="Strobe" Attribute="StrobeModeStrobe" DMXFrom="20/1"/><ChannelFunction Name="Pulse" Attribute="StrobeModePulse" DMXFrom="120/1"/>'
-            channels += f'<DMXChannel Offset="{offset}" Geometry="{target}" {declaration}><LogicalChannel Attribute="StrobeModeShutter">{functions}</LogicalChannel></DMXChannel>'
+            functions = '<ChannelFunction Name="Closed" Attribute="StrobeModeShutter" DMXFrom="0/1"/><ChannelFunction Name="Open" Attribute="StrobeModeShutter" DMXFrom="10/1"/><ChannelFunction Name="Strobe" Attribute="StrobeModeStrobe" DMXFrom="20/1"/><ChannelFunction Name="Pulse" Attribute="StrobeModePulse" DMXFrom="120/1"/><ChannelFunction Name="PulseOpen" Attribute="StrobeModePulseOpen" DMXFrom="160/1"/><ChannelFunction Name="PulseClose" Attribute="StrobeModePulseClose" DMXFrom="200/1"/>'
+            if channel_master:
+                functions = functions.replace('<ChannelFunction Name="Pulse"','<ChannelFunction Name="StrobeRepeat" Attribute="StrobeModeStrobe" DMXFrom="60/1"/><ChannelFunction Name="Pulse"')
+            if conditional_mode:
+                functions = functions.replace('Name="StrobeRepeat"','Name="StrobeRepeat" ModeMaster="Base_Dimmer" ModeFrom="128/1" ModeTo="255/1"')
+            channels += f'<DMXChannel Offset="{offset}" Geometry="{target}" {declaration}><LogicalChannel Attribute="StrobeModeShutter">{functions}</LogicalChannel><LogicalChannel Attribute="StrobeMode"><ChannelFunction Name="Mode Selector" Attribute="StrobeModeShutter"/></LogicalChannel></DMXChannel>'
             functions = ''
-            for name in ['Strobe','Pulse']:
+            for name in ['Strobe','Pulse','PulseOpen','PulseClose']:
                 link = f'{target}_StrobeModeShutter.StrobeModeShutter.{name}'
+                if shared and name == "Random": continue
                 functions += f'<ChannelFunction Name="{name}" Attribute="StrobeFrequency" DMXFrom="0/1" ModeMaster="{link}" ModeFrom="0/1" ModeTo="255/1" PhysicalFrom="2" PhysicalTo="10"/>'
+            if channel_master:
+                functions = f'<ChannelFunction Name="Frequency" Attribute="StrobeFrequency" ModeMaster="{target}_StrobeModeShutter" ModeFrom="0/1" ModeTo="255/1" PhysicalFrom="2" PhysicalTo="10"/>'
             channels += f'<DMXChannel Offset="{offset+1}" Geometry="{target}" {declaration}><LogicalChannel Attribute="StrobeFrequency">{functions}</LogicalChannel></DMXChannel>'
             channels += channel(offset+2, 'StrobeDuration', target, 0.05, extra=declaration)
         else:
@@ -51,7 +58,14 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
                 ('Strobe','Shutter1Strobe',20,2,10), ('Pulse','Shutter1StrobePulse',120,2,2),
                 ('PulseOpen','Shutter1StrobePulseOpen',160,2,2), ('PulseClose','Shutter1StrobePulseClose',200,2,2),
                 ('Random','Shutter1StrobeRandom',240,2,10), ('Unknown','Shutter1',250,0,1)]:
+                if shared and name == "Random": continue
                 functions += f'<ChannelFunction Name="{name}" Attribute="{attr}" DMXFrom="{start}/1" PhysicalFrom="{low}" PhysicalTo="{high}"/>'
+            if fidelity:
+                functions = '<ChannelFunction Name="Gate" Attribute="Shutter1"><ChannelSet Name="Closed"/><ChannelSet Name="Open" DMXFrom="10/1"/></ChannelFunction>'
+                functions += '<ChannelFunction Name="Default" Attribute="Shutter1Strobe" DMXFrom="20/1"/><ChannelFunction Name="OnlyTo" Attribute="Shutter1Strobe" DMXFrom="40/1" PhysicalTo="12"/>'
+                functions += '<ChannelFunction Name="Descending" Attribute="Shutter1Strobe" DMXFrom="60/1" PhysicalFrom="20" PhysicalTo="2"/>'
+                functions += '<ChannelFunction Name="Narrow" Attribute="Shutter1Strobe" DMXFrom="80/1" PhysicalFrom="2" PhysicalTo="10"><ChannelSet/><ChannelSet Name="Fixed" DMXFrom="90/1" PhysicalFrom="7" PhysicalTo="7"/><ChannelSet Name="Single" DMXFrom="99/1" PhysicalFrom="12" PhysicalTo="12"/></ChannelFunction>'
+                functions += '<ChannelFunction Name="Malformed" Attribute="Shutter1Strobe" DMXFrom="100/1" PhysicalTo="nan"/>'
             channels += f'<DMXChannel Offset="{offset}" Geometry="{target}" {declaration}><LogicalChannel Attribute="Shutter1">{functions}</LogicalChannel></DMXChannel>'
     wheels = ''
     if gobo:
@@ -59,6 +73,11 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
         channels += '<DMXChannel Offset="5" Geometry="Base"><LogicalChannel Attribute="Gobo1"><ChannelFunction Attribute="Gobo1" Wheel="Pattern" DMXFrom="0/1"><ChannelSet DMXFrom="0/1" WheelSlotIndex="1"/></ChannelFunction></LogicalChannel></DMXChannel>'
         channels += '<DMXChannel Offset="6" Geometry="Base"><LogicalChannel Attribute="Gobo1PosRotate"><ChannelFunction Attribute="Gobo1PosRotate" Wheel="Pattern" DMXFrom="0/1" PhysicalFrom="30" PhysicalTo="30"/></LogicalChannel></DMXChannel>'
     xml = '<GDTF DataVersion="1.2"><FixtureType Name="Public Shutter Fixture" Manufacturer="Peraviz Tests" FixtureTypeID="40000000-0000-0000-0000-000000000001"><AttributeDefinitions><Attributes>'+xml_attributes+'</Attributes></AttributeDefinitions>'+wheels+'<Models><Model Name="Lens" File="lens" Length="0.02" Width="0.02" Height="0.002"/></Models>'+geometry+'<DMXModes>'+mode('Mode','Base',channels)+'</DMXModes></FixtureType></GDTF>'
+    if random_modes:
+        for original, replacement in [('Shutter1StrobePulseClose','Shutter1StrobeRandomPulseClose'),('Shutter1StrobePulseOpen','Shutter1StrobeRandomPulseOpen'),('Shutter1StrobePulse','Shutter1StrobeRandomPulse'),('Shutter1Strobe','Shutter1StrobeRandom')]:
+            # Replace complete XML attribute values, avoiding recursively rewriting already-random families.
+            xml = xml.replace('"'+original+'"','"'+replacement+'"')
+        for original,replacement in [('StrobeModeStrobe','StrobeModeRandom'),('StrobeModePulse','StrobeModeRandomPulse'),('StrobeModePulseOpen','StrobeModeRandomPulseOpen'),('StrobeModePulseClose','StrobeModeRandomPulseClose')]: xml=xml.replace('"'+original+'"','"'+replacement+'"')
     xml = xml.replace("Shutter1", "Shutter%d" % shutter_index)
     packed = io.BytesIO()
     with zipfile.ZipFile(packed, 'w') as archive:
@@ -80,6 +99,6 @@ if __name__ == '__main__':
     parser.add_argument('path',type=Path)
     parser.add_argument('--outputs',type=int,default=4)
     parser.add_argument('--shutter-index',type=int,default=1)
-    for flag in ['shared','split','gobo','absent']: parser.add_argument('--'+flag,action='store_true')
+    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode']: parser.add_argument('--'+flag,action='store_true')
     args = parser.parse_args()
-    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index)
+    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode)

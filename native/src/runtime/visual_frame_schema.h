@@ -8,7 +8,7 @@
 namespace peraviz::runtime {
 
 constexpr int kVisualProtocolMajor = 2;
-constexpr int kVisualProtocolMinor = 4;
+constexpr int kVisualProtocolMinor = 5;
 constexpr int kVisualSectionDescriptorStride = 5;
 
 enum class VisualSectionType : int32_t {
@@ -27,7 +27,7 @@ enum class VisualSectionType : int32_t {
     DiagnosticNonVisual = 13,
     GoboSelection = 14,
     GoboRotation = 15,
-    ShutterState = 16, // Seven identity fields; seven persistent phase/parameter floats.
+    ShutterState = 16, // Eight identity/activation fields; seven persistent phase/parameter floats.
 };
 
 enum VisualSectionFlags : int32_t {

@@ -1,6 +1,7 @@
 #pragma once
 #include "runtime/ordered_dirty_indices.h"
 #include "runtime/compiled_evaluation_plan.h"
+#include "runtime/shutter_trace.h"
 #include "runtime/gobo_motion_evaluator.h"
 #include "runtime/parallel_evaluation_prefetch.h"
 
@@ -63,6 +64,7 @@ public:
     void consume_latest_visual_frame(SectionedVisualFrame &frame);
     const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
+    std::vector<ShutterTrace> shutter_trace(int32_t fixture,int32_t target=0) const;
     // Exposes structured native issues only to callers holding exclusive core ownership.
     const std::vector<CompiledRuntimeDiagnostic> &diagnostics() const { return diagnostics_; }
     RuntimeStateSizes state_sizes() const;

@@ -147,7 +147,7 @@ struct ChannelProgram {
     std::string mode_to_source;
     std::vector<ParsedWheelChannelSet> wheel_channel_sets;
     std::string wheel_reference; // Original ChannelFunction link, including unresolved references.
-    bool physical_range_declared=false, shutter_subsets_present=false;
+    bool shutter_physical_valid=true, shutter_subsets_present=false;
     bool shutter_sets_valid=true;
     std::vector<ParsedWheelChannelSet> shutter_channel_sets; // Setup-only explicit labeled Shutter ranges.
     int32_t dmx_break = 1; // Effective one-based GDTF break; zero is unresolved Overwrite.

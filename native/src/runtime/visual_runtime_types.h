@@ -9,7 +9,7 @@
 
 namespace peraviz::runtime {
 
-constexpr int32_t kCompiledRuntimeSceneContractVersion = 8;
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 9;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
@@ -331,7 +331,12 @@ struct CompiledShutterBinding {
     double duration=0.025, duty=1, offset=1;
     uint32_t dmx_from=0, dmx_to=255;
     double physical_from=0, physical_to=1;
-    int32_t status=0; // 0 standard waveform; 1 explicit-label polarity; 2 unsupported source semantics.
+    int32_t status=0; // 0 standard waveform; 1 documented visual approximation; 2 unsupported source semantics.
+    std::string channel_set_name; // Cold diagnostic metadata, not part of scalar evaluation.
+    int32_t gdtf_break=1;
+    uint32_t mode_from=0,mode_to=UINT32_MAX;
+    int32_t activation_function_id=0;
+    std::string mode_function_name; // Diagnostic sidecar only.
 };
 
 struct CompiledRuntimeDiagnostic {

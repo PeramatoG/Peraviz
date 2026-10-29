@@ -25,6 +25,7 @@ var _pan_slider: HSlider
 var _tilt_slider: HSlider
 var _dimmer_slider: HSlider
 var _quick_reset_button: Button
+var _shutter_trace_button: Button
 
 var _resolve_fixture_uuid_from_node_callback: Callable
 var _apply_fixture_controls_callback: Callable
@@ -75,6 +76,13 @@ func configure(owner: Node3D,
 	_tilt_slider = ui_refs.get("tilt_slider")
 	_dimmer_slider = ui_refs.get("dimmer_slider")
 	_quick_reset_button = ui_refs.get("quick_reset_button")
+	if _fixture_debug_panel != null and not is_instance_valid(_shutter_trace_button):
+		_shutter_trace_button = Button.new()
+		_shutter_trace_button.text = "Copy shutter diagnostic"
+		_shutter_trace_button.tooltip_text = "Copy a bounded native trace for the selected fixture. Enable PERAVIZ_SHUTTER_TRACE=<UUID> before import; use serial evaluation for inspection."
+		_fixture_debug_panel.get_parent().add_child(_shutter_trace_button)
+		_shutter_trace_button.pressed.connect(_copy_shutter_diagnostic)
+
 
 	if _fixture_list != null and not _fixture_list.item_selected.is_connected(_on_fixture_list_item_selected):
 		_fixture_list.item_selected.connect(_on_fixture_list_item_selected)
@@ -376,3 +384,13 @@ func _count_valid_nodes(nodes_variant: Variant) -> int:
 	if nodes_variant is Node and is_instance_valid(nodes_variant):
 		return 1
 	return 0
+
+# Explicit diagnostic action only; native owns source/range/physical interpretation and no flash logs are emitted.
+func _copy_shutter_diagnostic() -> void:
+	var controller: RefCounted = _owner.get("_dmx_controller")
+	var runtime: RefCounted = controller.get("_dmx_fixture_runtime") if controller != null else null
+	var native: RefCounted = runtime.get("_native_visual_runtime") if runtime != null else null
+	var fixture_uuid: String = _selected_fixture_uuid if not _selected_fixture_uuid.is_empty() else OS.get_environment("PERAVIZ_SHUTTER_TRACE")
+	var report: Dictionary = native.get_shutter_trace(fixture_uuid) if native != null else {"available":false,"reason":"No native runtime is installed."}
+	report["selected_fixture_uuid"] = fixture_uuid
+	DisplayServer.clipboard_set(JSON.stringify(report,"\t"))

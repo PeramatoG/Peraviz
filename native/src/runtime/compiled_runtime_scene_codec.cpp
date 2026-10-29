@@ -141,7 +141,7 @@ PackedCompiledRuntimeScene encode_compiled_runtime_scene(const CompiledRuntimeSc
                   push_float(f, v.physical_to), v.scalar_evaluable ? 1 : 0, v.rendered ? 1 : 0, v.physical_unit == "Angle" ? 1 : 0});
     for (const auto &v:scene.shutter_bindings)
         i.insert(i.end(),{v.fixture_id,v.beam_target_id,v.shutter_index,v.source_program_id,int32_t(v.wave),v.status,
-            int32_t(v.dmx_from),int32_t(v.dmx_to),push_float(f,v.duration),push_float(f,v.duty),push_float(f,v.offset),push_float(f,v.physical_from),push_float(f,v.physical_to)});
+            int32_t(v.dmx_from),int32_t(v.dmx_to),push_float(f,v.duration),push_float(f,v.duty),push_float(f,v.offset),push_float(f,v.physical_from),push_float(f,v.physical_to),int32_t(v.mode_from),int32_t(v.mode_to),v.activation_function_id});
     return out;
 }
 
@@ -349,13 +349,14 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
         v.physical_unit = d.read() == 1 ? "Angle" : "None";
         result.scene.gobo_motion_bindings.push_back(v);
     }
-    for (int n=0;n<shutter_count && d.require(13);++n) {
+    for (int n=0;n<shutter_count && d.require(version>=9?16:13);++n) {
         CompiledShutterBinding v;
         v.fixture_id=d.read(); v.beam_target_id=d.read(); v.shutter_index=d.read(); v.source_program_id=d.read();
         v.wave=static_cast<gdtf_runtime::ShutterWave>(d.read()); v.status=d.read();
         v.dmx_from=uint32_t(d.read()); v.dmx_to=uint32_t(d.read());
         v.duration=read_float(floats,d.read(),0.025); v.duty=read_float(floats,d.read(),1); v.offset=read_float(floats,d.read(),1);
         v.physical_from=read_float(floats,d.read(),0); v.physical_to=read_float(floats,d.read(),1);
+        if (version>=9) { v.mode_from=uint32_t(d.read()); v.mode_to=uint32_t(d.read()); v.activation_function_id=d.read(); }
         result.scene.shutter_bindings.push_back(v);
     }
     if (d.valid && d.cursor != integers.size())

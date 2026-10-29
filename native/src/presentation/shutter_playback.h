@@ -41,17 +41,17 @@ public:
         using namespace gdtf_runtime;
         if (nd%5) return false;
         for (size_t b=0;b<nd;b+=5) if (d[b]==int(runtime::VisualSectionType::ShutterState)) {
-            if (d[b+1]<0 || d[b+2]<0 || d[b+3]<0 || size_t(d[b+2])+size_t(d[b+1])*7>ni || size_t(d[b+3])+size_t(d[b+1])*7>nv) return false;
+            if (d[b+1]<0 || d[b+2]<0 || d[b+3]<0 || size_t(d[b+2])+size_t(d[b+1])*8>ni || size_t(d[b+3])+size_t(d[b+1])*7>nv) return false;
             for (int row=0;row<d[b+1];++row) {
-                const auto *i=ints+d[b+2]+row*7; const auto *f=v+d[b+3]+row*7;
-                if (i[2]<1 || i[3]<-1 || i[3]>5 || i[4]<1) return false;
+                const auto *i=ints+d[b+2]+row*8; const auto *f=v+d[b+3]+row*7;
+                if (i[2]<1 || i[3]<-1 || (i[3]>5 && (i[3]<9 || i[3]>12)) || i[4]<1) return false;
                 for (int j=0;j<7;++j) if (!std::isfinite(f[j])) return false;
             }
         }
         const auto received=Clock::now();
         for (size_t b=0;b+4<nd;b+=5) if (d[b]==int(runtime::VisualSectionType::ShutterState)) {
             for (int row=0;row<d[b+1];++row) {
-                const auto *i=ints+d[b+2]+row*7; const auto *f=v+d[b+3]+row*7;
+                const auto *i=ints+d[b+2]+row*8; const auto *f=v+d[b+3]+row*7;
                 const auto owner=owners_.find(i[1]); if (owner==owners_.end()) continue;
                 for (int j=0;j<7;++j) if (!std::isfinite(f[j])) return false;
                 const int64_t key=(int64_t(i[1])<<32)|uint32_t(i[2]);
@@ -65,8 +65,9 @@ public:
                     clock_set_=true;
                 }
                 layer.p={ShutterWave(i[3]),i[6],i[4],i[5],f[0],f[1],f[2],f[3],f[4],f[5]};
+                layer.p.activation=i[7]; layer.p.seed=uint32_t(i[1]);
                 bool active=false;
-                for (auto k:by_owner_[layer.owner]) { const auto &p=layers_.at(k).p; active|=p.wave>=ShutterWave::Strobe && p.wave<=ShutterWave::PulseClose && p.frequency>0; }
+                for (auto k:by_owner_[layer.owner]) { const auto &p=layers_.at(k).p; active|=shutter_periodic(p.wave) && p.frequency>0; }
                 auto &slot=active_slot_[layer.owner];
                 if (active && slot<0) { slot=int32_t(active_.size()); active_.push_back(layer.owner); }
                 if (!active && slot>=0) { const auto last=active_.back(); active_[slot]=last; active_slot_[last]=slot; active_.pop_back(); slot=-1; }
