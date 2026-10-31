@@ -84,6 +84,7 @@ PackedCompiledRuntimeScene encode_compiled_runtime_scene(const CompiledRuntimeSc
          static_cast<int32_t>(scene.gobo_assets.size()),
          static_cast<int32_t>(scene.gobo_bindings.size()),
          static_cast<int32_t>(scene.gobo_motion_bindings.size()),
+         static_cast<int32_t>(scene.shutter_bindings.size()),
          static_cast<int32_t>(scene.diagnostics.size())};
     for (const auto &v : scene.fixtures)
         i.insert(i.end(),
@@ -138,6 +139,9 @@ PackedCompiledRuntimeScene encode_compiled_runtime_scene(const CompiledRuntimeSc
                  {v.binding_id, v.fixture_id, v.beam_render_target_id, v.wheel_id, v.wheel_instance_index, v.source_program_id,
                   static_cast<int32_t>(v.semantic_kind), static_cast<int32_t>(v.controlled_scope), push_float(f, v.physical_from),
                   push_float(f, v.physical_to), v.scalar_evaluable ? 1 : 0, v.rendered ? 1 : 0, v.physical_unit == "Angle" ? 1 : 0});
+    for (const auto &v:scene.shutter_bindings)
+        i.insert(i.end(),{v.fixture_id,v.beam_target_id,v.shutter_index,v.source_program_id,int32_t(v.wave),v.status,
+            int32_t(v.dmx_from),int32_t(v.dmx_to),push_float(f,v.duration),push_float(f,v.duty),push_float(f,v.offset),push_float(f,v.physical_from),push_float(f,v.physical_to),int32_t(v.mode_from),int32_t(v.mode_to),v.activation_function_id});
     return out;
 }
 
@@ -157,7 +161,7 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
     }
     result.scene.contract_version = version;
     const int32_t fixture_count = d.read(), program_count = d.read(), property_count = d.read(), color_count = d.read();
-    int32_t palette_count = 0, wheel_count = 0, asset_count = 0, gobo_count = 0, motion_count = 0;
+    int32_t palette_count = 0, wheel_count = 0, asset_count = 0, gobo_count = 0, motion_count = 0, shutter_count = 0;
     if (version >= 2) {
         if (!d.require(2))
             goto done;
@@ -175,11 +179,12 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
             goto done;
         motion_count = d.read();
     }
+    if (version>=8) { if (!d.require(1)) goto done; shutter_count=d.read(); }
     if (!d.require(1))
         goto done;
     d.read();
     for (int32_t count :
-         {fixture_count, program_count, property_count, color_count, palette_count, wheel_count, asset_count, gobo_count, motion_count})
+         {fixture_count, program_count, property_count, color_count, palette_count, wheel_count, asset_count, gobo_count, motion_count, shutter_count})
         if (!valid_count(d, count))
             goto done;
     for (int n = 0; n < fixture_count && d.require(kPackedSceneFixtureIntegers); ++n) {
@@ -343,6 +348,16 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
         v.rendered = d.read() != 0;
         v.physical_unit = d.read() == 1 ? "Angle" : "None";
         result.scene.gobo_motion_bindings.push_back(v);
+    }
+    for (int n=0;n<shutter_count && d.require(version>=9?16:13);++n) {
+        CompiledShutterBinding v;
+        v.fixture_id=d.read(); v.beam_target_id=d.read(); v.shutter_index=d.read(); v.source_program_id=d.read();
+        v.wave=static_cast<gdtf_runtime::ShutterWave>(d.read()); v.status=d.read();
+        v.dmx_from=uint32_t(d.read()); v.dmx_to=uint32_t(d.read());
+        v.duration=read_float(floats,d.read(),0.025); v.duty=read_float(floats,d.read(),1); v.offset=read_float(floats,d.read(),1);
+        v.physical_from=read_float(floats,d.read(),0); v.physical_to=read_float(floats,d.read(),1);
+        if (version>=9) { v.mode_from=uint32_t(d.read()); v.mode_to=uint32_t(d.read()); v.activation_function_id=d.read(); }
+        result.scene.shutter_bindings.push_back(v);
     }
     if (d.valid && d.cursor != integers.size())
         d.fail("PVZ-PACKED-SCENE-TRAILING: decoder cursor did not land at the "

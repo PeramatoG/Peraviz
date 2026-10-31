@@ -24,6 +24,7 @@ void PeravizVisualRuntimeCore::install_source_mappings(const CompiledRuntimeScen
     for (const auto &binding:scene.wheel_bindings) owners.emplace(binding.source_program_id,binding.fixture_id);
     for (const auto &binding:scene.gobo_bindings) owners.emplace(binding.source_program_id,binding.fixture_id);
     for (const auto &binding:scene.gobo_motion_bindings) owners.emplace(binding.source_program_id,binding.fixture_id);
+    for (const auto &binding:scene.shutter_bindings) owners.emplace(binding.source_program_id,binding.fixture_id);
     std::vector<std::pair<int32_t,int32_t>> ownership(owners.begin(),owners.end());
     for (size_t i=0;i<ownership.size();++i) {
         const auto source=source_programs_by_id_.find(ownership[i].first);
@@ -103,6 +104,7 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
         for (const auto &wheel:universe.wheel_bindings) required.insert(wheel.binding.source_program_id);
         for (const auto &binding:universe.gobo_bindings) required.insert(binding.dependency_program_ids.begin(),binding.dependency_program_ids.end());
         for (const auto &binding:universe.gobo_motion_bindings) required.insert(binding.dependency_program_ids.begin(),binding.dependency_program_ids.end());
+        for (const auto &binding:universe.shutters) required.insert(binding.dependency_program_ids.begin(),binding.dependency_program_ids.end());
         // Add same-universe masters as graph nodes without expanding unsupported domain semantics.
         std::vector<int32_t> pending(required.begin(),required.end());
         for (size_t i=0;i<pending.size();++i) {
@@ -151,6 +153,7 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
             context.programs=found->second; context.values.resize(context.dependency_program_ids.size());
             for (int32_t id:context.dependency_program_ids) context.sources.push_back(universe.plan.source_index(id));
         };
+        for (auto &context:universe.shutters) prepare_context(context);
         for (auto &context:universe.gobo_bindings) prepare_context(context);
         for (auto &context:universe.gobo_motion_bindings) prepare_context(context);
         const auto add_layers=[&](const auto &layers, const auto &bindings, EvaluationDomain domain) {
@@ -165,6 +168,7 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
         };
         add_layers(universe.gobo_binding_indices_by_layer,universe.gobo_bindings,EvaluationDomain::GoboSelection);
         add_layers(universe.gobo_motion_indices_by_layer,universe.gobo_motion_bindings,EvaluationDomain::GoboMotion);
+        add_layers(universe.shutter_layers,universe.shutters,EvaluationDomain::Shutter);
         universe.plan.finish_install();
         universe.prefetched_warnings.resize(universe.plan.source_count(),0);
         installed_sources_+=universe.plan.source_count(); installed_colors_+=universe.color_targets.size();

@@ -2944,6 +2944,7 @@ func _process(delta: float) -> void:
 		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:
 		_dmx_controller.process_dmx(delta)
+	if _fixture_light_apply_service != null: _fixture_light_apply_service.advance_temporal()
 
 # PeravizLoader extends Object; release its scene model when this owner is destroyed.
 func _notification(what: int) -> void:

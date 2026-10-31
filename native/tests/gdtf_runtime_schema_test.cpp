@@ -142,11 +142,11 @@ int test_section_bounds_are_validated() {
     return 0;
 }
 
-// Verifies protocol v2.3 carries renderer-ready wheel and indexed-gobo rows.
+// Verifies protocol v2.6 preserves wheel/indexed-gobo row layouts while adding persistent shutters.
 int test_wheel_protocol_schema_is_versioned() {
     const auto schema = peraviz::runtime::make_default_visual_frame_schema(1);
-    if (schema.protocol_major != 2 || schema.protocol_minor != 3) {
-        return fail("Expected indexed-gobo protocol migration to v2.3.");
+    if (schema.protocol_major != 2 || schema.protocol_minor != 6) {
+        return fail("Expected persistent-shutter protocol migration to v2.6.");
     }
     bool saw_selection = false;
     bool saw_motion = false;

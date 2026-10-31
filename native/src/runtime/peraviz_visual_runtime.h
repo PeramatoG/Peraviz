@@ -1,6 +1,7 @@
 #pragma once
 #include "runtime/ordered_dirty_indices.h"
 #include "runtime/compiled_evaluation_plan.h"
+#include "runtime/shutter_trace.h"
 #include "runtime/gobo_motion_evaluator.h"
 #include "runtime/parallel_evaluation_prefetch.h"
 
@@ -63,6 +64,9 @@ public:
     void consume_latest_visual_frame(SectionedVisualFrame &frame);
     const VisualFrameSchema &schema() const;
     const VisualFrameStats &stats() const;
+    std::vector<ShutterTrace> shutter_trace(int32_t fixture,int32_t target=0) const;
+    // Exposes structured native issues only to callers holding exclusive core ownership.
+    const std::vector<CompiledRuntimeDiagnostic> &diagnostics() const { return diagnostics_; }
     RuntimeStateSizes state_sizes() const;
     void set_performance_trace_enabled(bool enabled);
     double runtime_now_seconds() const;
@@ -132,6 +136,7 @@ private:
         std::vector<uint32_t> sources;
         std::vector<GoboSourceValue> values;
     };
+    struct ShutterBindingRuntime : GoboEvaluationContext { CompiledShutterBinding binding; };
     struct GoboBindingRuntime : GoboEvaluationContext { CompiledGoboSelectionBinding binding; };
     struct GoboMotionRuntime : GoboEvaluationContext { CompiledGoboMotionBinding binding; };
 
@@ -176,6 +181,9 @@ private:
         std::vector<int> interest_offsets;
         std::vector<GoboBindingRuntime> gobo_bindings;
         std::unordered_map<int64_t, std::vector<int>> gobo_binding_indices_by_layer;
+        std::vector<ShutterBindingRuntime> shutters;
+        std::unordered_map<int64_t,std::vector<int>> shutter_layers;
+        std::vector<int64_t> dirty_shutters;
         std::vector<GoboMotionRuntime> gobo_motion_bindings;
         std::unordered_map<int64_t, std::vector<int>> gobo_motion_indices_by_layer;
         std::array<uint8_t, 512> last_relevant_values{};
@@ -184,6 +192,18 @@ private:
         bool has_last_relevant_values = false;
     };
 
+    struct ShutterState { int32_t fixture_id=0,target_id=0,index=1,authority=0; };
+    struct ShutterAuthorityState {
+        int32_t fixture_id=0,index=1; uint32_t seed=0; bool diagnosed=false;
+        std::vector<int32_t> targets;
+        gdtf_runtime::ShutterParameters parameters;
+    };
+    std::unordered_map<int32_t,ShutterAuthorityState> shutter_authorities_;
+    std::unordered_map<int64_t,ShutterState> shutter_states_;
+    std::unordered_set<int32_t> shutter_unsupported_fixtures_;
+    void install_shutters(const CompiledRuntimeScene &scene,VisualFrameSchemaCapabilities &capabilities);
+    void evaluate_shutters(UniverseState &universe,SectionedVisualFrame &frame);
+    void replay_shutters(SectionedVisualFrame &frame) const;
     using EvaluationResult = EvaluatedSourceValue;
 
     struct ComponentState {

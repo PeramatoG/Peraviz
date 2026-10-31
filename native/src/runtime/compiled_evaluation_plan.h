@@ -19,7 +19,7 @@ struct EvaluatedSourceValue {
     int32_t active_program_id = 0;
     bool valid = false;
 };
-enum class EvaluationDomain : uint8_t { Property, Color, Wheel, GoboSelection, GoboMotion };
+enum class EvaluationDomain : uint8_t { Property, Color, Wheel, GoboSelection, GoboMotion, Shutter };
 struct EvaluationConsumer {
     EvaluationDomain domain;
     uint32_t index;

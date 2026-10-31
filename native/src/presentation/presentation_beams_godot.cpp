@@ -15,6 +15,9 @@ void PeravizPresentationState::set_beam_policy(bool enabled,double multiplier) {
 // Applies one native batch before any numeric buffer is exported, and nominates only fallback rows for scripts.
 void PeravizPresentationState::apply_beams(const std::vector<peraviz::presentation::PreparedRenderRow> &rows,bool trace,Dictionary &result) {
     for (const auto &row:rows) if (row.index<held_renderer_.size()) {
+        if (shutters_.layers()) shutter_beams_.invalidate(row.index);
+        if (shutters_.layers() && row.index<shutter_owners_by_row_.size())
+            for (uint32_t owner:shutter_owners_by_row_[row.index]) shutters_.nominate(owner,true);
         held_renderer_[row.index]=row; held_renderer_[row.index].mask=0; held_renderer_valid_[row.index]=true;
     }
     const auto start=trace?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};

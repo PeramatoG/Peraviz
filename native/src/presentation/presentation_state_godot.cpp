@@ -40,6 +40,12 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("clear"), &PeravizPresentationState::clear);
     ClassDB::bind_method(D_METHOD("compose", "generation", "descriptors", "integers", "values", "trace"), &PeravizPresentationState::compose);
     ClassDB::bind_method(D_METHOD("consume_runtime", "runtime", "generation", "schema_generation", "trace", "poll_only"), &PeravizPresentationState::consume_runtime,DEFVAL(false));
+    ClassDB::bind_method(D_METHOD("install_shutter_resources","generation","beams","thresholds","group_materials","lights","owners"),&PeravizPresentationState::install_shutter_resources);
+    ClassDB::bind_method(D_METHOD("advance_shutters","generation","test_now"),&PeravizPresentationState::advance_shutters,DEFVAL(-1.0));
+    ClassDB::bind_method(D_METHOD("set_shutter_policy","enabled","beam_gain","surface_gain"),&PeravizPresentationState::set_shutter_policy);
+    ClassDB::bind_method(D_METHOD("shutter_authority_ids","index"),&PeravizPresentationState::shutter_authority_ids,DEFVAL(1));
+    ClassDB::bind_method(D_METHOD("shutter_beam_energy","row"),&PeravizPresentationState::shutter_beam_energy);
+    ClassDB::bind_method(D_METHOD("shutter_values"),&PeravizPresentationState::shutter_values);
     ClassDB::bind_method(D_METHOD("get_sizes"), &PeravizPresentationState::get_sizes);
 }
 // Installs canonical physical routes; renderer-sized buffers are allocated only after render setup.
@@ -55,6 +61,10 @@ int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const Pac
     for (int64_t i=0;i<ids.size();++i) outputs.push_back({ids[i],scales[i]});
     for (int64_t i=0;i<routes.size();i+=3) targets.push_back({routes[i],routes[i+1],uint32_t(routes[i+2])});
     if (!state_.install(outputs,targets)) return -1;
+    shutters_.install(outputs);
+    materials_.set_shutters(&shutters_.envelopes()); footprints_.set_shutters(&shutters_.envelopes()); lenses_.set_shutters(&shutters_.envelopes());
+    shutter_lights_.clear(); shutter_beams_.clear(); shutter_rows_.clear(); shutter_row_slots_.clear();
+    shutter_beam_writes_=shutter_material_writes_=shutter_ticks_=shutter_us_=shutter_lens_submissions_=0;
     pipeline_.clear(); projection_.clear(); materials_.clear(); indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
     fixture_ids_.clear(); fixture_ids_.reserve(targets.size());
     return int64_t(state_.generation());
@@ -76,6 +86,8 @@ bool PeravizPresentationState::install_render_rows(const PackedInt32Array &membe
     for (int64_t i=0;i<classes.size();++i) modes.push_back(RenderPresentationClass(classes[i]));
     if (!projection_.install(mapping,modes)) return false;
     clear_beams(); script_rows_.resize(classes.size());
+    shutter_owners_by_row_.assign(classes.size(),{});
+    for (uint32_t owner=0;owner<mapping.size();++owner) shutter_owners_by_row_[mapping[owner]].push_back(owner);
     held_renderer_.assign(classes.size(),{}); held_renderer_valid_.assign(classes.size(),false);
     gain_rows_.clear(); gain_rows_.reserve(classes.size());
     indices_masks_.resize(classes.size()*2); values_.resize(classes.size()*ValueCount);
@@ -103,13 +115,13 @@ PackedFloat32Array PeravizPresentationState::physical_values(int32_t index) cons
 PackedFloat32Array PeravizPresentationState::material_values(const RID &rid) const { return materials_.values(rid); }
 // Invalidates generation identity and releases all renderer/member/resource buffers.
 void PeravizPresentationState::clear() {
-    retire_async(false); clear_beams(); clear_lenses(); clear_footprints(); script_rows_=PackedInt32Array(); held_renderer_.clear(); held_renderer_valid_.clear(); gain_rows_.clear(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
+    retire_async(false); clear_beams(); clear_lenses(); clear_footprints(); shutters_={}; shutter_beams_.clear(); shutter_lights_.clear(); shutter_owners_by_row_.clear(); shutter_rows_={}; shutter_row_slots_={}; shutter_fallback_={}; script_rows_=PackedInt32Array(); held_renderer_.clear(); held_renderer_valid_.clear(); gain_rows_.clear(); displayed_physical_.clear(); deferred_domains_={}; resume_pending_=false;
     std::vector<int32_t>().swap(fixture_ids_);
     pipeline_.clear(); state_.clear(); projection_.clear(); materials_.clear();
     indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
 }
 // Replays renderer resources and lens RIDs from exact held physical state.
-void PeravizPresentationState::invalidate_renderer() { retire_async(); state_.invalidate_renderer(); projection_.invalidate(); lenses_.invalidate(); }
+void PeravizPresentationState::invalidate_renderer() { retire_async(); state_.invalidate_renderer(); projection_.invalidate(); lenses_.invalidate(); shutters_.invalidate(); }
 // Accumulates changed physical contributions natively and copies only compact dirty renderer rows.
 Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt32Array &descriptors,
         const PackedInt32Array &integers, const PackedFloat32Array &values, bool trace) {
@@ -123,6 +135,7 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
     const int64_t projection_start=trace?now_us():0;
     projection_.prepare(state_);
     const int64_t projection_us=trace?now_us()-projection_start:0;
+    if (!shutters_.ingest(descriptors.ptr(),descriptors.size(),integers.ptr(),integers.size(),values.ptr(),values.size())) { result["valid"]=false; return result; }
     return publish(generation,trace,physical_us,projection_us);
 }
 // Applies diagnostic transitions before native evaluation or explicit held-state replay.
@@ -206,6 +219,7 @@ Dictionary PeravizPresentationState::consume_runtime(const Ref<PeravizVisualRunt
     if (!pipeline_.consume(runtime->native_core(),state_,projection_,uint64_t(generation),schema_generation,trace)) {
         result["valid"]=false; return result;
     }
+    ingest_shutters(pipeline_.frame());
     Dictionary presentation=publish(generation,trace,pipeline_.physical_us,pipeline_.reduction_us);
     const int64_t packing_start=trace?now_us():0;
     const auto &frame=pipeline_.frame();
@@ -288,6 +302,16 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["state_capacity"]=int64_t(async_?async_sizes_.state_capacity:state_.state_capacity()); sizes["dirty_capacity"]=int64_t(async_?async_sizes_.dirty_capacity:state_.dirty_capacity());
     sizes["dirty_high_water"]=int64_t(async_?async_sizes_.high_water:state_.high_water()); sizes["native_buffer_bytes"]=int64_t(async_?async_sizes_.buffer_bytes:state_.buffer_bytes()+projection_.buffer_bytes());
     sizes["packed_buffer_bytes"]=indices_masks_.size()*int64_t(sizeof(int32_t))+values_.size()*int64_t(sizeof(float));
+    size_t shutter_bytes=shutters_.buffer_bytes()+shutter_beams_.buffer_bytes()+shutter_rows_.capacity()*sizeof(PreparedRenderRow)+
+        (shutter_row_slots_.capacity()+shutter_fallback_.capacity())*sizeof(int32_t)+shutter_lights_.capacity()*sizeof(std::vector<uint64_t>);
+    for (const auto &routes:shutter_lights_) shutter_bytes+=routes.capacity()*sizeof(uint64_t);
+    sizes["shutter_cpu_bytes_estimate"]=int64_t(shutter_bytes);
+    sizes["shutter_active_outputs"]=int64_t(shutters_.active()); sizes["shutter_layers"]=int64_t(shutters_.layers());
+    sizes["shutter_temporal_authorities"]=int64_t(shutters_.authorities()); sizes["shutter_active_authorities"]=int64_t(shutters_.active_authorities());
+    sizes["shutter_waveform_evaluations"]=int64_t(shutters_.evaluations()); sizes["shutter_envelope_changes"]=int64_t(shutters_.changes());
+    sizes["shutter_beam_writes"]=int64_t(shutter_beam_writes_); sizes["shutter_material_writes"]=int64_t(shutter_material_writes_);
+    sizes["shutter_lens_submissions"]=int64_t(shutter_lens_submissions_);
+    sizes["shutter_ticks"]=int64_t(shutter_ticks_); sizes["shutter_presentation_us"]=int64_t(shutter_us_);
     sizes["native_async_active"]=bool(async_); sizes["native_snapshot_buffer_bytes"]=int64_t(async_snapshot_bytes_);
     sizes["native_worker_scratch_bytes"]=int64_t(async_worker_bytes_);
     sizes["native_input_buffer_bytes"]=int64_t(async_?async_->input_buffer_bytes():0);

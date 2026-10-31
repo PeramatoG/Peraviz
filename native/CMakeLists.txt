@@ -158,6 +158,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
         src/runtime/gobo_motion_evaluator.cpp
+        src/runtime/visual_runtime_shutter.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
@@ -173,6 +174,8 @@ if(PERAVIZ_ENABLE_DMX)
         src/presentation/native_beam_bindings.cpp
         src/presentation/presentation_beams_godot.cpp
         src/presentation/presentation_material_bindings.cpp
+        src/presentation/presentation_shutter_godot.cpp
+        src/runtime/shutter_diagnostics_godot.cpp
         src/presentation/presentation_state_godot.cpp
         src/presentation/presentation_async_godot.cpp
         src/runtime/peraviz_visual_runtime_godot.cpp
@@ -389,6 +392,16 @@ if(BUILD_TESTING)
         src/presentation/control_groups.cpp
         src/presentation/wheel_presentation_eligibility.cpp
         tests/visual_runtime_core_test.cpp
+        tests/shutter_runtime_test.cpp
+        tests/shutter_fidelity_test.cpp
+        src/coordinate_mapper.cpp
+        src/gdtf_scene_builder.cpp
+        src/mvr_scene_loader.cpp
+        tests/peraviz_debug_runtime_stub.cpp
+        src/scene_model.cpp
+        src/table_model/runtime_table.cpp
+        src/table_model/runtime_table_schema.cpp
+        src/table_model/perastage_table_schemas.cpp
         tests/direct_presentation_pipeline_test.cpp
         tests/compiled_evaluation_plan_test.cpp
         tests/parallel_presentation_test.cpp
@@ -416,6 +429,7 @@ if(BUILD_TESTING)
         src/runtime/visual_frame_schema.cpp
         src/runtime/wheel_runtime_core.cpp
         src/runtime/gobo_motion_evaluator.cpp
+        src/runtime/visual_runtime_shutter.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp

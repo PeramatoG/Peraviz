@@ -58,7 +58,7 @@ bool compatible(const runtime::CompiledRuntimeScene &scene, const runtime::Compi
         const runtime::CompiledBeamOpticalProfile &b, const EmitterSpatialDescriptor &x, const EmitterSpatialDescriptor &y,
         const std::vector<std::vector<int32_t>> *zooms, size_t ai, size_t bi) {
     return x.reliable && y.reliable && a.fixture_id == b.fixture_id && x.anchor_geometry_key == y.anchor_geometry_key &&
-        x.axis_lineage == y.axis_lineage && a.beam_type == b.beam_type && a.beam_angle_explicit == b.beam_angle_explicit &&
+        x.axis_lineage == y.axis_lineage && x.shutter_authority == y.shutter_authority && a.beam_type == b.beam_type && a.beam_angle_explicit == b.beam_angle_explicit &&
         a.field_angle_explicit == b.field_angle_explicit && a.color_temperature == b.color_temperature &&
         std::abs(a.beam_angle_deg-b.beam_angle_deg) <= AggregationPolicy::maximum_angle_difference_degrees &&
         std::abs(a.field_angle_deg-b.field_angle_deg) <= AggregationPolicy::maximum_angle_difference_degrees &&
@@ -76,9 +76,11 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
     std::unordered_map<std::string,const SceneNode*> by_id, by_key;
     by_id.reserve(model.nodes.size()); by_key.reserve(model.nodes.size());
     for (const auto &node : model.nodes) { if (!node.node_id.empty()) by_id[node.node_id]=&node; if (!node.gdtf_geometry_key.empty()) by_key[node.gdtf_geometry_key]=&node; }
+    auto shutter_index=shutter_authorities(scene);
     std::vector<EmitterSpatialDescriptor> out;
     for (const auto &beam : scene.beam_profiles) {
         EmitterSpatialDescriptor d;
+        d.shutter_authority=shutter_index[beam.render_target_id];
         d.physical_id=beam.render_target_id; d.fixture_id=beam.fixture_id;
         d.aperture_radius=beam.beam_radius_m; d.nominal_flux=beam.effective_luminous_flux_lm;
         const auto found=by_key.find(beam.geometry_key);
@@ -150,6 +152,7 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
                 if (descriptors[member].fixture_id==descriptors[i].fixture_id && descriptors[member].reliable) {
                     const auto &a=scene.beam_profiles[member], &b=scene.beam_profiles[i];
                     descriptors[i].rejection_reason=descriptors[member].anchor_geometry_key!=descriptors[i].anchor_geometry_key || descriptors[member].axis_lineage!=descriptors[i].axis_lineage ? "axis_lineage" :
+                        descriptors[member].shutter_authority!=descriptors[i].shutter_authority ? "shutter_authority" :
                         (indexed ? zooms[member]!=zooms[i] : zoom_authority(scene,a)!=zoom_authority(scene,b)) ? "zoom_authority" :
                         dot(descriptors[member].direction,descriptors[i].direction)<std::cos(AggregationPolicy::maximum_direction_spread_degrees*3.141592653589793/180.0) ? "direction_spread" : "optical_profile";
                 }

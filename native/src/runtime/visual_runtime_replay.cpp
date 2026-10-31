@@ -42,6 +42,7 @@ SectionedVisualFrame PeravizVisualRuntimeCore::held_domain_replay() const {
         ++wheel_count;
     }
     if (wheel_count) frame.descriptors.insert(frame.descriptors.end(),{int32_t(VisualSectionType::WheelSelection),wheel_count,int_offset,float_offset,0});
+    replay_shutters(frame);
     return frame;
 }
 } // namespace peraviz::runtime

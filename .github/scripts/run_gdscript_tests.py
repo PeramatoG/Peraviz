@@ -58,7 +58,7 @@ def main() -> int:
         started = time.monotonic()
         # The aperture batch and custom footprints are Forward+-only; exercise production admission in CI.
         # Other tests retain the established Compatibility backend. No additional test matrix is needed.
-        renderer = "forward_plus" if script.name in {"test_render_emitter_groups.gd", "test_custom_surface_footprints.gd"} else "gl_compatibility"
+        renderer = "forward_plus" if script.name in {"test_render_emitter_groups.gd", "test_custom_surface_footprints.gd", "test_native_shutter.gd", "test_shutter_authority.gd"} else "gl_compatibility"
         command = [args.godot, "--headless", "--audio-driver", "Dummy", "--rendering-method", renderer, "--path", str(args.project), "--script", str(script.relative_to(args.project))]
         timed_out = False
         try:

@@ -24,11 +24,14 @@ public:
     ~PeravizVisualRuntime();
     void clear();
     void install_compiled_scene(const Dictionary &packed_scene);
+    // A deterministic clock may be injected only while the runtime has exclusive main-thread ownership.
+    bool set_runtime_now_seconds_for_testing(double seconds) { if (!async_session_.expired()) return false; core_->set_runtime_now_seconds_for_testing(seconds); return true; }
     void submit_universe_frame(int universe_id, const PackedByteArray &data);
     Dictionary consume_latest_visual_frame();
     Dictionary get_visual_frame_schema() const;
     Dictionary get_stats() const;
     Dictionary get_state_sizes() const;
+    Dictionary get_shutter_trace(const String &fixture_uuid,int64_t target=0) const;
     void set_performance_trace_enabled(bool enabled);
     peraviz::runtime::PeravizVisualRuntimeCore &native_core();
     std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> native_core_handle() const;
@@ -45,6 +48,7 @@ private:
     static Dictionary stats_to_dictionary(const peraviz::runtime::VisualFrameStats &stats);
 
     bool performance_trace_enabled_ = false;
+    Array shutter_metadata_;
     std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> core_=std::make_shared<peraviz::runtime::PeravizVisualRuntimeCore>();
     std::weak_ptr<peraviz::presentation::AsyncPresentationPipeline> async_session_;
     peraviz::runtime::VisualFrameSchema schema_cache_=core_->schema();

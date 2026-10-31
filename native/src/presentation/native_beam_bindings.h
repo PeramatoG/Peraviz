@@ -1,6 +1,8 @@
 #pragma once
 #include "presentation/render_group_projection.h"
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/rid.hpp>
 #include <godot_cpp/variant/packed_int64_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
@@ -15,6 +17,12 @@ class NativeBeamBindings {
 public:
     bool install(const PackedInt64Array &objects,const PackedFloat64Array &thresholds);
     void clear();
+    bool install_group_materials(const Array &materials);
+    void invalidate(uint32_t row);
+    // Identifies the existing shared-uniform route without material inspection during playback.
+    bool uses_group_material(uint32_t row) const { return row<entries_.size() && entries_[row].group>=0; }
+    // Reports the last committed renderer scalar, including shared material routes, only on diagnostic demand.
+    float energy(uint32_t row) const { if (row>=entries_.size()) return 0; const auto &entry=entries_[row]; return entry.group>=0?groups_[entry.group].dynamic.a:entry.dynamic.a; }
     void set_policy(bool enabled,double multiplier);
     NativeBeamApplyStats apply(const std::vector<peraviz::presentation::PreparedRenderRow> &rows,int32_t *fallback,size_t &fallback_count);
     // Reports admitted weak renderer bindings without scanning scene resources.
@@ -22,11 +30,13 @@ public:
     // Reports retained resource-cache bytes separately from physical state.
     size_t buffer_bytes() const { return entries_.capacity()*sizeof(Entry); }
 private:
-    struct Entry { uint64_t object=0; Color dynamic; double threshold=0.015; bool known=false; };
+    struct Entry { uint64_t object=0; Color dynamic; double threshold=0.015; bool known=false; int32_t group=-1; };
+    struct Group { RID rid; Color dynamic; bool known=false; };
+    std::vector<Group> groups_;
     std::vector<Entry> entries_;
     size_t count_=0;
     bool enabled_=false;
     double multiplier_=1;
-    StringName dynamic_{"beam_dynamic_state"},maximum_{"intensity_max"};
+    StringName group_dynamic_{"control_group_dynamic_state"},dynamic_{"beam_dynamic_state"},maximum_{"intensity_max"};
 };
 } // namespace godot

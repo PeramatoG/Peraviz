@@ -3,6 +3,7 @@
 #include <algorithm>
 #include "scene_setup_options.h"
 #include "runtime/compiled_runtime_scene_codec.h"
+#include "runtime/shutter_diagnostics_godot.h"
 
 #include "mvr_scene_loader.h"
 #include "mesh_3ds_loader.h"
@@ -419,6 +420,7 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
     const auto groups_start = std::chrono::steady_clock::now();
     const auto render_groups = reuse_prepared ? prepared_->groups : peraviz::presentation::compile_render_emitter_groups(scene, last_scene_model_, control_analysis.groups, setup_options.indexed_classification);
     load_metrics_["render_groups_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - groups_start).count();
+    out["shutter_trace_metadata"]=shutter_setup_metadata(scene,universe_offset,render_groups);
     const auto manifest_start = std::chrono::steady_clock::now();
     load_metrics_["physical_outputs"] = int64_t(scene.beam_profiles.size());
     std::unordered_map<int32_t, int32_t> control_group_by_physical_id;

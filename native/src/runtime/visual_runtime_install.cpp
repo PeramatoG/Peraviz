@@ -226,7 +226,8 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         capabilities.has_gobo_rotation = true;
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGoboRotation;
     }
-    if (installed_properties == 0 && scene.color_targets.empty() && installed_wheel_bindings == 0 && scene.gobo_bindings.empty() && scene.gobo_motion_bindings.empty()) {
+    install_shutters(scene,capabilities);
+    if (installed_properties == 0 && scene.color_targets.empty() && installed_wheel_bindings == 0 && scene.gobo_bindings.empty() && scene.gobo_motion_bindings.empty() && scene.shutter_bindings.empty()) {
         diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {

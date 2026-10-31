@@ -7,11 +7,13 @@ namespace godot {
 
 // Registers the visual runtime methods for GDScript callers.
 void PeravizVisualRuntime::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_runtime_now_seconds_for_testing","seconds"),&PeravizVisualRuntime::set_runtime_now_seconds_for_testing);
     ClassDB::bind_method(D_METHOD("clear"), &PeravizVisualRuntime::clear);
     ClassDB::bind_method(D_METHOD("install_compiled_scene", "packed_scene"), &PeravizVisualRuntime::install_compiled_scene);
     ClassDB::bind_method(D_METHOD("submit_universe_frame", "universe_id", "data"), &PeravizVisualRuntime::submit_universe_frame);
     ClassDB::bind_method(D_METHOD("consume_latest_visual_frame"), &PeravizVisualRuntime::consume_latest_visual_frame);
     ClassDB::bind_method(D_METHOD("get_visual_frame_schema"), &PeravizVisualRuntime::get_visual_frame_schema);
+    ClassDB::bind_method(D_METHOD("get_shutter_trace","fixture_uuid","target"),&PeravizVisualRuntime::get_shutter_trace,DEFVAL(0));
     ClassDB::bind_method(D_METHOD("get_stats"), &PeravizVisualRuntime::get_stats);
     ClassDB::bind_method(D_METHOD("get_state_sizes"), &PeravizVisualRuntime::get_state_sizes);
     ClassDB::bind_method(D_METHOD("set_performance_trace_enabled", "enabled"), &PeravizVisualRuntime::set_performance_trace_enabled);
@@ -20,12 +22,13 @@ void PeravizVisualRuntime::_bind_methods() {
 // Clears all native fixture bindings, render parameters, pending frames, and stats.
 void PeravizVisualRuntime::clear() {
     retire_async();
-    core_->clear(); schema_cache_=core_->schema(); stats_cache_=core_->stats(); sizes_cache_=core_->state_sizes(); interests_cache_.clear();
+    shutter_metadata_.clear(); core_->clear(); schema_cache_=core_->schema(); stats_cache_=core_->stats(); sizes_cache_=core_->state_sizes(); interests_cache_.clear();
 }
 
 // Bulk-copies the parser-owned setup payload before validated native installation.
 void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene) {
     retire_async();
+    shutter_metadata_=Array(packed_scene.get("shutter_trace_metadata",Array())).duplicate(true);
     const PackedInt32Array packed_integers = packed_scene.get("integers", PackedInt32Array());
     const PackedFloat32Array packed_floats = packed_scene.get("floats", PackedFloat32Array());
     std::vector<int32_t> integers(static_cast<size_t>(packed_integers.size()));

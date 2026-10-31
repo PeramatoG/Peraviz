@@ -16,6 +16,9 @@ public:
     bool install_surface_instances(const Array &instances);
     void set_surface_visible(int32_t index, bool allowed);
     void clear();
+    // Borrows the generation-owned presentation envelope; physical resource ownership does not change.
+    void set_shutters(const std::vector<float> *values) { shutters_=values; }
+    void apply_shutters(const std::vector<uint32_t> &owners);
     size_t set_enabled(bool enabled);
     void invalidate();
     size_t set_surface_gain(double gain);
@@ -38,6 +41,9 @@ public:
     // Reports redundant shared-RID setters avoided in that batch.
     size_t avoided() const { return avoided_; }
 private:
+    const std::vector<float> *shutters_=nullptr;
+    // Uses identity modulation for resources without an admitted shutter.
+    float shutter(uint32_t owner) const { return shutters_ && owner<shutters_->size()?(*shutters_)[owner]:1; }
     struct SurfaceInstance { RID rid; bool allowed=true, visible=false, known=false; };
     void update_surface_visible(size_t index, bool force=false);
     std::vector<SurfaceInstance> surface_instances_;
