@@ -396,6 +396,7 @@ func _copy_shutter_diagnostic() -> void:
 		var adapter: RefCounted = _owner.get("_fixture_light_apply_service").get("_dense_adapter")
 		if adapter != null:
 			report["renderer_group_rejections"] = adapter._render_bindings.binding_rejections.duplicate()
+			report["lens_admission"] = adapter._lens_batches.counts()
 			for row: Dictionary in report.get("rows",[]):
 				for output in adapter._outputs:
 					if output.canonical_id == int(row.get("target_id",0)):

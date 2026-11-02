@@ -25,6 +25,30 @@ static func run(owner: SceneTree) -> void:
 		owner.test.check(trace.available and trace.rows.size()<=64,"Selected-output native trace is opt-in and bounded")
 		for row in trace.rows:
 			if not row.active: continue
+			for key in ["channel_function","channel_set","dmx_from","dmx_to","physical_from","physical_to","frequency_hz","duration_seconds","waveform"]:
+				owner.test.check(row.has(key),"Shutter diagnostic retains source provenance and effective timing: "+key)
+			var ranges: Dictionary = {20:["Default","",20,39,0,1],39:["Default","",20,39,0,1],40:["OnlyTo","",40,59,0,12],59:["OnlyTo","",40,59,0,12],60:["Descending","",60,79,20,2],79:["Descending","",60,79,20,2],80:["Narrow","",80,89,2,10],89:["Narrow","",80,89,2,10],90:["Narrow","Fixed",90,98,7,7],98:["Narrow","Fixed",90,98,7,7],99:["Narrow","Single",99,99,12,12]}
+			if ranges.has(pair[0]):
+				var expected: Array = ranges[pair[0]]
+				owner.test.check(row.channel_function == expected[0] and row.channel_set == expected[1],"Trace identifies the exact selected ChannelFunction/ChannelSet")
+				owner.test.check(row.channel_function_dmx_from <= row.dmx_from and row.channel_function_dmx_to >= row.dmx_to,"Trace distinguishes parent function boundaries from local ChannelSet ranges")
+				if row.channel_function == "Narrow":
+					owner.test.check(row.channel_function_dmx_from == 80 and row.channel_function_dmx_to == 99 and row.channel_function_physical_from == 2 and row.channel_function_physical_to == 10,"Parent physical endpoints remain visible beside fixed/single-set overrides")
+				owner.test.check(row.dmx_from == expected[2] and row.dmx_to == expected[3],"Trace exposes inclusive effective function/set DMX boundaries")
+				owner.test.check_close(row.physical_from,expected[4],0.0001,"Trace retains effective PhysicalFrom")
+				owner.test.check_close(row.physical_to,expected[5],0.0001,"Trace retains effective PhysicalTo")
+				owner.test.check(row.waveform == "Strobe" and row.waveform_id == 2,"Trace waveform agrees with selected typed source")
+				owner.test.check_close(row.duration_seconds,0.025,0.000001,"Trace preserves the supported default flash duration")
+				owner.test.check_close(row.frequency_hz,pair[2],0.0001,"Trace reports actual resolved Hz, including zero frequency")
+			if pair[2]>0 and pair[1]==2:
+				owner.test.check(row.sampling_probe.size() == 4 and row.frame_sampling_note.contains("not measured runtime FPS"),"Trace distinguishes hypothetical aliasing from measured runtime cadence")
+				var fps: Array = []
+				for sample in row.sampling_probe:
+					fps.append(sample.fps)
+					owner.test.check(sample.reference_events == 20 and sample.missed_event_windows == 20-sample.events_with_visible_sample,"Frame sampling diagnostics expose exact missed-window counts")
+					owner.test.check_close(sample.single_event_window_seconds,row.duration_seconds,0.000001,"Diagnostic distinguishes one flash duration from the twenty-event total")
+					owner.test.check_close(sample.total_event_window_seconds,sample.single_event_window_seconds*20,0.000001,"Total event-window duration is explicitly labeled")
+				owner.test.check(fps == [15,30,60,120],"Existing bounded diagnostic probes standard presentation cadences")
 			owner.test.check(row.raw_dmx == pair[0] and row.resolution_bits == 8,"Trace exposes actual raw value and source resolution")
 			owner.test.check(row.mvr_break == 1,"Trace preserves the effective reference/MVR break")
 			owner.test.check(row.ordered_bytes[0].mvr_universe == 3 and row.ordered_bytes[0].channel == 1,"Trace reveals actual MVR universe and channel")

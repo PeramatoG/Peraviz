@@ -5,7 +5,9 @@ func run() -> void:
 	for layout in [[32,0,true],[128,0,true],[128,4,false],[128,0,false]]:
 		await audit(layout[0],layout[1],layout[2])
 	await audit(128,0,true,true)
-	if "--temporal-baseline" not in OS.get_cmdline_user_args(): await transactions()
+	if "--temporal-baseline" not in OS.get_cmdline_user_args():
+		await transactions()
+		await preload("res://tests/gdscript/helpers/temporal_lens_admission_probe.gd").run(self)
 	test.finish(self)
 
 func audit(count: int, banks: int, shared: bool, absent: bool = false) -> void:

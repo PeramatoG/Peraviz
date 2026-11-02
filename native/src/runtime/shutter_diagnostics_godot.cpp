@@ -61,6 +61,8 @@ Array shutter_setup_metadata(const peraviz::runtime::CompiledRuntimeScene &scene
         row["fixture_uuid"]=String::utf8(f.fixture_uuid.c_str()); row["dmx_mode"]=String::utf8(f.dmx_mode_name.c_str());
         row["geometry_path"]=String::utf8(s.geometry_name.c_str()); row["attribute"]=String::utf8(s.attribute_name.c_str());
         row["channel_function"]=String::utf8(s.function_name.c_str()); row["channel_set"]=String::utf8(b.channel_set_name.c_str());
+        row["channel_function_dmx_from"]=int64_t(s.dmx_from); row["channel_function_dmx_to"]=int64_t(s.dmx_to);
+        row["channel_function_physical_from"]=s.physical_from; row["channel_function_physical_to"]=s.physical_to;
         row["mode_function"]=String::utf8(b.mode_function_name.c_str()); row["mode_from"]=int64_t(b.mode_from); row["mode_to"]=int64_t(b.mode_to);
         row["gdtf_break"]=b.gdtf_break; row["mvr_break"]=b.gdtf_break-1;
         row["ordered_bytes"]=byte_routes(s,universe_offset);
@@ -103,10 +105,13 @@ Dictionary PeravizVisualRuntime::get_shutter_trace(const String &fixture_uuid,in
             Array sampling;
             for (const auto &sample:peraviz::gdtf_runtime::shutter_sampling(p)) {
                 Dictionary item; item["fps"]=sample.fps; item["reference_events"]=sample.events; item["events_with_visible_sample"]=sample.visible_events;
-                item["missed_event_windows"]=sample.events-sample.visible_events; item["event_window_seconds"]=sample.event_window_seconds; sampling.push_back(item);
+                item["missed_event_windows"]=sample.events-sample.visible_events; item["event_window_seconds"]=sample.event_window_seconds;
+                item["total_event_window_seconds"]=sample.event_window_seconds;
+                item["single_event_window_seconds"]=sample.events?sample.event_window_seconds/sample.events:0.0; sampling.push_back(item);
             }
             row["sampling_probe"]=sampling;
             row["sampling_policy"]="Frozen parameters, uniform samples relative to activation; exact waveform retained, no temporal smoothing.";
+            row["frame_sampling_note"]="Hypothetical 15/30/60/120 FPS samples can miss flash windows. This is not measured runtime FPS or a diagnosis of another visualizer; actual frame cadence and sample phase matter. event_window_seconds is the legacy total over reference_events; single_event_window_seconds is one flash window.";
         }
         output.push_back(row);
     }
