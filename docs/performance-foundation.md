@@ -519,3 +519,16 @@ This uses pinned Godot 4.7.1, removes the project's generated cache for the test
 then exercises normal startup, both prism lifecycles, nine real command-line
 cases and negative installation/initialization contracts. Exit ObjectDB warnings
 fail the checker. See the [closure ownership audit](performance-foundation-ownership.md).
+
+## Temporal presentation guardrails
+
+The [bounded audit against merged PR #123](temporal-presentation-performance-audit.md)
+separates authority sampling, physical propagation, actual consumer setters and
+full MultiMesh submissions. Shared and independent control/resource topology,
+held canonical values and deterministic sequences remain unchanged. The correction
+limits profiling clocks to opt-in tracing, separates lens/footprint/projector
+accounting and suppresses equivalent float projector replay setters. Existing
+indexed fan-out and dirty-batch flushing remain sufficient; no speculative
+renderer redesign or partial GPU-buffer path was introduced. The audit contains
+actual Linux CPU/counter results, counter precision and the remaining Windows
+10 / Godot 4.7.1 / Forward+ / RTX 3070 validation procedure.

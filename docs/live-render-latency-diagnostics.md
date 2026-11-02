@@ -177,3 +177,12 @@ new measurements; the canonical hardware run remains required.
 If the trace confirms that roughly one thousand distinct physical Beam outputs genuinely change color every visual frame, the retained per-output GDScript and Node mutation path has reached its architectural scaling limit. The next phase should keep semantic resolution in native C++ and publish a compact contiguous renderer batch keyed by stable output ID. Transform, color, intensity, visibility/active state, beam angle/zoom, and presentation custom data can be carried in parallel packed buffers and applied through RenderingServer or MultiMesh-oriented presentation with minimal GDScript dispatch.
 
 Gobo texture identity still needs batching by compatible texture/material set, topology-changing fallback renderers still require separate lifecycle handling, and surface projector lights remain individual renderer resources. This phase must preserve distinct GDTF Beam geometries and only changes how their already-resolved states reach presentation.
+
+## Temporal presentation accounting
+
+The existing trace's `dense_presentation` includes generation-local cumulative
+shutter evaluation, envelope, beam/lens/footprint/projector setter and MultiMesh
+submission/byte counters. Take interval differences; do not treat lifetime counts
+as interval work or setters as draws. CPU temporal clocks run only with tracing.
+See the [counter contract and Windows temporal A/B](temporal-presentation-performance-audit.md)
+for exact/estimated/sampled meanings and same-scene hold/periodic/Random scenarios.

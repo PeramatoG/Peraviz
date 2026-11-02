@@ -112,6 +112,17 @@ bool test_shutter_fidelity() {
         for (uint32_t raw:{start-1,start,(start+end)/2,end,end+1}) {
             const auto p=probe.raw(raw); const double hz=20-18*double(raw-start)/double(end-start);
             if (!verify(raw<start?p.wave==ShutterWave::Open:raw>end?p.wave==ShutterWave::Closed:near(p.frequency,hz),"Ordered 8/16/24/32-bit source maps only its active function range, including descending interpolation")) return false;
+            if (raw>=start && raw<=end) {
+                const auto trace=probe.core.shutter_trace(probe.scene.fixtures.front().fixture_id,probe.scene.shutter_bindings.front().beam_target_id);
+                bool selected=false;
+                for (const auto &row:trace) if (row.active) {
+                    selected=true;
+                    if (!verify(row.raw==raw && row.bytes==bytes && row.from==start && row.to==end &&
+                            near(row.physical_from,20) && near(row.physical_to,2) && near(row.parameters.frequency,hz),
+                            "Cached trace preserves exact ordered raw resolution, effective boundaries and resolved Hz")) return false;
+                }
+                if (!verify(selected,"Multi-byte trace exposes its active shutter source")) return false;
+            }
         }
     }
     for (const auto &sets:{"<ChannelSet/><ChannelSet DMXFrom=\"0/1\"/>","<ChannelSet DMXFrom=\"oops\"/>","<ChannelSet PhysicalTo=\"junk\"/>"}) {
@@ -168,6 +179,10 @@ bool test_shutter_fidelity() {
         const double expected=wave==ShutterWave::Pulse?0.5:wave==ShutterWave::PulseOpen?0.25:0.75;
         if (!verify(near(shutter_envelope(p,cycle/p.frequency),expected),"Annex F end offsets and low/high duty cycles preserve triangle/ramp samples")) return false;
     }
+    // Characterizes the existing inherited-set contract without correcting fixture data or semantic interpretation here.
+    probe.compile("<ChannelFunction Name=\"Public rate\" Attribute=\"Shutter1Strobe\" DMXFrom=\"20/1\" PhysicalFrom=\"3\" PhysicalTo=\"11\"><ChannelSet Name=\"Lower label\" DMXFrom=\"20/1\"/><ChannelSet Name=\"Middle label\" DMXFrom=\"65/1\"/><ChannelSet Name=\"Upper label\" DMXFrom=\"110/1\"/></ChannelFunction><ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\"111/1\"/>");
+    if (!verify(near(probe.raw(109).frequency,11) && near(probe.raw(110).frequency,3),
+            "A label-only single-value set exposes the existing inherited endpoint discontinuity without changing Hz semantics")) return false;
     ShutterParameters short_flash; short_flash.wave=ShutterWave::Strobe; short_flash.frequency=10; short_flash.duration=0.001;
     const auto samples=shutter_sampling(short_flash);
     if (!verify(samples[1].events==20 && samples[1].visible_events<20 && near(samples[1].event_window_seconds,0.02),"Exact 1 ms flashes can alias at 30 FPS without any wrong DMX/Hz mapping")) return false;

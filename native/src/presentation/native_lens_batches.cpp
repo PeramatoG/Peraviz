@@ -118,12 +118,13 @@ Dictionary NativeLensBatches::stats() const {
 PackedFloat32Array NativeLensBatches::buffer(int32_t batch) const { return batch>=0 && size_t(batch)<batches_.size()?batches_[batch].buffer:PackedFloat32Array(); }
 // Updates existing instance custom alpha only, then coalesces one submission per dirty batch.
 size_t NativeLensBatches::apply_shutters(const std::vector<uint32_t> &owners) {
+    shutter_instance_writes_=0;
     if (!enabled_) return 0;
     for (uint32_t owner:owners) if (owner<routes_.size()) for (const auto &route:routes_[owner]) {
         auto &batch=batches_[route.batch]; const auto &slot=batch.slots[route.slot];
         const float value=slot.base_energy*gain_*shutter(owner);
         auto *data=batch.buffer.ptrw();
-        if (data[route.slot*16+15]!=value) { data[route.slot*16+15]=value; batch.dirty=true; }
+        if (data[route.slot*16+15]!=value) { data[route.slot*16+15]=value; batch.dirty=true; ++shutter_instance_writes_; }
     }
     flush(false);
     return size_t(submissions_);
