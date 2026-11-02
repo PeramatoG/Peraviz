@@ -53,4 +53,4 @@ The actual UDP/ArtDmx scenario with 1,000 unrelated datagrams plus a 100-packet 
 
 ## Current limits
 
-Compiled setup remains version 7 and the visual protocol remains 2.3. Pan/Tilt remains immediate physical-degree evaluation. GDTF `RealFade` and `RealAcceleration`, native actuator trajectories, and no-new-DMX physical ticking are intentionally deferred to the next coherent branch.
+Compiled setup is version 9 and the visual protocol is 2.6. Pan/Tilt remains immediate physical-degree evaluation. GDTF `RealFade` and `RealAcceleration`, native actuator trajectories, and no-new-DMX physical ticking remain deferred. Persistent shutter/strobe presentation samples held native parameters without producing DMX/source evaluations; this does not add actuator ticking. See the [temporal presentation audit](temporal-presentation-performance-audit.md) for ownership, counters and the Windows validation protocol.

@@ -65,6 +65,8 @@ int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const Pac
     materials_.set_shutters(&shutters_.envelopes()); footprints_.set_shutters(&shutters_.envelopes()); lenses_.set_shutters(&shutters_.envelopes());
     shutter_lights_.clear(); shutter_beams_.clear(); shutter_rows_.clear(); shutter_row_slots_.clear();
     shutter_beam_writes_=shutter_material_writes_=shutter_ticks_=shutter_us_=shutter_lens_submissions_=0;
+    shutter_lens_material_writes_=shutter_footprint_material_writes_=shutter_projector_writes_=0;
+    shutter_lens_bytes_=shutter_lens_instance_writes_=shutter_evaluation_us_=shutter_mutation_us_=0;
     pipeline_.clear(); projection_.clear(); materials_.clear(); indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
     fixture_ids_.clear(); fixture_ids_.reserve(targets.size());
     return int64_t(state_.generation());
@@ -140,6 +142,7 @@ Dictionary PeravizPresentationState::compose(int64_t generation, const PackedInt
 }
 // Applies diagnostic transitions before native evaluation or explicit held-state replay.
 void PeravizPresentationState::begin_snapshot(bool trace) {
+    shutter_trace_=trace;
     if (!async_) state_.set_trace_enabled(trace);
     const bool suppress_lenses=trace && diagnostic_skip_lens_writes_;
     // Leaving diagnostic isolation replays exact held values without another DMX packet.
@@ -311,6 +314,14 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["shutter_waveform_evaluations"]=int64_t(shutters_.evaluations()); sizes["shutter_envelope_changes"]=int64_t(shutters_.changes());
     sizes["shutter_beam_writes"]=int64_t(shutter_beam_writes_); sizes["shutter_material_writes"]=int64_t(shutter_material_writes_);
     sizes["shutter_lens_submissions"]=int64_t(shutter_lens_submissions_);
+    sizes["shutter_dirty_lens_batches"]=int64_t(shutter_lens_submissions_);
+    sizes["shutter_lens_transfer_bytes"]=int64_t(shutter_lens_bytes_);
+    sizes["shutter_lens_instance_writes"]=int64_t(shutter_lens_instance_writes_);
+    sizes["shutter_lens_material_writes"]=int64_t(shutter_lens_material_writes_);
+    sizes["shutter_footprint_material_writes"]=int64_t(shutter_footprint_material_writes_);
+    sizes["shutter_projector_writes"]=int64_t(shutter_projector_writes_);
+    sizes["shutter_evaluation_us"]=int64_t(shutter_evaluation_us_);
+    sizes["shutter_mutation_us"]=int64_t(shutter_mutation_us_);
     sizes["shutter_ticks"]=int64_t(shutter_ticks_); sizes["shutter_presentation_us"]=int64_t(shutter_us_);
     sizes["native_async_active"]=bool(async_); sizes["native_snapshot_buffer_bytes"]=int64_t(async_snapshot_bytes_);
     sizes["native_worker_scratch_bytes"]=int64_t(async_worker_bytes_);

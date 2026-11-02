@@ -65,9 +65,11 @@ private:
     std::vector<peraviz::presentation::PreparedRenderRow> shutter_rows_;
     std::vector<int32_t> shutter_row_slots_,shutter_fallback_;
     std::vector<std::vector<uint32_t>> shutter_owners_by_row_;
-    bool shutter_enabled_=true;
+    bool shutter_enabled_=true,shutter_trace_=false;
     double shutter_surface_gain_=1,shutter_beam_gain_=1;
     uint64_t shutter_beam_writes_=0,shutter_material_writes_=0,shutter_ticks_=0,shutter_us_=0,shutter_lens_submissions_=0;
+    uint64_t shutter_lens_material_writes_=0,shutter_footprint_material_writes_=0,shutter_projector_writes_=0;
+    uint64_t shutter_lens_bytes_=0,shutter_lens_instance_writes_=0,shutter_evaluation_us_=0,shutter_mutation_us_=0;
     void ingest_shutters(const peraviz::runtime::SectionedVisualFrame &frame);
 
     NativeLensBatches lenses_;

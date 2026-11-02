@@ -15,6 +15,9 @@ public:
     // Borrows the generation-owned presentation envelope; physical resource ownership does not change.
     void set_shutters(const std::vector<float> *values) { shutters_=values; }
     size_t apply_shutters(const std::vector<uint32_t> &owners);
+    // Last temporal transaction counts actual alpha changes and full submitted payload bytes.
+    size_t shutter_instance_writes() const { return shutter_instance_writes_; }
+    size_t submitted_bytes() const { return size_t(bytes_); }
     void invalidate();
     void set_enabled(bool enabled);
     void set_gain(double gain);
@@ -37,6 +40,7 @@ private:
     std::vector<std::vector<Route>> routes_;
     bool enabled_=true;
     float gain_=1;
+    size_t shutter_instance_writes_=0;
     int64_t bytes_=0,submissions_=0,pack_us_=0,submit_us_=0;
 };
 }

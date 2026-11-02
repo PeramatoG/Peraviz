@@ -8,6 +8,13 @@
 
 This document records presentation and performance decisions that complement the active [runtime architecture](architecture.md). The runtime architecture remains authoritative for the implemented data path; proposed grouping and batching work in this document is not current capability unless stated otherwise.
 
+## Temporal presentation audit
+
+The [PR #123 baseline/candidate audit](temporal-presentation-performance-audit.md)
+confirms pooled temporal sampling, stable aggregate shafts and eligible MultiMesh
+lenses. It explains necessary physical footprint/material fan-out, full-buffer
+submission bytes, focused corrections and remaining Windows GPU validation.
+
 ## Shared Fake Smoke — Vector Prism phase 1 (2026-10-28)
 
 Settings → **Fake Smoke** exposes Enable, Density, Variation, Spatial scale in

@@ -34,11 +34,13 @@ void PeravizPresentationState::ingest_shutters(const peraviz::runtime::Sectioned
 int64_t PeravizPresentationState::advance_shutters(int64_t generation,double test_now) {
     if (uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) return -1;
     if (!shutters_.pending()) return 0;
-    const auto start=std::chrono::steady_clock::now();
+    const auto start=shutter_trace_?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     const auto &changed=shutters_.tick(test_now);
+    const auto evaluated=shutter_trace_?std::chrono::steady_clock::now():start;
+    if (shutter_trace_) shutter_evaluation_us_+=std::chrono::duration_cast<std::chrono::microseconds>(evaluated-start).count();
     if (changed.empty()) {
         ++shutter_ticks_;
-        shutter_us_+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
+        if (shutter_trace_) shutter_us_+=std::chrono::duration_cast<std::chrono::microseconds>(evaluated-start).count();
         return 0;
     }
     const auto &envelopes=shutters_.envelopes();
@@ -55,19 +57,34 @@ int64_t PeravizPresentationState::advance_shutters(int64_t generation,double tes
         if (owner<shutter_lights_.size()) {
             const auto physical=async_?displayed_physical_[owner]:state_.render_values(owner);
             const double base=physical[SpotEnergy]>0?physical[SpotEnergy]:physical[BeamEnergy];
-            const double energy=shutter_enabled_?base*shutter_surface_gain_*envelopes[owner]:0;
+            const float energy=shutter_enabled_?float(base*shutter_surface_gain_*envelopes[owner]):0.0f;
             for (uint64_t object:shutter_lights_[owner]) if (auto *light=Object::cast_to<Light3D>(ObjectDB::get_instance(object)))
-                if (light->get_param(Light3D::PARAM_ENERGY)!=energy) light->set_param(Light3D::PARAM_ENERGY,float(energy));
+                if (light->get_param(Light3D::PARAM_ENERGY)!=energy) {
+                    light->set_param(Light3D::PARAM_ENERGY,energy); ++shutter_projector_writes_;
+                }
         }
     }
     size_t fallback=0;
     const auto beam_stats=shutter_beams_.apply(shutter_rows_,shutter_fallback_.data(),fallback);
     shutter_beam_writes_+=beam_stats.parameters+beam_stats.visibility;
     for (const auto &row:shutter_rows_) shutter_row_slots_[row.index]=-1;
-    if (!lens_writes_suppressed_) { materials_.apply_shutters(changed); shutter_lens_submissions_+=lenses_.apply_shutters(changed); }
+    size_t lens_writes=0;
+    if (!lens_writes_suppressed_) {
+        materials_.apply_shutters(changed); lens_writes=materials_.writes();
+        const auto submissions=lenses_.apply_shutters(changed);
+        shutter_lens_submissions_+=submissions;
+        if (submissions) shutter_lens_bytes_+=lenses_.submitted_bytes();
+        shutter_lens_instance_writes_+=lenses_.shutter_instance_writes();
+    }
     footprints_.apply_shutters(changed);
-    shutter_material_writes_+=materials_.writes()+footprints_.writes(); ++shutter_ticks_;
-    shutter_us_+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
+    shutter_lens_material_writes_+=lens_writes;
+    shutter_footprint_material_writes_+=footprints_.writes();
+    shutter_material_writes_+=lens_writes+footprints_.writes(); ++shutter_ticks_;
+    if (shutter_trace_) {
+        const auto finished=std::chrono::steady_clock::now();
+        shutter_us_+=std::chrono::duration_cast<std::chrono::microseconds>(finished-start).count();
+        shutter_mutation_us_+=std::chrono::duration_cast<std::chrono::microseconds>(finished-evaluated).count();
+    }
     return int64_t(changed.size());
 }
 // Exposes the independent presentation envelope for deterministic output/retirement probes.
