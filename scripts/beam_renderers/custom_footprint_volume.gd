@@ -3,6 +3,15 @@ extends MeshInstance3D
 # Renderer resource only. OpticalProjectionState owns every optical calculation.
 const META: StringName = &"peraviz_custom_footprint"
 const SHADER = preload("res://scripts/shaders/custom_footprint.gdshader")
+# Opt-in lifetime counters. Read interval differences; setter calls are not draws.
+enum Work { SYNC, NOTIFICATION, WORLD_CHECK, WORLD_CHANGE, INVERSE_WRITE, ORIGIN_WRITE, BOUNDS, UNIFORM_WRITE }
+const WORK_NAMES = ["sync_calls", "transform_notifications", "world_checks", "world_changes", "inverse_writes", "origin_writes", "bounds_recomputations", "uniform_writes"]
+var _work := PackedInt64Array()
+var trace_enabled: bool = false:
+	set(value):
+		trace_enabled = value
+		if value and _work.is_empty(): _work.resize(WORK_NAMES.size())
+
 var visibility_callback: Callable
 var projection: RefCounted
 var max_range: float = 40.0
@@ -21,6 +30,11 @@ var _bounds: AABB
 var _bounds_known: bool = false
 var _material: ShaderMaterial
 static var _volume: ArrayMesh
+
+func work_counts() -> Dictionary:
+	var result: Dictionary = {}
+	for index in range(WORK_NAMES.size()): result["custom_" + WORK_NAMES[index]] = _work[index] if not _work.is_empty() else 0
+	return result
 
 func _init() -> void:
 	name = "PeravizCustomFootprint"
@@ -64,6 +78,7 @@ func configure(state: RefCounted, range_m: float) -> void:
 	sync()
 
 func sync() -> void:
+	if trace_enabled: _work[Work.SYNC] += 1
 	if projection == null or not projection.configured or not is_inside_tree(): return
 	if _geometry_revision != projection.geometry_revision or _range_applied != max_range:
 		_geometry_revision = projection.geometry_revision
@@ -76,6 +91,7 @@ func sync() -> void:
 		_material.set_shader_parameter("aperture_tangent", tangent)
 		_material.set_shader_parameter("projection_range", max_range)
 		parameter_updates += 1
+		if trace_enabled: _work[Work.UNIFORM_WRITE] += 2
 	if _profile_revision != projection.profile_revision:
 		_profile_revision = projection.profile_revision
 		_material.set_shader_parameter("profile_parameters", projection.radial_profile.signature)
@@ -83,6 +99,7 @@ func sync() -> void:
 		_material.set_shader_parameter("profile_anchored", projection.radial_profile.anchored)
 		_material.set_shader_parameter("soft_open_profile", projection.radial_profile.diffuse)
 		parameter_updates += 1
+		if trace_enabled: _work[Work.UNIFORM_WRITE] += 4
 	sync_softness()
 	var source: Texture2D = projection.pattern_texture
 	var source_id: int = source.get_instance_id() if source != null else 0
@@ -96,8 +113,8 @@ func sync() -> void:
 			aspect = size / maxf(size.x, size.y)
 		_material.set_shader_parameter("artwork_aspect", aspect)
 		parameter_updates += 1
-	_sync_world()
-	_update_bounds()
+		if trace_enabled: _work[Work.UNIFORM_WRITE] += 3
+	if not _sync_world(): _update_bounds()
 
 # Profile-only edits do not touch transforms, coverage, texture bindings or bounds.
 func sync_softness() -> void:
@@ -105,22 +122,37 @@ func sync_softness() -> void:
 	_softness = projection.footprint_softness
 	_material.set_shader_parameter("edge_softness", _softness)
 	parameter_updates += 1
+	if trace_enabled: _work[Work.UNIFORM_WRITE] += 1
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_TRANSFORM_CHANGED and projection != null and is_inside_tree(): _sync_world()
+	if what == NOTIFICATION_TRANSFORM_CHANGED and projection != null and is_inside_tree():
+		if trace_enabled: _work[Work.NOTIFICATION] += 1
+		_sync_world()
 
-func _sync_world() -> void:
+func _sync_world() -> bool:
+	if trace_enabled: _work[Work.WORLD_CHECK] += 1
 	var anchor := get_parent() as Node3D
-	if anchor == null: return
+	if anchor == null: return false
 	var world := anchor.global_transform
-	if _known_world and world.is_equal_approx(_world): return
+	if _known_world and world.is_equal_approx(_world): return false
+	# Rotation can change every matrix element while retaining the exact origin.
+	var origin_changed: bool = not _known_world or world.origin != _world.origin
+	if trace_enabled:
+		_work[Work.WORLD_CHANGE] += 1
+		_work[Work.INVERSE_WRITE] += 1
+		_work[Work.UNIFORM_WRITE] += 1
 	_world = world
 	_known_world = true
 	_world_inverse = world.affine_inverse()
 	_material.set_shader_parameter("world_to_projector", _world_inverse)
-	_material.set_shader_parameter("projector_origin", world.origin)
+	if origin_changed:
+		_material.set_shader_parameter("projector_origin", world.origin)
+		if trace_enabled:
+			_work[Work.ORIGIN_WRITE] += 1
+			_work[Work.UNIFORM_WRITE] += 1
 	parameter_updates += 1
 	_update_bounds()
+	return true
 
 func set_receiver_bounds(bounds: AABB, known: bool) -> void:
 	# Setup/edit boundary only: conservative scene-bounds broad phase, not a
@@ -132,6 +164,7 @@ func set_receiver_bounds(bounds: AABB, known: bool) -> void:
 # AABB support along the projector depth axis is conservative under arbitrary
 # mechanical ancestry, inclination and parity. Unknown bounds retain full range.
 func _update_bounds() -> void:
+	if trace_enabled: _work[Work.BOUNDS] += 1
 	if projection == null or not projection.configured: return
 	var limited: float = max_range
 	if _bounds_known and _known_world:

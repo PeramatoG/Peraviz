@@ -101,6 +101,10 @@ func run() -> void:
 	test.check(counts.custom_projector_resources == 128 and counts.active_custom_footprints == 128, "Independent footprints survive native shaft application")
 	test.check(counts.surface_lights.active_projector_lights == 0 and counts.surface_lights.active_surface_lights == 0, "Custom footprints are never counted as native lights")
 	var volume = adapter._footprints.volumes[0]
+	service.set_performance_trace_enabled(true)
+	for projector in adapter._footprints.volumes: test.check(projector.trace_enabled, "Trace enable reaches retained physical projectors")
+	service.set_performance_trace_enabled(false)
+	for projector in adapter._footprints.volumes: test.check(not projector.trace_enabled, "Trace disable stops projector work accounting")
 	test.check(volume.projection.pattern_texture == texture and volume.material_override.get_shader_parameter("pattern_texture") == texture, "Original image resource is bound directly, without vectorization or composition")
 	test.check(volume.material_override.get_shader_parameter("artwork_aspect") == Vector2(1, 0.5), "Original artwork aspect is preserved")
 	var dynamic: PackedFloat32Array = adapter._native.footprint_values(volume.material_override.get_rid())
