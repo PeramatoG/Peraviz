@@ -1,0 +1,2327 @@
+{
+  "tested_code_commit": "9ada204353abd1daa3c6c18adbcce21f6c7f4e46",
+  "base_commit": "c7f0cc5dfa17978a3bbb9e5f9c5b544f50478ef3",
+  "engine": {
+    "build": "official",
+    "hash": "a13da4feb8d8aefc283c3763d33a2f170a18d541",
+    "hex": 263937,
+    "major": 4,
+    "minor": 7,
+    "patch": 1,
+    "status": "stable",
+    "string": "4.7.1-stable (official)",
+    "timestamp": 0
+  },
+  "device": "llvmpipe (LLVM 19.1.7, 256 bits)",
+  "scope": "Linux Forward+/Vulkan llvmpipe software; no Windows GPU performance claim. Imported-scene inputs are synthetic resolved rows and mechanical motion, not raw DMX/GDTF evaluation or an owner-stream replay. Timers overlap and case differences are not additive.",
+  "scene_resolution": [
+    320,
+    240
+  ],
+  "scene_warmup_frames": 4,
+  "scene_samples": 8,
+  "scene_render_group_membership": [
+    {
+      "class": 1,
+      "members": [
+        732,
+        87,
+        37,
+        171,
+        652,
+        334,
+        360,
+        879,
+        1041,
+        1015,
+        369,
+        475,
+        1037,
+        506,
+        375,
+        264,
+        73,
+        362,
+        1029,
+        494,
+        778,
+        167,
+        450,
+        624,
+        206,
+        536,
+        792,
+        928,
+        550,
+        297,
+        982,
+        1059,
+        408,
+        426,
+        505,
+        271,
+        469,
+        439,
+        629,
+        903,
+        923,
+        743,
+        62,
+        184,
+        13,
+        690,
+        313,
+        397,
+        150,
+        749
+      ],
+      "row": 1
+    },
+    {
+      "class": 1,
+      "members": [
+        566,
+        701,
+        649,
+        3,
+        719,
+        780,
+        256,
+        532,
+        359,
+        84,
+        227,
+        647,
+        85,
+        816,
+        55,
+        215,
+        974,
+        1045,
+        67,
+        995,
+        843,
+        274,
+        173,
+        1078,
+        99,
+        102,
+        873,
+        677,
+        940,
+        1080,
+        524,
+        898,
+        989,
+        646,
+        874,
+        247,
+        953,
+        21,
+        187,
+        180,
+        965,
+        509,
+        341,
+        591,
+        45,
+        364,
+        648,
+        618,
+        458,
+        229
+      ],
+      "row": 2
+    },
+    {
+      "class": 1,
+      "members": [
+        884,
+        520,
+        1038,
+        597,
+        887,
+        372,
+        377,
+        1009,
+        235,
+        52,
+        177,
+        885,
+        559,
+        371,
+        915,
+        790,
+        667,
+        75,
+        658,
+        906,
+        1057,
+        1010,
+        699,
+        657,
+        716,
+        124,
+        931,
+        295,
+        1077,
+        756,
+        462,
+        849,
+        489,
+        244,
+        936,
+        1017,
+        347,
+        530,
+        987,
+        802,
+        709,
+        977,
+        996,
+        886,
+        149,
+        236,
+        255,
+        810,
+        655,
+        160
+      ],
+      "row": 3
+    },
+    {
+      "class": 1,
+      "members": [
+        747,
+        963,
+        504,
+        675,
+        1001,
+        89,
+        101,
+        803,
+        567,
+        82,
+        676,
+        479,
+        461,
+        344,
+        967,
+        193,
+        486,
+        302,
+        833,
+        769,
+        670,
+        233,
+        798,
+        434,
+        411,
+        133,
+        284,
+        1060,
+        119,
+        992,
+        118,
+        665,
+        955,
+        941,
+        913,
+        735,
+        961,
+        691,
+        821,
+        395,
+        394,
+        283,
+        23,
+        63,
+        77,
+        862,
+        1027,
+        466,
+        791,
+        470
+      ],
+      "row": 4
+    },
+    {
+      "class": 1,
+      "members": [
+        290,
+        399,
+        440,
+        1033,
+        545,
+        738,
+        718,
+        316,
+        176,
+        335,
+        468,
+        795,
+        697,
+        291,
+        1068,
+        406,
+        927,
+        129,
+        460,
+        950,
+        349,
+        702,
+        556,
+        219,
+        636,
+        92,
+        1028,
+        922,
+        211,
+        1034,
+        734,
+        112,
+        764,
+        686,
+        600,
+        639,
+        43,
+        744,
+        1085,
+        370,
+        610,
+        608,
+        857,
+        495,
+        391,
+        5,
+        809,
+        306,
+        848,
+        65
+      ],
+      "row": 5
+    },
+    {
+      "class": 1,
+      "members": [
+        938,
+        490,
+        583,
+        694,
+        679,
+        753,
+        564,
+        25,
+        546,
+        163,
+        637,
+        507,
+        783,
+        960,
+        6,
+        514,
+        318,
+        842,
+        1089,
+        415,
+        976,
+        1058,
+        970,
+        117,
+        159,
+        154,
+        333,
+        806,
+        990,
+        366,
+        889,
+        292,
+        767,
+        935,
+        934,
+        914,
+        611,
+        897,
+        165,
+        498,
+        485,
+        483,
+        218,
+        835,
+        836,
+        398,
+        713,
+        946,
+        1052,
+        980
+      ],
+      "row": 6
+    },
+    {
+      "class": 1,
+      "members": [
+        22,
+        586,
+        662,
+        296,
+        674,
+        69,
+        288,
+        298,
+        1050,
+        638,
+        617,
+        789,
+        939,
+        220,
+        420,
+        83,
+        1055,
+        822,
+        569,
+        604,
+        405,
+        1087,
+        1090,
+        830,
+        18,
+        958,
+        363,
+        852,
+        169,
+        477,
+        356,
+        759,
+        310,
+        525,
+        698,
+        904,
+        147,
+        740,
+        30,
+        587,
+        186,
+        1039,
+        367,
+        962,
+        26,
+        893,
+        560,
+        933,
+        425,
+        929
+      ],
+      "row": 7
+    },
+    {
+      "class": 1,
+      "members": [
+        592,
+        841,
+        1069,
+        827,
+        225,
+        981,
+        801,
+        517,
+        573,
+        132,
+        168,
+        322,
+        834,
+        228,
+        570,
+        720,
+        599,
+        748,
+        28,
+        912,
+        315,
+        471,
+        515,
+        768,
+        328,
+        352,
+        131,
+        580,
+        424,
+        31,
+        332,
+        503,
+        866,
+        94,
+        7,
+        337,
+        1048,
+        680,
+        1066,
+        724,
+        971,
+        544,
+        937,
+        441,
+        776,
+        499,
+        232,
+        846,
+        890,
+        512
+      ],
+      "row": 8
+    },
+    {
+      "class": 1,
+      "members": [
+        557,
+        329,
+        766,
+        771,
+        750,
+        598,
+        265,
+        614,
+        1043,
+        653,
+        465,
+        659,
+        1064,
+        692,
+        565,
+        198,
+        785,
+        126,
+        824,
+        58,
+        301,
+        758,
+        396,
+        71,
+        1082,
+        314,
+        433,
+        1079,
+        307,
+        234,
+        100,
+        323,
+        533,
+        882,
+        157,
+        257,
+        110,
+        487,
+        997,
+        201,
+        541,
+        723,
+        385,
+        387,
+        1065,
+        162,
+        741,
+        1044,
+        304,
+        760
+      ],
+      "row": 9
+    },
+    {
+      "class": 1,
+      "members": [
+        622,
+        492,
+        78,
+        135,
+        601,
+        49,
+        1092,
+        38,
+        179,
+        281,
+        537,
+        113,
+        947,
+        975,
+        251,
+        50,
+        182,
+        696,
+        57,
+        765,
+        979,
+        991,
+        860,
+        645,
+        930,
+        590,
+        70,
+        796,
+        64,
+        954,
+        535,
+        294,
+        463,
+        603,
+        338,
+        474,
+        942,
+        1012,
+        1023,
+        969,
+        772,
+        263,
+        656,
+        280,
+        562,
+        864,
+        81,
+        185,
+        901,
+        828
+      ],
+      "row": 10
+    },
+    {
+      "class": 1,
+      "members": [
+        400,
+        561,
+        404,
+        311,
+        252,
+        210,
+        1072,
+        438,
+        46,
+        97,
+        814,
+        320,
+        419,
+        226,
+        342,
+        666,
+        704,
+        966,
+        774,
+        872,
+        1091,
+        577,
+        105,
+        4,
+        531,
+        714,
+        782,
+        442,
+        445,
+        10,
+        79,
+        818,
+        1076,
+        34,
+        104,
+        627,
+        712,
+        40,
+        289,
+        36,
+        242,
+        32,
+        20,
+        910,
+        521,
+        381,
+        216,
+        838,
+        1025,
+        602
+      ],
+      "row": 11
+    },
+    {
+      "class": 1,
+      "members": [
+        957,
+        269,
+        416,
+        847,
+        459,
+        317,
+        321,
+        921,
+        412,
+        731,
+        432,
+        878,
+        695,
+        807,
+        1024,
+        358,
+        1036,
+        1006,
+        418,
+        788,
+        194,
+        851,
+        654,
+        368,
+        330,
+        136,
+        717,
+        794,
+        221,
+        19,
+        482,
+        467,
+        549,
+        464,
+        959,
+        413,
+        223,
+        403,
+        518,
+        152,
+        693,
+        245,
+        217,
+        431,
+        708,
+        473,
+        813,
+        114,
+        383,
+        253
+      ],
+      "row": 12
+    },
+    {
+      "class": 1,
+      "members": [
+        650,
+        390,
+        510,
+        1086,
+        1094,
+        213,
+        513,
+        689,
+        272,
+        949,
+        700,
+        273,
+        528,
+        1051,
+        511,
+        308,
+        17,
+        516,
+        1070,
+        134,
+        578,
+        354,
+        29,
+        840,
+        238,
+        249,
+        621,
+        800,
+        900,
+        988,
+        1020,
+        401,
+        496,
+        204,
+        519,
+        978,
+        0,
+        103,
+        300,
+        784,
+        346,
+        312,
+        47,
+        410,
+        916,
+        902,
+        781,
+        285,
+        1061,
+        453
+      ],
+      "row": 13
+    },
+    {
+      "class": 1,
+      "members": [
+        1032,
+        481,
+        905,
+        727,
+        722,
+        488,
+        365,
+        373,
+        951,
+        80,
+        553,
+        1021,
+        357,
+        853,
+        726,
+        631,
+        44,
+        668,
+        883,
+        212,
+        917,
+        892,
+        640,
+        932,
+        1053,
+        200,
+        571,
+        51,
+        192,
+        166,
+        924,
+        1018,
+        584,
+        98,
+        146,
+        644,
+        72,
+        1005,
+        607,
+        1084,
+        340,
+        815,
+        56,
+        181,
+        278,
+        158,
+        728,
+        619,
+        33,
+        339
+      ],
+      "row": 14
+    },
+    {
+      "class": 1,
+      "members": [
+        746,
+        605,
+        869,
+        909,
+        2,
+        908,
+        819,
+        1003,
+        543,
+        1093,
+        361,
+        703,
+        625,
+        986,
+        804,
+        820,
+        671,
+        856,
+        799,
+        574,
+        96,
+        585,
+        145,
+        817,
+        896,
+        839,
+        1074,
+        730,
+        985,
+        246,
+        526,
+        91,
+        343,
+        956,
+        379,
+        920,
+        355,
+        120,
+        682,
+        812,
+        8,
+        268,
+        1004,
+        414,
+        74,
+        293,
+        209,
+        61,
+        107,
+        175
+      ],
+      "row": 15
+    },
+    {
+      "class": 1,
+      "members": [
+        224,
+        122,
+        918,
+        539,
+        563,
+        327,
+        837,
+        493,
+        188,
+        643,
+        762,
+        491,
+        430,
+        435,
+        635,
+        454,
+        751,
+        1002,
+        684,
+        875,
+        106,
+        829,
+        508,
+        1011,
+        529,
+        392,
+        568,
+        669,
+        615,
+        876,
+        844,
+        183,
+        66,
+        148,
+        170,
+        325,
+        1047,
+        59,
+        1014,
+        115,
+        378,
+        27,
+        248,
+        1042,
+        540,
+        527,
+        925,
+        164,
+        207,
+        770
+      ],
+      "row": 16
+    },
+    {
+      "class": 1,
+      "members": [
+        612,
+        202,
+        205,
+        685,
+        287,
+        721,
+        197,
+        262,
+        632,
+        863,
+        628,
+        551,
+        973,
+        382,
+        239,
+        393,
+        16,
+        952,
+        345,
+        641,
+        108,
+        1008,
+        1083,
+        54,
+        282,
+        858,
+        943,
+        60,
+        324,
+        261,
+        948,
+        121,
+        151,
+        174,
+        642,
+        755,
+        552,
+        1031,
+        231,
+        880,
+        661,
+        500,
+        348,
+        208,
+        452,
+        447,
+        417,
+        616,
+        736,
+        1013
+      ],
+      "row": 17
+    },
+    {
+      "class": 1,
+      "members": [
+        480,
+        1049,
+        554,
+        41,
+        139,
+        286,
+        945,
+        448,
+        250,
+        1026,
+        651,
+        144,
+        156,
+        763,
+        303,
+        199,
+        161,
+        259,
+        437,
+        861,
+        76,
+        752,
+        270,
+        994,
+        128,
+        86,
+        1081,
+        12,
+        436,
+        196,
+        705,
+        478,
+        15,
+        1030,
+        993,
+        688,
+        664,
+        620,
+        588,
+        88,
+        1046,
+        258,
+        427,
+        899,
+        142,
+        757,
+        907,
+        595,
+        609,
+        855
+      ],
+      "row": 18
+    },
+    {
+      "class": 1,
+      "members": [
+        808,
+        660,
+        805,
+        606,
+        230,
+        710,
+        497,
+        451,
+        266,
+        374,
+        865,
+        672,
+        1016,
+        309,
+        983,
+        1019,
+        733,
+        409,
+        93,
+        850,
+        754,
+        457,
+        944,
+        222,
+        456,
+        195,
+        742,
+        143,
+        596,
+        711,
+        240,
+        558,
+        276,
+        380,
+        1071,
+        407,
+        14,
+        243,
+        130,
+        555,
+        793,
+        777,
+        1088,
+        127,
+        542,
+        476,
+        1073,
+        1062,
+        706,
+        153
+      ],
+      "row": 19
+    },
+    {
+      "class": 1,
+      "members": [
+        42,
+        572,
+        594,
+        11,
+        1067,
+        109,
+        579,
+        1000,
+        964,
+        178,
+        538,
+        881,
+        633,
+        402,
+        39,
+        999,
+        626,
+        190,
+        678,
+        725,
+        825,
+        911,
+        422,
+        421,
+        191,
+        715,
+        172,
+        576,
+        125,
+        998,
+        895,
+        326,
+        534,
+        443,
+        761,
+        305,
+        279,
+        501,
+        384,
+        737,
+        116,
+        811,
+        1,
+        484,
+        707,
+        189,
+        888,
+        870,
+        53,
+        376
+      ],
+      "row": 20
+    },
+    {
+      "class": 0,
+      "members": [
+        9
+      ],
+      "row": 21
+    },
+    {
+      "class": 0,
+      "members": [
+        24
+      ],
+      "row": 22
+    },
+    {
+      "class": 0,
+      "members": [
+        35
+      ],
+      "row": 23
+    },
+    {
+      "class": 0,
+      "members": [
+        48
+      ],
+      "row": 24
+    },
+    {
+      "class": 0,
+      "members": [
+        68
+      ],
+      "row": 25
+    },
+    {
+      "class": 0,
+      "members": [
+        90
+      ],
+      "row": 26
+    },
+    {
+      "class": 0,
+      "members": [
+        95
+      ],
+      "row": 27
+    },
+    {
+      "class": 0,
+      "members": [
+        111
+      ],
+      "row": 28
+    },
+    {
+      "class": 0,
+      "members": [
+        123
+      ],
+      "row": 29
+    },
+    {
+      "class": 0,
+      "members": [
+        137
+      ],
+      "row": 30
+    },
+    {
+      "class": 0,
+      "members": [
+        138
+      ],
+      "row": 31
+    },
+    {
+      "class": 0,
+      "members": [
+        140
+      ],
+      "row": 32
+    },
+    {
+      "class": 0,
+      "members": [
+        141
+      ],
+      "row": 33
+    },
+    {
+      "class": 0,
+      "members": [
+        155
+      ],
+      "row": 34
+    },
+    {
+      "class": 0,
+      "members": [
+        203
+      ],
+      "row": 35
+    },
+    {
+      "class": 0,
+      "members": [
+        214
+      ],
+      "row": 36
+    },
+    {
+      "class": 0,
+      "members": [
+        237
+      ],
+      "row": 37
+    },
+    {
+      "class": 0,
+      "members": [
+        241
+      ],
+      "row": 38
+    },
+    {
+      "class": 0,
+      "members": [
+        254
+      ],
+      "row": 39
+    },
+    {
+      "class": 0,
+      "members": [
+        260
+      ],
+      "row": 40
+    },
+    {
+      "class": 0,
+      "members": [
+        267
+      ],
+      "row": 41
+    },
+    {
+      "class": 0,
+      "members": [
+        275
+      ],
+      "row": 42
+    },
+    {
+      "class": 0,
+      "members": [
+        277
+      ],
+      "row": 43
+    },
+    {
+      "class": 0,
+      "members": [
+        299
+      ],
+      "row": 44
+    },
+    {
+      "class": 0,
+      "members": [
+        319
+      ],
+      "row": 45
+    },
+    {
+      "class": 0,
+      "members": [
+        331
+      ],
+      "row": 46
+    },
+    {
+      "class": 0,
+      "members": [
+        336
+      ],
+      "row": 47
+    },
+    {
+      "class": 0,
+      "members": [
+        350
+      ],
+      "row": 48
+    },
+    {
+      "class": 0,
+      "members": [
+        351
+      ],
+      "row": 49
+    },
+    {
+      "class": 0,
+      "members": [
+        353
+      ],
+      "row": 50
+    },
+    {
+      "class": 0,
+      "members": [
+        386
+      ],
+      "row": 51
+    },
+    {
+      "class": 0,
+      "members": [
+        388
+      ],
+      "row": 52
+    },
+    {
+      "class": 0,
+      "members": [
+        389
+      ],
+      "row": 53
+    },
+    {
+      "class": 0,
+      "members": [
+        423
+      ],
+      "row": 54
+    },
+    {
+      "class": 0,
+      "members": [
+        428
+      ],
+      "row": 55
+    },
+    {
+      "class": 0,
+      "members": [
+        429
+      ],
+      "row": 56
+    },
+    {
+      "class": 0,
+      "members": [
+        444
+      ],
+      "row": 57
+    },
+    {
+      "class": 0,
+      "members": [
+        446
+      ],
+      "row": 58
+    },
+    {
+      "class": 0,
+      "members": [
+        449
+      ],
+      "row": 59
+    },
+    {
+      "class": 0,
+      "members": [
+        455
+      ],
+      "row": 60
+    },
+    {
+      "class": 0,
+      "members": [
+        472
+      ],
+      "row": 61
+    },
+    {
+      "class": 0,
+      "members": [
+        502
+      ],
+      "row": 62
+    },
+    {
+      "class": 0,
+      "members": [
+        522
+      ],
+      "row": 63
+    },
+    {
+      "class": 0,
+      "members": [
+        523
+      ],
+      "row": 64
+    },
+    {
+      "class": 0,
+      "members": [
+        547
+      ],
+      "row": 65
+    },
+    {
+      "class": 0,
+      "members": [
+        548
+      ],
+      "row": 66
+    },
+    {
+      "class": 0,
+      "members": [
+        575
+      ],
+      "row": 67
+    },
+    {
+      "class": 0,
+      "members": [
+        581
+      ],
+      "row": 68
+    },
+    {
+      "class": 0,
+      "members": [
+        582
+      ],
+      "row": 69
+    },
+    {
+      "class": 0,
+      "members": [
+        589
+      ],
+      "row": 70
+    },
+    {
+      "class": 0,
+      "members": [
+        593
+      ],
+      "row": 71
+    },
+    {
+      "class": 0,
+      "members": [
+        613
+      ],
+      "row": 72
+    },
+    {
+      "class": 0,
+      "members": [
+        623
+      ],
+      "row": 73
+    },
+    {
+      "class": 0,
+      "members": [
+        630
+      ],
+      "row": 74
+    },
+    {
+      "class": 0,
+      "members": [
+        634
+      ],
+      "row": 75
+    },
+    {
+      "class": 0,
+      "members": [
+        663
+      ],
+      "row": 76
+    },
+    {
+      "class": 0,
+      "members": [
+        673
+      ],
+      "row": 77
+    },
+    {
+      "class": 0,
+      "members": [
+        681
+      ],
+      "row": 78
+    },
+    {
+      "class": 0,
+      "members": [
+        683
+      ],
+      "row": 79
+    },
+    {
+      "class": 0,
+      "members": [
+        687
+      ],
+      "row": 80
+    },
+    {
+      "class": 0,
+      "members": [
+        729
+      ],
+      "row": 81
+    },
+    {
+      "class": 0,
+      "members": [
+        739
+      ],
+      "row": 82
+    },
+    {
+      "class": 0,
+      "members": [
+        745
+      ],
+      "row": 83
+    },
+    {
+      "class": 0,
+      "members": [
+        773
+      ],
+      "row": 84
+    },
+    {
+      "class": 0,
+      "members": [
+        775
+      ],
+      "row": 85
+    },
+    {
+      "class": 0,
+      "members": [
+        779
+      ],
+      "row": 86
+    },
+    {
+      "class": 0,
+      "members": [
+        786
+      ],
+      "row": 87
+    },
+    {
+      "class": 0,
+      "members": [
+        787
+      ],
+      "row": 88
+    },
+    {
+      "class": 0,
+      "members": [
+        797
+      ],
+      "row": 89
+    },
+    {
+      "class": 0,
+      "members": [
+        823
+      ],
+      "row": 90
+    },
+    {
+      "class": 0,
+      "members": [
+        826
+      ],
+      "row": 91
+    },
+    {
+      "class": 0,
+      "members": [
+        831
+      ],
+      "row": 92
+    },
+    {
+      "class": 0,
+      "members": [
+        832
+      ],
+      "row": 93
+    },
+    {
+      "class": 0,
+      "members": [
+        845
+      ],
+      "row": 94
+    },
+    {
+      "class": 0,
+      "members": [
+        854
+      ],
+      "row": 95
+    },
+    {
+      "class": 0,
+      "members": [
+        859
+      ],
+      "row": 96
+    },
+    {
+      "class": 0,
+      "members": [
+        867
+      ],
+      "row": 97
+    },
+    {
+      "class": 0,
+      "members": [
+        868
+      ],
+      "row": 98
+    },
+    {
+      "class": 0,
+      "members": [
+        871
+      ],
+      "row": 99
+    },
+    {
+      "class": 0,
+      "members": [
+        877
+      ],
+      "row": 100
+    },
+    {
+      "class": 0,
+      "members": [
+        891
+      ],
+      "row": 101
+    },
+    {
+      "class": 0,
+      "members": [
+        894
+      ],
+      "row": 102
+    },
+    {
+      "class": 0,
+      "members": [
+        919
+      ],
+      "row": 103
+    },
+    {
+      "class": 0,
+      "members": [
+        926
+      ],
+      "row": 104
+    },
+    {
+      "class": 0,
+      "members": [
+        968
+      ],
+      "row": 105
+    },
+    {
+      "class": 0,
+      "members": [
+        972
+      ],
+      "row": 106
+    },
+    {
+      "class": 0,
+      "members": [
+        984
+      ],
+      "row": 107
+    },
+    {
+      "class": 0,
+      "members": [
+        1007
+      ],
+      "row": 108
+    },
+    {
+      "class": 0,
+      "members": [
+        1022
+      ],
+      "row": 109
+    },
+    {
+      "class": 0,
+      "members": [
+        1035
+      ],
+      "row": 110
+    },
+    {
+      "class": 0,
+      "members": [
+        1040
+      ],
+      "row": 111
+    },
+    {
+      "class": 0,
+      "members": [
+        1054
+      ],
+      "row": 112
+    },
+    {
+      "class": 0,
+      "members": [
+        1056
+      ],
+      "row": 113
+    },
+    {
+      "class": 0,
+      "members": [
+        1063
+      ],
+      "row": 114
+    },
+    {
+      "class": 0,
+      "members": [
+        1075
+      ],
+      "row": 115
+    }
+  ],
+  "scene_cases": [
+    {
+      "case": "A_full",
+      "draw_calls": 2400,
+      "rendered_objects": 2520,
+      "primitives": 1000987,
+      "cpu_render_ms": 4.77462500333786,
+      "gpu_render_ms": 732.128616333008,
+      "frame_wall_ms": 773.629625,
+      "application_us_per_frame": 11922.375,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358283089.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "B_shafts_only",
+      "draw_calls": 1325,
+      "rendered_objects": 1445,
+      "primitives": 977337,
+      "cpu_render_ms": 4.48274996876717,
+      "gpu_render_ms": 421.482250213623,
+      "frame_wall_ms": 465.310125,
+      "application_us_per_frame": 7664.0,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358315657.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "C_footprints_only",
+      "draw_calls": 2305,
+      "rendered_objects": 2425,
+      "primitives": 994147,
+      "cpu_render_ms": 5.89537507295609,
+      "gpu_render_ms": 673.941116333008,
+      "frame_wall_ms": 743.378625,
+      "application_us_per_frame": 7829.625,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358345645.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "D_scene_motion",
+      "draw_calls": 1230,
+      "rendered_objects": 1350,
+      "primitives": 970497,
+      "cpu_render_ms": 6.94499999284744,
+      "gpu_render_ms": 355.224380493164,
+      "frame_wall_ms": 416.036125,
+      "application_us_per_frame": 7597.375,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358375453.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "E_static",
+      "draw_calls": 2400,
+      "rendered_objects": 2520,
+      "primitives": 1000987,
+      "cpu_render_ms": 6.16075003147125,
+      "gpu_render_ms": 610.876991271973,
+      "frame_wall_ms": 679.295375,
+      "application_us_per_frame": 1.875,
+      "physical_footprint_material_writes": 0,
+      "projector_work": {
+        "custom_bounds_recomputations": 0,
+        "custom_inverse_writes": 0,
+        "custom_origin_writes": 0,
+        "custom_projector_parameter_updates": 0,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 0,
+        "custom_uniform_writes": 0,
+        "custom_world_changes": 0,
+        "custom_world_checks": 0
+      },
+      "memory_static_bytes": 358405273.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "F_dimmer_color",
+      "draw_calls": 2400,
+      "rendered_objects": 2520,
+      "primitives": 1000987,
+      "cpu_render_ms": 6.03887510299683,
+      "gpu_render_ms": 614.707496643066,
+      "frame_wall_ms": 677.148875,
+      "application_us_per_frame": 5478.125,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 0,
+        "custom_inverse_writes": 0,
+        "custom_origin_writes": 0,
+        "custom_projector_parameter_updates": 0,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 0,
+        "custom_uniform_writes": 0,
+        "custom_world_changes": 0,
+        "custom_world_checks": 0
+      },
+      "memory_static_bytes": 358435165.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "G_pan_tilt",
+      "draw_calls": 2400,
+      "rendered_objects": 2520,
+      "primitives": 1000987,
+      "cpu_render_ms": 10.6116250157356,
+      "gpu_render_ms": 810.803260803223,
+      "frame_wall_ms": 972.242125,
+      "application_us_per_frame": 2733.125,
+      "physical_footprint_material_writes": 0,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358465009.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "H_combined",
+      "draw_calls": 2400,
+      "rendered_objects": 2520,
+      "primitives": 1000987,
+      "cpu_render_ms": 5.11974996328354,
+      "gpu_render_ms": 835.478118896484,
+      "frame_wall_ms": 823.044,
+      "application_us_per_frame": 9580.25,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358494793.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "I_trivial",
+      "draw_calls": 2400,
+      "rendered_objects": 2520,
+      "primitives": 1000987,
+      "cpu_render_ms": 5.03062498569489,
+      "gpu_render_ms": 619.51488494873,
+      "frame_wall_ms": 696.578375,
+      "application_us_per_frame": 8495.0,
+      "physical_footprint_material_writes": 16880,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 356601393.0,
+      "video_memory_bytes": 141372480.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 1075,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    },
+    {
+      "case": "J_no_footprint_writes",
+      "draw_calls": 1325,
+      "rendered_objects": 1445,
+      "primitives": 977337,
+      "cpu_render_ms": 8.58162507414818,
+      "gpu_render_ms": 460.465873718262,
+      "frame_wall_ms": 498.739875,
+      "application_us_per_frame": 7933.625,
+      "physical_footprint_material_writes": 0,
+      "projector_work": {
+        "custom_bounds_recomputations": 8184,
+        "custom_inverse_writes": 8184,
+        "custom_origin_writes": 8184,
+        "custom_projector_parameter_updates": 8184,
+        "custom_sync_calls": 0,
+        "custom_transform_notifications": 10246,
+        "custom_uniform_writes": 16368,
+        "custom_world_changes": 8184,
+        "custom_world_checks": 10246
+      },
+      "memory_static_bytes": 358665825.0,
+      "video_memory_bytes": 141561680.0,
+      "transparent_objects": null,
+      "gpu_render_ms_note": "Software device timer; not real GPU execution evidence.",
+      "resources": {
+        "physical_outputs": 1095,
+        "custom_projector_resources": 1075,
+        "active_custom_footprints": 0,
+        "culled_custom_footprints": 0,
+        "aggregate_shaft_resources": 20,
+        "aggregated_members": 1000,
+        "allocated_member_shafts": 95,
+        "final_render_rows": 115,
+        "custom_volumes_created": 1075,
+        "custom_volumes_retired": 0
+      }
+    }
+  ],
+  "six_output_before_after": {
+    "note": "Linux llvmpipe; CPU/viewport samples and counter evidence only. No Windows GPU claim. 30 warm-up/120 captured frames at 320x240 per case. Baseline restores only unconditional origin writes and duplicate sync bounds, retaining identical instrumentation.",
+    "cases": [
+      {
+        "case": "A_full",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 18,
+        "draws_after": 18,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.117816666513681,
+        "cpu_viewport_ms_after": 0.131916667148471,
+        "application_us_before": 438.825,
+        "application_us_after": 433.1
+      },
+      {
+        "case": "B_shafts_only",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 12,
+        "draws_after": 12,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.112000000290573,
+        "cpu_viewport_ms_after": 0.10635000038892,
+        "application_us_before": 465.55,
+        "application_us_after": 476.183333333333
+      },
+      {
+        "case": "C_footprints_only",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 12,
+        "draws_after": 12,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.102991666458547,
+        "cpu_viewport_ms_after": 0.142741666051249,
+        "application_us_before": 351.066666666667,
+        "application_us_after": 483.108333333333
+      },
+      {
+        "case": "D_scene_motion",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 6,
+        "draws_after": 6,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.123766666402419,
+        "cpu_viewport_ms_after": 0.0998999999215206,
+        "application_us_before": 422.275,
+        "application_us_after": 533.991666666667
+      },
+      {
+        "case": "E_static",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 18,
+        "draws_after": 18,
+        "origin_writes_before": 0,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.160383333886663,
+        "cpu_viewport_ms_after": 0.155874999488393,
+        "application_us_before": 1.14166666666667,
+        "application_us_after": 1.375
+      },
+      {
+        "case": "F_dimmer_color",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 18,
+        "draws_after": 18,
+        "origin_writes_before": 0,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.132424999835591,
+        "cpu_viewport_ms_after": 0.14543333388865,
+        "application_us_before": 406.508333333333,
+        "application_us_after": 463.4
+      },
+      {
+        "case": "G_pan_tilt",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 18,
+        "draws_after": 18,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.114333333323399,
+        "cpu_viewport_ms_after": 0.154066666712364,
+        "application_us_before": 38.225,
+        "application_us_after": 20.2833333333333
+      },
+      {
+        "case": "H_combined",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 18,
+        "draws_after": 18,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.120016666936378,
+        "cpu_viewport_ms_after": 0.136049999979635,
+        "application_us_before": 401.308333333333,
+        "application_us_after": 524.708333333333
+      },
+      {
+        "case": "I_trivial",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 18,
+        "draws_after": 18,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.0862916670118769,
+        "cpu_viewport_ms_after": 0.119383333995938,
+        "application_us_before": 357.025,
+        "application_us_after": 395.066666666667
+      },
+      {
+        "case": "J_no_footprint_writes",
+        "max_8bit_pixel_error": 0,
+        "draws_before": 12,
+        "draws_after": 12,
+        "origin_writes_before": 720,
+        "origin_writes_after": 0,
+        "cpu_viewport_ms_before": 0.092366666905582,
+        "cpu_viewport_ms_after": 0.121850000259777,
+        "application_us_before": 356.016666666667,
+        "application_us_after": 546.3
+      }
+    ]
+  },
+  "imported_scene_headless_cleanup": {
+    "created": 1075,
+    "retired": 1075,
+    "remaining": 0
+  },
+  "validation": {
+    "native_ctest_passed": 13,
+    "gdscript_passed": 44,
+    "python_ci_script_tests_passed": 9
+  }
+}

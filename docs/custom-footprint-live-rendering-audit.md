@@ -197,6 +197,11 @@ sample and can include earlier capture overhead; it is explicitly named
 camera, resolution, V-Sync, scene, profiles, range, input sequence, build and tracing
 identical, repeat runs, and report dispersion. Do not sum case differences.
 
+The [recorded evidence](performance/custom-footprint-live-rendering-evidence.json)
+contains the interval counters, actual Render Group memberships, software timing
+samples, before/after pixel comparison and imported-scene cleanup counts. The
+source MVR and fixture assets are excluded.
+
 ## Validation status
 
 Linux checks establish redundancy removal, physical/resource semantics and probe
