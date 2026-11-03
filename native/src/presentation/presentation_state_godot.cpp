@@ -311,6 +311,7 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["shutter_cpu_bytes_estimate"]=int64_t(shutter_bytes);
     sizes["shutter_active_outputs"]=int64_t(shutters_.active()); sizes["shutter_layers"]=int64_t(shutters_.layers());
     sizes["shutter_temporal_authorities"]=int64_t(shutters_.authorities()); sizes["shutter_active_authorities"]=int64_t(shutters_.active_authorities());
+    sizes["shutter_invalidations"]=int64_t(shutters_.invalidations());
     sizes["shutter_waveform_evaluations"]=int64_t(shutters_.evaluations()); sizes["shutter_envelope_changes"]=int64_t(shutters_.changes());
     sizes["shutter_beam_writes"]=int64_t(shutter_beam_writes_); sizes["shutter_material_writes"]=int64_t(shutter_material_writes_);
     sizes["shutter_lens_submissions"]=int64_t(shutter_lens_submissions_);

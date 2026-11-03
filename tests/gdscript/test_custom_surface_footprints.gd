@@ -21,6 +21,13 @@ func apply(service: RefCounted, frame: Dictionary) -> void:
 	service.end_visual_snapshot()
 
 func run() -> void:
+	# This opt-in consumer capture intentionally changes assumptions of the unit suite.
+	# Normal CI and all existing graphical checks retain the full regression path.
+	if "--startup-isolation-probe" in OS.get_cmdline_user_args():
+		root.disable_3d = true
+		await preload("res://tests/gdscript/helpers/footprint_graphical_probe.gd").new().run(self, test)
+		test.finish(self)
+		return
 	if "--render-footprint-probe" in OS.get_cmdline_user_args(): root.disable_3d = true
 	test.check(WindowSettings.DEFAULT_SETTINGS.footprint_backend == "custom" and not WindowSettings.DEFAULT_SETTINGS.enable_realtime_spotlights, "New-session defaults select custom without realtime lights")
 	for mode in [0, 1, 2, 3]:

@@ -41,6 +41,9 @@ func _run() -> void:
 	test.check(not RenderDiagnosticPolicyScript.renders_beams("no-beams"), "No-beams mode must suppress beam rendering")
 	test.check(not RenderDiagnosticPolicyScript.applies_section("no-beams", 15), "No-beams mode must suppress gobo beam parameter work")
 	test.check(RenderDiagnosticPolicyScript.applies_section("no-beams", 2), "No-beams mode must retain Dimmer held state and emissive output")
+	for isolation in ["no-custom-footprints", "no-volumetric-shafts"]:
+		test.check(RenderDiagnosticPolicyScript.isolation_from_arguments(PackedStringArray(["--peraviz-render-isolation=" + isolation])) == isolation, "Startup-only isolation parses independently")
+	test.check(RenderDiagnosticPolicyScript.isolation_from_arguments(PackedStringArray(["--peraviz-render-isolation=invalid"])) == "none", "Invalid isolation keeps full consumers")
 	var controller = DmxControllerScript.new()
 	controller._dmx_receiver = FakeReceiver.new()
 	controller._perf_snapshot = preload("res://scripts/runtime/performance_trace_snapshot.gd").new()

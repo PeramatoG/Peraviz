@@ -2,6 +2,8 @@
 """Deterministic public shutter fixtures, reusing the production import baseline ZIP/assets."""
 import argparse
 import io
+import copy
+import xml.etree.ElementTree as ET
 import math
 import re
 from pathlib import Path
@@ -10,7 +12,7 @@ from generate_import_compatibility_fixture import entry, channel, mode
 from generate_presentation_lifecycle_fixture import lens_glb, gobo_png
 
 
-def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False):
+def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False):
     xml_attributes = ''
     for name, unit, subs in [
         ('Shutter1', 'None', ''),
@@ -42,6 +44,7 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
     if banks:
         refs = ''.join(f'<Axis Name="Bank{bank}" Position="{{1,0,0}}{{0,1,0}}{{0,0,1}}{{{bank*0.2},0,0}}">{members}</Axis>' for bank,members in enumerate(bank_refs))
     geometry = '<Geometries><Axis Name="Base">'+refs+'</Axis><Geometry Name="Cell"><Beam Name="Pixel" Model="Lens" BeamType="Wash" BeamRadius="0.02" BeamAngle="25" LuminousFlux="1000"/></Geometry></Geometries>'
+    if moving: geometry = geometry.replace('<Axis Name="Base">', '<Axis Name="Base"><Axis Name="Tilt">').replace('</Axis><Geometry Name="Cell">', '</Axis></Axis><Geometry Name="Cell">')
     channels = ''.join(channel(1+i, attr, 'Base') for i, attr in enumerate([] if cell_colors else ['Dimmer','ColorAdd_R','ColorAdd_G','ColorAdd_B']))
     if cell_colors:
         channels += ''.join(channel(1+i,attr,'Pixel',extra='DMXBreak="Overwrite"') for i,attr in enumerate(['Dimmer','ColorAdd_R','ColorAdd_G','ColorAdd_B']))
@@ -87,6 +90,9 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
         wheels = '<Wheels><Wheel Name="Pattern"><Slot Name="Mask" MediaFileName="pattern"/></Wheel></Wheels>'
         channels += '<DMXChannel Offset="5" Geometry="Base"><LogicalChannel Attribute="Gobo1"><ChannelFunction Attribute="Gobo1" Wheel="Pattern" DMXFrom="0/1"><ChannelSet DMXFrom="0/1" WheelSlotIndex="1"/></ChannelFunction></LogicalChannel></DMXChannel>'
         channels += '<DMXChannel Offset="6" Geometry="Base"><LogicalChannel Attribute="Gobo1PosRotate"><ChannelFunction Attribute="Gobo1PosRotate" Wheel="Pattern" DMXFrom="0/1" PhysicalFrom="30" PhysicalTo="30"/></LogicalChannel></DMXChannel>'
+    if moving:
+        for offset, attribute, geometry_name, low, high in [(8,'Pan','Base',-180,180),(9,'Tilt','Tilt',-90,90)]:
+            channels += f'<DMXChannel Offset="{offset}" Geometry="{geometry_name}"><LogicalChannel Attribute="{attribute}"><ChannelFunction Attribute="{attribute}" PhysicalFrom="{low}" PhysicalTo="{high}"/></LogicalChannel></DMXChannel>'
     xml = '<GDTF DataVersion="1.2"><FixtureType Name="Public Shutter Fixture" Manufacturer="Peraviz Tests" FixtureTypeID="40000000-0000-0000-0000-000000000001"><AttributeDefinitions><Attributes>'+xml_attributes+'</Attributes></AttributeDefinitions>'+wheels+'<Models><Model Name="Lens" File="lens" Length="0.02" Width="0.02" Height="0.002"/></Models>'+geometry+'<DMXModes>'+mode('Mode','Base',channels)+'</DMXModes></FixtureType></GDTF>'
     if dual_mode:
         assert not shared and not banks and not split and not gobo
@@ -98,6 +104,17 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
             xml = xml.replace('"'+original+'"','"'+replacement+'"')
         for original,replacement in [('StrobeModeStrobe','StrobeModeRandom'),('StrobeModePulse','StrobeModeRandomPulse'),('StrobeModePulseOpen','StrobeModeRandomPulseOpen'),('StrobeModePulseClose','StrobeModeRandomPulseClose')]: xml=xml.replace('"'+original+'"','"'+replacement+'"')
     xml = xml.replace("Shutter1", "Shutter%d" % shutter_index)
+    if mixed_gobo:
+        assert gobo and fixtures == 2
+        root = ET.fromstring(xml)
+        modes = root.find('./FixtureType/DMXModes')
+        wash = copy.deepcopy(modes[0]); wash.set('Name', 'Wash')
+        channels_node = wash.find('DMXChannels')
+        for item in list(channels_node):
+            if any(logical.get('Attribute', '').startswith('Gobo') for logical in item.findall('LogicalChannel')):
+                channels_node.remove(item)
+        modes.append(wash)
+        xml = ET.tostring(root, encoding='unicode')
     packed = io.BytesIO()
     with zipfile.ZipFile(packed, 'w') as archive:
         entry(archive, 'description.xml', xml)
@@ -110,7 +127,12 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
     if fixtures>1:
         start=source.index('<Fixture '); end=source.index('</Fixture>',start)+len('</Fixture>')
         original=source[start:end]
-        copies=''.join(original.replace('50000000-0000-0000-0000-000000000001',f'50000000-0000-0000-0000-{fixture+1:012d}') for fixture in range(fixtures))
+        copies = []
+        for fixture in range(fixtures):
+            item = original.replace('50000000-0000-0000-0000-000000000001',f'50000000-0000-0000-0000-{fixture+1:012d}')
+            if mixed_gobo and fixture == 1: item = item.replace('<GDTFMode>Mode</GDTFMode>','<GDTFMode>Wash</GDTFMode>')
+            copies.append(item)
+        copies = ''.join(copies)
         source=source[:start]+copies+source[end:]
     if shared_mode: source=source.replace('<GDTFMode>Mode</GDTFMode>','<GDTFMode>Shared</GDTFMode>')
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -126,6 +148,6 @@ if __name__ == '__main__':
     parser.add_argument('--shutter-index',type=int,default=1)
     parser.add_argument('--banks',type=int,default=0)
     parser.add_argument('--fixtures',type=int,default=1)
-    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors']: parser.add_argument('--'+flag,action='store_true')
+    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors','mixed-gobo','moving']: parser.add_argument('--'+flag,action='store_true')
     args = parser.parse_args()
-    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors)
+    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving)

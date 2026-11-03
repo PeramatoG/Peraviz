@@ -48,3 +48,7 @@ Static seated `Gobo(n)` selection, indexed `Gobo(n)Pos`, and continuous signed `
 - [GDTF support matrix](gdtf-support-matrix.md)
 - [Runtime storage policy](runtime-storage-policy.md)
 - [Beam rendering modes](BEAM_RENDERING_MODES.md)
+
+The [gobo hot-path audit](gobo-hotpath-and-render-isolation.md) records deterministic
+rotation/Random regressions and startup renderer isolation. Angular presentation
+retains resource bindings; selection and actual resource changes still rebind.

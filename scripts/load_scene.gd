@@ -1729,19 +1729,10 @@ func _configure_native_target_registry() -> void:
 	})
 
 func _present_native_gobo(light: SpotLight3D, texture: Texture2D, gobo_rotation_degrees: float) -> void:
-	if light == null or not is_instance_valid(light):
-		return
-	if not is_nan(gobo_rotation_degrees):
-		var params: Dictionary = light.get_meta("peraviz_beam_last_params", {})
-		params["gobo_rotation_deg"] = gobo_rotation_degrees
-		light.set_meta("peraviz_beam_last_params", params)
-	_refresh_native_gobo_presentation(light, texture)
-	if _fixture_light_apply_service._render_diagnostic_mode == "full" and _active_beam_presentation == VolumetricBeamRendererScript.PRESENTATION_SHADER_PROXY and _active_beam_renderer != null:
-		_active_beam_renderer.update_beam(light, light.get_meta("peraviz_beam_last_params", {}))
-	_fixture_light_apply_service.rebind_dense_light(light)
+	preload("res://scripts/runtime/native_gobo_presentation.gd").present(self, light, texture, gobo_rotation_degrees)
 
-func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null) -> void:
-	SurfaceFootprintPresentation.refresh(self, light, texture)
+func _refresh_native_gobo_presentation(light: SpotLight3D, texture: Texture2D = null, update_light_state: bool = true) -> void:
+	SurfaceFootprintPresentation.refresh(self, light, texture, update_light_state)
 
 func _get_presentation_diagnostics(base_counters: Dictionary) -> Dictionary:
 	var result: Dictionary = base_counters.duplicate(false)

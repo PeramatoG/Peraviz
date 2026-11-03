@@ -25,7 +25,7 @@ class ShutterPlayback {
     std::vector<uint8_t> nominated_,force_;
     std::vector<float> envelopes_;
     size_t active_outputs_=0,associations_=0;
-    uint64_t evaluations_=0,changes_=0;
+    uint64_t evaluations_=0,changes_=0,invalidations_=0;
     // Maintains physical activity counts only on membership/mode changes, never by walking idle scene outputs.
     void activity(uint32_t owner,bool add) {
         if (add) { if (active_layers_[owner]++==0) ++active_outputs_; }
@@ -51,7 +51,7 @@ public:
         if (!nominated_[owner]) { nominated_[owner]=1; dirty_.push_back(owner); }
     }
     // Replays retained shutter-owned resources after reconfiguration, without restarting their shared controls.
-    void invalidate() { for (const auto &[id,owner]:owners_) if (!by_owner_[owner].empty()) nominate(owner,true); }
+    void invalidate() { ++invalidations_; for (const auto &[id,owner]:owners_) if (!by_owner_[owner].empty()) nominate(owner,true); }
     // Admits native authority IDs/seeds, not inferred equality of values or physical geometry identity.
     bool ingest(const int32_t *d,size_t nd,const int32_t *ints,size_t ni,const float *v,size_t nv) {
         using namespace gdtf_runtime;
@@ -147,6 +147,8 @@ public:
     size_t authorities() const { return authorities_.size(); }
     // Counts controls requiring continuous numerical evaluation.
     size_t active_authorities() const { return active_.size(); }
+    // Counts cold replay invalidations independently of authority evaluations.
+    uint64_t invalidations() const { return invalidations_; }
     // Counts samples once per authority, independent of member count.
     uint64_t evaluations() const { return evaluations_; }
     // Counts committed physical envelope changes and explicit renderer replays.

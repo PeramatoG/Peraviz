@@ -2,6 +2,7 @@ extends RefCounted
 
 # Cold resource admission only; no GDTF/DMX interpretation or per-flash resource discovery.
 static func install(adapter: RefCounted) -> void:
+	adapter._record_event(&"shutter_resource_install_calls")
 	var objects := PackedInt64Array()
 	var thresholds := PackedFloat64Array()
 	objects.resize(adapter._render_bindings.rows.size())

@@ -105,6 +105,8 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	loader._loaded_bounds = receiver_bounds
 	loader._has_loaded_bounds = have_receiver
 	var service = Service.new()
+	if "--startup-isolation-probe" in OS.get_cmdline_user_args():
+		service.set_render_diagnostic_mode(preload("res://scripts/runtime/render_diagnostic_policy.gd").from_arguments(OS.get_cmdline_user_args()))
 	loader.dense_service = service
 	loader._fixture_light_apply_service = service
 	var bindings := Bindings.new()

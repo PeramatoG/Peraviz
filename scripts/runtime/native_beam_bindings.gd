@@ -3,6 +3,7 @@ extends RefCounted
 # Cold resource admission only. Native final render rows supply every live value.
 # Preserve the legacy loop for small scenes and all unsupported optical/resource policies.
 static func install(adapter: RefCounted) -> void:
+	adapter._record_event(&"native_beam_binding_passes")
 	preload("res://scripts/runtime/native_shutter_bindings.gd").install(adapter)
 	var objects := PackedInt64Array()
 	var thresholds := PackedFloat64Array()
@@ -14,7 +15,10 @@ static func install(adapter: RefCounted) -> void:
 	var candidates: Array = []
 	for row_index in range(adapter._render_bindings.rows.size()):
 		var row = adapter._render_bindings.rows[row_index]
-		for handle in row.output.lights: handle.native_candidate = false
+		for handle in row.output.lights:
+			# A revoked native writer leaves the script's previous signature obsolete.
+			if handle.native_candidate: handle.bound_state.invalidate()
+			handle.native_candidate = false
 		if not supported or row.presentation_class != 0 or row.output.lights.size() != 1: continue
 		if not adapter._groups.is_empty() and adapter._groups[row.output.index] != null: continue
 		var handle = row.output.lights[0]
@@ -23,8 +27,10 @@ static func install(adapter: RefCounted) -> void:
 		objects[row_index] = handle.beam.get_instance_id()
 		thresholds[row_index] = float(handle.params.get("intensity_visibility_threshold", 0.015))
 		candidates.append(handle)
-	# Admission keeps the existing 115-row reference scene entirely on its established path.
-	if candidates.size() < 128:
+	if adapter._trace: adapter._totals["native_beam_eligible_candidates"] = candidates.size()
+	# Application probes demonstrate gains at 32+ compatible independent resources.
+	# Total physical outputs and aggregate rows never substitute for eligible candidates.
+	if candidates.size() < 32:
 		adapter._native.clear_beams()
 		return
 	if adapter._native.install_beams(adapter._generation, objects, thresholds):
