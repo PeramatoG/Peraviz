@@ -1,0 +1,5264 @@
+{
+  "base": "cda38ee56bf354543251c044e068b42d0b132f93",
+  "engine": {
+    "build": "official",
+    "hash": "a13da4feb8d8aefc283c3763d33a2f170a18d541",
+    "hex": 263937,
+    "major": 4,
+    "minor": 7,
+    "patch": 1,
+    "status": "stable",
+    "string": "4.7.1-stable (official)",
+    "timestamp": 0
+  },
+  "outputs": 128,
+  "samples": 240,
+  "reference": "Frozen eager volume and binding registration, same diagnostics and generated raw-DMX probe; native build unchanged.",
+  "scope": "Generated GDTF through production import, native raw DMX, Pan/Tilt and autonomous ShutterPlayback. Baseline production scheduling; no deferred candidate. Fine scopes overlap and include clock overhead. Batch flush is wall CPU including notification dispatch; frame wall overlaps CPU/GPU and scheduling. Software render times are not hardware evidence.",
+  "semantics_and_resources_equal": true,
+  "cases": [
+    {
+      "case": "blackout_motion",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 473.895833333333,
+          "p50": 424,
+          "p95": 707
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 301.529166666667,
+          "p50": 270,
+          "p95": 483
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6575.80416666667,
+          "p50": 6607,
+          "p95": 6739
+        },
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 124.804166666667,
+          "p50": 110,
+          "p95": 206
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 287.2,
+          "p50": 258,
+          "p95": 459
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6590.18333333333,
+          "p50": 6615,
+          "p95": 6710
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "lit_motion",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 426.3125,
+          "p50": 406,
+          "p95": 627
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 274.091666666667,
+          "p50": 252,
+          "p95": 400
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6598.11666666667,
+          "p50": 6617,
+          "p95": 6694
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 454.616666666667,
+          "p50": 411,
+          "p95": 706
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 282.55,
+          "p50": 254,
+          "p95": 462
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6593.79583333333,
+          "p50": 6619,
+          "p95": 6707
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "static_color_dimmer",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 40.7875,
+          "p50": 35,
+          "p95": 79
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 2821.37083333333,
+          "p50": 2378,
+          "p95": 5514
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6576.1,
+          "p50": 6634,
+          "p95": 7472
+        },
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 34.4375,
+          "p50": 29,
+          "p95": 64
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 2319.175,
+          "p50": 2221,
+          "p95": 2832
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6647.7625,
+          "p50": 6650,
+          "p95": 6706
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "held_1hz",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 45.5541666666667,
+          "p50": 37,
+          "p95": 80
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 29.3333333333333,
+          "p50": 16,
+          "p95": 38
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6643.225,
+          "p50": 6681,
+          "p95": 6772
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 36.6,
+          "p50": 32,
+          "p95": 67
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 25.7875,
+          "p50": 15,
+          "p95": 20
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6665.825,
+          "p50": 6699,
+          "p95": 6761
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "held_20hz",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 36.6833333333333,
+          "p50": 30,
+          "p95": 61
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 163.170833333333,
+          "p50": 17,
+          "p95": 576
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6666.21666666667,
+          "p50": 6696,
+          "p95": 6752
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 38.0166666666667,
+          "p50": 31,
+          "p95": 68
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 170.654166666667,
+          "p50": 17,
+          "p95": 590
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6666.04166666667,
+          "p50": 6698,
+          "p95": 6784
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "held_random",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 42.8958333333333,
+          "p50": 35,
+          "p95": 87
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 140.379166666667,
+          "p50": 141,
+          "p95": 284
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5121,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6653.72083333333,
+          "p50": 6684,
+          "p95": 6752
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "e2f581fc5f9e86f6901b5f81a166ea0b637c4d2695f7caf9ff2a355221e0aa93",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 44.3875,
+          "p50": 35,
+          "p95": 89
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 135.316666666667,
+          "p50": 136,
+          "p95": 289
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5121,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6647.43333333333,
+          "p50": 6689,
+          "p95": 6750
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "e2f581fc5f9e86f6901b5f81a166ea0b637c4d2695f7caf9ff2a355221e0aa93",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "motion_1hz",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 512.291666666667,
+          "p50": 473,
+          "p95": 733
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 357.170833333333,
+          "p50": 324,
+          "p95": 710
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6534.84583333333,
+          "p50": 6589,
+          "p95": 6715
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 447.4,
+          "p50": 426,
+          "p95": 635
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 298.3125,
+          "p50": 258,
+          "p95": 517
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6591.2625,
+          "p50": 6622,
+          "p95": 6727
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "motion_20hz",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 471.85,
+          "p50": 433,
+          "p95": 717
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 459.383333333333,
+          "p50": 360,
+          "p95": 850
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6573.51666666667,
+          "p50": 6604,
+          "p95": 6697
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "shared": false,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 442.8875,
+          "p50": 408,
+          "p95": 619
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 408.033333333333,
+          "p50": 315,
+          "p95": 793
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6592.59583333333,
+          "p50": 6620,
+          "p95": 6707
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "motion_random",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 497.170833333333,
+          "p50": 455,
+          "p95": 770
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 438.295833333333,
+          "p50": 428,
+          "p95": 732
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5107,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6560.47916666667,
+          "p50": 6594,
+          "p95": 6702
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5107,
+        "shared": false,
+        "shutter_digest": "2e7cc7174d52b5d22b2d6828cc8c47677867c1c7949a4f2e2d1dfa97676c3f1d",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 494.4625,
+          "p50": 447,
+          "p95": 814
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 444.7375,
+          "p50": 393,
+          "p95": 787
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5107,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6575.0125,
+          "p50": 6612,
+          "p95": 6702
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5107,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "2e7cc7174d52b5d22b2d6828cc8c47677867c1c7949a4f2e2d1dfa97676c3f1d",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "no_custom_motion",
+      "shared": false,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 458.933333333333,
+          "p50": 422,
+          "p95": 721
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 304.2125,
+          "p50": 267,
+          "p95": 513
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6579.6375,
+          "p50": 6612,
+          "p95": 6695
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 128.6375,
+          "p50": 115,
+          "p95": 235
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 315.2125,
+          "p50": 284,
+          "p95": 524
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6583.2125,
+          "p50": 6614,
+          "p95": 6707
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "blackout_motion",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 593.025,
+          "p50": 559,
+          "p95": 838
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 395.716666666667,
+          "p50": 373,
+          "p95": 586
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 3053,
+          "bounds_us": 32251,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 7191,
+          "matrix_setter_us": 9631,
+          "native_footprint_material_us": 20,
+          "notification_us": 105116,
+          "origin_setter_us": 5696,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 95687
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6585.025,
+          "p50": 6615,
+          "p95": 6719
+        },
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 143.508333333333,
+          "p50": 124,
+          "p95": 244
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 367.7625,
+          "p50": 339,
+          "p95": 529
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 30720,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 28,
+          "notification_us": 3639,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6612.32916666667,
+          "p50": 6639,
+          "p95": 6706
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "lit_motion",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 612.954166666667,
+          "p50": 554,
+          "p95": 924
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 430.345833333333,
+          "p50": 385,
+          "p95": 690
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 2865,
+          "bounds_us": 37556,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6789,
+          "matrix_setter_us": 10315,
+          "native_footprint_material_us": 13,
+          "notification_us": 108637,
+          "origin_setter_us": 5286,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 99404
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6576.94166666667,
+          "p50": 6602,
+          "p95": 6692
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 598.583333333333,
+          "p50": 557,
+          "p95": 889
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 413.095833333333,
+          "p50": 388,
+          "p95": 633
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 2790,
+          "bounds_us": 33085,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6957,
+          "matrix_setter_us": 8764,
+          "native_footprint_material_us": 18,
+          "notification_us": 104861,
+          "origin_setter_us": 4537,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 95067
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6577.75833333333,
+          "p50": 6604,
+          "p95": 6711
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "static_color_dimmer",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 36.7041666666667,
+          "p50": 30,
+          "p95": 82
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 3067.90416666667,
+          "p50": 2974,
+          "p95": 3739
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 11541,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 3730,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6597.11666666667,
+          "p50": 6636,
+          "p95": 6706
+        },
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 49.35,
+          "p50": 43,
+          "p95": 90
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 3410.225,
+          "p50": 3088,
+          "p95": 4566
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 11732,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 4349,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6674.67916666667,
+          "p50": 6631,
+          "p95": 6709
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "held_1hz",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 35.6458333333333,
+          "p50": 29,
+          "p95": 77
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 28.875,
+          "p50": 16,
+          "p95": 38
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 454,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6658.79583333333,
+          "p50": 6691,
+          "p95": 6751
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 44.2375,
+          "p50": 39,
+          "p95": 77
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 31.2166666666667,
+          "p50": 17,
+          "p95": 71
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 375,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6650.54166666667,
+          "p50": 6682,
+          "p95": 6778
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "held_20hz",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 38.6,
+          "p50": 32,
+          "p95": 75
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 183.5,
+          "p50": 18,
+          "p95": 612
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 7169,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6657.9,
+          "p50": 6686,
+          "p95": 6753
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 35.5916666666667,
+          "p50": 29,
+          "p95": 72
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 172.991666666667,
+          "p50": 17,
+          "p95": 604
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 6613,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6661.29166666667,
+          "p50": 6691,
+          "p95": 6797
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "held_random",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 35.7333333333333,
+          "p50": 30,
+          "p95": 61
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 125.8625,
+          "p50": 120,
+          "p95": 249
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 4294,
+          "shutter_footprint_material_writes": 5121,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6659.1625,
+          "p50": 6688,
+          "p95": 6742
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "e2f581fc5f9e86f6901b5f81a166ea0b637c4d2695f7caf9ff2a355221e0aa93",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 31.9041666666667,
+          "p50": 28,
+          "p95": 58
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 124.670833333333,
+          "p50": 119,
+          "p95": 259
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 4782,
+          "shutter_footprint_material_writes": 5121,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6669.6625,
+          "p50": 6698,
+          "p95": 6758
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "e2f581fc5f9e86f6901b5f81a166ea0b637c4d2695f7caf9ff2a355221e0aa93",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "motion_1hz",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 575.4625,
+          "p50": 552,
+          "p95": 756
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 414.008333333333,
+          "p50": 385,
+          "p95": 624
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 2667,
+          "bounds_us": 34079,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6586,
+          "matrix_setter_us": 8834,
+          "native_footprint_material_us": 9,
+          "notification_us": 102659,
+          "origin_setter_us": 4712,
+          "shutter_footprint_material_us": 264,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 93214
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6584.5375,
+          "p50": 6611,
+          "p95": 6714
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 593.716666666667,
+          "p50": 566,
+          "p95": 861
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 421.516666666667,
+          "p50": 386,
+          "p95": 703
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 2859,
+          "bounds_us": 34206,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6908,
+          "matrix_setter_us": 8301,
+          "native_footprint_material_us": 24,
+          "notification_us": 103686,
+          "origin_setter_us": 4410,
+          "shutter_footprint_material_us": 333,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 94389
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6572.9625,
+          "p50": 6619,
+          "p95": 6709
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "motion_20hz",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 532.529166666667,
+          "p50": 515,
+          "p95": 682
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 481.979166666667,
+          "p50": 393,
+          "p95": 803
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 2664,
+          "bounds_us": 31568,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6600,
+          "matrix_setter_us": 8162,
+          "native_footprint_material_us": 21,
+          "notification_us": 96403,
+          "origin_setter_us": 4544,
+          "shutter_footprint_material_us": 5024,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 87909
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6609.41666666667,
+          "p50": 6624,
+          "p95": 6700
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "shared": false,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 561.058333333333,
+          "p50": 536,
+          "p95": 750
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 527.766666666667,
+          "p50": 445,
+          "p95": 895
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 2965,
+          "bounds_us": 32629,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6529,
+          "matrix_setter_us": 8583,
+          "native_footprint_material_us": 26,
+          "notification_us": 100133,
+          "origin_setter_us": 4442,
+          "shutter_footprint_material_us": 5557,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 91227
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6598.74166666667,
+          "p50": 6618,
+          "p95": 6728
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "motion_random",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 534.629166666667,
+          "p50": 509,
+          "p95": 705
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 452.370833333333,
+          "p50": 441,
+          "p95": 615
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 2762,
+          "bounds_us": 32119,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 5902,
+          "matrix_setter_us": 8155,
+          "native_footprint_material_us": 16,
+          "notification_us": 96637,
+          "origin_setter_us": 4857,
+          "shutter_footprint_material_us": 3144,
+          "shutter_footprint_material_writes": 5107,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 88181
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6604.9,
+          "p50": 6625,
+          "p95": 6695
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5107,
+        "shared": false,
+        "shutter_digest": "2e7cc7174d52b5d22b2d6828cc8c47677867c1c7949a4f2e2d1dfa97676c3f1d",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 64,
+        "batch_notification_cpu_us": {
+          "mean": 617.8125,
+          "p50": 572,
+          "p95": 964
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 529.070833333333,
+          "p50": 491,
+          "p95": 890
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 3054,
+          "bounds_us": 34769,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6979,
+          "matrix_setter_us": 9874,
+          "native_footprint_material_us": 24,
+          "notification_us": 108650,
+          "origin_setter_us": 4898,
+          "shutter_footprint_material_us": 3506,
+          "shutter_footprint_material_writes": 5107,
+          "shutter_waveform_evaluations": 30720,
+          "world_check_us": 98797
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6583.87083333333,
+          "p50": 6618,
+          "p95": 6717
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5107,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "2e7cc7174d52b5d22b2d6828cc8c47677867c1c7949a4f2e2d1dfa97676c3f1d",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "no_custom_motion",
+      "shared": false,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 570.425,
+          "p50": 533,
+          "p95": 771
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 379.833333333333,
+          "p50": 357,
+          "p95": 557
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 2889,
+          "bounds_us": 33395,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6323,
+          "matrix_setter_us": 8022,
+          "native_footprint_material_us": 16,
+          "notification_us": 102577,
+          "origin_setter_us": 4516,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 93109
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6596.50833333333,
+          "p50": 6623,
+          "p95": 6707
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 155.358333333333,
+          "p50": 132,
+          "p95": 277
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 387.2125,
+          "p50": 356,
+          "p95": 575
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 30720,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 17,
+          "notification_us": 3191,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6596.90416666667,
+          "p50": 6623,
+          "p95": 6710
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": false,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "blackout_motion",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 597.941666666667,
+          "p50": 543,
+          "p95": 912
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 439.491666666667,
+          "p50": 345,
+          "p95": 866
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6505.5875,
+          "p50": 6574,
+          "p95": 6708
+        },
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 127.7375,
+          "p50": 106,
+          "p95": 236
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 299.341666666667,
+          "p50": 264,
+          "p95": 495
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6590.25,
+          "p50": 6620,
+          "p95": 6692
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "lit_motion",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 522.816666666667,
+          "p50": 471,
+          "p95": 897
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 434.9375,
+          "p50": 303,
+          "p95": 712
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6563.4125,
+          "p50": 6575,
+          "p95": 6708
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 480.654166666667,
+          "p50": 447,
+          "p95": 715
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 333.195833333333,
+          "p50": 289,
+          "p95": 535
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6557.6625,
+          "p50": 6586,
+          "p95": 6698
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "static_color_dimmer",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 78.3125,
+          "p50": 54,
+          "p95": 128
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 3896.43333333333,
+          "p50": 3087,
+          "p95": 7956
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6721.5875,
+          "p50": 6591,
+          "p95": 9526
+        },
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 51.775,
+          "p50": 42,
+          "p95": 95
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 2819.1,
+          "p50": 2589,
+          "p95": 3737
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6649.87916666667,
+          "p50": 6618,
+          "p95": 6720
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "held_1hz",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 76.7041666666667,
+          "p50": 52,
+          "p95": 128
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 34.8666666666667,
+          "p50": 10,
+          "p95": 57
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6586.2125,
+          "p50": 6653,
+          "p95": 6766
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 34.8166666666667,
+          "p50": 30,
+          "p95": 71
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 17.5291666666667,
+          "p50": 7,
+          "p95": 11
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6665.55416666667,
+          "p50": 6697,
+          "p95": 6784
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "held_20hz",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 50.725,
+          "p50": 43,
+          "p95": 105
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 218.270833333333,
+          "p50": 10,
+          "p95": 769
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6603.12083333333,
+          "p50": 6667,
+          "p95": 6785
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 42.6166666666667,
+          "p50": 33,
+          "p95": 99
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 175.158333333333,
+          "p50": 9,
+          "p95": 671
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6662.44583333333,
+          "p50": 6694,
+          "p95": 6754
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "held_random",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 73.4875,
+          "p50": 57,
+          "p95": 150
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 147.745833333333,
+          "p50": 11,
+          "p95": 731
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5248,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6546.25,
+          "p50": 6633,
+          "p95": 6745
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "5849272e471da6b3fac9171ff1118f67030ffff30fe34720197bc1a33e71db46",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 45.8291666666667,
+          "p50": 34,
+          "p95": 93
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 119.641666666667,
+          "p50": 8,
+          "p95": 708
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5248,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6620.97083333333,
+          "p50": 6676,
+          "p95": 6775
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "5849272e471da6b3fac9171ff1118f67030ffff30fe34720197bc1a33e71db46",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "motion_1hz",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 481.579166666667,
+          "p50": 434,
+          "p95": 773
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 334.329166666667,
+          "p50": 276,
+          "p95": 714
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6542.23333333333,
+          "p50": 6600,
+          "p95": 6697
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 454.183333333333,
+          "p50": 422,
+          "p95": 693
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 301.7875,
+          "p50": 274,
+          "p95": 515
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6573.80833333333,
+          "p50": 6610,
+          "p95": 6696
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "motion_20hz",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 509.55,
+          "p50": 456,
+          "p95": 859
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 507.333333333333,
+          "p50": 391,
+          "p95": 952
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6513.19583333333,
+          "p50": 6564,
+          "p95": 6694
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "shared": true,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 431.945833333333,
+          "p50": 413,
+          "p95": 566
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 400.154166666667,
+          "p50": 303,
+          "p95": 757
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6586.86666666667,
+          "p50": 6619,
+          "p95": 6699
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "motion_random",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 553.704166666667,
+          "p50": 443,
+          "p95": 985
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 491.191666666667,
+          "p50": 305,
+          "p95": 1211
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5120,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6510.94166666667,
+          "p50": 6589,
+          "p95": 6690
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5120,
+        "shared": true,
+        "shutter_digest": "849007140e02372983cce678321c3599bd4691eb84bf7c585d576e1ad883814b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 427.483333333333,
+          "p50": 405,
+          "p95": 593
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 350.5625,
+          "p50": 266,
+          "p95": 679
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 5120,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6597.87083333333,
+          "p50": 6624,
+          "p95": 6697
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5120,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "849007140e02372983cce678321c3599bd4691eb84bf7c585d576e1ad883814b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "no_custom_motion",
+      "shared": true,
+      "tracing_and_fine_clocks": false,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 492.883333333333,
+          "p50": 438,
+          "p95": 775
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 317.9625,
+          "p50": 282,
+          "p95": 512
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6555.44583333333,
+          "p50": 6585,
+          "p95": 6692
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 113.2375,
+          "p50": 96,
+          "p95": 153
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 259.45,
+          "p50": 241,
+          "p95": 370
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6612.0,
+          "p50": 6632,
+          "p95": 6693
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": null,
+        "tracing_and_fine_clocks": false
+      }
+    },
+    {
+      "case": "blackout_motion",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 544.2375,
+          "p50": 516,
+          "p95": 729
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 363.425,
+          "p50": 340,
+          "p95": 492
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 3215,
+          "bounds_us": 30640,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6453,
+          "matrix_setter_us": 8270,
+          "native_footprint_material_us": 16,
+          "notification_us": 97344,
+          "origin_setter_us": 4437,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 88609
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6611.04166666667,
+          "p50": 6628,
+          "p95": 6716
+        },
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 164.075,
+          "p50": 145,
+          "p95": 265
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 407.395833333333,
+          "p50": 374,
+          "p95": 641
+        },
+        "case": "blackout_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 30720,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 79,
+          "notification_us": 3247,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6602.87083333333,
+          "p50": 6629,
+          "p95": 6705
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "02160eeacbec2a162367d00bece344cc5a51a643ef19ce8ab4d4ddcc799cd769",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "lit_motion",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 584.079166666667,
+          "p50": 545,
+          "p95": 792
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 398.254166666667,
+          "p50": 369,
+          "p95": 568
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 3276,
+          "bounds_us": 33788,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 5634,
+          "matrix_setter_us": 9521,
+          "native_footprint_material_us": 36,
+          "notification_us": 103756,
+          "origin_setter_us": 4896,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 94739
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6591.36666666667,
+          "p50": 6612,
+          "p95": 6696
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 649.3875,
+          "p50": 601,
+          "p95": 968
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 452.083333333333,
+          "p50": 412,
+          "p95": 714
+        },
+        "case": "lit_motion",
+        "delta": {
+          "affine_inverse_us": 3435,
+          "bounds_us": 35563,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6978,
+          "matrix_setter_us": 11594,
+          "native_footprint_material_us": 21,
+          "notification_us": 114201,
+          "origin_setter_us": 5374,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 104897
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6575.1625,
+          "p50": 6604,
+          "p95": 6711
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "static_color_dimmer",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 40.5666666666667,
+          "p50": 35,
+          "p95": 77
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 3148.84583333333,
+          "p50": 3095,
+          "p95": 3848
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 11512,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 3797,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6589.64166666667,
+          "p50": 6633,
+          "p95": 6709
+        },
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 41.4,
+          "p50": 33,
+          "p95": 83
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 3192.1875,
+          "p50": 2970,
+          "p95": 4776
+        },
+        "case": "static_color_dimmer",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 11836,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 3689,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6621.22083333333,
+          "p50": 6641,
+          "p95": 6699
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "011762bcf1849042402e1e7a84d6a9ab8ff5f629b4afae742b489206bad2741b",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "held_1hz",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 47.1333333333333,
+          "p50": 33,
+          "p95": 91
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 22.8875,
+          "p50": 8,
+          "p95": 20
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 343,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6637.87916666667,
+          "p50": 6675,
+          "p95": 6790
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 34.2333333333333,
+          "p50": 30,
+          "p95": 64
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 19.5583333333333,
+          "p50": 7,
+          "p95": 19
+        },
+        "case": "held_1hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 389,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6664.39583333333,
+          "p50": 6694,
+          "p95": 6808
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "held_20hz",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 44.7541666666667,
+          "p50": 34,
+          "p95": 81
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 183.2375,
+          "p50": 9,
+          "p95": 619
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 6607,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6652.98333333333,
+          "p50": 6683,
+          "p95": 6744
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 44.325,
+          "p50": 41,
+          "p95": 76
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 176.533333333333,
+          "p50": 9,
+          "p95": 635
+        },
+        "case": "held_20hz",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 6723,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6663.04583333333,
+          "p50": 6686,
+          "p95": 6760
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "bdbec4c1dd7fb69ac1059e3eeb4c7677a93fcd1a8ce99d4230f93c59746e1b32",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "held_random",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 57.675,
+          "p50": 45,
+          "p95": 134
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 131.991666666667,
+          "p50": 12,
+          "p95": 733
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 5067,
+          "shutter_footprint_material_writes": 5248,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6612.4125,
+          "p50": 6665,
+          "p95": 6771
+        },
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "5849272e471da6b3fac9171ff1118f67030ffff30fe34720197bc1a33e71db46",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 36.2541666666667,
+          "p50": 31,
+          "p95": 56
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 100.741666666667,
+          "p50": 8,
+          "p95": 629
+        },
+        "case": "held_random",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 0,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 0,
+          "notification_us": 0,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 3386,
+          "shutter_footprint_material_writes": 5248,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6673.77916666667,
+          "p50": 6700,
+          "p95": 6758
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "94221c619d187fbf0aa350453b3f0c11373f3355a78cc681671a6be8dac6ef4c",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "5849272e471da6b3fac9171ff1118f67030ffff30fe34720197bc1a33e71db46",
+        "source_evaluations": 0,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "motion_1hz",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 708.866666666667,
+          "p50": 581,
+          "p95": 1823
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 485.791666666667,
+          "p50": 389,
+          "p95": 1224
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 3614,
+          "bounds_us": 38064,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 8146,
+          "matrix_setter_us": 12698,
+          "native_footprint_material_us": 18,
+          "notification_us": 125608,
+          "origin_setter_us": 5212,
+          "shutter_footprint_material_us": 262,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 114884
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6551.17083333333,
+          "p50": 6604,
+          "p95": 6713
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 549.195833333333,
+          "p50": 533,
+          "p95": 716
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 397.4,
+          "p50": 356,
+          "p95": 634
+        },
+        "case": "motion_1hz",
+        "delta": {
+          "affine_inverse_us": 2991,
+          "bounds_us": 30950,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6616,
+          "matrix_setter_us": 8664,
+          "native_footprint_material_us": 17,
+          "notification_us": 98213,
+          "origin_setter_us": 4328,
+          "shutter_footprint_material_us": 298,
+          "shutter_footprint_material_writes": 512,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 89504
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6612.62916666667,
+          "p50": 6632,
+          "p95": 6708
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 512,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "edfda3b594aacf0a7efaea8874b581d0cd7b6487bbf3758e69a4d462bbed9f22",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "motion_20hz",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 586.441666666667,
+          "p50": 553,
+          "p95": 789
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 513.691666666667,
+          "p50": 422,
+          "p95": 929
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 3055,
+          "bounds_us": 33676,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 8683,
+          "matrix_setter_us": 8701,
+          "native_footprint_material_us": 21,
+          "notification_us": 105889,
+          "origin_setter_us": 4847,
+          "shutter_footprint_material_us": 5350,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 97535
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6567.55833333333,
+          "p50": 6610,
+          "p95": 6699
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "shared": true,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 128,
+        "batch_notification_cpu_us": {
+          "mean": 554.520833333333,
+          "p50": 545,
+          "p95": 674
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 485.808333333333,
+          "p50": 406,
+          "p95": 796
+        },
+        "case": "motion_20hz",
+        "delta": {
+          "affine_inverse_us": 2837,
+          "bounds_us": 31097,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6716,
+          "matrix_setter_us": 8928,
+          "native_footprint_material_us": 23,
+          "notification_us": 99601,
+          "origin_setter_us": 4747,
+          "shutter_footprint_material_us": 4711,
+          "shutter_footprint_material_writes": 10240,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 90267
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6612.00833333333,
+          "p50": 6633,
+          "p95": 6708
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 10240,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "8b640d3e5f7cc221c304536169270688b4460b5b67bcb92e1b9bd78792a8ab70",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "motion_random",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 600.304166666667,
+          "p50": 559,
+          "p95": 856
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 476.141666666667,
+          "p50": 403,
+          "p95": 886
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 3096,
+          "bounds_us": 33098,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6697,
+          "matrix_setter_us": 8895,
+          "native_footprint_material_us": 21,
+          "notification_us": 105885,
+          "origin_setter_us": 5609,
+          "shutter_footprint_material_us": 2894,
+          "shutter_footprint_material_writes": 5120,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 95972
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6576.8875,
+          "p50": 6605,
+          "p95": 6726
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5120,
+        "shared": true,
+        "shutter_digest": "849007140e02372983cce678321c3599bd4691eb84bf7c585d576e1ad883814b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 554.558333333333,
+          "p50": 544,
+          "p95": 686
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 440.245833333333,
+          "p50": 373,
+          "p95": 796
+        },
+        "case": "motion_random",
+        "delta": {
+          "affine_inverse_us": 3115,
+          "bounds_us": 30910,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 30720,
+          "custom_deferred_notifications": 0,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 6554,
+          "matrix_setter_us": 8885,
+          "native_footprint_material_us": 22,
+          "notification_us": 98582,
+          "origin_setter_us": 4537,
+          "shutter_footprint_material_us": 2736,
+          "shutter_footprint_material_writes": 5120,
+          "shutter_waveform_evaluations": 240,
+          "world_check_us": 89961
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6614.44166666667,
+          "p50": 6635,
+          "p95": 6697
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 5120,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "849007140e02372983cce678321c3599bd4691eb84bf7c585d576e1ad883814b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    },
+    {
+      "case": "no_custom_motion",
+      "shared": true,
+      "tracing_and_fine_clocks": true,
+      "baseline": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 693.95,
+          "p50": 605,
+          "p95": 1175
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 498.908333333333,
+          "p50": 428,
+          "p95": 932
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 4359,
+          "bounds_us": 36675,
+          "custom_bounds_recomputations": 30720,
+          "custom_global_transform_reads": 30720,
+          "custom_inverse_writes": 30720,
+          "custom_origin_writes": 30480,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 61200,
+          "custom_world_changes": 30720,
+          "custom_world_checks": 30720,
+          "global_read_us": 7246,
+          "matrix_setter_us": 12702,
+          "native_footprint_material_us": 21,
+          "notification_us": 120337,
+          "origin_setter_us": 6130,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 110538
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6532.42083333333,
+          "p50": 6589,
+          "p95": 6698
+        },
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      },
+      "candidate": {
+        "active_footprints": 0,
+        "batch_notification_cpu_us": {
+          "mean": 175.504166666667,
+          "p50": 153,
+          "p95": 333
+        },
+        "binding_installs": 0,
+        "callback_cpu_us": {
+          "mean": 431.425,
+          "p50": 390,
+          "p95": 676
+        },
+        "case": "no_custom_motion",
+        "delta": {
+          "affine_inverse_us": 0,
+          "bounds_us": 0,
+          "custom_activation_checks": 0,
+          "custom_bounds_recomputations": 0,
+          "custom_deferred_notifications": 30720,
+          "custom_global_transform_reads": 0,
+          "custom_inverse_writes": 0,
+          "custom_origin_writes": 0,
+          "custom_sync_calls": 0,
+          "custom_transform_notifications": 30720,
+          "custom_uniform_writes": 0,
+          "custom_world_changes": 0,
+          "custom_world_checks": 0,
+          "global_read_us": 0,
+          "matrix_setter_us": 0,
+          "native_footprint_material_us": 9,
+          "notification_us": 3502,
+          "origin_setter_us": 0,
+          "shutter_footprint_material_us": 0,
+          "shutter_footprint_material_writes": 0,
+          "shutter_waveform_evaluations": 0,
+          "world_check_us": 0
+        },
+        "draws": null,
+        "footprint_resources": 128,
+        "frame_wall_us": {
+          "mean": 6576.95,
+          "p50": 6614,
+          "p95": 6702
+        },
+        "mean_draws": null,
+        "physical_and_mechanical_digest": "c815f422690870475dc19b1e25a28bbb3ed24da3d750c0e05a5c218d95d3b392",
+        "physical_footprint_material_writes": 0,
+        "render_cpu_ms": null,
+        "render_gpu_ms": null,
+        "shared": true,
+        "shutter_digest": "b1c1f7a741d864bf71ceff99ae7602116f0503dbd36a6ca76c0531c4ea12747b",
+        "source_evaluations": 480,
+        "tracing_and_fine_clocks": true
+      }
+    }
+  ],
+  "graphical_trace_off": {
+    "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+    "samples": 120,
+    "resolution": [
+      320,
+      240
+    ],
+    "note": "Forward+/Vulkan llvmpipe software. Counts and semantic digests match; frame timing variation does not establish hardware speedup.",
+    "cases": [
+      {
+        "case": "blackout_motion",
+        "shared": false,
+        "baseline": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 805.125,
+            "p50": 749,
+            "p95": 1122
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 932.908333333333,
+            "p50": 779,
+            "p95": 1282
+          },
+          "case": "blackout_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 129,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 37083.05,
+            "p50": 34968,
+            "p95": 55995
+          },
+          "mean_draws": 129.0,
+          "physical_and_mechanical_digest": "a2adab6eb85e96da85d0e445e7a51ad0ad22220f72e9d0e38d0df0301497a8ae",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.593200002362331,
+          "render_gpu_ms": 29.4448667367299,
+          "shared": false,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        },
+        "candidate": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 186.916666666667,
+            "p50": 175,
+            "p95": 258
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 727.033333333333,
+            "p50": 705,
+            "p95": 883
+          },
+          "case": "blackout_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_activation_checks": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_deferred_notifications": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 129,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 30835.4416666667,
+            "p50": 29522,
+            "p95": 39003
+          },
+          "mean_draws": 129.0,
+          "physical_and_mechanical_digest": "a2adab6eb85e96da85d0e445e7a51ad0ad22220f72e9d0e38d0df0301497a8ae",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.495250000307957,
+          "render_gpu_ms": 25.1694083372752,
+          "shared": false,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        }
+      },
+      {
+        "case": "lit_motion",
+        "shared": false,
+        "baseline": {
+          "active_footprints": 128,
+          "batch_notification_cpu_us": {
+            "mean": 978.908333333333,
+            "p50": 808,
+            "p95": 1378
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 927.65,
+            "p50": 815,
+            "p95": 1409
+          },
+          "case": "lit_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 385,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 110383.975,
+            "p50": 108557,
+            "p95": 136125
+          },
+          "mean_draws": 385.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.874358328680197,
+          "render_gpu_ms": 101.096533457438,
+          "shared": false,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        },
+        "candidate": {
+          "active_footprints": 128,
+          "batch_notification_cpu_us": {
+            "mean": 805.408333333333,
+            "p50": 739,
+            "p95": 955
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 769.958333333333,
+            "p50": 725,
+            "p95": 984
+          },
+          "case": "lit_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_activation_checks": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_deferred_notifications": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 385,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 88013.4583333333,
+            "p50": 87605,
+            "p95": 104822
+          },
+          "mean_draws": 385.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.740050000945727,
+          "render_gpu_ms": 80.61929175059,
+          "shared": false,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        }
+      },
+      {
+        "case": "no_custom_motion",
+        "shared": false,
+        "baseline": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 766.558333333333,
+            "p50": 727,
+            "p95": 1051
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 774.366666666667,
+            "p50": 759,
+            "p95": 995
+          },
+          "case": "no_custom_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 257,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 79378.8083333333,
+            "p50": 78953,
+            "p95": 94736
+          },
+          "mean_draws": 257.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.652191666265329,
+          "render_gpu_ms": 72.3900833129883,
+          "shared": false,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        },
+        "candidate": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 202.825,
+            "p50": 176,
+            "p95": 300
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 754.133333333333,
+            "p50": 736,
+            "p95": 965
+          },
+          "case": "no_custom_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_activation_checks": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_deferred_notifications": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 257,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 75910.5416666667,
+            "p50": 74431,
+            "p95": 93462
+          },
+          "mean_draws": 257.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.640791667004426,
+          "render_gpu_ms": 69.4303833325704,
+          "shared": false,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        }
+      },
+      {
+        "case": "blackout_motion",
+        "shared": true,
+        "baseline": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 801.858333333333,
+            "p50": 748,
+            "p95": 1126
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 853.808333333333,
+            "p50": 804,
+            "p95": 1115
+          },
+          "case": "blackout_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 129,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 36448.6416666667,
+            "p50": 33010,
+            "p95": 63112
+          },
+          "mean_draws": 129.0,
+          "physical_and_mechanical_digest": "a2adab6eb85e96da85d0e445e7a51ad0ad22220f72e9d0e38d0df0301497a8ae",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.547783333808184,
+          "render_gpu_ms": 28.2394000053406,
+          "shared": true,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        },
+        "candidate": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 266.991666666667,
+            "p50": 180,
+            "p95": 270
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 788.208333333333,
+            "p50": 758,
+            "p95": 1001
+          },
+          "case": "blackout_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_activation_checks": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_deferred_notifications": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 129,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 30281.2,
+            "p50": 29698,
+            "p95": 37304
+          },
+          "mean_draws": 129.0,
+          "physical_and_mechanical_digest": "a2adab6eb85e96da85d0e445e7a51ad0ad22220f72e9d0e38d0df0301497a8ae",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.529225001732508,
+          "render_gpu_ms": 24.4116666793823,
+          "shared": true,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        }
+      },
+      {
+        "case": "lit_motion",
+        "shared": true,
+        "baseline": {
+          "active_footprints": 128,
+          "batch_notification_cpu_us": {
+            "mean": 757.55,
+            "p50": 734,
+            "p95": 947
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 813.283333333333,
+            "p50": 770,
+            "p95": 1038
+          },
+          "case": "lit_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 385,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 88857.4,
+            "p50": 88601,
+            "p95": 107657
+          },
+          "mean_draws": 385.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.774616667628288,
+          "render_gpu_ms": 81.1382915496826,
+          "shared": true,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        },
+        "candidate": {
+          "active_footprints": 128,
+          "batch_notification_cpu_us": {
+            "mean": 782.491666666667,
+            "p50": 750,
+            "p95": 976
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 815.441666666667,
+            "p50": 786,
+            "p95": 1001
+          },
+          "case": "lit_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_activation_checks": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_deferred_notifications": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 385,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 93308.925,
+            "p50": 91664,
+            "p95": 114557
+          },
+          "mean_draws": 385.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.789183335502942,
+          "render_gpu_ms": 85.0576999664307,
+          "shared": true,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        }
+      },
+      {
+        "case": "no_custom_motion",
+        "shared": true,
+        "baseline": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 803.95,
+            "p50": 738,
+            "p95": 958
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 858.541666666667,
+            "p50": 787,
+            "p95": 1091
+          },
+          "case": "no_custom_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 257,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 69734.0333333333,
+            "p50": 68909,
+            "p95": 86545
+          },
+          "mean_draws": 257.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.740291667481264,
+          "render_gpu_ms": 62.4970584233602,
+          "shared": true,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        },
+        "candidate": {
+          "active_footprints": 0,
+          "batch_notification_cpu_us": {
+            "mean": 197.358333333333,
+            "p50": 179,
+            "p95": 292
+          },
+          "binding_installs": 0,
+          "callback_cpu_us": {
+            "mean": 820.658333333333,
+            "p50": 797,
+            "p95": 1010
+          },
+          "case": "no_custom_motion",
+          "delta": {
+            "affine_inverse_us": 0,
+            "bounds_us": 0,
+            "custom_activation_checks": 0,
+            "custom_bounds_recomputations": 0,
+            "custom_deferred_notifications": 0,
+            "custom_global_transform_reads": 0,
+            "custom_inverse_writes": 0,
+            "custom_origin_writes": 0,
+            "custom_sync_calls": 0,
+            "custom_transform_notifications": 0,
+            "custom_uniform_writes": 0,
+            "custom_world_changes": 0,
+            "custom_world_checks": 0,
+            "global_read_us": 0,
+            "matrix_setter_us": 0,
+            "native_footprint_material_us": 0,
+            "notification_us": 0,
+            "origin_setter_us": 0,
+            "shutter_footprint_material_us": 0,
+            "shutter_footprint_material_writes": 0,
+            "shutter_waveform_evaluations": 0,
+            "world_check_us": 0
+          },
+          "draws": 257,
+          "footprint_resources": 128,
+          "frame_wall_us": {
+            "mean": 69869.1416666667,
+            "p50": 69503,
+            "p95": 84962
+          },
+          "mean_draws": 257.0,
+          "physical_and_mechanical_digest": "c555657571c261d807ae144bb513f9b8fe990a9f3a4a3a4f0e062d5e5c6e9689",
+          "physical_footprint_material_writes": 0,
+          "render_cpu_ms": 0.67025833427906,
+          "render_gpu_ms": 63.0813999811808,
+          "shared": true,
+          "shutter_digest": "9f9495bbba4c9a685fa3402ff6ade7e887ad78a0eacf8b41eabec5c934b655d1",
+          "source_evaluations": null,
+          "tracing_and_fine_clocks": false
+        }
+      }
+    ]
+  },
+  "graphical_images": [
+    {
+      "image": "blackout.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "1b8ed5c9fc98cf6f5a505304dc7be2939decf49524cb6a674dd0c22f665adacb",
+      "candidate_rgba_sha256": "1b8ed5c9fc98cf6f5a505304dc7be2939decf49524cb6a674dd0c22f665adacb"
+    },
+    {
+      "image": "bounded-original-math.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "8d78e22ff41a1842e629a6c94ebe987537bb0a01f5cffa0efcf9b1a797c6b0a8",
+      "candidate_rgba_sha256": "8d78e22ff41a1842e629a6c94ebe987537bb0a01f5cffa0efcf9b1a797c6b0a8"
+    },
+    {
+      "image": "camera-inside.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "eef2d0b64c2d7b8b0947aeddbd154aad66385a1465c74ca14bc1c0d0831b8764",
+      "candidate_rgba_sha256": "eef2d0b64c2d7b8b0947aeddbd154aad66385a1465c74ca14bc1c0d0831b8764"
+    },
+    {
+      "image": "custom.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "0fbdfb8b63d46e76821d9a534c8fa5668ff62af482663848df483838cece15ef",
+      "candidate_rgba_sha256": "0fbdfb8b63d46e76821d9a534c8fa5668ff62af482663848df483838cece15ef"
+    },
+    {
+      "image": "held-rotation-zoom.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "ce0f0f2f71cd83abe5a3d57fd1e65faf1f37437fad8a815eca8a99f9bd8fd01d",
+      "candidate_rgba_sha256": "ce0f0f2f71cd83abe5a3d57fd1e65faf1f37437fad8a815eca8a99f9bd8fd01d"
+    },
+    {
+      "image": "mirror-parity.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "14fdfd95467fbb821ec03ac139b9336debce83b3fe9393f24a71574dab5d49a4",
+      "candidate_rgba_sha256": "14fdfd95467fbb821ec03ac139b9336debce83b3fe9393f24a71574dab5d49a4"
+    },
+    {
+      "image": "original.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "90c6386251a7f1ef426de667a4abbbc07e5d3fc21948b7c5ede2ff5214b3155c",
+      "candidate_rgba_sha256": "90c6386251a7f1ef426de667a4abbbc07e5d3fc21948b7c5ede2ff5214b3155c"
+    },
+    {
+      "image": "previous-defaults.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "8c6e878e8f692c4f878fa1fb46a32a7080c87dff69c6fd744568fb2b28f24b6a",
+      "candidate_rgba_sha256": "8c6e878e8f692c4f878fa1fb46a32a7080c87dff69c6fd744568fb2b28f24b6a"
+    },
+    {
+      "image": "range-limited.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "bbb9e50ab0791c64d1136892b56776ee6e3bf986f31d9167c240fbf6dbd27240",
+      "candidate_rgba_sha256": "bbb9e50ab0791c64d1136892b56776ee6e3bf986f31d9167c240fbf6dbd27240"
+    },
+    {
+      "image": "square-original-math.png",
+      "changed_pixels": 0,
+      "baseline_rgba_sha256": "8d78e22ff41a1842e629a6c94ebe987537bb0a01f5cffa0efcf9b1a797c6b0a8",
+      "candidate_rgba_sha256": "8d78e22ff41a1842e629a6c94ebe987537bb0a01f5cffa0efcf9b1a797c6b0a8"
+    }
+  ],
+  "reactivation": {
+    "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+    "cases": [
+      {
+        "case": "dimmer",
+        "difference": {
+          "changed_pixels": 0,
+          "max_pixel_error": 0.0
+        },
+        "reference": {
+          "cpu_render_ms": 0.210333334902922,
+          "draw_calls": 11,
+          "frame_wall_ms": 40.3955,
+          "gpu_render_ms": 30.1766668955485,
+          "lit_pixels": 35467,
+          "primitives": 192,
+          "render_setup_ms": 0.0208333333333333,
+          "rendered_objects": 11,
+          "sampled_process_monitor_ms": 62.83,
+          "saturated_pixels": 0
+        },
+        "restored": {
+          "cpu_render_ms": 0.18299999833107,
+          "draw_calls": 11,
+          "frame_wall_ms": 43.686,
+          "gpu_render_ms": 21.3020000457764,
+          "lit_pixels": 35467,
+          "primitives": 192,
+          "render_setup_ms": 0.077,
+          "rendered_objects": 11,
+          "sampled_process_monitor_ms": 62.83,
+          "saturated_pixels": 0
+        }
+      },
+      {
+        "case": "held_gain",
+        "difference": {
+          "changed_pixels": 0,
+          "max_pixel_error": 0.0
+        },
+        "reference": {
+          "cpu_render_ms": 0.200000000496705,
+          "draw_calls": 11,
+          "frame_wall_ms": 34.3368333333333,
+          "gpu_render_ms": 33.0276670455933,
+          "lit_pixels": 35467,
+          "primitives": 192,
+          "render_setup_ms": 0.015,
+          "rendered_objects": 11,
+          "sampled_process_monitor_ms": 267.464,
+          "saturated_pixels": 0
+        },
+        "restored": {
+          "cpu_render_ms": 0.180999994277954,
+          "draw_calls": 11,
+          "frame_wall_ms": 30.44,
+          "gpu_render_ms": 19.8509998321533,
+          "lit_pixels": 35467,
+          "primitives": 192,
+          "render_setup_ms": 0.059,
+          "rendered_objects": 11,
+          "sampled_process_monitor_ms": 267.464,
+          "saturated_pixels": 0
+        }
+      },
+      {
+        "case": "receiver_camera",
+        "difference": {
+          "changed_pixels": 0,
+          "max_pixel_error": 0.0
+        },
+        "reference": {
+          "cpu_render_ms": 0.189166667560736,
+          "draw_calls": 11,
+          "frame_wall_ms": 37.9621666666667,
+          "gpu_render_ms": 24.9963331222534,
+          "lit_pixels": 34709,
+          "primitives": 192,
+          "render_setup_ms": 0.0128333333333333,
+          "rendered_objects": 11,
+          "sampled_process_monitor_ms": 267.464,
+          "saturated_pixels": 0
+        },
+        "restored": {
+          "cpu_render_ms": 0.180000007152557,
+          "draw_calls": 11,
+          "frame_wall_ms": 24.607,
+          "gpu_render_ms": 24.2819995880127,
+          "lit_pixels": 34709,
+          "primitives": 192,
+          "render_setup_ms": 0.074,
+          "rendered_objects": 11,
+          "sampled_process_monitor_ms": 234.93,
+          "saturated_pixels": 0
+        }
+      }
+    ]
+  }
+}

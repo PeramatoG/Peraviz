@@ -67,6 +67,7 @@ func install(adapter: RefCounted) -> bool:
 		push_warning("Custom Footprints requires Forward+ and shared Vector Prism optics. Surface projection is disabled; select Native Footprints for this renderer.")
 	var rids: Array = []
 	var instances: Array = []
+	var projectors := PackedInt64Array()
 	var owners := PackedInt32Array()
 	var scales := PackedFloat32Array()
 	var routes := PackedInt32Array()
@@ -103,10 +104,12 @@ func install(adapter: RefCounted) -> bool:
 			routes.append_array(PackedInt32Array([output.index, rids.size()]))
 			rids.append(volume.material_override.get_rid())
 			instances.append(volume.get_instance())
+			projectors.append(volume.get_instance_id())
 			owners.append(output.index)
 			scales.append(maxf(float(settings.get("footprint_multiplier", 1.0)), 0.0))
 	for volume in retained.values(): _retire_volume(volume)
 	if not adapter._native.install_footprints(adapter._generation, rids, instances, owners, scales, routes): return false
+	if not adapter._native.install_footprint_projectors(adapter._generation, projectors): return false
 	for index in range(volumes.size()):
 		var volume: MeshInstance3D = volumes[index]
 		volume.visibility_callback = _visibility_changed.bind(adapter._native, index, volume)

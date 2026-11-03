@@ -118,7 +118,7 @@ const MUTATION_COUNTERS: PackedStringArray = [
 var _totals: Dictionary = {
 	"native_compose_us": 0, "payload_conversion_us": 0, "semantic_payload_conversion_us": 0,
 	"compatibility_adapter_us": 0, "renderer_mutation_us": 0,
-	"native_physical_us": 0, "native_reduction_us": 0, "physical_color_outputs": 0, "lens_rids_affected": 0, "lens_rids_unchanged": 0, "native_dirty_outputs": 0, "native_material_us": 0,
+	"native_physical_us": 0, "native_reduction_us": 0, "physical_color_outputs": 0, "lens_rids_affected": 0, "lens_rids_unchanged": 0, "native_dirty_outputs": 0, "native_material_us": 0, "native_footprint_material_us": 0,
 }
 
 func _disconnect_handle(handle: LightHandle) -> void:
@@ -325,6 +325,7 @@ func _accept_payload() -> bool:
 		native_counters["beam_dynamic_changed"] += int(_payload.get("native_beam_changed", 0))
 		native_counters["beam_dynamic_unchanged"] += int(_payload.get("native_beam_unchanged", 0))
 		_totals["native_material_us"] += int(_payload.get("native_material_us", 0))
+		_totals["native_footprint_material_us"] += int(_payload.get("native_footprint_material_us", 0))
 		_totals["renderer_mutation_us"] += int(_payload.get("native_material_us", 0))
 		_totals["last_dirty_outputs"] = int(_payload["dirty_count"])
 		_totals["native_compose_us"] += int(_payload["native_compose_us"])
@@ -660,7 +661,7 @@ func consume_diagnostics() -> Dictionary:
 	var result: Dictionary = diagnostics()
 	_surface_counts.reset_interval()
 	for key in MUTATION_COUNTERS: _totals[key] = 0
-	for key in ["shaft_resource_binding_us", "native_beam_apply_us", "native_beam_applied", "native_beam_changed", "native_beam_unchanged", "native_beam_fallback", "native_beam_stale", "native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
+	for key in ["shaft_resource_binding_us", "native_beam_apply_us", "native_beam_applied", "native_beam_changed", "native_beam_unchanged", "native_beam_fallback", "native_beam_stale", "native_boundary_us", "boundary_overhead_us", "semantic_payload_conversion_us", "native_compose_us", "payload_conversion_us", "compatibility_adapter_us", "renderer_mutation_us", "native_dirty_outputs", "native_material_us", "native_footprint_material_us", "native_parallel_tasks", "native_workers_used", "native_worker_cpu_us", "native_task_wall_us", "native_coordination_us", "native_worker_failures", "native_serial_fallbacks", "native_serial_probes", "native_policy_backoffs", "native_completed_latency_us", "native_consumed_latency_us", "main_thread_publication_us", "native_evaluation_us", "intermediate_bytes_avoided", "intermediate_bytes_copied", "native_physical_us", "native_reduction_us", "physical_color_outputs", "lens_rids_affected", "lens_rids_unchanged"]:
 		_totals[key] = 0
 	var service: RefCounted = _service.get_ref() if _service != null else null
 	if service != null:

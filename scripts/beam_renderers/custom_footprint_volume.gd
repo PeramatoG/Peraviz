@@ -4,13 +4,47 @@ extends MeshInstance3D
 const META: StringName = &"peraviz_custom_footprint"
 const SHADER = preload("res://scripts/shaders/custom_footprint.gdshader")
 # Opt-in lifetime counters. Read interval differences; setter calls are not draws.
-enum Work { SYNC, NOTIFICATION, WORLD_CHECK, WORLD_CHANGE, INVERSE_WRITE, ORIGIN_WRITE, BOUNDS, UNIFORM_WRITE }
-const WORK_NAMES = ["sync_calls", "transform_notifications", "world_checks", "world_changes", "inverse_writes", "origin_writes", "bounds_recomputations", "uniform_writes"]
+enum Work { SYNC, NOTIFICATION, WORLD_CHECK, WORLD_CHANGE, INVERSE_WRITE, ORIGIN_WRITE, BOUNDS, UNIFORM_WRITE, GLOBAL_READ, DEFERRED, ACTIVATION }
+const WORK_NAMES = ["sync_calls", "transform_notifications", "world_checks", "world_changes", "inverse_writes", "origin_writes", "bounds_recomputations", "uniform_writes", "global_transform_reads", "deferred_notifications", "activation_checks"]
 var _work := PackedInt64Array()
 var trace_enabled: bool = false:
 	set(value):
 		trace_enabled = value
 		if value and _work.is_empty(): _work.resize(WORK_NAMES.size())
+
+# Fine clocks are a separate diagnostic mode: ordinary tracing keeps count-only cost.
+# Inclusive scopes overlap; sub-microsecond stages include clock/dispatch overhead.
+const CPU_NAMES = ["notification_us", "world_check_us", "global_read_us", "affine_inverse_us", "matrix_setter_us", "origin_setter_us", "bounds_us"]
+enum CPU { NOTIFICATION, WORLD, GLOBAL_READ, INVERSE, MATRIX, ORIGIN, BOUNDS }
+var _cpu := PackedInt64Array()
+var profile_enabled: bool = false:
+	set(value):
+		profile_enabled = value
+		if value and _cpu.is_empty(): _cpu.resize(CPU_NAMES.size())
+
+func cpu_times() -> Dictionary:
+	var result: Dictionary = {}
+	for index in range(CPU_NAMES.size()): result[CPU_NAMES[index]] = _cpu[index] if not _cpu.is_empty() else 0
+	return result
+
+# Presentation admission only: native material energy/enabled state is authoritative.
+# Receiver rejection and camera culling never put a projector to sleep.
+var _projection_active: bool = true
+var _projection_pending: bool = false
+
+# Native calls this synchronously before admitting the retained instance RID.
+func set_projection_active(active: bool) -> void:
+	if active == _projection_active: return
+	_projection_active = active
+	if not active: return
+	if trace_enabled: _work[Work.ACTIVATION] += 1
+	# A Pan/Tilt write may still have a queued notification. Always read the exact
+	# current ancestry before activation, even when no notification reached us yet.
+	if _projection_pending:
+		_projection_pending = false
+		sync(true)
+	else:
+		_sync_world(true)
 
 var visibility_callback: Callable
 var projection: RefCounted
@@ -77,8 +111,11 @@ func configure(state: RefCounted, range_m: float) -> void:
 	max_range = clampf(range_m, 0.1, 500.0)
 	sync()
 
-func sync() -> void:
+func sync(exact_world: bool = false) -> void:
 	if trace_enabled: _work[Work.SYNC] += 1
+	if not _projection_active:
+		_projection_pending = true
+		return
 	if projection == null or not projection.configured or not is_inside_tree(): return
 	if _geometry_revision != projection.geometry_revision or _range_applied != max_range:
 		_geometry_revision = projection.geometry_revision
@@ -114,10 +151,13 @@ func sync() -> void:
 		_material.set_shader_parameter("artwork_aspect", aspect)
 		parameter_updates += 1
 		if trace_enabled: _work[Work.UNIFORM_WRITE] += 3
-	if not _sync_world(): _update_bounds()
+	if not _sync_world(exact_world): _update_bounds()
 
 # Profile-only edits do not touch transforms, coverage, texture bindings or bounds.
 func sync_softness() -> void:
+	if not _projection_active:
+		_projection_pending = true
+		return
 	if projection == null or _softness == projection.footprint_softness: return
 	_softness = projection.footprint_softness
 	_material.set_shader_parameter("edge_softness", _softness)
@@ -127,14 +167,27 @@ func sync_softness() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSFORM_CHANGED and projection != null and is_inside_tree():
 		if trace_enabled: _work[Work.NOTIFICATION] += 1
+		var started: int = Time.get_ticks_usec() if profile_enabled else 0
+		if not _projection_active:
+			_projection_pending = true
+			if trace_enabled: _work[Work.DEFERRED] += 1
+			if profile_enabled: _cpu[CPU.NOTIFICATION] += Time.get_ticks_usec() - started
+			return
 		_sync_world()
+		if profile_enabled: _cpu[CPU.NOTIFICATION] += Time.get_ticks_usec() - started
 
-func _sync_world() -> bool:
+func _sync_world(exact_world: bool = false) -> bool:
+	var started: int = Time.get_ticks_usec() if profile_enabled else 0
 	if trace_enabled: _work[Work.WORLD_CHECK] += 1
 	var anchor := get_parent() as Node3D
 	if anchor == null: return false
+	var stage: int = Time.get_ticks_usec() if profile_enabled else 0
 	var world := anchor.global_transform
-	if _known_world and world.is_equal_approx(_world): return false
+	if trace_enabled: _work[Work.GLOBAL_READ] += 1
+	if profile_enabled: _cpu[CPU.GLOBAL_READ] += Time.get_ticks_usec() - stage
+	if _known_world and (world == _world if exact_world else world.is_equal_approx(_world)):
+		if profile_enabled: _cpu[CPU.WORLD] += Time.get_ticks_usec() - started
+		return false
 	# Rotation can change every matrix element while retaining the exact origin.
 	var origin_changed: bool = not _known_world or world.origin != _world.origin
 	if trace_enabled:
@@ -143,15 +196,23 @@ func _sync_world() -> bool:
 		_work[Work.UNIFORM_WRITE] += 1
 	_world = world
 	_known_world = true
+	if profile_enabled: stage = Time.get_ticks_usec()
 	_world_inverse = world.affine_inverse()
+	if profile_enabled:
+		_cpu[CPU.INVERSE] += Time.get_ticks_usec() - stage
+		stage = Time.get_ticks_usec()
 	_material.set_shader_parameter("world_to_projector", _world_inverse)
+	if profile_enabled: _cpu[CPU.MATRIX] += Time.get_ticks_usec() - stage
 	if origin_changed:
+		if profile_enabled: stage = Time.get_ticks_usec()
 		_material.set_shader_parameter("projector_origin", world.origin)
+		if profile_enabled: _cpu[CPU.ORIGIN] += Time.get_ticks_usec() - stage
 		if trace_enabled:
 			_work[Work.ORIGIN_WRITE] += 1
 			_work[Work.UNIFORM_WRITE] += 1
 	parameter_updates += 1
 	_update_bounds()
+	if profile_enabled: _cpu[CPU.WORLD] += Time.get_ticks_usec() - started
 	return true
 
 func set_receiver_bounds(bounds: AABB, known: bool) -> void:
@@ -159,11 +220,15 @@ func set_receiver_bounds(bounds: AABB, known: bool) -> void:
 	# collider-dependent center ray. Depth/frustum masks do the fine selection.
 	_bounds = bounds
 	_bounds_known = known and bounds.position.is_finite() and bounds.size.is_finite() and bounds.size.x >= 0.0 and bounds.size.y >= 0.0 and bounds.size.z >= 0.0
+	if not _projection_active:
+		_projection_pending = true
+		return
 	_update_bounds()
 
 # AABB support along the projector depth axis is conservative under arbitrary
 # mechanical ancestry, inclination and parity. Unknown bounds retain full range.
 func _update_bounds() -> void:
+	var started: int = Time.get_ticks_usec() if profile_enabled else 0
 	if trace_enabled: _work[Work.BOUNDS] += 1
 	if projection == null or not projection.configured: return
 	var limited: float = max_range
@@ -181,3 +246,4 @@ func _update_bounds() -> void:
 		scale = Vector3(tangent * limited, tangent * limited, limited)
 	culled = _bounds_known and not (global_transform * mesh.get_aabb()).intersects(_bounds.grow(0.01))
 	visible = not culled
+	if profile_enabled: _cpu[CPU.BOUNDS] += Time.get_ticks_usec() - started

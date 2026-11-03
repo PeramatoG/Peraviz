@@ -54,6 +54,11 @@ bool PeravizPresentationState::install_footprints(int64_t generation,const Array
     if (uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) return false;
     return footprints_.install(async_?displayed_physical_.size():state_.bindings().size(),rids,owners,scales,routes,true) && footprints_.install_surface_instances(instances);
 }
+// Installs weak projection callbacks at the same cold generation boundary as the borrowed RIDs.
+bool PeravizPresentationState::install_footprint_projectors(int64_t generation,const PackedInt64Array &objects) {
+    if (uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) return false;
+    return footprints_.install_surface_projectors(objects);
+}
 // Revokes borrowed surface RIDs before their presentation owner frees them.
 void PeravizPresentationState::clear_footprints() { footprints_.clear(); }
 // Diagnostic policy suppresses only surface presentation; physical held state remains native.

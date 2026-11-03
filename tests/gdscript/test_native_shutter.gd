@@ -52,6 +52,10 @@ func close_scene() -> void:
 	app = null; adapter = null; runtime = null
 
 func run() -> void:
+	if "--inactive-footprint-cpu-probe" in OS.get_cmdline_user_args():
+		await load("res://tests/gdscript/helpers/inactive_footprint_cpu_probe.gd").run(self)
+		test.finish(self)
+		return
 	await open_scene(["--gobo"])
 	var primary := packet(); primary[0] = 255; primary[1] = 255
 	var cells := packet(); cells.fill(10)
