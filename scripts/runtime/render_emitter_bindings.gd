@@ -108,11 +108,11 @@ func counts(adapter: RefCounted) -> Dictionary:
 		for handle in output.lights:
 			if is_instance_valid(handle.beam):
 				resource_counts["allocated_member_shafts"] += 1
-				if handle.beam.is_visible_in_tree(): resource_counts["visible_member_shafts"] += 1
+				if handle.beam.is_visible_in_tree() and handle.beam.layers != 0: resource_counts["visible_member_shafts"] += 1
 	for output in _aggregates:
 		for handle in output.lights:
 			if is_instance_valid(handle.beam):
 				resource_counts["aggregate_shaft_resources"] += 1
-				if handle.beam.is_visible_in_tree(): resource_counts["visible_aggregate_shafts"] += 1
+				if handle.beam.is_visible_in_tree() and handle.beam.layers != 0: resource_counts["visible_aggregate_shafts"] += 1
 	resource_counts["total_visible_vector_prism_shafts"] = resource_counts["visible_member_shafts"] + resource_counts["visible_aggregate_shafts"]
 	return resource_counts

@@ -3,6 +3,21 @@ extends RefCounted
 # Opt-in only. Each case changes one presentation domain; readback happens after
 # timing, never in ordinary frames. Device times on llvmpipe are not GPU evidence.
 static func run(probe: RefCounted, tree: SceneTree, test: RefCounted, viewport: SubViewport, loader: Node, service: RefCounted, directory: String) -> void:
+	if "--startup-isolation-probe" in OS.get_cmdline_user_args():
+		service.set_performance_trace_enabled(true)
+		var counters: Array = [0, 0]
+		var stats: Dictionary = await probe._capture(tree, viewport, directory.path_join("startup-isolation.png"), _pulse.bind(loader, service, counters))
+		stats["mode"] = service._render_diagnostic_mode
+		stats["consumer_isolation"] = service._render_isolation
+		stats["adapter"] = RenderingServer.get_video_adapter_name()
+		stats["presentation"] = service._dense_adapter.diagnostics()
+		stats["scope"] = "Generated resolved-input presentation probe, not raw DMX evaluation. Software device times are not hardware GPU evidence."
+		var file := FileAccess.open(directory.path_join("startup-isolation.json"), FileAccess.WRITE)
+		file.store_string(JSON.stringify(stats, "\t"))
+		print("STARTUP_ISOLATION ", JSON.stringify(stats))
+		service.reset_scene_state()
+		viewport.free()
+		return
 	if "--live-footprint-probe" in OS.get_cmdline_user_args():
 		await preload("res://tests/gdscript/helpers/footprint_live_probe.gd").run(probe, tree, test, viewport, loader, service, directory)
 		return

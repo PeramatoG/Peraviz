@@ -1,0 +1,348 @@
+{
+  "base": "6f0f38d",
+  "scope": "Deterministic CPU/counter evidence and llvmpipe software graphics validation only. No new Windows GPU/FPS measurements. Baseline keeps only counter instrumentation; application-only admission tests exclude native source evaluation and physical GPU submission.",
+  "gobo_baseline_custom_backend": [
+    {
+      "changing_dimmer_color": false,
+      "dense_light_rebind_calls": 320,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": false,
+      "native_beam_binding_passes": 320,
+      "render_group_binding_installs": 0,
+      "shutter_digest": -1551418152760759360,
+      "shutter_invalidations": 320,
+      "shutter_resource_install_calls": 320,
+      "source_evaluations": 0
+    },
+    {
+      "changing_dimmer_color": true,
+      "dense_light_rebind_calls": 320,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": false,
+      "native_beam_binding_passes": 320,
+      "render_group_binding_installs": 0,
+      "shutter_digest": -1551418152760759360,
+      "shutter_invalidations": 320,
+      "shutter_resource_install_calls": 320,
+      "source_evaluations": 640
+    },
+    {
+      "changing_dimmer_color": false,
+      "dense_light_rebind_calls": 10240,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": true,
+      "native_beam_binding_passes": 320,
+      "render_group_binding_installs": 0,
+      "shutter_digest": 259690829838614336,
+      "shutter_invalidations": 320,
+      "shutter_resource_install_calls": 320,
+      "source_evaluations": 0
+    },
+    {
+      "changing_dimmer_color": true,
+      "dense_light_rebind_calls": 10240,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": true,
+      "native_beam_binding_passes": 320,
+      "render_group_binding_installs": 0,
+      "shutter_digest": 259690829838614336,
+      "shutter_invalidations": 320,
+      "shutter_resource_install_calls": 320,
+      "source_evaluations": 1280
+    }
+  ],
+  "gobo_candidate_custom_and_native_backends": [
+    {
+      "backend": "custom",
+      "changing_dimmer_color": false,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": false,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": -1551418152760759360,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 0
+    },
+    {
+      "backend": "custom",
+      "changing_dimmer_color": true,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": false,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": -1551418152760759360,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 640
+    },
+    {
+      "backend": "custom",
+      "changing_dimmer_color": false,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": true,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": 259690829838614336,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 0
+    },
+    {
+      "backend": "custom",
+      "changing_dimmer_color": true,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": true,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": 259690829838614336,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 1280
+    },
+    {
+      "backend": "native",
+      "changing_dimmer_color": false,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": false,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": -1551418152760759360,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 0
+    },
+    {
+      "backend": "native",
+      "changing_dimmer_color": true,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": false,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": -1551418152760759360,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 640
+    },
+    {
+      "backend": "native",
+      "changing_dimmer_color": false,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": true,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": 259690829838614336,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 0
+    },
+    {
+      "backend": "native",
+      "changing_dimmer_color": true,
+      "dense_light_rebind_calls": 0,
+      "dense_renderer_refreshes": 0,
+      "frames": 320,
+      "mixed": true,
+      "native_beam_binding_passes": 0,
+      "render_group_binding_installs": 0,
+      "shutter_digest": 259690829838614336,
+      "shutter_invalidations": 0,
+      "shutter_resource_install_calls": 0,
+      "source_evaluations": 1280
+    }
+  ],
+  "admission_application_us_per_frame": [
+    {
+      "candidates": 31,
+      "native_us": [
+        111.016666666667,
+        85.5166666666667,
+        93.3208333333333
+      ],
+      "rounds": 3,
+      "samples": 240,
+      "script_us": [
+        705.925,
+        1048.375,
+        1087.7375
+      ]
+    },
+    {
+      "candidates": 32,
+      "native_us": [
+        133.179166666667,
+        210.354166666667,
+        105.804166666667
+      ],
+      "rounds": 3,
+      "samples": 240,
+      "script_us": [
+        880.870833333333,
+        1096.70833333333,
+        1183.5
+      ]
+    },
+    {
+      "candidates": 64,
+      "native_us": [
+        208.0,
+        277.65,
+        352.7375
+      ],
+      "rounds": 3,
+      "samples": 240,
+      "script_us": [
+        2145.17083333333,
+        2345.88333333333,
+        2386.175
+      ]
+    },
+    {
+      "candidates": 115,
+      "native_us": [
+        486.745833333333,
+        450.641666666667,
+        348.0
+      ],
+      "rounds": 3,
+      "samples": 240,
+      "script_us": [
+        4050.725,
+        3578.47083333333,
+        3073.5625
+      ]
+    },
+    {
+      "candidates": 128,
+      "native_us": [
+        423.491666666667,
+        333.108333333333,
+        363.554166666667
+      ],
+      "rounds": 3,
+      "samples": 240,
+      "script_us": [
+        2983.97916666667,
+        3061.1125,
+        2881.225
+      ]
+    }
+  ],
+  "consumer_native_dmx_equivalence": [
+    {
+      "active_footprints": 32,
+      "active_shafts": 1,
+      "allocated_footprints": 32,
+      "isolation": "none",
+      "native_eligible_candidates": 0,
+      "pan_tilt_digest": "-259177594110617533",
+      "physical_digest": "1342919008570889728",
+      "source_evaluations": 480
+    },
+    {
+      "active_footprints": 0,
+      "active_shafts": 1,
+      "allocated_footprints": 32,
+      "isolation": "no-custom-footprints",
+      "native_eligible_candidates": 0,
+      "pan_tilt_digest": "-259177594110617533",
+      "physical_digest": "1342919008570889728",
+      "source_evaluations": 480
+    },
+    {
+      "active_footprints": 32,
+      "active_shafts": 0,
+      "allocated_footprints": 32,
+      "isolation": "no-volumetric-shafts",
+      "native_eligible_candidates": 0,
+      "pan_tilt_digest": "-259177594110617533",
+      "physical_digest": "1342919008570889728",
+      "source_evaluations": 480
+    }
+  ],
+  "graphics_software_draw_validation": [
+    {
+      "configuration": "full",
+      "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "draw_calls": 18,
+      "rendered_objects": 18,
+      "active_shafts": 6,
+      "active_footprints": 6,
+      "footprint_resources": 6
+    },
+    {
+      "configuration": "no-custom-footprints",
+      "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "draw_calls": 12,
+      "rendered_objects": 12,
+      "active_shafts": 6,
+      "active_footprints": 0,
+      "footprint_resources": 6
+    },
+    {
+      "configuration": "no-volumetric-shafts",
+      "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "draw_calls": 12,
+      "rendered_objects": 12,
+      "active_shafts": 0,
+      "active_footprints": 6,
+      "footprint_resources": 6
+    },
+    {
+      "configuration": "no-beams",
+      "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "draw_calls": 6,
+      "rendered_objects": 6,
+      "active_shafts": 0,
+      "active_footprints": 0,
+      "footprint_resources": 6
+    },
+    {
+      "configuration": "transforms-only",
+      "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+      "draw_calls": 6,
+      "rendered_objects": 6,
+      "active_shafts": 0,
+      "active_footprints": 0,
+      "footprint_resources": 6
+    }
+  ],
+  "reference_scene_held_synthetic_open_profiles": {
+    "physical_outputs": 1095,
+    "render_rows": 115,
+    "aggregate_shafts": 20,
+    "aggregated_members": 1000,
+    "eligible_candidates": 75,
+    "admitted_candidates": 75
+  },
+  "validation": {
+    "native_ctest_passed": 13,
+    "required_ctest_inventory_validated": true,
+    "gdscript_ci_passed": 47,
+    "python_ci_script_tests_passed": 9,
+    "architecture_and_size_checks_passed": true,
+    "graphics_configurations_passed": 5
+  },
+  "boundary_regressions": [
+    "Native-to-script revocation at 32 to 31 eligible candidates invalidates obsolete script signatures.",
+    "Native light ownership acquired after initial blackout installs current shutter routes; angular callbacks preserve the resulting modulation."
+  ]
+}

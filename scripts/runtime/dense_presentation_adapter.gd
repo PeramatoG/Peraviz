@@ -95,6 +95,7 @@ var _trace: bool = false:
 		_trace = value
 		for volume in _footprints.volumes: volume.trace_enabled = value
 var _mode: String = "full"
+var _render_isolation: String = "none"
 var _surface_multiplier: float = 1.0
 var _shaft_multiplier: float = 1.0
 var _mutation_serial: int = 0
@@ -157,6 +158,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted, budget: Sc
 	_loader = loader
 	_trace = service._performance_trace_enabled
 	_mode = service._render_diagnostic_mode
+	_render_isolation = service._render_isolation
 	_diagnostic_open_surface_lights = service._diagnostic_open_surface_lights
 	for key in MUTATION_COUNTERS: _totals[key] = 0
 	# Weak ownership avoids a service -> adapter -> service reference cycle.
@@ -448,7 +450,10 @@ func _apply_output(output: OutputHandle, v: PackedFloat32Array, b: int, mask: in
 func _apply_spot(handle: LightHandle, realtime: bool, presentation: int) -> int:
 	var before: int = _mutation_serial
 	var enabled: bool = false
+	var previously_owned: bool = handle.owns_realtime_surface_light
 	handle.owns_realtime_surface_light = _mode == "full" and handle.projected and _surface_multiplier > 0.0 and SurfacePolicy.owns_realtime_light(realtime, presentation, handle.light.light_projector != null, _diagnostic_open_surface_lights, handle.has_projected_surface_profile, SurfacePolicy.custom_light(handle.light))
+	# Real light-ownership transitions must update borrowed shutter routes.
+	if previously_owned != handle.owns_realtime_surface_light: _invalidate_native_beams()
 	if _mode == "full" and handle.visible:
 		enabled = handle.owns_realtime_surface_light
 	if not enabled and _surface_multiplier <= 0.0 and handle.light.light_energy != 0.0:
@@ -540,6 +545,7 @@ func _bind_beam_resource(handle: LightHandle, beam: MeshInstance3D) -> void:
 		handle.initialization_failed = false
 		_record_event(&"beam_resource_rebounds")
 	handle.beam = beam
+	if is_instance_valid(beam) and _render_isolation == "no-volumetric-shafts": beam.layers = 0
 	if is_instance_valid(beam): handle.bound_state = BoundBeamStateScript.resolve(beam)
 
 func _capture_renderer_mutations() -> void:
@@ -582,11 +588,16 @@ func apply_light_state(light: SpotLight3D) -> int:
 
 # Mode changes replay held native state immediately, even without another DMX packet.
 func _sync_presentation_policy() -> void:
+	# Aggregate rows do not apply their physical members. Restore their optical
+	# parents at this cold boundary so held independent footprints can reappear.
+	if _mode == "full":
+		for output in _outputs:
+			for handle in output.lights: _set_structural_visibility(handle, true)
 	if _native != null:
 		var writes: int = _native.set_materials_enabled(_mode != "transforms-only")
 		_record_mutation(&"material_parameter_writes", writes)
 		if _trace: _totals["actual_lens_material_renderer_writes"] += writes
-		_native.set_footprints_enabled(_mode == "full")
+		_native.set_footprints_enabled(_mode == "full" and _render_isolation != "no-custom-footprints")
 	if _loader.has_method("_set_native_presentation_enabled"):
 		_loader._set_native_presentation_enabled(_mode == "full")
 
@@ -632,6 +643,7 @@ func diagnostics() -> Dictionary:
 	_capture_renderer_mutations()
 	var result: Dictionary = _totals.duplicate()
 	result["render_diagnostic_mode"] = _mode
+	result["render_consumer_isolation"] = _render_isolation
 	result["surface_lights"] = _surface_counts.snapshot()
 	result["diagnostic_open_surface_lights"] = _diagnostic_open_surface_lights
 	if _native != null: result.merge(_native.get_sizes())
@@ -656,7 +668,7 @@ func consume_diagnostics() -> Dictionary:
 		var spots: int = 0
 		for output in _outputs:
 			for handle in output.lights:
-				beams += 1 if is_instance_valid(handle.beam) and handle.beam.is_visible_in_tree() else 0
+				beams += 1 if is_instance_valid(handle.beam) and handle.beam.is_visible_in_tree() and handle.beam.layers != 0 else 0
 				spots += 1 if handle.realtime_visible and handle.light.is_visible_in_tree() else 0
 		beams += int(_render_bindings.counts(self)["visible_aggregate_shafts"])
 		service._visual_apply_counters["beam_visible_count"] = beams
@@ -665,6 +677,7 @@ func consume_diagnostics() -> Dictionary:
 
 # Setup/control-boundary refresh after a renderer, settings or gobo resource replacement.
 func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
+	_record_event(&"dense_light_rebind_calls")
 	_invalidate_native_beams()
 	var handle: LightHandle = _lights_by_id.get(light.get_instance_id())
 	var aggregated: bool = handle != null and handle.output_index < _render_bindings.membership.size() and _render_bindings.rows[_render_bindings.membership[handle.output_index]].presentation_class == 1
@@ -683,6 +696,7 @@ func rebind_light(light: SpotLight3D, rebuild_groups: bool = true) -> void:
 	_capture_renderer_mutations()
 
 func refresh_renderer() -> void:
+	_record_event(&"dense_renderer_refreshes")
 	if not is_installed(): return
 	_lens_batches.clear(_native)
 	_invalidate_native_beams()
@@ -841,15 +855,20 @@ func _apply_control_material(group: ControlGroup, v: PackedFloat32Array, b: int)
 
 # Setup once per renderer generation; lenses retain independent native physical routes.
 func _install_render_bindings() -> bool:
+	_record_event(&"render_group_binding_installs")
 	_invalidate_native_beams()
 	var binding_start: int = Time.get_ticks_usec() if _trace else 0
 	AggregateShaftResources.prepare(self)
 	if not _render_bindings.install(self, _render_descriptors): return false
 	AggregateShaftResources.reconcile(self)
+	if _render_isolation == "no-volumetric-shafts":
+		for row in _render_bindings.rows:
+			for handle in row.output.lights:
+				if is_instance_valid(handle.beam): handle.beam.layers = 0
 	_install_groups()
 	if _trace: _totals["shaft_resource_binding_us"] = int(_totals.get("shaft_resource_binding_us", 0)) + Time.get_ticks_usec() - binding_start
 	if not _footprints.install(self): return false
-	_native.set_footprints_enabled(_mode == "full")
+	_native.set_footprints_enabled(_mode == "full" and _render_isolation != "no-custom-footprints")
 	return _install_lens_bindings()
 
 # Lens-only policy changes preserve existing shaft/gobo initialization and group resources.

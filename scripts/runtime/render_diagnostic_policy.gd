@@ -25,3 +25,15 @@ static func applies_section(mode: String, section_type: int) -> bool:
 
 static func renders_beams(mode: String) -> bool:
 	return mode == FULL
+
+# Startup-only consumer isolation. It never enters saved visual settings or DMX policy.
+const ISOLATION_PREFIX: String = "--peraviz-render-isolation="
+const NO_CUSTOM_FOOTPRINTS: String = "no-custom-footprints"
+const NO_VOLUMETRIC_SHAFTS: String = "no-volumetric-shafts"
+
+static func isolation_from_arguments(arguments: PackedStringArray) -> String:
+	for argument in arguments:
+		if argument.begins_with(ISOLATION_PREFIX):
+			var requested := argument.trim_prefix(ISOLATION_PREFIX)
+			return requested if requested in [NO_CUSTOM_FOOTPRINTS, NO_VOLUMETRIC_SHAFTS] else "none"
+	return "none"

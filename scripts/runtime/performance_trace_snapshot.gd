@@ -46,6 +46,7 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 		"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 		"orphan_nodes": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)),
 		"resources": int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)),
+		"process_ms": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 		"render_setup_cpu_ms": RenderingServer.get_frame_setup_time_cpu(),
 		"viewport_cpu_ms": 0.0, "viewport_gpu_ms": 0.0,
 	}
@@ -53,6 +54,8 @@ func collect(owner: Node, native_runtime: Object) -> Dictionary:
 	if viewport != null:
 		var rid: RID = viewport.get_viewport_rid()
 		result["viewport_cpu_ms"] = RenderingServer.viewport_get_measured_render_time_cpu(rid)
+		result["viewport_draw_calls"] = viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME)
+		result["viewport_rendered_objects"] = viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_OBJECTS_IN_FRAME)
 		result["viewport_gpu_ms"] = RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	var sizes: Dictionary = {}
 	var cache_builds: Dictionary = {}

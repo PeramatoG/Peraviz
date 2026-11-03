@@ -18,6 +18,7 @@ const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagn
 
 const DensePresentationAdapterScript = preload("res://scripts/runtime/dense_presentation_adapter.gd")
 const SurfacePolicy = preload("res://scripts/runtime/surface_light_policy.gd")
+var _render_isolation: String = RenderDiagnosticPolicyScript.isolation_from_arguments(OS.get_cmdline_user_args())
 var _diagnostic_open_surface_lights: bool = SurfacePolicy.open_lights_from_arguments(OS.get_cmdline_user_args())
 
 var _dense_adapter: RefCounted

@@ -2,8 +2,8 @@ extends RefCounted
 
 const Policy = preload("res://scripts/runtime/surface_light_policy.gd")
 
-# Cold gobo bridge: consumes existing optical state and light ownership only.
-static func refresh(loader: Node, light: SpotLight3D, texture: Texture2D = null) -> void:
+# Gobo presentation bridge: optical updates with optional light-ownership replay.
+static func refresh(loader: Node, light: SpotLight3D, texture: Texture2D = null, update_light_state: bool = true) -> void:
 	if loader._fixture_gobo_projector == null:
 		return
 	light.set_meta(Policy.BACKEND_META, "custom" if Policy.custom(loader._visual_settings) else "native")
@@ -22,5 +22,5 @@ static func refresh(loader: Node, light: SpotLight3D, texture: Texture2D = null)
 	loader._fixture_gobo_projector.set_shadow_mask_enabled(light, active and not Policy.custom(loader._visual_settings) and resolved_texture != null and int(loader._visual_settings.get("beam_presentation", 1)) == 2)
 	if loader._fixture_light_apply_service._render_diagnostic_mode == "full":
 		loader._fixture_gobo_projector.set_presentation_rotation(light, float(params.get("gobo_rotation_deg", 0.0)) if resolved_texture != null else 0.0)
-	if loader._fixture_light_apply_service != null:
+	if update_light_state and loader._fixture_light_apply_service != null:
 		loader._fixture_light_apply_service._apply_desired_light_state(loader, light)
