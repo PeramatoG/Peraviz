@@ -89,7 +89,11 @@ var _service: WeakRef
 var _renderer: BeamRendererBase
 var _warned_unresolved: bool = false
 var _warned_beam_initialization: bool = false
-var _trace: bool = false
+var _trace: bool = false:
+	set(value):
+		if _trace == value: return
+		_trace = value
+		for volume in _footprints.volumes: volume.trace_enabled = value
 var _mode: String = "full"
 var _surface_multiplier: float = 1.0
 var _shaft_multiplier: float = 1.0

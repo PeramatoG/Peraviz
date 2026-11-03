@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Avoided equivalent Custom Footprint origin submissions during fixed-origin rotation and duplicate receiver-bounds work during optical synchronization. Opt-in tracing and the existing footprint probe now separate real transform changes, uniform writes, physical material writes and rendering, including imported-scene resource graphs. Optical projection and shaft aggregation are preserved; Windows GPU impact remains to be measured.
+
 - Added deterministic temporal performance guardrails and separate renderer-write/MultiMesh byte counters. Temporal profiling is now opt-in, and held projector replay avoids equivalent float energy setters. Opt-in diagnostics explain GPU lens admission failures and distinguish individual flash duration from sampling-probe totals. Shared shutter, aggregate shaft and independent physical lens/footprint behavior are preserved.
 
 - Corrected shared Random Strobe ownership: a common GDTF shutter now synchronizes all cells and retains eligible aggregate Wash shafts and GPU-instanced lenses. Independent cells/banks and co-patched fixtures remain independent. Native waveform sampling is pooled per control; selected-output diagnostics expose authority membership and aggregation reasons.

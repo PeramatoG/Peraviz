@@ -3,6 +3,9 @@ extends RefCounted
 # Opt-in only. Each case changes one presentation domain; readback happens after
 # timing, never in ordinary frames. Device times on llvmpipe are not GPU evidence.
 static func run(probe: RefCounted, tree: SceneTree, test: RefCounted, viewport: SubViewport, loader: Node, service: RefCounted, directory: String) -> void:
+	if "--live-footprint-probe" in OS.get_cmdline_user_args():
+		await preload("res://tests/gdscript/helpers/footprint_live_probe.gd").run(probe, tree, test, viewport, loader, service, directory)
+		return
 	service.set_performance_trace_enabled(true)
 	var adapter: RefCounted = service._dense_adapter
 	var trivial := Shader.new()

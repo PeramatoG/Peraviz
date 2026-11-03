@@ -491,3 +491,11 @@ footprints, and even the trivial projector path has substantial cost; that does 
 establish the owner's RTX bottleneck. Hardware A–F plus C/I and E/O are the required
 next measurement. The owner's 55 FPS full coverage and seven-gobo Native 90 FPS
 remain unequal workloads. No hardware FPS gain or dominant RTX cost is claimed.
+
+### Live rendering audit
+
+The [live rendering audit](custom-footprint-live-rendering-audit.md) distinguishes
+logical projector update groups from actual uniform writes, documents the exact
+origin/bounds corrections, and extends the existing opt-in probe with isolated
+static, Color/Dimmer, mechanical and combined cases on generated or imported scenes.
+Windows RTX attribution remains a hardware validation requirement.

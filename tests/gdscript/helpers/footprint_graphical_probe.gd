@@ -15,6 +15,10 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 		if arg.begins_with("--footprint-output="): directory = arg.trim_prefix("--footprint-output=")
 		if arg.begins_with("--footprint-count="): count = maxi(1, int(arg.trim_prefix("--footprint-count=")))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--footprint-scene="):
+			await preload("res://tests/gdscript/helpers/footprint_scene_probe.gd").run(self, tree, test, arg.trim_prefix("--footprint-scene="), directory)
+			return
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(960, 640)
 	viewport.own_world_3d = true
@@ -301,19 +305,25 @@ func _check_receivers(viewport: SubViewport, camera: Camera3D, loader: Node, tes
 		var color := image.get_pixel(pixel.x, pixel.y)
 		test.check(maxf(color.r,maxf(color.g,color.b)) > 0.15, "Projected image/profile visibly reaches receiver %d (floor, wall, incline)" % index)
 
-func _capture(tree: SceneTree, viewport: SubViewport, path: String, before_frame: Callable = Callable()) -> Dictionary:
-	for iteration in range(8):
+func _capture(tree: SceneTree, viewport: Viewport, path: String, before_frame: Callable = Callable(), warmup_frames: int = 8, sample_frames: int = 6, after_warmup: Callable = Callable()) -> Dictionary:
+	for iteration in range(warmup_frames):
 		if before_frame.is_valid(): before_frame.call()
 		await tree.process_frame
 		await RenderingServer.frame_post_draw
+	if after_warmup.is_valid(): after_warmup.call()
 	var cpu := 0.0
 	var gpu := 0.0
-	for iteration in range(6):
+	var wall := 0.0
+	var setup := 0.0
+	for iteration in range(sample_frames):
+		var start := Time.get_ticks_usec()
 		if before_frame.is_valid(): before_frame.call()
 		await tree.process_frame
 		await RenderingServer.frame_post_draw
 		cpu += RenderingServer.viewport_get_measured_render_time_cpu(viewport.get_viewport_rid())
 		gpu += RenderingServer.viewport_get_measured_render_time_gpu(viewport.get_viewport_rid())
+		wall += float(Time.get_ticks_usec() - start) / 1000.0
+		setup += RenderingServer.get_frame_setup_time_cpu()
 	var image := viewport.get_texture().get_image()
 	image.save_png(path)
 	var lit: int = 0
@@ -323,7 +333,7 @@ func _capture(tree: SceneTree, viewport: SubViewport, path: String, before_frame
 			var color := image.get_pixel(x,y)
 			if maxf(color.r,maxf(color.g,color.b)) > 0.15: lit += 1
 			if maxf(color.r,maxf(color.g,color.b)) >= 0.98: saturated += 1
-	return {"cpu_render_ms": cpu / 6.0, "gpu_render_ms": gpu / 6.0, "primitives": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME), "draw_calls": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), "lit_pixels": lit, "saturated_pixels": saturated}
+	return {"cpu_render_ms": cpu / sample_frames, "gpu_render_ms": gpu / sample_frames, "frame_wall_ms": wall / sample_frames, "sampled_process_monitor_ms": Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, "render_setup_ms": setup / sample_frames, "rendered_objects": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_OBJECTS_IN_FRAME), "primitives": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME), "draw_calls": viewport.get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), "lit_pixels": lit, "saturated_pixels": saturated}
 
 func _add_box(parent: Node3D, position: Vector3, size: Vector3) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()

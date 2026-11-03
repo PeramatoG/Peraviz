@@ -90,6 +90,7 @@ func install(adapter: RefCounted) -> bool:
 				light.add_child(volume)
 				light.set_meta(Volume.META, volume)
 			else: retained.erase(light.get_instance_id())
+			volume.trace_enabled = adapter._trace
 			volume.configure(handle.projection, float(settings.get("footprint_max_range", 40.0)))
 			if bool(settings.get("beam_debug_optics", false)):
 				var profile: Dictionary = adapter._binding_records[output.index].get("beam_optical_profile", {})
@@ -126,13 +127,17 @@ func counts() -> Dictionary:
 	var culled: int = 0
 	var updates: int = 0
 	var anchored: int = 0
+	var work: Dictionary = {}
 	for volume in volumes:
 		if not is_instance_valid(volume): continue
 		culled += 1 if volume.culled else 0
+		var sample: Dictionary = volume.work_counts()
+		for key in sample: work[key] = int(work.get(key, 0)) + int(sample[key])
 		updates += volume.parameter_updates
 		anchored += 1 if volume.projection.radial_profile.anchored else 0
-	return {"anchored_custom_profiles": anchored, "fallback_custom_profiles": volumes.size() - anchored, "custom_volumes_created": created, "custom_volumes_retired": retired, "custom_binding_installs": installs, "custom_footprint_supported": _supported, "custom_projector_resources": volumes.size(), "culled_custom_footprints": culled,
-		"custom_projector_parameter_updates": updates}
+	work.merge({"anchored_custom_profiles": anchored, "fallback_custom_profiles": volumes.size() - anchored, "custom_volumes_created": created, "custom_volumes_retired": retired, "custom_binding_installs": installs, "custom_footprint_supported": _supported, "custom_projector_resources": volumes.size(), "culled_custom_footprints": culled,
+		"custom_projector_parameter_updates": updates})
+	return work
 
 # One setup traversal of scenery only. Do not subscribe fixtures, lenses, shafts
 # or mechanical axes: Pan/Tilt invalidates the affected projector's transform.
