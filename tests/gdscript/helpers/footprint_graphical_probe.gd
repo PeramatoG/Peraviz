@@ -121,6 +121,9 @@ func run(tree: SceneTree, test: RefCounted) -> void:
 	service.compose_dense_snapshot(frame.descriptors, frame.integers, frame.floats)
 	service.end_visual_snapshot()
 	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
+	if "--inactive-footprint-visual-probe" in OS.get_cmdline_user_args():
+		await load("res://tests/gdscript/helpers/inactive_footprint_visual_probe.gd").run(self,tree,test,viewport,loader,service,directory)
+		return
 	if "--shared-smoke-probe" in OS.get_cmdline_user_args():
 		await preload("res://tests/gdscript/helpers/shared_fake_smoke_probe.gd").run(self,tree,test,viewport,loader,service,directory)
 		return

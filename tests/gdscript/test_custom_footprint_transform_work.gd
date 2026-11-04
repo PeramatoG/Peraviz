@@ -22,6 +22,7 @@ func run() -> void:
 		anchor.add_child(volume)
 		volume.configure(state, 20.0)
 		test.check(volume.work_counts().custom_uniform_writes == 0, "Tracing is opt-in")
+		for elapsed in volume.cpu_times().values(): test.check(elapsed == 0, "Fine clocks are opt-in independently of tracing")
 		volume.trace_enabled = true
 		volumes.append(volume)
 	await process_frame
@@ -60,6 +61,20 @@ func run() -> void:
 	volume.sync()
 	volume.force_update_transform()
 	test.check(volume.work_counts().custom_uniform_writes == writes, "Held matrices and origins submit nothing")
+	# Fine profiling must observe the same real operations, without changing them.
+	var before_cpu: Dictionary = volume.cpu_times()
+	volume.profile_enabled = true
+	for tick in range(128):
+		mechanical.rotation.x += 0.001
+		volume.force_update_transform()
+	var after_cpu: Dictionary = volume.cpu_times()
+	test.check(after_cpu.notification_us > before_cpu.notification_us and after_cpu.world_check_us > before_cpu.world_check_us, "Fine clocks measure actual notifications and world work")
+	var profiled: Transform3D = volume.material_override.get_shader_parameter("world_to_projector")
+	test.check((profiled * volume.get_parent().global_transform).is_equal_approx(Transform3D.IDENTITY), "Profiling preserves the exact current projection")
+	volume.profile_enabled = false
+	mechanical.rotation.x += 0.001
+	volume.force_update_transform()
+	test.check(volume.cpu_times() == after_cpu, "Disabling profiling stops all fine clock accumulation")
 	mechanical.free()
 	await process_frame
 	test.finish(self)

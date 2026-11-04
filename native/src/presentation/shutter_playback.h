@@ -137,6 +137,8 @@ public:
     }
     // Borrows physical presentation multipliers, independently of canonical native intensity/color state.
     const std::vector<float> &envelopes() const { return envelopes_; }
+    // Borrows existing indexed activity for renderer readiness; no duplicate temporal state.
+    const std::vector<uint32_t> &continuous_outputs() const { return active_layers_; }
     // Keeps idle/Open/Closed scenes free of continuous temporal work.
     bool pending() const { return !active_.empty() || !dirty_authorities_.empty() || !dirty_.empty(); }
     // Counts affected physical outputs without rescanning the imported scene.

@@ -24,6 +24,7 @@ public:
     bool install_render_rows(const PackedInt32Array &membership, const PackedInt32Array &classes);
     bool install_materials(const Array &rids, const PackedInt32Array &owners, const PackedFloat32Array &scales, const PackedInt32Array &routes);
     bool install_footprints(int64_t generation, const Array &rids, const Array &instances, const PackedInt32Array &owners, const PackedFloat32Array &scales, const PackedInt32Array &routes);
+    bool install_footprint_projectors(int64_t generation, const PackedInt64Array &objects);
     void clear_footprints();
     void set_footprint_visible(int32_t index, bool visible);
     void set_footprints_enabled(bool enabled);
@@ -68,6 +69,7 @@ private:
     bool shutter_enabled_=true,shutter_trace_=false;
     double shutter_surface_gain_=1,shutter_beam_gain_=1;
     uint64_t shutter_beam_writes_=0,shutter_material_writes_=0,shutter_ticks_=0,shutter_us_=0,shutter_lens_submissions_=0;
+    uint64_t shutter_footprint_us_=0;
     uint64_t shutter_lens_material_writes_=0,shutter_footprint_material_writes_=0,shutter_projector_writes_=0;
     uint64_t shutter_lens_bytes_=0,shutter_lens_instance_writes_=0,shutter_evaluation_us_=0,shutter_mutation_us_=0;
     void ingest_shutters(const peraviz::runtime::SectionedVisualFrame &frame);

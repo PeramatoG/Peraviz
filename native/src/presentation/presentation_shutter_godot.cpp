@@ -76,7 +76,9 @@ int64_t PeravizPresentationState::advance_shutters(int64_t generation,double tes
         if (submissions) shutter_lens_bytes_+=lenses_.submitted_bytes();
         shutter_lens_instance_writes_+=lenses_.shutter_instance_writes();
     }
+    const auto footprint_start=shutter_trace_?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
     footprints_.apply_shutters(changed);
+    if (shutter_trace_) shutter_footprint_us_+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-footprint_start).count();
     shutter_lens_material_writes_+=lens_writes;
     shutter_footprint_material_writes_+=footprints_.writes();
     shutter_material_writes_+=lens_writes+footprints_.writes(); ++shutter_ticks_;
