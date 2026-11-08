@@ -247,3 +247,43 @@ reduction, compact packing, renderer mutation and receiver-to-apply latency.
 Trace stays disabled in normal playback. No result here establishes whether
 renderer mutation or GPU submission dominates the owner's scene; the next backend
 task should use those stages before selecting independent-emitter instancing.
+
+## Additive emitters without Dimmer
+
+Native scene compilation classifies intensity authority per exact physical Beam.
+Classification uses selected-mode properties before numeric setup transport, and
+includes declared explicit controls even if their runtime source later fails.
+Supported additive targets with R, G and B inputs (optionally W and other already
+supported components) receive implicit full-scale intensity only when no explicit
+Dimmer owns the Beam or any ancestor in its instance-qualified geometry path.
+Sibling emitters do not share authority. An explicit selected-mode Dimmer retains
+authority even when inactive or invalid; the fallback never bypasses it.
+
+The generation-owned `ColorTargetRuntime` publishes one ordinary `EmitterIntensity`
+row at its canonical Beam target ID on initial color evaluation. This is output
+initialization, not a synthetic property, source, DMX channel or fixture footprint.
+Setup exports a section-2 route for each exact color Beam; GDScript only routes
+values and performs no authority classification. Existing explicit Dimmer routes
+and render/control grouping remain unchanged. Setup contract 10 carries the compiler-owned `implicit_intensity` bit alongside
+`additive_source` in the existing color flags slot. Geometry paths are intentionally
+absent from numeric setup transport, so runtime installation must consume this proof
+rather than reclassify after decoding. Versions 1–9 remain decodable and do not
+activate this fallback. The visual protocol stays 2.6.
+
+Intensity uses the existing native photometric cooker (base material energy 4),
+then the existing dense composer multiplies by physical color gain. An all-zero
+additive mix therefore has zero material energy; positive RGB can emit without
+changing color normalization. Shutter envelopes, lens gain and renderer suppression
+still apply at their existing presentation boundaries.
+
+Native presentation retains initialized intensity with color across held replay,
+blackout and renderer invalidation. Runtime scene install/clear retires the authority
+flags with its universe state; recompilation reclassifies, and runtime reinstall republishes from held DMX.
+No per-frame hierarchy search or extra projected nodes are introduced. None/Glow
+continue using emission-only presentation. CMY, filter and wheel-only targets do
+not gain this authority.
+
+`test_rgb_strip_emission.gd` imports a generated one metre strip with 60
+GeometryReferences, `DMXBreak="Overwrite"`, mode `RGB_180ch` and exactly 180 slots.
+It checks final native material bindings as well as independently routed colors.
+`additive_intensity_test.cpp` checks native intensity authority and diagnostics.

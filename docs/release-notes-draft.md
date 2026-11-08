@@ -1,6 +1,7 @@
 # Peraviz v0.x.x
 
 - Custom Footprints now defer projection and receiver-bounds commits during stable blackout, closed shutters, zero surface gain or diagnostic consumer suppression. Indexed synchronous admission restores current optics and mechanical ancestry before rendering, including held-state recovery. Continuous Shutter/Strobe keeps projection ready across flashes. Resources, optical fidelity and shutter mapping are preserved. Added opt-in CPU scopes and generated baseline/candidate workloads; Windows GPU validation remains owner-side.
+- Fix dark RGB/RGBW lenses on fixtures without a Dimmer, including independently addressed Glow pixels. Explicit and inherited Dimmer controls retain authority; valid color-only modes no longer report a false zero-DPT error.
 
 - Continuous gobo rotation now preserves native beam/shutter bindings and shutter-modulated projector energy while retaining optical updates and real resource-change rebinding. Added startup-only shaft/Custom Footprint isolation, corrected aggregate-member footprint recovery on Full replay, and lowered native beam admission to 32 measured compatible candidates. No Windows GPU FPS improvement is claimed.
 

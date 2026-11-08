@@ -966,6 +966,8 @@ func get_dense_presentation_bindings() -> Dictionary:
 				if indices.has(canonical_id):
 					var route := PackedInt32Array([section, int(target_id), int(indices[canonical_id])])
 					routes.append_array(route)
+					# Native implicit intensity uses this exact Beam identity; authority stays in C++.
+					if section == 3: routes.append_array(PackedInt32Array([2, int(target_id), int(indices[canonical_id])]))
 					# Static per-Beam profiles are routes, never independent selected-mode Zoom authority.
 					if section != 4 or _zoom_authority_targets.has(target_id): authority_routes.append_array(route)
 	var render_groups: Array = []

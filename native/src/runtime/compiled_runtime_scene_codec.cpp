@@ -105,7 +105,7 @@ PackedCompiledRuntimeScene encode_compiled_runtime_scene(const CompiledRuntimeSc
             i.insert(i.end(), {c.source_program_id, push_float(f, c.weight), static_cast<int32_t>(c.operation)});
     }
     for (const auto &v : scene.color_targets) {
-        i.insert(i.end(), {v.color_target_id, v.fixture_id, v.beam_render_target_id, v.geometry_id, v.additive_source ? 1 : 0,
+        i.insert(i.end(), {v.color_target_id, v.fixture_id, v.beam_render_target_id, v.geometry_id, (v.additive_source ? 1 : 0) | (scene.contract_version >= 10 && v.implicit_intensity ? 2 : 0),
                            static_cast<int32_t>(v.inputs.size())});
         for (const auto &x : v.inputs)
             i.insert(i.end(), {x.source_program_id, static_cast<int32_t>(x.semantic), push_float(f, x.default_value),
@@ -249,7 +249,9 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
         v.fixture_id = d.read();
         v.beam_render_target_id = d.read();
         v.geometry_id = d.read();
-        v.additive_source = d.read() != 0;
+        const int32_t color_flags = d.read();
+        v.additive_source = (color_flags & 1) != 0;
+        v.implicit_intensity = version >= 10 && (color_flags & 2) != 0;
         int32_t count = d.read(), stride = version >= 3 ? 6 : 4;
         if (!valid_count(d, count) || !d.require(static_cast<size_t>(count) * stride))
             goto done;

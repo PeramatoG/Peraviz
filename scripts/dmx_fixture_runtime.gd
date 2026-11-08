@@ -522,7 +522,7 @@ func _install_renderer_manifest(renderer_manifest: Array, budget: SceneLoadBudge
 		return false
 	_native_setup_summary["target_registry"] = _renderer_target_registry._get_native_target_registry_summary()
 	var registry_summary: Dictionary = _native_setup_summary.get("target_registry", {}).get("registry_summary", {})
-	for semantic in ["pan", "tilt", "dimmer"]:
+	for semantic in ["pan", "tilt", "dimmer", "color", "optics"]:
 		var requested: int = int(registry_summary.get("%s_requested" % semantic, 0))
 		var resolved: int = int(registry_summary.get("%s_resolved" % semantic, 0))
 		if requested > 0 and resolved == 0:
@@ -533,8 +533,7 @@ func _install_renderer_manifest(renderer_manifest: Array, budget: SceneLoadBudge
 
 func _report_native_setup_summary() -> void:
 	var summary: Dictionary = _native_setup_summary.duplicate(true)
-	var dpt_count: int = int(summary.get("dimmer_property_count", 0)) + int(summary.get("pan_property_count", 0)) + int(summary.get("tilt_property_count", 0))
-	print("[native-dpt-setup] generation=%d reason=%s mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d compiled_properties=%d used_universes=%s relevant_offset_counts=%s manifest_fixtures=%d installed_native_properties=%d" % [
+	print("[native-dpt-setup] generation=%d reason=%s mvr_fixture_patches=%d gdtf_files_opened=%d selected_modes=%d dmxchannels=%d dmxchannel_records=%d logical_channels=%d channel_functions=%d dimmer_programs=%d pan_programs=%d tilt_programs=%d zoom_programs=%d color_targets=%d wheel_bindings=%d compiled_properties=%d used_universes=%s relevant_offset_counts=%s manifest_fixtures=%d installed_native_properties=%d" % [
 		_runtime_generation,
 		_last_rebuild_reason,
 		int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))),
@@ -547,14 +546,17 @@ func _report_native_setup_summary() -> void:
 		int(summary.get("dimmer_program_count", 0)),
 		int(summary.get("pan_program_count", 0)),
 		int(summary.get("tilt_program_count", 0)),
+		int(summary.get("zoom_program_count", 0)),
+		int(summary.get("color_target_count", 0)),
+		int(summary.get("wheel_binding_count", 0)),
 		int(_native_bindings_count),
 		str(summary.get("used_universes", {})),
 		_format_relevant_offset_counts(summary.get("relevant_offsets_by_universe", {})),
 		int(summary.get("manifest_fixture_count", 0)),
 		int(summary.get("installed_native_properties", _native_bindings_count)),
 	])
-	if int(summary.get("mvr_fixture_patches", summary.get("scene_fixture_count", 0))) > 0 and dpt_count == 0:
-		push_error("Native Dimmer/Pan/Tilt runtime installed zero properties for patched fixtures; live DMX visualization will not produce DPT rows.")
+	# Native setup diagnostics validate all supported control domains per fixture.
+	# Zero DPT is valid for additive-only and other supported selected modes.
 
 func _register_compiled_runtime_setup_metadata(compiled_scene: Dictionary) -> void:
 	_native_setup_summary = compiled_scene.get("setup_summary", {}).duplicate(true)

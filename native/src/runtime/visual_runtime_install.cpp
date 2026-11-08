@@ -41,7 +41,6 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         params.beam_multiplier = fixture.beam_multiplier;
         render_params_by_fixture_[fixture.fixture_id] = params;
     }
-    int installed_properties = 0;
     for (const CompiledComponentProperty &property : scene.properties) {
         const SemanticParameter parameter = semantic_parameter_for_compiled(property.semantic);
         if (property.property_id <= 0 || property.fixture_id <= 0 || parameter == SemanticParameter::Unknown || property.contributors.empty()) {
@@ -92,10 +91,12 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
                 universe.interest_offsets.push_back(source.address);
             }
         }
-        ++installed_properties;
     }
     for (const CompiledColorTargetProgram &target : scene.color_targets) {
-        if (target.fixture_id <= 0 || target.beam_render_target_id <= 0 || target.inputs.empty()) continue;
+        if (target.fixture_id <= 0 || target.beam_render_target_id <= 0 || target.inputs.empty()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-COLOR-TARGET", "warning", "Color target has no valid physical identity or inputs.", std::to_string(target.beam_render_target_id)});
+            continue;
+        }
         int target_universe = -1;
         bool valid_target = true;
         ColorTargetRuntime runtime_target;
@@ -105,14 +106,18 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
             auto program_it = source_programs_by_id_.find(input.source_program_id);
             if (program_it == source_programs_by_id_.end()) { valid_target = false; continue; }
             const CompiledDmxSourceProgram &program = program_it->second.program;
-            if (program.sources.empty()) { valid_target = false; continue; }
+            if (program.sources.empty() || program.sources.size() > 4) { valid_target = false; continue; }
             for (const CompiledDmxByteSource &source : program.sources) {
                 if (target_universe < 0) target_universe = source.universe_id;
-                if (source.universe_id != target_universe) valid_target = false;
+                if (source.universe_id != target_universe || source.address < 0 || source.address >= 512) valid_target = false;
             }
             runtime_target.inputs.push_back({input, static_cast<float>(input.default_value), false});
         }
-        if (!valid_target || target_universe < 0 || runtime_target.inputs.empty()) continue;
+        if (!valid_target || target_universe < 0 || runtime_target.inputs.empty()) {
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-COLOR-TARGET", "warning", "Color target sources are missing, outside the universe, or span universes.", std::to_string(target.beam_render_target_id)});
+            continue;
+        }
+        capabilities.has_intensity = capabilities.has_intensity || target.implicit_intensity;
         UniverseState &universe = universes_[target_universe];
         universe.color_targets.push_back(runtime_target);
         universe.color_fixture_by_target.emplace(target.beam_render_target_id,target.fixture_id);
@@ -126,7 +131,6 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         installed_visual_mask_by_fixture_[target.fixture_id] |= VisualChangeColor;
     }
 
-    int installed_wheel_bindings = 0;
     for (const CompiledWheelTargetBinding &binding : scene.wheel_bindings) {
         auto program_it = source_programs_by_id_.find(binding.source_program_id);
         auto palette_it = wheel_palettes_by_id_.find(binding.wheel_renderer_id);
@@ -149,7 +153,6 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         wheel_state_by_physical_key_[physical_key].wheel_renderer_id = binding.wheel_renderer_id;
         capabilities.has_wheel_selection = true;
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeColor;
-        ++installed_wheel_bindings;
     }
     for (const CompiledGoboSelectionBinding &binding : scene.gobo_bindings) {
         auto program_it = source_programs_by_id_.find(binding.source_program_id);
@@ -227,7 +230,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         installed_visual_mask_by_fixture_[binding.fixture_id] |= VisualChangeGoboRotation;
     }
     install_shutters(scene,capabilities);
-    if (installed_properties == 0 && scene.color_targets.empty() && installed_wheel_bindings == 0 && scene.gobo_bindings.empty() && scene.gobo_motion_bindings.empty() && scene.shutter_bindings.empty()) {
+    if (installed_visual_mask_by_fixture_.empty()) {
         diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
