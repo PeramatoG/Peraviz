@@ -1,27 +1,29 @@
 #include "runtime/compiled_evaluation_plan.h"
 #include <algorithm>
 #include <limits>
+#include <map>
 
 namespace peraviz::runtime {
 // Binds existing source identities and validates activation edges once, without copying definitions.
 void CompiledEvaluationPlan::install(const std::vector<const CompiledDmxSourceProgram *> &programs,
-        std::vector<CompiledRuntimeDiagnostic> &diagnostics) {
+        std::vector<CompiledRuntimeDiagnostic> &diagnostics, int owner_universe) {
     *this={};
+    if (owner_universe<0 && !programs.empty() && !programs.front()->sources.empty()) owner_universe=programs.front()->sources.front().universe_id;
     sources_.reserve(programs.size());
     for (const auto *program:programs) {
         source_by_id_.emplace(program->program_id,uint32_t(sources_.size()));
         sources_.push_back({program,-1,{}});
     }
-    std::array<std::vector<uint32_t>,512> by_offset;
+    std::map<int,std::vector<uint32_t>> by_offset;
     for (uint32_t i=0;i<sources_.size();++i) {
         auto &node=sources_[i];
         for (const auto &byte:node.program->sources)
-            if (byte.address>=0 && byte.address<512) by_offset[byte.address].push_back(i);
+            if (byte.address>=0 && byte.address<512) by_offset[evaluation_byte_key(byte.universe_id,byte.address,owner_universe)].push_back(i);
         const auto &condition=node.program->activation;
         if (condition.target_kind!=gdtf_runtime::ModeMasterTargetKind::None) {
             const auto master=source_by_id_.find(condition.master_program_id);
             if (master!=source_by_id_.end()) node.master=int32_t(master->second);
-            else diagnostics.push_back({"PVZ-EVALUATION-MISSING-MASTER","warning","Evaluation source has no installed same-universe ModeMaster.",std::to_string(node.program->program_id)});
+            else diagnostics.push_back({"PVZ-EVALUATION-MISSING-MASTER","warning","Evaluation source has no installed ModeMaster dependency.",std::to_string(node.program->program_id)});
         }
     }
     // Each node has at most one master. Bound walks also reject malformed imported cycles.
@@ -33,8 +35,7 @@ void CompiledEvaluationPlan::install(const std::vector<const CompiledDmxSourcePr
         if (cursor>=0 && state[cursor]==1) diagnostics.push_back({"PVZ-EVALUATION-CYCLIC-MASTER","warning","Cyclic evaluation activation dependency remains inactive in the authoritative activation evaluator.",std::to_string(sources_[cursor].program->program_id)});
         for (uint32_t index:path) state[index]=2;
     }
-    for (size_t offset=0;offset<512;++offset) {
-        auto &indices=by_offset[offset];
+    for (auto &[offset,indices]:by_offset) {
         std::sort(indices.begin(),indices.end()); indices.erase(std::unique(indices.begin(),indices.end()),indices.end());
         if (!indices.empty()) offsets_.push_back({int32_t(offset),{uint32_t(offset_sources_.size()),uint32_t(indices.size())},0});
         offset_sources_.insert(offset_sources_.end(),indices.begin(),indices.end());
@@ -95,7 +96,7 @@ void CompiledEvaluationPlan::begin_update(const std::vector<int> &offsets) {
         ++workspace_.generation;
     }
     for (int offset:offsets) {
-        if (offset<0 || offset>=512) continue;
+        if (offset<0) continue;
         const auto found=std::lower_bound(offsets_.begin(),offsets_.end(),offset,
                 [](const auto &entry,int value) { return entry.offset<value; });
         if (found==offsets_.end() || found->offset!=offset) continue;

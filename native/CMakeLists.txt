@@ -391,6 +391,7 @@ if(BUILD_TESTING)
         tests/control_group_compiler_test.cpp
         src/presentation/control_groups.cpp
         src/presentation/wheel_presentation_eligibility.cpp
+        tests/auto_span_test.cpp
         tests/visual_runtime_core_test.cpp
         tests/shutter_runtime_test.cpp
         tests/shutter_fidelity_test.cpp

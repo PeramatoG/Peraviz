@@ -114,15 +114,8 @@ void ParallelEvaluationPrefetch::prepare() {
         auto &state=*universe.state;
         universe.inputs_prepared=state.has_pending_frame;
         if (!state.has_pending_frame) continue;
-        auto &offsets=state.changed_offsets; offsets.clear();
-        for (int offset:state.interest_offsets) {
-            const auto value=offset>=0 && size_t(offset)<state.latest_frame.size()?state.latest_frame[size_t(offset)]:0;
-            if (!state.has_last_relevant_values || value!=state.last_relevant_values[size_t(offset)]) {
-                offsets.push_back(offset); state.last_relevant_values[size_t(offset)]=value;
-            }
-        }
-        state.has_last_relevant_values=true;
-        state.plan.begin_update(offsets);
+        PeravizVisualRuntimeCore::prepare_changed_inputs(state);
+        state.plan.begin_update(state.changed_offsets);
         for (uint32_t source:state.plan.changed_sources()) if (state.plan.source(source).consumers.count) p.source_jobs.push_back({&universe,source});
         for (int consumer:state.plan.dirty_consumers()) {
             const auto &binding=state.plan.consumer(uint32_t(consumer));

@@ -113,8 +113,11 @@ std::vector<runtime::CompiledDmxByteSource> make_sources(const SceneModel::Fixtu
     const auto entry=source_patch(patch,program.dmx_break);
     const int base_universe=patch.mvr_universe>0 ? patch.mvr_universe : patch.addresses.front().universe;
     const int universe=entry.universe+(artnet_universe-base_universe);
-    for (size_t index=0; index<program.dmx_offsets_1_based.size(); ++index)
-        sources.push_back({universe,entry.address+program.dmx_offsets_1_based[index]-2,static_cast<int32_t>(index)});
+    // Validation has already accepted the complete strict or explicitly opted-in routing.
+    for (size_t index=0; index<program.dmx_offsets_1_based.size(); ++index) {
+        const int64_t absolute=static_cast<int64_t>(entry.address)+program.dmx_offsets_1_based[index]-2;
+        sources.push_back({static_cast<int>(universe+absolute/512),static_cast<int>(absolute%512),static_cast<int32_t>(index)});
+    }
 
     return sources;
 }
@@ -838,7 +841,7 @@ void finalize_fixture_activations(runtime::CompiledRuntimeScene &scene,
 } // namespace
 
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
-runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset) {
+runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset, const RuntimeRoutingOptions &routing) {
     runtime::CompiledRuntimeScene out;
     out.mvr_fixture_patches = static_cast<int32_t>(scene.fixture_patches.size());
     int32_t next_program_id = 1;
@@ -874,7 +877,15 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
         if (!fixture_type.dmx_patch_supported) continue;
-        const auto address_issue=validate_resolved_addresses(patch,fixture_type,universe_offset);
+        const bool auto_span=routing.auto_span_fixture_uuids.count(patch.fixture_uuid)!=0;
+        auto address_issue=validate_resolved_addresses(patch,fixture_type,universe_offset,auto_span);
+        if (auto_span && address_issue.empty()) for (const auto &program:fixture_type.channel_programs) {
+            const auto *attribute=find_attribute(fixture_type,program.attribute_id);
+            if (!attribute || semantic_for_attribute(*attribute)==runtime::CompiledSemantic::Unknown || !program.wheel_reference.empty()) {
+                address_issue="Auto Span currently supports Dimmer, Pan/Tilt, Zoom and direct color controls; disable Auto Span for wheel, gobo, shutter or unsupported attributes.";
+                break;
+            }
+        }
         if (!address_issue.empty()) {
             out.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",address_issue,patch.fixture_uuid});
             continue;

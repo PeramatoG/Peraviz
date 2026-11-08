@@ -127,11 +127,11 @@ inline std::string expand_instance_dmx_routes(CompiledGdtfFixtureType &fixture, 
                 std::string offset_text=raw_offset ? dmx::trim_ascii(raw_offset) : "1";
                 if (offset_text.rfind("1.",0)==0) offset_text=offset_text.substr(2);
                 if ((raw_break && (!dmx::patch_number(raw_break,target,1) || target>255)) ||
-                    (!dmx::patch_number(offset_text,offset,1) || offset>512)) return "Invalid GeometryReference Break/DMXOffset.";
+                    (!dmx::patch_number(offset_text,offset,1) || offset>512)) return "Unsupported GeometryReference Break/DMXOffset; this runtime supports only offsets within the first 512-slot break (GDTF DMXAddress also permits absolute/universe forms).";
                 // Numbered breaks keep their identity; only Overwrite adopts the reference break.
                 if (program.dmx_break==0) copy.dmx_break=target;
                 else if (target!=program.dmx_break) return "Numbered reference Break must identify its corresponding source break.";
-                for (auto &byte : copy.dmx_offsets_1_based) { byte+=offset-1; if (byte>512) return "Reference-adjusted Offset exceeds its break."; }
+                for (auto &byte : copy.dmx_offsets_1_based) { byte+=offset-1; if (byte>512) return "Reference-adjusted Offset exceeds the currently supported first 512-slot break; cross-universe GeometryReference offsets remain unsupported."; }
             } else if (program.dmx_break==0) return "Overwrite requires a GeometryReference context.";
             int &gid=geometry_ids[route.path];
             if (!gid) {

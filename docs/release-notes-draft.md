@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added default-off native Auto Span configuration by fixture UUID for supported single-effective-break direct Color/Dimmer/Pan/Tilt/Zoom fixtures. Continuous routing supports RGB components and ordered multibyte values across consecutive physical universes; one physical emitter composes the latest held inputs once per native cycle. Strict patch handling, explicit multibreak identity and source GDTF/MVR archives remain unchanged. Synthetic native regressions verify 60-pixel routing, native Color/intensity output, replay, independent co-patching and Art-Net range rejection. GUI, project persistence, cross-universe GeometryReference offsets and Auto Span for wheel/gobo/shutter/unknown controls remain deferred.
+
 - Custom Footprints now defer projection and receiver-bounds commits during stable blackout, closed shutters, zero surface gain or diagnostic consumer suppression. Indexed synchronous admission restores current optics and mechanical ancestry before rendering, including held-state recovery. Continuous Shutter/Strobe keeps projection ready across flashes. Resources, optical fidelity and shutter mapping are preserved. Added opt-in CPU scopes and generated baseline/candidate workloads; Windows GPU validation remains owner-side.
 - Fix dark RGB/RGBW lenses on fixtures without a Dimmer, including independently addressed Glow pixels. Explicit and inherited Dimmer controls retain authority; valid color-only modes no longer report a false zero-DPT error.
 

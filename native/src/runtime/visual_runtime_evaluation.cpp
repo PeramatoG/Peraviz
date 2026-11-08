@@ -14,14 +14,16 @@ uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &fr
         return 0U;
     }
     uint32_t raw_value = 0;
-    for (const CompiledDmxByteSource &source : program.program.sources) {
-        const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(frame.size());
-        if (!valid && diagnostics != nullptr && !program.diagnosed_missing_byte) {
+    for (size_t i=0;i<program.program.sources.size();++i) {
+        const auto &source=program.program.sources[i];
+        const auto &held=program.byte_frames.empty()?frame:*program.byte_frames[i];
+        const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(held.size());
+        if (!valid && !held.empty() && diagnostics != nullptr && !program.diagnosed_missing_byte) {
             diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program.program_id)});
             program.diagnosed_missing_byte = true;
         }
-        if (!valid && warnings) *warnings|=2;
-        const uint8_t value = valid ? frame[static_cast<size_t>(source.address)] : 0;
+        if (!valid && !held.empty() && warnings) *warnings|=2;
+        const uint8_t value = valid ? held[static_cast<size_t>(source.address)] : 0;
         raw_value = (raw_value << 8U) | value;
     }
     return raw_value;

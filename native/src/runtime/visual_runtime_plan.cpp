@@ -105,13 +105,13 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
         for (const auto &binding:universe.gobo_bindings) required.insert(binding.dependency_program_ids.begin(),binding.dependency_program_ids.end());
         for (const auto &binding:universe.gobo_motion_bindings) required.insert(binding.dependency_program_ids.begin(),binding.dependency_program_ids.end());
         for (const auto &binding:universe.shutters) required.insert(binding.dependency_program_ids.begin(),binding.dependency_program_ids.end());
-        // Add same-universe masters as graph nodes without expanding unsupported domain semantics.
+        // Add exact physical master dependencies without expanding unsupported domain semantics.
         std::vector<int32_t> pending(required.begin(),required.end());
         for (size_t i=0;i<pending.size();++i) {
             const auto source=source_programs_by_id_.find(pending[i]);
             if (source==source_programs_by_id_.end()) continue;
             const auto master=source_programs_by_id_.find(source->second.program.activation.master_program_id);
-            if (master==source_programs_by_id_.end() || master->second.program.sources.empty() || master->second.program.sources.front().universe_id!=universe_id) continue;
+            if (master==source_programs_by_id_.end() || master->second.program.sources.empty()) continue;
             if (required.insert(master->first).second) pending.push_back(master->first);
         }
         std::vector<const CompiledDmxSourceProgram *> programs;
@@ -120,7 +120,7 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
             if (source==source_programs_by_id_.end()) continue;
             programs.push_back(&source->second.program); universe.source_bindings.push_back(&source->second);
         }
-        universe.plan.install(programs,diagnostics_);
+        universe.plan.install(programs,diagnostics_,universe_id);
         for (uint32_t i=0;i<universe.properties.size();++i) {
             auto &property=universe.properties[i];
             for (const auto &input:property.property.contributors) property.sources.push_back(universe.plan.source_index(input.source_program_id));
@@ -183,4 +183,50 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
     for (auto &[target,layers]:ordered_wheel_layers_)
         std::sort(layers.begin(),layers.end(),[](const auto *a,const auto *b) { return a->wheel_renderer_id<b->wheel_renderer_id; });
 }
+// Binds compact evaluation owners to physical held inputs without duplicating targets or patch authority.
+void PeravizVisualRuntimeCore::bind_physical_inputs() {
+    std::set<int> physical;
+    for (const auto &[id,owner]:universes_)
+        for (const auto *program:owner.source_bindings)
+            for (const auto &byte:program->program.sources) physical.insert(byte.universe_id);
+    for (int id:physical) universes_.try_emplace(id);
+    for (auto &[id,state]:universes_) {
+        state.interest_offsets.clear();
+        state.latest_frame.reserve(512);
+    }
+    for (auto &[id,owner]:universes_) {
+        std::map<int,InputInterest> inputs;
+        for (auto *program:owner.source_bindings) {
+            program->byte_frames.clear();
+            for (const auto &byte:program->program.sources) {
+                auto &physical_state=universes_.at(byte.universe_id);
+                program->byte_frames.push_back(&physical_state.latest_frame);
+                const int key=evaluation_byte_key(byte.universe_id,byte.address,id);
+                inputs.emplace(key,InputInterest{key,byte.address,&physical_state.latest_frame,0});
+                physical_state.interest_offsets.push_back(byte.address);
+                physical_state.evaluation_dependents.push_back(&owner);
+            }
+        }
+        for (const auto &[key,input]:inputs) owner.input_interests.push_back(input);
+        owner.changed_offsets.reserve(inputs.size());
+    }
+    for (auto &[id,state]:universes_) {
+        auto &offsets=state.interest_offsets;
+        std::sort(offsets.begin(),offsets.end()); offsets.erase(std::unique(offsets.begin(),offsets.end()),offsets.end());
+        auto &owners=state.evaluation_dependents;
+        std::sort(owners.begin(),owners.end(),std::less<UniverseState *>{}); owners.erase(std::unique(owners.begin(),owners.end()),owners.end());
+    }
+}
+
+// Nominates changed physical byte keys once per evaluation owner from immutable held input snapshots.
+void PeravizVisualRuntimeCore::prepare_changed_inputs(UniverseState &universe) {
+    universe.changed_offsets.clear();
+    for (auto &input:universe.input_interests) {
+        const uint8_t value=input.address>=0 && size_t(input.address)<input.frame->size()?(*input.frame)[input.address]:0;
+        if (!universe.has_last_relevant_values || value!=input.previous) universe.changed_offsets.push_back(input.key);
+        input.previous=value;
+    }
+    universe.has_last_relevant_values=true;
+}
+
 } // namespace peraviz::runtime

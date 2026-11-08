@@ -25,6 +25,10 @@ struct EvaluationConsumer {
     uint32_t index;
     int64_t target;
 };
+// Uses a bounded physical Port-Address/slot key; the owning universe keeps local slot keys.
+inline int evaluation_byte_key(int universe, int address, int owner) {
+    return universe==owner ? address : (universe+1)*512+address;
+}
 struct EvaluationSpan { uint32_t offset = 0, count = 0; };
 struct EvaluationOffsetEntry {
     int32_t offset = 0;
@@ -51,7 +55,7 @@ struct EvaluationWorkspace {
 class CompiledEvaluationPlan {
 public:
     void install(const std::vector<const CompiledDmxSourceProgram *> &programs,
-            std::vector<CompiledRuntimeDiagnostic> &diagnostics);
+            std::vector<CompiledRuntimeDiagnostic> &diagnostics, int owner_universe = -1);
     uint32_t source_index(int32_t program_id) const;
     void add_consumer(EvaluationDomain domain, uint32_t index, int64_t target,
             const std::vector<uint32_t> &sources, bool activation_dependencies);
