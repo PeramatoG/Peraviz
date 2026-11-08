@@ -53,3 +53,11 @@ Editing features must first identify the owning data layer:
 - Live DMX values are runtime state and should not be saved as fixture definitions.
 
 If the owning source layer is not writable yet, the feature should remain read-only or save only an explicit Peraviz override that does not pretend to modify the source file.
+
+## Runtime routing overrides
+
+Optional [DMX Auto Span](dmx-auto-span.md) belongs to Peraviz setup configuration,
+keyed by stable fixture UUID. It derives effective native byte routing from the
+unchanged canonical MVR patch and resolved GDTF break. It is not a second patch
+model. The initial C++ compiler option has no `.pvz` serialization or GUI; a future
+project implementation must store the opt-in separately from source addresses.

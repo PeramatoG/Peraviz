@@ -68,10 +68,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
                     valid_property = false;
                 }
                 if (property_universe < 0) property_universe = source.universe_id;
-                if (source.universe_id != property_universe) {
-                    diagnostics_.push_back({"PVZ-RUNTIME-CROSS-UNIVERSE-PROPERTY", "warning", "Compiled property spans universes, which is not supported by this evaluator.", std::to_string(program.program_id)});
-                    valid_property = false;
-                }
+                if (source.universe_id<0 || source.universe_id>32767) valid_property=false;
             }
         }
         if (!valid_property || property_universe < 0) continue;
@@ -109,12 +106,12 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
             if (program.sources.empty() || program.sources.size() > 4) { valid_target = false; continue; }
             for (const CompiledDmxByteSource &source : program.sources) {
                 if (target_universe < 0) target_universe = source.universe_id;
-                if (source.universe_id != target_universe || source.address < 0 || source.address >= 512) valid_target = false;
+                if (source.universe_id<0 || source.universe_id>32767 || source.address<0 || source.address>=512) valid_target=false;
             }
             runtime_target.inputs.push_back({input, static_cast<float>(input.default_value), false});
         }
         if (!valid_target || target_universe < 0 || runtime_target.inputs.empty()) {
-            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-COLOR-TARGET", "warning", "Color target sources are missing, outside the universe, or span universes.", std::to_string(target.beam_render_target_id)});
+            diagnostics_.push_back({"PVZ-RUNTIME-INVALID-COLOR-TARGET", "warning", "Color target sources are missing or outside the supported universe/slot range.", std::to_string(target.beam_render_target_id)});
             continue;
         }
         capabilities.has_intensity = capabilities.has_intensity || target.implicit_intensity;
@@ -271,6 +268,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     }
     install_source_mappings(scene);
     compile_evaluation_plans();
+    bind_physical_inputs();
     schema_ = make_visual_frame_schema(++next_schema_generation_, capabilities);
 }
 

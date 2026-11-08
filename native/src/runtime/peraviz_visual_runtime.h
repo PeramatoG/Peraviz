@@ -87,6 +87,7 @@ private:
 
     struct InstalledSourceProgram {
         CompiledDmxSourceProgram program;
+        std::vector<const std::vector<uint8_t> *> byte_frames; // Setup-bound physical input owners, in byte order.
         std::shared_ptr<const SourceValueMapping> mapping;
         mutable bool diagnosed_byte_count = false;
         mutable bool diagnosed_missing_byte = false;
@@ -164,7 +165,14 @@ private:
         bool initialized = false;
     };
 
+    struct InputInterest {
+        int key=0, address=0;
+        const std::vector<uint8_t> *frame=nullptr;
+        uint8_t previous=0;
+    };
     struct UniverseState {
+        std::vector<InputInterest> input_interests;
+        std::vector<UniverseState *> evaluation_dependents;
         CompiledEvaluationPlan plan;
         std::vector<InstalledSourceProgram *> source_bindings;
         std::vector<uint8_t> prefetched_warnings;
@@ -188,7 +196,6 @@ private:
         std::vector<int64_t> dirty_shutters;
         std::vector<GoboMotionRuntime> gobo_motion_bindings;
         std::unordered_map<int64_t, std::vector<int>> gobo_motion_indices_by_layer;
-        std::array<uint8_t, 512> last_relevant_values{};
         std::vector<uint8_t> latest_frame;
         bool has_pending_frame = false;
         bool has_last_relevant_values = false;
@@ -238,6 +245,8 @@ private:
     static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings = nullptr);
     void install_source_mappings(const CompiledRuntimeScene &scene);
     void compile_evaluation_plans();
+    void bind_physical_inputs();
+    static void prepare_changed_inputs(UniverseState &universe);
     void emit_source_warnings(const InstalledSourceProgram &program,uint8_t warnings);
     EvaluationResult evaluate_cached_source(UniverseState &universe, uint32_t source);
     EvaluationResult evaluate_property_value(UniverseState &universe, const CompiledPropertyProgram &property);

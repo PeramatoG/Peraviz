@@ -197,6 +197,11 @@ changing the existing continuous gobo phase/velocity owner. See the
 [adaptive evaluation comparison](performance-foundation.md#adaptive-native-parallel-evaluation)
 for policy, measurements and remaining domains.
 
+Per-fixture optional [Auto Span routing](dmx-auto-span.md) retains one Color target
+owner while setup-bound ordered byte views read every contributing physical held
+universe. Sparse physical byte dependencies schedule one composition per target
+per native cycle; receiver subscriptions retain exact physical universe/slot identity.
+
 ## Native dense presentation state
 
 The [performance foundation](performance-foundation.md) remains the baseline;

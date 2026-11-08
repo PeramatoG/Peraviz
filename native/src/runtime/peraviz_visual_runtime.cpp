@@ -88,7 +88,7 @@ void PeravizVisualRuntimeCore::submit_universe_frame(int universe_id, const uint
     if (universe.has_pending_frame) ++stats_.packets_coalesced;
     const int clamped_length = std::clamp(length, 0, 512);
     universe.latest_frame.assign(data, data + clamped_length);
-    universe.has_pending_frame = true;
+    for (auto *owner:universe.evaluation_dependents) owner->has_pending_frame=true;
 }
 
 // Consumes newest dirty universes and returns one typed sectioned visual frame.
@@ -117,15 +117,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         auto &changed_offsets=universe.changed_offsets;
         const bool prepared_inputs=prefetch_ && prefetch_->inputs_prepared(universe_id);
         if (!prepared_inputs) {
-        changed_offsets.clear();
-        for (int offset : universe.interest_offsets) {
-            const uint8_t value = offset >= 0 && offset < static_cast<int>(universe.latest_frame.size()) ? universe.latest_frame[static_cast<size_t>(offset)] : 0;
-            if (!universe.has_last_relevant_values || universe.last_relevant_values[static_cast<size_t>(offset)] != value) {
-                changed_offsets.push_back(offset);
-                universe.last_relevant_values[static_cast<size_t>(offset)] = value;
-            }
-        }
-        universe.has_last_relevant_values = true;
+        prepare_changed_inputs(universe);
         }
         if (changed_offsets.empty()) continue;
         if (performance_trace_enabled_) stats_.changed_relevant_offsets += changed_offsets.size();
