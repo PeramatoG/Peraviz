@@ -323,7 +323,12 @@ shaft reduction. Surface batching and projector-space occlusion remain deferred.
 Vector shaft and surface footprint consume its aperture,
 base optical transform, native gobo roll, visual alignment and parity. They may not
 maintain competing authoritative optical transforms. Color/intensity remain in the
-native dense photometric state; camera movement cannot dirty projection geometry.
+native dense photometric state; camera movement cannot dirty projection geometry. Native material energy/consumer admission can defer
+Custom Footprint renderer commits while dark. Generation-owned weak projector
+handles synchronize the exact current projection before instance admission;
+receiver rejection and camera culling never suspend energized optics. Canonical
+optics, Pan/Tilt and ShutterPlayback continue unchanged. See the
+[inactive projection audit](inactive-footprint-projection-audit.md).
 
 Dense playback assigns SpotLight RID visibility to the adapter, including gobo
 callbacks. Its structural Node stays visible during full playback and changes

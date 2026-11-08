@@ -64,7 +64,9 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
     }
     const int64_t material_start=trace?now_us():0;
     materials_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_);
+    const int64_t footprint_start=trace?now_us():0;
     footprints_.apply_completed(snapshot->physical_rows,displayed_physical_);
+    const int64_t footprint_us=trace?now_us()-footprint_start:0;
     lenses_.apply_completed(snapshot->physical_rows,displayed_physical_,lens_writes_suppressed_,trace);
     if (trace) presentation.merge(lenses_.stats(),true);
     const int64_t material_us=trace?now_us()-material_start:0;
@@ -97,6 +99,7 @@ Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> 
         presentation["native_physical_us"]=snapshot->physical_us; presentation["native_reduction_us"]=snapshot->reduction_us;
         presentation["native_compose_us"]=snapshot->physical_us+snapshot->reduction_us;
         presentation["native_material_us"]=material_us;
+        presentation["native_footprint_material_us"]=footprint_us;
         presentation["physical_color_outputs"]=int64_t(materials_.color_outputs());
         presentation["lens_rids_affected"]=int64_t(materials_.affected()); presentation["lens_rids_unchanged"]=int64_t(materials_.unchanged());
         presentation["lens_material_writes"]=int64_t(materials_.writes()); presentation["lens_writes_avoided"]=int64_t(materials_.avoided());

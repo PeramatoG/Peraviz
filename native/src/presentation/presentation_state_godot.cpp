@@ -21,6 +21,7 @@ void PeravizPresentationState::_bind_methods() {
     ClassDB::bind_method(D_METHOD("install_render_rows", "membership", "classes"), &PeravizPresentationState::install_render_rows);
     ClassDB::bind_method(D_METHOD("install_footprints", "generation", "rids", "instances", "owners", "scales", "routes"), &PeravizPresentationState::install_footprints);
     ClassDB::bind_method(D_METHOD("set_footprint_visible", "index", "visible"), &PeravizPresentationState::set_footprint_visible);
+    ClassDB::bind_method(D_METHOD("install_footprint_projectors", "generation", "objects"), &PeravizPresentationState::install_footprint_projectors);
     ClassDB::bind_method(D_METHOD("clear_footprints"), &PeravizPresentationState::clear_footprints);
     ClassDB::bind_method(D_METHOD("set_footprints_enabled", "enabled"), &PeravizPresentationState::set_footprints_enabled);
     ClassDB::bind_method(D_METHOD("footprint_values", "rid"), &PeravizPresentationState::footprint_values);
@@ -62,10 +63,10 @@ int64_t PeravizPresentationState::install(const PackedInt32Array &ids, const Pac
     for (int64_t i=0;i<routes.size();i+=3) targets.push_back({routes[i],routes[i+1],uint32_t(routes[i+2])});
     if (!state_.install(outputs,targets)) return -1;
     shutters_.install(outputs);
-    materials_.set_shutters(&shutters_.envelopes()); footprints_.set_shutters(&shutters_.envelopes()); lenses_.set_shutters(&shutters_.envelopes());
+    materials_.set_shutters(&shutters_.envelopes()); footprints_.set_shutters(&shutters_.envelopes(),&shutters_.continuous_outputs()); lenses_.set_shutters(&shutters_.envelopes());
     shutter_lights_.clear(); shutter_beams_.clear(); shutter_rows_.clear(); shutter_row_slots_.clear();
     shutter_beam_writes_=shutter_material_writes_=shutter_ticks_=shutter_us_=shutter_lens_submissions_=0;
-    shutter_lens_material_writes_=shutter_footprint_material_writes_=shutter_projector_writes_=0;
+    shutter_lens_material_writes_=shutter_footprint_material_writes_=shutter_projector_writes_=0; shutter_footprint_us_=0;
     shutter_lens_bytes_=shutter_lens_instance_writes_=shutter_evaluation_us_=shutter_mutation_us_=0;
     pipeline_.clear(); projection_.clear(); materials_.clear(); indices_masks_=PackedInt32Array(); values_=PackedFloat32Array();
     fixture_ids_.clear(); fixture_ids_.reserve(targets.size());
@@ -166,7 +167,9 @@ Dictionary PeravizPresentationState::publish(int64_t generation, bool trace, int
     // Godot boundary work is main-thread-only and addresses cached material RIDs, never nodes.
     const int64_t material_start=trace?now_us():0;
     materials_.apply(state_,suppress_lenses);
+    const int64_t footprint_start=trace?now_us():0;
     footprints_.apply(state_);
+    const int64_t footprint_us=trace?now_us()-footprint_start:0;
     lenses_.apply(state_,suppress_lenses,trace);
     if (trace) result.merge(lenses_.stats(),true);
     const int64_t material_us=trace?now_us()-material_start:0;
@@ -181,6 +184,7 @@ Dictionary PeravizPresentationState::publish(int64_t generation, bool trace, int
         result["signature_skipped"]=int64_t(dirty_count)-count;
         result["diagnostic_skip_lens_writes"]=diagnostic_skip_lens_writes_;
         result["native_material_us"]=material_us;
+        result["native_footprint_material_us"]=footprint_us;
         result["physical_color_outputs"]=int64_t(materials_.color_outputs());
         result["lens_rids_affected"]=int64_t(materials_.affected()); result["lens_rids_unchanged"]=int64_t(materials_.unchanged());
         result["lens_material_writes"]=int64_t(materials_.writes()); result["lens_writes_avoided"]=int64_t(materials_.avoided());
@@ -319,6 +323,7 @@ Dictionary PeravizPresentationState::get_sizes() const {
     sizes["shutter_lens_transfer_bytes"]=int64_t(shutter_lens_bytes_);
     sizes["shutter_lens_instance_writes"]=int64_t(shutter_lens_instance_writes_);
     sizes["shutter_lens_material_writes"]=int64_t(shutter_lens_material_writes_);
+    sizes["shutter_footprint_material_us"]=int64_t(shutter_footprint_us_);
     sizes["shutter_footprint_material_writes"]=int64_t(shutter_footprint_material_writes_);
     sizes["shutter_projector_writes"]=int64_t(shutter_projector_writes_);
     sizes["shutter_evaluation_us"]=int64_t(shutter_evaluation_us_);

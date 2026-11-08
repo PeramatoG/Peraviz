@@ -3,6 +3,7 @@
 #include <godot_cpp/variant/color.hpp>
 #include <cmath>
 #include <algorithm>
+#include <godot_cpp/core/object.hpp>
 #include "runtime/visual_runtime_types.h"
 
 namespace godot {
@@ -26,6 +27,19 @@ bool PresentationMaterialBindings::install_surface_instances(const Array &instan
     for (int64_t i=0;i<instances.size();++i) { surface_instances_[i].rid=instances[i]; update_surface_visible(i,true); }
     return true;
 }
+// Registers generation-owned weak handles; admission never discovers or scans scene nodes.
+bool PresentationMaterialBindings::install_surface_projectors(const PackedInt64Array &objects) {
+    if (size_t(objects.size())!=surface_instances_.size()) return false;
+    for (int64_t i=0;i<objects.size();++i) {
+        const auto *projector=ObjectDB::get_instance(uint64_t(objects[i]));
+        if (!projector || !projector->has_method(projection_active_)) return false;
+    }
+    for (int64_t i=0;i<objects.size();++i) {
+        surface_instances_[i].projector=uint64_t(objects[i]);
+        update_surface_visible(size_t(i),true);
+    }
+    return true;
+}
 // Repairs Godot's visibility notification without scene lookup or a worker wait.
 void PresentationMaterialBindings::set_surface_visible(int32_t index,bool allowed) {
     if (index<0 || size_t(index)>=surface_instances_.size()) return;
@@ -36,6 +50,20 @@ void PresentationMaterialBindings::set_surface_visible(int32_t index,bool allowe
 void PresentationMaterialBindings::update_surface_visible(size_t index,bool force) {
     if (index>=surface_instances_.size()) return;
     auto &instance=surface_instances_[index];
+    // Only effective energy/consumer policy permits deferral. Culling remains live
+    // for energized projectors, including camera/receiver movement without DMX.
+    const auto &binding=bindings_[index];
+    // Continuous shutters keep projection ready through every closed flash. The
+    // native activity vector already owns this fact; no per-flash catch-up cost.
+    const bool continuous=continuous_shutters_ && binding.owner<continuous_shutters_->size() && (*continuous_shutters_)[binding.owner]>0;
+    const bool projection_active=enabled_ && (binding.energy>0 || (continuous && binding.surface_base*binding.scale>0));
+    if (instance.projector && instance.projection_active!=projection_active) {
+        instance.projection_active=projection_active;
+        if (auto *projector=ObjectDB::get_instance(instance.projector))
+            projector->call(projection_active_,projection_active);
+    }
+    // Projection sync may re-enter through receiver visibility_changed. Read the
+    // updated allowed flag after it returns; never expose the old projection.
     const bool visible=enabled_ && instance.allowed && bindings_[index].energy>0;
     if (force || !instance.known || visible!=instance.visible) {
         RenderingServer::get_singleton()->instance_set_visible(instance.rid,visible);

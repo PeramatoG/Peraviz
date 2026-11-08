@@ -4,20 +4,22 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/rid.hpp>
+#include <godot_cpp/variant/packed_int64_array.hpp>
 #include <godot_cpp/variant/string_name.hpp>
 
 namespace godot {
 class RenderingServer;
-// Main-thread Godot boundary: retained material RIDs never own or inspect SceneTree nodes.
+// Main-thread Godot boundary: retained RIDs and weak projection handles own no scene nodes.
 class PresentationMaterialBindings {
 public:
     bool install(size_t physical_count, const Array &rids, const PackedInt32Array &owners,
         const PackedFloat32Array &scales, const PackedInt32Array &routes, bool surface = false);
     bool install_surface_instances(const Array &instances);
+    bool install_surface_projectors(const PackedInt64Array &objects);
     void set_surface_visible(int32_t index, bool allowed);
     void clear();
     // Borrows the generation-owned presentation envelope; physical resource ownership does not change.
-    void set_shutters(const std::vector<float> *values) { shutters_=values; }
+    void set_shutters(const std::vector<float> *values, const std::vector<uint32_t> *continuous=nullptr) { shutters_=values; continuous_shutters_=continuous; }
     void apply_shutters(const std::vector<uint32_t> &owners);
     size_t set_enabled(bool enabled);
     void invalidate();
@@ -42,9 +44,10 @@ public:
     size_t avoided() const { return avoided_; }
 private:
     const std::vector<float> *shutters_=nullptr;
+    const std::vector<uint32_t> *continuous_shutters_=nullptr;
     // Uses identity modulation for resources without an admitted shutter.
     float shutter(uint32_t owner) const { return shutters_ && owner<shutters_->size()?(*shutters_)[owner]:1; }
-    struct SurfaceInstance { RID rid; bool allowed=true, visible=false, known=false; };
+    struct SurfaceInstance { RID rid; uint64_t projector=0; bool projection_active=true, allowed=true, visible=false, known=false; };
     void update_surface_visible(size_t index, bool force=false);
     std::vector<SurfaceInstance> surface_instances_;
     struct Binding { RID rid; uint32_t owner=0, users=0; float scale=1, red=-1, green=-1, blue=-1, energy=-1, surface_base=0, lens_base=0; bool dirty=false; };
@@ -56,6 +59,6 @@ private:
     size_t writes_=0, avoided_=0, color_outputs_=0, unchanged_=0;
     bool enabled_=true, surface_=false;
     float lens_gain_=1;
-    const StringName emission_{"emission"}, energy_{"emission_energy"};
+    const StringName emission_{"emission"}, energy_{"emission_energy"}, projection_active_{"set_projection_active"};
 };
 }

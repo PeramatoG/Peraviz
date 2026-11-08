@@ -12,7 +12,7 @@ from generate_import_compatibility_fixture import entry, channel, mode
 from generate_presentation_lifecycle_fixture import lens_glb, gobo_png
 
 
-def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False):
+def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False, strobe_low=2, strobe_high=10):
     xml_attributes = ''
     for name, unit, subs in [
         ('Shutter1', 'None', ''),
@@ -71,7 +71,7 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
         else:
             functions = '<ChannelFunction Name="Gate" Attribute="Shutter1" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1"><ChannelSet Name="Closed" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="0"/><ChannelSet Name="Open" DMXFrom="10/1" PhysicalFrom="1" PhysicalTo="1"/></ChannelFunction>'
             for name, attr, start, low, high in [
-                ('Strobe','Shutter1Strobe',20,2,10), ('Pulse','Shutter1StrobePulse',120,2,2),
+                ('Strobe','Shutter1Strobe',20,strobe_low,strobe_high), ('Pulse','Shutter1StrobePulse',120,2,2),
                 ('PulseOpen','Shutter1StrobePulseOpen',160,2,2), ('PulseClose','Shutter1StrobePulseClose',200,2,2),
                 ('Random','Shutter1StrobeRandom',240,2,10), ('Unknown','Shutter1',250,0,1)]:
                 functions += f'<ChannelFunction Name="{name}" Attribute="{attr}" DMXFrom="{start}/1" PhysicalFrom="{low}" PhysicalTo="{high}"/>'
@@ -145,9 +145,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('path',type=Path)
     parser.add_argument('--outputs',type=int,default=4)
+    parser.add_argument('--strobe-low',type=float,default=2)
+    parser.add_argument('--strobe-high',type=float,default=10)
     parser.add_argument('--shutter-index',type=int,default=1)
     parser.add_argument('--banks',type=int,default=0)
     parser.add_argument('--fixtures',type=int,default=1)
     for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors','mixed-gobo','moving']: parser.add_argument('--'+flag,action='store_true')
     args = parser.parse_args()
-    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving)
+    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving,args.strobe_low,args.strobe_high)
