@@ -332,6 +332,15 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
                 ++stats_.color_inputs_evaluated;
             }
             if (!input_changed) continue;
+            if (target.target.implicit_intensity && !target.intensity_published) {
+                ComponentState intensity;
+                intensity.dimmer = 1.0f;
+                const auto params = render_params_by_fixture_.find(target.target.fixture_id);
+                cook_render_state(intensity, params != render_params_by_fixture_.end() ? params->second : FixtureRenderParams());
+                rows.push_back({target.target.fixture_id, target.target.beam_render_target_id,
+                    VisualChangeDimmer | VisualChangeMaterial, intensity, {}});
+                target.intensity_published = true;
+            }
             dirty_color_targets.push_back(target.target.beam_render_target_id);
             ++stats_.color_targets_dirty;
             CookedEmitterColor cooked;

@@ -1,3 +1,4 @@
+#include "runtime/additive_intensity_authority.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
 
 #include "dmx/gdtf_attribute_classifier.h"
@@ -899,14 +900,26 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         std::unordered_map<int32_t, std::vector<const ChannelProgram *>> programs_by_component;
         for (const ChannelProgram &program : fixture_type.channel_programs) programs_by_component[program.component_id].push_back(&program);
         const size_t property_start = out.properties.size();
+        const size_t color_start = out.color_targets.size();
+        const size_t wheel_start = out.wheel_bindings.size();
+        const size_t gobo_start = out.gobo_bindings.size();
+        const size_t shutter_start = out.shutter_bindings.size();
         for (const ComponentBinding &component : fixture_type.components) append_property(out, patch, fixture_type, component, programs_by_component[component.component_id], artnet_universe, fixture_id, next_program_id);
         append_color_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
         append_wheel_targets(out, patch, fixture_type, artnet_universe, fixture_id, next_program_id);
         append_shutter_targets(out,patch,fixture_type,fixture_id,next_program_id,[&](const ChannelProgram &p){return make_sources(patch,p,artnet_universe);});
         append_activation_master_sources(out, patch, fixture_type, artnet_universe, source_program_start, next_program_id);
         finalize_fixture_activations(out, patch, source_program_start, motion_binding_start);
-        if (out.properties.size() == property_start && out.color_targets.empty()) out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error", "Fixture has no supported Dimmer/Pan/Tilt/Zoom ChannelFunction records in the selected mode.", patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) + " address=" + std::to_string(patch.mvr_address)});
+        if (out.properties.size() == property_start && out.color_targets.size() == color_start &&
+            out.wheel_bindings.size() == wheel_start && out.gobo_bindings.size() == gobo_start &&
+            out.gobo_motion_bindings.size() == motion_binding_start && out.shutter_bindings.size() == shutter_start) {
+            out.diagnostics.push_back({"PVZ-GDTF-NO-SUPPORTED-PROPERTIES", "error",
+                "Fixture has no supported native runtime controls bound to physical targets in the selected mode.",
+                patch.fixture_uuid + " mode=" + patch.dmx_mode + " universe=" + std::to_string(artnet_universe) +
+                " address=" + std::to_string(patch.mvr_address)});
+        }
     }
+    runtime::classify_additive_intensity(out);
     for (const auto &property : out.properties) {
         check_generated_id(generated_ids, out, property.property_id, std::to_string(property.fixture_id));
         check_generated_id(generated_ids, out, property.component_id, std::to_string(property.fixture_id));

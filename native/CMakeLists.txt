@@ -402,6 +402,7 @@ if(BUILD_TESTING)
         src/table_model/runtime_table.cpp
         src/table_model/runtime_table_schema.cpp
         src/table_model/perastage_table_schemas.cpp
+        tests/additive_intensity_test.cpp
         tests/direct_presentation_pipeline_test.cpp
         tests/compiled_evaluation_plan_test.cpp
         tests/parallel_presentation_test.cpp

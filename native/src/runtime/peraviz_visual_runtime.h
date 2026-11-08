@@ -102,6 +102,8 @@ private:
     struct ColorTargetRuntime {
         CompiledColorTargetProgram target;
         std::vector<ColorInputRuntime> inputs;
+        // Generation-owned authority is published once and retained by native presentation.
+        bool intensity_published = false;
     };
 
     struct WheelBindingRuntime {

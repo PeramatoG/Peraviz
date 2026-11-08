@@ -9,7 +9,7 @@
 
 namespace peraviz::runtime {
 
-constexpr int32_t kCompiledRuntimeSceneContractVersion = 9;
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 10;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
@@ -274,6 +274,8 @@ struct CompiledColorTargetProgram {
     std::string geometry_key;
     std::vector<CompiledColorInputBinding> inputs;
     bool additive_source = false;
+    // Compiler-owned Beam authority; preserved across numeric setup transport.
+    bool implicit_intensity = false;
 };
 
 struct CompiledFixtureInstance {
