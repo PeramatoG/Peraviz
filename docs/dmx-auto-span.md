@@ -83,3 +83,5 @@ Color and Dimmer sources verify byte order and final gain/intensity. Existing
 native and headless presentation regressions cover the retained renderer paths.
 These tests do not establish graphical performance, vendor-wide compatibility,
 external hardware timing or full GDTF/MVR conformance.
+
+Exact commands and outcomes are recorded in the [validation record](dmx-auto-span-validation.md).

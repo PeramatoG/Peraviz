@@ -1,6 +1,8 @@
 #include "runtime/peraviz_visual_runtime.h"
 #include "runtime/realtime_dmx_coordinator.h"
 #include "runtime/native_worker_pool.h"
+#include "presentation/async_presentation_pipeline.h"
+#include <thread>
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "gdtf_runtime/resolved_dmx_addresses.h"
 #include "archive/zip_archive.h"
@@ -29,7 +31,7 @@ std::string bytes(const std::filesystem::path &path) {
 }
 
 // Creates public synthetic GDTF/MVR ZIPs with sixty Overwrite references and independent RGB emitters.
-SceneModel strip_scene(const std::filesystem::path &root,int count=1,bool multibreak=false) {
+SceneModel strip_scene(const std::filesystem::path &root,int count=1,bool multibreak=false,const std::string &extra_attribute="") {
     std::string geometry="<Geometry Name=\"Root\">";
     for (int i=0;i<60;++i) geometry+="<GeometryReference Name=\"P"+std::to_string(i)+"\" Geometry=\"Cell\"><Break DMXBreak=\"1\" DMXOffset=\""+std::to_string(1+3*i)+"\"/></GeometryReference>";
     geometry+="</Geometry><Geometry Name=\"Cell\"><Beam Name=\"Pixel\" BeamType=\"Glow\"/></Geometry>";
@@ -39,6 +41,7 @@ SceneModel strip_scene(const std::filesystem::path &root,int count=1,bool multib
         channels+="<DMXChannel DMXBreak=\"Overwrite\" Offset=\""+std::to_string(i+1)+"\" Geometry=\"Pixel\"><LogicalChannel Attribute=\""+attribute+"\"><ChannelFunction Attribute=\""+attribute+"\" PhysicalFrom=\"0\" PhysicalTo=\"1\"/></LogicalChannel></DMXChannel>";
     }
     if (multibreak) channels+="<DMXChannel DMXBreak=\"2\" Offset=\"1\" Geometry=\"Root\"><LogicalChannel Attribute=\"Dimmer\"><ChannelFunction Attribute=\"Dimmer\"/></LogicalChannel></DMXChannel>";
+    if (!extra_attribute.empty()) channels+="<DMXChannel Offset=\"181\" Geometry=\"Root\"><LogicalChannel Attribute=\""+extra_attribute+"\"><ChannelFunction Attribute=\""+extra_attribute+"\"/></LogicalChannel></DMXChannel>";
     const std::string xml="<GDTF DataVersion=\"1.2\"><FixtureType Name=\"Strip\"><Geometries>"+geometry+"</Geometries><DMXModes><DMXMode Name=\"RGB\" Geometry=\"Root\"><DMXChannels>"+channels+"</DMXChannels></DMXMode></DMXModes></FixtureType></GDTF>";
     { archive::ZipArchive zip; require(zip.open_create_or_modify(root/"strip.gdtf"),"Create GDTF"); require(zip.write_file("description.xml",xml)&&zip.close(),"Write GDTF"); }
     std::string fixtures;
@@ -88,6 +91,9 @@ int test_strip(SceneModel &model,int start,int universe_offset,const gdtf_runtim
     PeravizVisualRuntimeCore core; core.install_compiled_scene(scene);
     dmx::RealtimeUniverseMailbox mailbox; RealtimeDmxCoordinator coordinator;
     coordinator.install_subscription(core,mailbox);
+    std::set<int> subscribed;
+    for (const auto &[universe,slots]:core.realtime_interest_offsets()) for (int slot:slots) subscribed.insert((universe-universe_offset-1)*512+slot);
+    require(subscribed==routed,"Receiver subscription must cover every exact physical source byte");
     const int u=1+universe_offset;
     std::array<uint8_t,512> first{},second{}; first[start-1]=255;
     mailbox.publish(u,first.data(),512,0,1);
@@ -163,6 +169,37 @@ void test_span_workers() {
     const auto expected=colors(serial.consume_latest_visual_frame()),actual=colors(parallel.consume_latest_visual_frame());
     require(expected.size()==1200 && actual==expected,"Next-universe-only worker update lost held coarse/color inputs");
     parallel.set_native_executor(nullptr);
+    using namespace peraviz::presentation;
+    auto async_core=std::make_shared<PeravizVisualRuntimeCore>();
+    for (auto &target:scene.color_targets) target.implicit_intensity=true;
+    async_core->install_compiled_scene(scene);
+    DensePresentationState physical; RenderGroupProjection projection;
+    std::vector<OutputBinding> outputs; std::vector<TargetBinding> routes; std::vector<uint32_t> membership;
+    for (int pixel=0;pixel<1200;++pixel) {
+        outputs.push_back({20000+pixel,1}); membership.push_back(pixel);
+        routes.push_back({2,20000+pixel,uint32_t(pixel)}); routes.push_back({3,20000+pixel,uint32_t(pixel)});
+    }
+    require(physical.install(outputs,routes) && projection.install(membership,std::vector<RenderPresentationClass>(1200,RenderPresentationClass::Individual)),"Async physical output installation");
+    first.fill(0); second.fill(0); second[1]=255;
+    async_core->submit_universe_frame(1,second.data(),512); async_core->submit_universe_frame(0,first.data(),512);
+    AsyncEvaluationOptions execution; execution.workers=2; execution.force=true;
+    AsyncPresentationPipeline session(async_core,std::move(physical),std::move(projection),execution);
+    for (int step=0;step<3;++step) {
+        if (step==1) { second[1]=128; session.submit(1,second.data(),512); session.flush_input(); }
+        if (step==2) { first[511]=255; second.fill(0); session.submit(1,second.data(),512); session.submit(0,first.data(),512); session.flush_input(); }
+        const CompletedPresentationSnapshot *snapshot=nullptr;
+        const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now()<deadline && !(snapshot=session.try_acquire())) std::this_thread::sleep_for(std::chrono::microseconds(50));
+        require(snapshot && !session.failed() && snapshot->physical_rows.size()==1200,"Async boundary update must publish each physical emitter once");
+        std::set<uint32_t> indices;
+        for (const auto &row:snapshot->physical_rows) {
+            require(indices.insert(row.index).second,"Duplicate async physical emitter");
+            const float gain=step==0?1.0f:step==1?128.0f/255:65280.0f/65535;
+            require(std::fabs(row.values[MaterialEnergy]-4*gain)<0.0001f && row.values[step==2?Red:Blue]>0.999f && row.values[step==2?Blue:Red]<0.0001f,"Async final material/color must compose all held physical universes");
+        }
+        session.release(snapshot);
+    }
+    session.stop();
 }
 
 }
@@ -188,6 +225,10 @@ bool test_auto_span() {
         require(strict.fixtures.empty() && !strict.diagnostics.empty(),"Auto Span must be disabled by default");
         patch_at(model,32768,400); const auto overflow=gdtf_runtime::compile_runtime_scene(model,-1,options);
         require(overflow.fixtures.empty() && !overflow.diagnostics.empty() && overflow.diagnostics.back().message.find("Port-Address")!=std::string::npos,"Port-Address overflow must reject the complete fixture explicitly");
+        patch_at(model,32768,1); require(gdtf_runtime::compile_runtime_scene(model,-1,options).fixtures.size()==1,"Highest valid Port-Address must remain usable");
+        patch_at(model,32767,400); require(gdtf_runtime::compile_runtime_scene(model,-1,options).fixtures.size()==1,"Spanning into the highest valid Port-Address must work");
+        patch_at(model,1,511); const auto before_patch=model.fixture_patches[0]; gdtf_runtime::compile_runtime_scene(model,-1,options);
+        require(model.fixture_patches[0].addresses[0].universe==before_patch.addresses[0].universe && model.fixture_patches[0].addresses[0].address==before_patch.addresses[0].address,"Runtime override must not mutate canonical patch records");
         require(bytes(root/"strip.gdtf")==gdtf_before && bytes(root/"strip.mvr")==mvr_before,"Source archives must remain byte-for-byte unchanged");
         auto copatched=strip_scene(root,2); patch_at(copatched,1,511);
         options.auto_span_fixture_uuids.insert("10000000-0000-0000-0000-000000000002");
@@ -199,6 +240,9 @@ bool test_auto_span() {
         const auto independent=gdtf_runtime::compile_runtime_scene(multibreak,-1); require(independent.fixtures.size()==1,"Strict explicit multibreak behavior regressed");
         const auto unsupported=gdtf_runtime::compile_runtime_scene(multibreak,-1,options);
         require(unsupported.fixtures.empty() && unsupported.diagnostics.back().message.find("effective GDTF break")!=std::string::npos,"Auto Span must not reinterpret independent breaks");
+        auto temporal=strip_scene(root,1,false,"Shutter1");
+        const auto rejected_temporal=gdtf_runtime::compile_runtime_scene(temporal,-1,options);
+        require(rejected_temporal.fixtures.empty() && rejected_temporal.diagnostics.back().message.find("disable Auto Span")!=std::string::npos,"Unsupported Auto Span semantics need an actionable diagnostic");
         test_split_scalar();
         test_span_workers();
         std::filesystem::remove_all(root);

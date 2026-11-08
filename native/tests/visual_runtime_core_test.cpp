@@ -1291,7 +1291,6 @@ bool test_auto_span();
 // Runs native runtime regressions, with a focused Auto Span reproduction/integration entry point.
 int main(int argc, char **argv) {
     if (argc>1 && std::string(argv[1])=="--auto-span") return test_auto_span()?0:1;
-    if (!test_auto_span()) return 1;
     if (!test_shutter_runtime()) return 1;
     if (!test_shutter_fidelity()) return 1;
     if (argc>1 && std::string(argv[1])=="--parallel-pipeline") return test_parallel_presentation() && test_native_gobo_pos_mode_master_transitions() && test_native_continuous_gobo_rotation_section()?0:1;
