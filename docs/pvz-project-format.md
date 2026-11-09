@@ -68,3 +68,7 @@ Lightweight Peraviz application state. Version 1 stores a minimal object such as
 ## Compatibility rules
 
 Readers should tolerate missing optional JSON files, including older archives without `fixture_overrides.json`, and missing optional keys. Safe defaults should be used instead of failing the project load. A project is invalid when the archive cannot be opened or does not contain `scene.mvr`.
+
+DMX metadata may include `auto_span_policy`: `off`, `auto_safe` (default when absent),
+or `auto_overlap`. Invalid identifiers recover to `auto_safe` with a diagnostic.
+Only the preference is saved; derived occupancy/routing and held DMX are runtime data.

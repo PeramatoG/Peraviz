@@ -266,6 +266,7 @@ private:
     FixtureChangeResult merge_transform_state(int fixture_id, const ComponentState &next_state);
     FixtureChangeResult merge_property_state(int32_t property_id, const ComponentState &next_state, uint32_t installed_mask);
 
+    std::vector<CompiledDmxByteSource> replay_sources_;
     std::unordered_map<int, UniverseState> universes_;
     std::unordered_map<int, FixtureRenderParams> render_params_by_fixture_;
     std::vector<CompiledRuntimeDiagnostic> diagnostics_;

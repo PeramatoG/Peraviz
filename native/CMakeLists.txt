@@ -162,6 +162,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
+        src/gdtf_runtime/auto_span_policy.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/presentation/control_groups.cpp
         src/presentation/wheel_presentation_eligibility.cpp
@@ -289,6 +290,7 @@ if(BUILD_TESTING)
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp
+        src/gdtf_runtime/auto_span_policy.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/mvr_scene_loader.cpp
         tests/peraviz_debug_runtime_stub.cpp
@@ -391,6 +393,7 @@ if(BUILD_TESTING)
         tests/control_group_compiler_test.cpp
         src/presentation/control_groups.cpp
         src/presentation/wheel_presentation_eligibility.cpp
+        tests/automatic_auto_span_test.cpp
         tests/auto_span_test.cpp
         tests/visual_runtime_core_test.cpp
         tests/shutter_runtime_test.cpp
@@ -436,6 +439,7 @@ if(BUILD_TESTING)
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
         src/gdtf_runtime/gdtf_geometry_identity.cpp
+        src/gdtf_runtime/auto_span_policy.cpp
         src/gdtf_runtime/runtime_scene_compiler.cpp
         src/dmx/fixture_dmx_binding.cpp
         src/dmx/gdtf_attribute_classifier.cpp
@@ -470,6 +474,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME peraviz_native_visual_runtime_tests COMMAND peraviz_native_visual_runtime_tests)
     add_test(NAME peraviz_native_auto_span_tests COMMAND peraviz_native_visual_runtime_tests --auto-span)
+    add_test(NAME peraviz_native_automatic_auto_span_tests COMMAND peraviz_native_visual_runtime_tests --automatic-auto-span)
 
 
     add_executable(peraviz_native_gdtf_runtime_schema_tests

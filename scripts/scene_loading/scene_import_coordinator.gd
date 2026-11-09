@@ -9,6 +9,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		app._status_presenter.set_scene_state_loading(path)
 	app._clear_scene()
 	app._scene_loading = true
+	app._dmx_controller.set_auto_span_policy(str(project_context.get("dmx_settings", {}).get("auto_span_policy", "auto_safe")), false)
 	var detail: String = app._user_preferences.gdtf_model_detail if app._user_preferences != null else "default"
 	app._loader.set_gdtf_model_detail(detail)
 	app._asset_cache.derived_lods.requested_quality = detail

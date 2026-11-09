@@ -349,6 +349,8 @@ struct CompiledRuntimeDiagnostic {
 };
 
 struct CompiledRuntimeScene {
+    bool strict_overflow_retained=false; // Intentional omission can leave a geometry-only fixture without a setup error.
+    std::vector<CompiledDmxByteSource> routing_replay_sources; // Setup-derived transport interests, never evaluation or patch authority.
     int32_t contract_version = kCompiledRuntimeSceneContractVersion;
     int32_t mvr_fixture_patches = 0;
     int32_t gdtf_files_opened = 0;

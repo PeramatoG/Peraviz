@@ -1,19 +1,17 @@
 #include "runtime/peraviz_visual_runtime.h"
+#include <map>
+#include <set>
 
 namespace peraviz::runtime {
 
-// Exposes the installed native source-program interests for setup-time receiver subscription.
+// Compiles effective and transport-only replay interests at setup without granting byte ownership.
 std::vector<std::pair<uint16_t, std::vector<uint16_t>>> PeravizVisualRuntimeCore::realtime_interest_offsets() const {
-    std::vector<std::pair<uint16_t, std::vector<uint16_t>>> result;
-    result.reserve(universes_.size());
-    for (const auto &[universe_id, universe] : universes_) {
-        std::vector<uint16_t> offsets;
-        offsets.reserve(universe.interest_offsets.size());
-        for (const int offset : universe.interest_offsets) {
-            if (offset >= 0 && offset < 512) offsets.push_back(static_cast<uint16_t>(offset));
-        }
-        result.push_back({static_cast<uint16_t>(universe_id), std::move(offsets)});
-    }
+    std::map<uint16_t,std::set<uint16_t>> physical;
+    for (const auto &[id,state]:universes_) for (int slot:state.interest_offsets) if (slot>=0 && slot<512) physical[id].insert(slot);
+    for (const auto &byte:replay_sources_) if (byte.universe_id>=0 && byte.universe_id<=32767 && byte.address>=0 && byte.address<512)
+        physical[byte.universe_id].insert(byte.address);
+    std::vector<std::pair<uint16_t,std::vector<uint16_t>>> result;
+    for (const auto &[id,slots]:physical) result.push_back({id,{slots.begin(),slots.end()}});
     return result;
 }
 

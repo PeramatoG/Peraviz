@@ -5,6 +5,7 @@
 #include <memory>
 #ifdef PERAVIZ_ENABLE_DMX
 #include "runtime/visual_runtime_types.h"
+#include "gdtf_runtime/auto_span_policy.h"
 #include "presentation/render_emitter_groups.h"
 #endif
 
@@ -15,6 +16,8 @@ struct SceneSetupPreparation {
     int universe_offset = -1;
     double load_ms = 0, compile_ms = 0, controls_ms = 0, groups_ms = 0;
 #ifdef PERAVIZ_ENABLE_DMX
+    gdtf_runtime::AutoSpanPolicy auto_span_policy=gdtf_runtime::AutoSpanPolicy::AutoSafe;
+    std::shared_ptr<gdtf_runtime::FixtureTypeCache> fixture_types=std::make_shared<gdtf_runtime::FixtureTypeCache>();
     runtime::CompiledRuntimeScene compiled;
     presentation::ControlGroupAnalysis controls;
     std::vector<presentation::RenderEmitterGroup> groups;
@@ -23,5 +26,5 @@ struct SceneSetupPreparation {
 // Progress is setup-only and monotonic; the main thread polls without sharing mutable scene data.
 enum class SceneSetupPhase : int32_t { ArchiveGeometry = 0, CompileMode, ControlGroups, RenderGroups, Complete };
 using SceneSetupProgress = std::shared_ptr<std::atomic<SceneSetupPhase>>;
-SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress = {}, GdtfModelDetail model_detail = GdtfModelDetail::Default);
+SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress = {}, GdtfModelDetail model_detail = GdtfModelDetail::Default, const std::string &auto_span_policy = "auto_safe");
 }
