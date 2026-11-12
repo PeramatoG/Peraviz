@@ -8,6 +8,12 @@ const PerformanceTraceSnapshotScript = preload("res://scripts/runtime/performanc
 const ApplicationArgumentsScript = preload("res://scripts/runtime/application_arguments.gd")
 const RenderDiagnosticPolicyScript = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 
+const AutoSpanPolicy = preload("res://scripts/project/dmx_auto_span_policy.gd")
+var _auto_span_policy: String = AutoSpanPolicy.DEFAULT
+var _auto_span_panel: Control
+var _policy_changing: bool = false
+var _policy_pending: bool = false
+
 var _owner: Node
 var _get_controls_host_callback: Callable
 var _apply_dmx_controls_callback: Callable
@@ -60,6 +66,38 @@ func configure(owner: Node, get_controls_host_callback: Callable, apply_dmx_cont
 		_perf_snapshot = PerformanceTraceSnapshotScript.new()
 		_perf_snapshot.configure(owner.get_viewport())
 		_perf_trace_last_msec = Time.get_ticks_msec()
+
+func install_auto_span_settings(window: Window) -> void:
+	_auto_span_panel = preload("res://scripts/ui/visual/dmx_settings_panel.gd").new()
+	window.install_dmx_policy_panel(_auto_span_panel)
+	_auto_span_panel.set_policy(_auto_span_policy)
+	_auto_span_panel.policy_changed.connect(func(policy: String) -> void: set_auto_span_policy(policy))
+	window.project_dmx_reset.connect(func() -> void: set_auto_span_policy(AutoSpanPolicy.DEFAULT))
+
+func get_auto_span_policy() -> String:
+	return _auto_span_policy
+
+# Policy changes use the existing exclusive rebuild/renderer install boundary, never packet filtering.
+func set_auto_span_policy(value: String, rebuild: bool = true) -> void:
+	var policy: String = AutoSpanPolicy.normalize(value)
+	var changed: bool = policy != _auto_span_policy
+	_auto_span_policy = policy
+	if _auto_span_panel != null: _auto_span_panel.set_policy(policy)
+	if _owner._loader != null: _owner._loader.set_dmx_auto_span_policy(policy)
+	if not changed or not rebuild: return
+	_policy_pending = true
+	if _policy_changing: return
+	_policy_changing = true
+	while _policy_pending:
+		_policy_pending = false
+		if _owner._scene_loading: break
+		await refresh_fixture_bindings("auto_span_policy_changed")
+		# Install the subscription and replay held transport state even with no running receiver or new packet.
+		if _dmx_receiver != null and _dmx_fixture_runtime != null:
+			_dmx_receiver.configure_visual_runtime(_dmx_fixture_runtime._native_visual_runtime)
+			_dmx_fixture_runtime._receiver_subscription_generation = _dmx_fixture_runtime._runtime_generation
+			_dmx_fixture_runtime.apply_visual_frame(_dmx_receiver, _owner, _owner._fixture_light_apply_service, 0.0)
+	_policy_changing = false
 
 func get_render_diagnostic_mode() -> String:
 	return _render_diagnostic_mode

@@ -133,6 +133,8 @@ namespace godot {
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_gdtf_model_detail", "detail"), &PeravizLoader::set_gdtf_model_detail);
+    ClassDB::bind_method(D_METHOD("set_dmx_auto_span_policy", "policy"), &PeravizLoader::set_dmx_auto_span_policy);
+    ClassDB::bind_method(D_METHOD("get_dmx_auto_span_policy"), &PeravizLoader::get_dmx_auto_span_policy);
     ClassDB::bind_method(D_METHOD("begin_load_mvr", "path", "universe_offset"), &PeravizLoader::begin_load_mvr, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("get_load_phase"), &PeravizLoader::get_load_phase);
     ClassDB::bind_method(D_METHOD("is_load_mvr_ready"), &PeravizLoader::is_load_mvr_ready);
@@ -168,6 +170,21 @@ bool PeravizLoader::set_gdtf_model_detail(const String &detail) {
     return true;
 }
 
+// Changes only setup configuration; prepared generations are reused only with an exact policy match.
+bool PeravizLoader::set_dmx_auto_span_policy(const String &policy) {
+#ifdef PERAVIZ_ENABLE_DMX
+    bool valid=false;
+    const auto parsed=peraviz::gdtf_runtime::parse_auto_span_policy(policy.utf8().get_data(),&valid);
+    auto_span_policy_=peraviz::gdtf_runtime::auto_span_policy_id(parsed);
+    return valid;
+#else
+    auto_span_policy_="auto_safe";
+    return false;
+#endif
+}
+// Exposes the normalized project identifier without modifying canonical source addresses.
+String PeravizLoader::get_dmx_auto_span_policy() const { return String::utf8(auto_span_policy_.c_str()); }
+
 // Starts one owned CPU import; future destruction joins before loader data can disappear.
 bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
     if (preparation_.valid()) return false;
@@ -178,8 +195,8 @@ bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
     prepared_.reset();
     load_metrics_.clear();
     load_progress_ = std::make_shared<std::atomic<peraviz::SceneSetupPhase>>(peraviz::SceneSetupPhase::ArchiveGeometry);
-    preparation_=std::async(std::launch::async, [native_path, universe_offset, progress=load_progress_, detail=model_detail_] {
-        return peraviz::prepare_scene_setup(native_path,universe_offset,progress,detail);
+    preparation_=std::async(std::launch::async, [native_path, universe_offset, progress=load_progress_, detail=model_detail_, policy=auto_span_policy_] {
+        return peraviz::prepare_scene_setup(native_path,universe_offset,progress,detail,policy);
     });
     return true;
 }
@@ -374,13 +391,23 @@ Dictionary PeravizLoader::compile_visual_runtime_scene(int universe_offset) cons
 #ifdef PERAVIZ_ENABLE_DMX
 
     const auto compile_start = std::chrono::steady_clock::now();
-    const bool reuse_prepared=prepared_ && prepared_->universe_offset==universe_offset;
+    const auto policy=peraviz::gdtf_runtime::parse_auto_span_policy(auto_span_policy_);
+    const bool reuse_prepared=prepared_ && prepared_->universe_offset==universe_offset && prepared_->auto_span_policy==policy;
     std::optional<peraviz::runtime::CompiledRuntimeScene> local_scene;
-    if (!reuse_prepared) local_scene=peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, universe_offset);
+    if (!reuse_prepared) {
+        peraviz::gdtf_runtime::RuntimeRoutingOptions routing; routing.policy=policy;
+        local_scene=peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, universe_offset,routing,prepared_?prepared_->fixture_types.get():nullptr);
+    }
+    out["dmx_auto_span_policy"]=String::utf8(auto_span_policy_.c_str());
+    load_metrics_["auto_span_prepared_reused"]=reuse_prepared;
     const auto &scene=reuse_prepared ? prepared_->compiled : *local_scene;
     load_metrics_["mode_compile_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - compile_start).count();
     load_metrics_["unique_selected_modes"] = scene.gdtf_files_opened;
     const auto contract_start = std::chrono::steady_clock::now();
+    PackedInt32Array replay;
+    for (const auto &byte:scene.routing_replay_sources) { replay.push_back(byte.universe_id); replay.push_back(byte.address); }
+    out["dmx_replay_interests"]=replay;
+    out["strict_overflow_retained"]=scene.strict_overflow_retained;
     const peraviz::runtime::PackedCompiledRuntimeScene packed = peraviz::runtime::encode_compiled_runtime_scene(scene);
     integers.resize(static_cast<int64_t>(packed.integers.size()));
     if (!packed.integers.empty()) std::copy(packed.integers.begin(), packed.integers.end(), integers.ptrw());

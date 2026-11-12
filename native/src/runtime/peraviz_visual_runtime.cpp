@@ -45,7 +45,7 @@ bool PeravizVisualRuntimeCore::async_eligible_workload() const { return installe
 // Clears bindings, cached frames, fixture state, and runtime counters.
 void PeravizVisualRuntimeCore::clear() {
     prefetch_.reset(); installed_sources_=installed_colors_=0; has_gobo_domains_=false;
-    universes_.clear();
+    universes_.clear(); replay_sources_.clear();
     diagnostics_.clear();
     render_params_by_fixture_.clear();
     transform_state_by_fixture_.clear();

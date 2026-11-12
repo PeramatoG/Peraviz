@@ -8,7 +8,7 @@
 
 namespace peraviz {
 // Parses and classifies CPU-only data; no SceneTree, resources or RenderingServer access.
-SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress, GdtfModelDetail model_detail) {
+SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_offset, SceneSetupProgress progress, GdtfModelDetail model_detail, const std::string &auto_span_policy) {
     using Clock = std::chrono::steady_clock;
     const auto elapsed = [](Clock::time_point start) { return std::chrono::duration<double, std::milli>(Clock::now()-start).count(); };
     SceneSetupPreparation out;
@@ -19,7 +19,9 @@ SceneSetupPreparation prepare_scene_setup(const std::string &path, int universe_
 #ifdef PERAVIZ_ENABLE_DMX
     start=Clock::now();
     if (progress) progress->store(SceneSetupPhase::CompileMode, std::memory_order_relaxed);
-    out.compiled=gdtf_runtime::compile_runtime_scene(out.model,universe_offset);
+    out.auto_span_policy=gdtf_runtime::parse_auto_span_policy(auto_span_policy);
+    gdtf_runtime::RuntimeRoutingOptions routing; routing.policy=out.auto_span_policy;
+    out.compiled=gdtf_runtime::compile_runtime_scene(out.model,universe_offset,routing,out.fixture_types.get());
     out.compile_ms=elapsed(start);
     const auto options=SceneSetupOptions::read();
     start=Clock::now();

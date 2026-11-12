@@ -42,6 +42,10 @@ func packet() -> PackedByteArray:
 	result.resize(512)
 	return result
 
+# Routing status is informational; these checks still reject every fallback warning or error.
+func control_diagnostics(issues: Array) -> Array:
+	return issues.filter(func(issue: Dictionary) -> bool: return str(issue.get("severity","error")) != "info")
+
 func run() -> void:
 	check_diagnostic_ownership()
 	var path: String = generate()
@@ -56,7 +60,7 @@ func run() -> void:
 	test.check(loaded.get("ok",false),"Real production import, native compilation and Godot setup complete")
 	adapter = app._fixture_light_apply_service._dense_adapter
 	var compiled: Dictionary = app._loader.compile_visual_runtime_scene(-1)
-	test.check(compiled.fixture_count == 3 and compiled.diagnostics.is_empty(),"Supported primary-break modes compile without diagnostics")
+	test.check(compiled.fixture_count == 3 and control_diagnostics(compiled.diagnostics).is_empty(),"Supported primary-break modes compile without diagnostics")
 	var metrics: Dictionary = app._loader.get_load_metrics()
 	test.check(metrics.geometry_definitions == 2 and metrics.geometry_template_hits == 1,"Geometry definitions cache by exact GDTF and selected mode, not fixture UUID")
 	test.check(adapter._outputs.size() == 6,"Six canonical physical Beam outputs survive repeated references and fixtures")
@@ -160,7 +164,7 @@ func check_unsupported(retired_media: String) -> void:
 		if case == "multiple_breaks": test.check(not FileAccess.file_exists(retired_media),"Next preparation retires the prior compatibility media-cache owner")
 		var compiled: Dictionary = loader.compile_visual_runtime_scene(-1)
 		if case in ["copatched","multiple_breaks","reference_offset"]:
-			test.check(compiled.fixture_count == 3 and compiled.diagnostics.is_empty(),"Intentional cross-fixture address overlap retains separate identities")
+			test.check(compiled.fixture_count == 3 and control_diagnostics(compiled.diagnostics).is_empty(),"Intentional cross-fixture address overlap retains separate identities")
 			var ids: Dictionary = {}
 			for row: Dictionary in compiled.renderer_targets:
 				if row.semantic == "beam_profile": ids[row.target_id] = true
@@ -190,7 +194,7 @@ func check_partial_production_import() -> void:
 	test.check(result.get("ok",false),"Unsupported fixture patch does not prevent valid fixtures/static geometry from importing")
 	test.check(geometry(UUIDS[1]+"/Base/Pan/Tilt/Left") != null,"Actual Godot hierarchy retains the unsupported fixture's source geometry")
 	var summary: Dictionary = app._dmx_controller._dmx_fixture_runtime._native_setup_summary
-	test.check(summary.compile_diagnostics.size() == 1 and summary.compile_diagnostics[0].code == "PVZ-MVR-DMX-PATCH-UNSUPPORTED","Normal setup forwards native incompatibility diagnostics without a semantic fallback")
+	test.check(control_diagnostics(summary.compile_diagnostics).size() == 1 and control_diagnostics(summary.compile_diagnostics)[0].code == "PVZ-MVR-DMX-PATCH-UNSUPPORTED","Normal setup forwards native incompatibility diagnostics without a semantic fallback")
 	test.check(app._fixture_light_apply_service._dense_adapter._outputs.size() == 4,"Actual Godot bindings contain only supported physical outputs, without legacy fallback")
 	app._clear_scene()
 	app.queue_free()
@@ -225,7 +229,7 @@ func check_multibreak_playback() -> void:
 		test.check(loaded.get("ok",false),"Multi-break production scene loads: "+case)
 		adapter = app._fixture_light_apply_service._dense_adapter
 		var compiled: Dictionary = app._loader.compile_visual_runtime_scene(-1)
-		test.check(compiled.fixture_count == 3 and compiled.diagnostics.is_empty(),"All resolved multi-break/reference fixtures compile without fallback diagnostics")
+		test.check(compiled.fixture_count == 3 and control_diagnostics(compiled.diagnostics).is_empty(),"All resolved multi-break/reference fixtures compile without fallback diagnostics")
 		test.check(adapter._outputs.size() == 6,"Independent references retain all six actual renderer outputs")
 		var patches: Array = app._loader.get_fixtures_patch()
 		test.check(patches[1].addresses.size() == 2 and patches[1].addresses[1].mvr_break == 1 and patches[1].addresses[1].universe == 5,"Public patch metadata retains exact secondary break identity")

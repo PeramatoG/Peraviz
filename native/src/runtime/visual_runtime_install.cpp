@@ -7,6 +7,7 @@ namespace peraviz::runtime {
 void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene &scene) {
     clear();
     diagnostics_ = scene.diagnostics;
+    replay_sources_=scene.routing_replay_sources;
     VisualFrameSchemaCapabilities capabilities;
     if (scene.fixtures.empty()) {
         diagnostics_.push_back({"PVZ-RUNTIME-EMPTY-SCENE", "error", "Compiled runtime scene contains no fixture instances.", "CompiledRuntimeScene"});
@@ -228,7 +229,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
     }
     install_shutters(scene,capabilities);
     if (installed_visual_mask_by_fixture_.empty()) {
-        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", "error", "Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
+        diagnostics_.push_back({"PVZ-RUNTIME-NO-PROPERTIES", scene.strict_overflow_retained?"warning":"error", scene.strict_overflow_retained?"Strict overflow intentionally omitted all incomplete controls; source geometry retained.":"Compiled runtime scene installed zero supported native properties.", "CompiledRuntimeScene"});
     }
     for (auto &[_, universe] : universes_) {
         universe.dirty_properties.reserve(universe.properties.size());

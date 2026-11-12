@@ -112,6 +112,7 @@ func open_project(project_path: String) -> Dictionary:
 func get_default_dmx_settings() -> Dictionary:
 	return {
 		"universe_offset": -1,
+		"auto_span_policy": "auto_safe",
 		"auto_start_dmx": false,
 		"dmx_enabled_when_saved": false,
 	}
@@ -145,6 +146,7 @@ func _merge_dmx_defaults(settings: Dictionary) -> Dictionary:
 	for key in settings.keys():
 		if merged.has(key):
 			merged[key] = settings[key]
+	merged["auto_span_policy"] = preload("res://scripts/project/dmx_auto_span_policy.gd").normalize(merged.get("auto_span_policy", "auto_safe"))
 	merged["universe_offset"] = int(merged.get("universe_offset", -1))
 	merged["auto_start_dmx"] = bool(merged.get("auto_start_dmx", false))
 	merged["dmx_enabled_when_saved"] = bool(merged.get("dmx_enabled_when_saved", false))

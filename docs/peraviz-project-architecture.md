@@ -56,8 +56,9 @@ If the owning source layer is not writable yet, the feature should remain read-o
 
 ## Runtime routing overrides
 
-Optional [DMX Auto Span](dmx-auto-span.md) belongs to Peraviz setup configuration,
-keyed by stable fixture UUID. It derives effective native byte routing from the
-unchanged canonical MVR patch and resolved GDTF break. It is not a second patch
-model. The initial C++ compiler option has no `.pvz` serialization or GUI; a future
-project implementation must store the opt-in separately from source addresses.
+The [DMX Auto Span policy](dmx-auto-span.md) belongs to Peraviz project metadata:
+`auto_span_policy` in `dmx_settings.json`, with `off`, default `auto_safe`, or
+`auto_overlap`. It derives effective native byte routing from unchanged canonical
+MVR patches and resolved GDTF breaks. It is not a second patch model. Occupancy,
+effective addresses and live/held DMX are never persisted. Saved policy is restored
+before native setup; ordinary MVR import and Reset use `auto_safe`.
