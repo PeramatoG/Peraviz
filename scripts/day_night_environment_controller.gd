@@ -266,7 +266,7 @@ func _apply_environment_dict(state: Dictionary) -> void:
 	_runtime_sky_material.sky_curve = 0.18
 	_runtime_sky_material.ground_curve = 0.20
 	_runtime_sky_material.sun_curve = 0.015
-	_runtime_sky_material.use_debanding = true
+	_runtime_sky_material.use_debanding = false
 	_runtime_sky_material.energy_multiplier = max(float(state["sky_energy"]), 0.0)
 
 	if _directional_light != null:

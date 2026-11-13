@@ -33,6 +33,17 @@ jolt_physics_3d/limits/max_bodies=65536
 
 [rendering]
 
+renderer/rendering_method="forward_plus"
+anti_aliasing/quality/screen_space_aa=2
+anti_aliasing/quality/msaa_3d=0
+anti_aliasing/quality/use_taa=false
+anti_aliasing/quality/use_debanding=false
+scaling_3d/scale=1.0
+scaling_3d/mode=0
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/16_bits=true
+
 rendering/lights_and_shadows/positional_shadow/atlas_size=1024
 rendering/environment/volumetric_fog/volume_size=64
 rendering/environment/volumetric_fog/volume_depth=64

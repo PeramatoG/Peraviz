@@ -1,0 +1,50 @@
+extends SceneTree
+const TestCase = preload("res://tests/gdscript/headless_test_case.gd")
+var test = TestCase.new()
+
+func _initialize() -> void:
+	call_deferred("run")
+
+func run() -> void:
+	var app = load("res://test.tscn").instantiate()
+	root.add_child(app)
+	app._user_preferences.auto_load_last_file = false
+	test.check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "Root viewport inherits SMAA")
+	test.check(root.msaa_3d == Viewport.MSAA_DISABLED and not root.use_taa, "No stacked AA")
+	test.check(root.scaling_3d_scale == 1.0 and root.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR, "Native 3D resolution")
+	test.check(not root.use_debanding, "Viewport debanding disabled")
+	var light: DirectionalLight3D = app.get_node("DirectionalLight3D")
+	test.check(light.shadow_enabled and light.light_angular_distance == 0.0, "Directional shadows retained without PCSS")
+	test.check(light.directional_shadow_max_distance == 72.0 and light.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS, "Shadow range and cascades preserved")
+	test.check_close(light.shadow_bias, 0.015, 0.00001, "Bias preserved")
+	test.check_close(light.shadow_normal_bias, 0.7, 0.00001, "Normal bias preserved")
+	test.check(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality") == 3, "Soft Medium")
+	test.check(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size") == 4096 and ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/16_bits"), "4096 16-bit shadow atlas")
+	var environment: Environment = app.world_environment.environment
+	for preset in ["low", "medium", "high", "invalid"]:
+		ProjectSettings.set_setting(app.ENV_QUALITY_PRESET_SETTING, preset)
+		app._apply_environment_quality_preset()
+		test.check(not environment.ssao_enabled, "Preset cannot silently enable SSAO: " + preset)
+	ProjectSettings.set_setting(app.ENV_QUALITY_PRESET_SETTING, null)
+	app._restore_visual_project_settings({"environment_current_preset": 2, "ssao_enabled": true, "screen_space_aa": 0})
+	test.check(not environment.ssao_enabled and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "PVZ optical settings cannot own graphics settings")
+	var ground: MeshInstance3D = app.get_node("Ground")
+	test.check(ground.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Ground receives without casting shadows")
+	test.check((ground.mesh as PlaneMesh).size == Vector2(200, 200), "Empty ground is bounded")
+	var imported := MeshInstance3D.new()
+	imported.mesh = BoxMesh.new()
+	app.proxies_root.add_child(imported)
+	imported.transform = Transform3D(Basis.from_euler(Vector3(0.0, 0.4, 0.0)), Vector3(10000, -2, -8000))
+	var original := imported.transform
+	app._rebuild_loaded_bounds()
+	test.check(imported.transform == original, "Bounds/ground fitting preserves imported local transform")
+	test.check(absf(ground.global_position.x - imported.global_position.x) < 1.0, "Ground follows off-origin scene")
+	test.check(ground.global_position.y < app._loaded_bounds.position.y, "Ground remains below imported floor")
+	preload("res://scripts/rendering/ambient_ground.gd").fit(ground, AABB(Vector3(-3000, 0, 8000), Vector3(2000, 10, 4000)), true)
+	test.check((ground.mesh as PlaneMesh).size == Vector2(2040, 4040), "Large stages are covered without size cap")
+	app._set_has_loaded_bounds(false)
+	test.check(ground.position == Vector3.ZERO and (ground.mesh as PlaneMesh).size == Vector2(200, 200), "Retirement restores empty ground")
+	test.check_close(app.camera.near, 0.05, 0.000001, "Established camera near plane preserved")
+	test.check(app.camera.far == 4000.0, "Established camera far plane preserved")
+	app.free()
+	test.finish(self)
