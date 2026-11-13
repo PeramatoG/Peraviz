@@ -116,9 +116,45 @@ static bool test_dynamic_shutter_parameters() {
     }
     return true;
 }
+// Separates real source-frequency changes from presentation aliasing using the existing parser, codec and playback.
+static bool test_shutter_cadence_and_label_sets() {
+    Probe probe;
+    probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"20\" PhysicalTo=\"20\"/>");
+    probe.core.set_performance_trace_enabled(true);
+    const auto reference=probe.raw(255);
+    const auto held=probe.core.held_domain_replay();
+    const auto evaluations=probe.core.stats().source_programs_evaluated;
+    if (!verify(reference.frequency==20 && evaluations>0,"Cadence regression starts from an actually evaluated native 20 Hz source")) return false;
+    for (const auto &[fps,expected]:std::array<std::pair<int,int>,5>{{{15,5},{20,0},{30,10},{45,20},{120,20}}}) {
+        presentation::ShutterPlayback playback;
+        playback.install({{probe.scene.shutter_bindings.front().beam_target_id,probe.scene.fixtures.front().fixture_id}});
+        if (!verify(playback.ingest(held.descriptors.data(),held.descriptors.size(),held.integers.data(),held.integers.size(),held.floats.data(),held.floats.size()),"Cadence test ingests the real native publication")) return false;
+        int flashes=0; double previous=0;
+        for (int frame=0;frame<fps*30;++frame) {
+            playback.tick(0.001+double(frame)/fps); const double value=playback.envelopes()[0];
+            flashes+=value>0 && previous==0; previous=value;
+        }
+        if (!verify(flashes==expected*30,"Identical physical 20 Hz can alias to 5/10 Hz or freeze, while stable 45/120 FPS resolve every flash")) return false;
+    }
+    if (!verify(probe.core.stats().source_programs_evaluated==evaluations,"All cadence comparisons retain the same held source evaluation")) return false;
+    const std::string start="<ChannelFunction Name=\"Open\" Attribute=\"Shutter1\"/><ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\"50/1\" PhysicalFrom=\"1\" PhysicalTo=\"20\">";
+    const std::string end="</ChannelFunction><ChannelFunction Name=\"Open after strobe\" Attribute=\"Shutter1\" DMXFrom=\"201/1\"/>";
+    probe.compile(start+"<ChannelSet Name=\"Slow\" DMXFrom=\"50/1\"/><ChannelSet DMXFrom=\"51/1\"/><ChannelSet Name=\"Medium\" DMXFrom=\"125/1\"/><ChannelSet DMXFrom=\"126/1\"/><ChannelSet Name=\"Fast\" DMXFrom=\"200/1\"/>"+end);
+    if (!verify(near(probe.raw(124).frequency,20) && near(probe.raw(125).frequency,1) && near(probe.raw(199).frequency,20) && near(probe.raw(200).frequency,1),"Named singleton sets with inherited endpoints create a semantic 20-to-1 Hz reset independent of FPS")) return false;
+    const std::array<int,5> starts{{50,51,125,126,200}};
+    std::string explicit_sets;
+    for (size_t index=0;index<starts.size();++index) {
+        const int from=starts[index],to=index+1<starts.size()?starts[index+1]-1:200;
+        explicit_sets+="<ChannelSet DMXFrom=\""+std::to_string(from)+"/1\" PhysicalFrom=\""+std::to_string(1+19.0*(from-50)/150)+"\" PhysicalTo=\""+std::to_string(1+19.0*(to-50)/150)+"\"/>";
+    }
+    probe.compile(start+explicit_sets+end);
+    for (int value:{50,51,124,125,126,199,200})
+        if (!verify(near(probe.raw(value).frequency,1+19.0*(value-50)/150),"Explicit physical set endpoints can author a continuous linear rate without a fixture-name exception")) return false;
+    return true;
+}
 // Verifies standards defaults, supplied values, inclusive boundaries and ordered resolution through actual GDTF ZIP parsing.
 bool test_shutter_fidelity() {
-    if (!test_dynamic_shutter_parameters()) return false;
+    if (!test_dynamic_shutter_parameters() || !test_shutter_cadence_and_label_sets()) return false;
     Probe probe;
     probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\"/>");
     if (!verify(probe.raw(255).wave==ShutterWave::Strobe && near(probe.raw(255).frequency,1),"Omitted physical fields use valid 0/1 defaults")) return false;
