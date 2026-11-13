@@ -64,6 +64,13 @@ Array shutter_setup_metadata(const peraviz::runtime::CompiledRuntimeScene &scene
         row["channel_function_dmx_from"]=int64_t(s.dmx_from); row["channel_function_dmx_to"]=int64_t(s.dmx_to);
         row["channel_function_physical_from"]=s.physical_from; row["channel_function_physical_to"]=s.physical_to;
         row["mode_function"]=String::utf8(b.mode_function_name.c_str()); row["mode_from"]=int64_t(b.mode_from); row["mode_to"]=int64_t(b.mode_to);
+        row["timing_variable_mask"]=b.timing_variable_mask;
+        row["timing_dmx_from"]=int64_t(b.timing_dmx_from); row["timing_dmx_to"]=int64_t(b.timing_dmx_to);
+        row["duration_from"]=b.duration; row["duration_to"]=b.duration_to;
+        row["duty_from"]=b.duty; row["duty_to"]=b.duty_to;
+        row["time_offset_from"]=b.offset; row["time_offset_to"]=b.offset_to;
+        const auto candidate=sources.find(b.mode_source_program_id);
+        if (candidate!=sources.end()) row["mode_candidate_bytes"]=byte_routes(*candidate->second,universe_offset);
         row["gdtf_break"]=b.gdtf_break; row["mvr_break"]=b.gdtf_break-1;
         row["ordered_bytes"]=byte_routes(s,universe_offset);
         const auto master=sources.find(s.activation.master_program_id);

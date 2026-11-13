@@ -19,7 +19,7 @@ void append_shutter_row(SectionedVisualFrame &frame,int fixture,int target,int i
     else d.insert(d.end(),{int32_t(VisualSectionType::ShutterState),1,io,fo,0});
 }
 }
-// Installs source-graph activation contexts once, refusing unresolved or cross-universe layers explicitly.
+// Installs one evaluation owner per authority; existing held-universe inputs route every dependency.
 void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scene,VisualFrameSchemaCapabilities &capabilities) {
     const auto layout=gdtf_runtime::shutter_control_layout(scene);
     struct Pending { CompiledShutterBinding binding; int universe=-1; std::vector<int32_t> ids; std::vector<int> offsets; };
@@ -29,31 +29,37 @@ void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scen
     for (const auto &binding:scene.shutter_bindings) {
         const auto key=shutter_key(binding.beam_target_id,binding.shutter_index);
         Pending entry; entry.binding=binding;
-        int32_t id=binding.source_program_id;
-        std::set<int32_t> visited;
-        bool valid=binding.fixture_id>0 && binding.beam_target_id>0 && binding.shutter_index>0;
-        while (id>0 && visited.insert(id).second) {
-            const auto found=source_programs_by_id_.find(id);
-            if (found==source_programs_by_id_.end() || found->second.program.sources.empty()) { valid=false; break; }
-            for (const auto &byte:found->second.program.sources) {
-                if (entry.universe<0) entry.universe=byte.universe_id;
-                if (entry.universe!=byte.universe_id) valid=false;
-                entry.offsets.push_back(byte.address);
+        bool valid=binding.fixture_id>0 && binding.beam_target_id>0 && binding.shutter_index>0 && binding.source_program_id>0 &&
+            binding.timing_variable_mask>=0 && !(binding.timing_variable_mask&~7) && binding.timing_dmx_to>=binding.timing_dmx_from;
+        for (int32_t root:{binding.source_program_id,binding.mode_source_program_id}) {
+            if (root==0) continue;
+            int32_t id=root; std::set<int32_t> visited;
+            while (id>0 && visited.insert(id).second) {
+                const auto found=source_programs_by_id_.find(id);
+                if (found==source_programs_by_id_.end() || found->second.program.sources.empty()) { valid=false; break; }
+                for (const auto &byte:found->second.program.sources) {
+                    if (entry.universe<0) entry.universe=byte.universe_id;
+                    if (byte.universe_id<0 || byte.universe_id>32767 || byte.address<0 || byte.address>=512) valid=false;
+                    entry.offsets.push_back(byte.address);
+                }
+                if (found->second.program.sources.size()>4) valid=false;
+                if (std::find(entry.ids.begin(),entry.ids.end(),id)==entry.ids.end()) entry.ids.push_back(id);
+                const auto &condition=found->second.program.activation;
+                if (!condition.valid || condition.target_kind==gdtf_runtime::ModeMasterTargetKind::Invalid) valid=false;
+                id=condition.target_kind==gdtf_runtime::ModeMasterTargetKind::None ? 0 : condition.master_program_id;
             }
-            entry.ids.push_back(id);
-            const auto &condition=found->second.program.activation;
-            id=condition.target_kind==gdtf_runtime::ModeMasterTargetKind::None ? 0 : condition.master_program_id;
+            if (id>0 || root<0) valid=false;
         }
-        if (id>0 || entry.universe<0) valid=false;
+        if (entry.universe<0) valid=false;
         const auto owner=universe_by_layer.emplace(key,entry.universe);
-        if (!owner.second && owner.first->second!=entry.universe) valid=false;
+        entry.universe=owner.first->second; // All frequency/duration bindings for this layer share one owner.
         if (!valid) invalid.insert(key);
         pending.push_back(std::move(entry));
     }
     std::set<int32_t> reported;
     for (const auto &entry:pending) if (invalid.count(shutter_key(entry.binding.beam_target_id,entry.binding.shutter_index)) && reported.insert(entry.binding.fixture_id).second)
         diagnostics_.push_back({"PVZ-SHUTTER-ACTIVATION-UNRESOLVED","warning",
-            "Shutter parameters/ModeMaster must resolve within one universe; unresolved layers stay open.",std::to_string(entry.binding.fixture_id)});
+            "Shutter parameters/ModeMaster have invalid or unresolved byte routes or activation links; unresolved layers stay open.",std::to_string(entry.binding.fixture_id)});
     std::unordered_set<int64_t> representatives;
     for (auto &entry:pending) {
         const auto &binding=entry.binding;
@@ -73,6 +79,7 @@ void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scen
         if (!representatives.count(key)) continue;
         auto &universe=universes_[entry.universe];
         ShutterBindingRuntime context; context.binding=binding; context.dependency_program_ids=std::move(entry.ids);
+        if (binding.mode_source_program_id) context.mode_dependency_index=size_t(std::find(context.dependency_program_ids.begin(),context.dependency_program_ids.end(),binding.mode_source_program_id)-context.dependency_program_ids.begin());
         universe.shutter_layers[id].push_back(int(universe.shutters.size()));
         universe.shutters.push_back(std::move(context));
         universe.interest_offsets.insert(universe.interest_offsets.end(),entry.offsets.begin(),entry.offsets.end());
@@ -93,6 +100,7 @@ void PeravizVisualRuntimeCore::evaluate_shutters(UniverseState &universe,Section
             const auto value=evaluate_cached_source(universe,context.sources.front());
             const auto &binding=context.binding;
             if (!evaluate_cached_activation(universe,context) || value.raw_value<binding.dmx_from || value.raw_value>binding.dmx_to) continue;
+            if (binding.mode_source_program_id && !evaluate_cached_activation(universe,context,context.mode_dependency_index)) continue;
             if (binding.mode_from || binding.mode_to!=UINT32_MAX) {
                 if (context.sources.size()<2) continue;
                 const auto mode=evaluate_cached_source(universe,context.sources[1]).raw_value;
@@ -103,10 +111,15 @@ void PeravizVisualRuntimeCore::evaluate_shutters(UniverseState &universe,Section
             if (binding.wave==ShutterWave::Duration) { duration=physical; ++durations; continue; }
             ++active; next.wave=binding.wave; next.function_id=binding.activation_function_id?binding.activation_function_id:binding.source_program_id;
             next.frequency=shutter_periodic(binding.wave)?physical:0;
-            next.duration=binding.duration; next.duty=binding.duty; next.offset=binding.offset; next.status=binding.status;
+            const double timing_local=binding.timing_dmx_to>binding.timing_dmx_from?
+                double(std::clamp(value.raw_value,binding.timing_dmx_from,binding.timing_dmx_to)-binding.timing_dmx_from)/double(binding.timing_dmx_to-binding.timing_dmx_from):0;
+            next.duration=binding.duration+((binding.timing_variable_mask&1)?timing_local*(binding.duration_to-binding.duration):0);
+            next.duty=binding.duty+((binding.timing_variable_mask&2)?timing_local*(binding.duty_to-binding.duty):0);
+            next.offset=binding.offset+((binding.timing_variable_mask&4)?timing_local*(binding.offset_to-binding.offset):0);
+            next.status=binding.status;
         }
         if (durations) next.duration=duration;
-        if (active>1 || durations>1 || !std::isfinite(float(next.frequency)) || !std::isfinite(float(next.duration)) || !std::isfinite(float(next.duty)) || !std::isfinite(float(next.offset)) || next.duration<0 ||
+        if (active>1 || durations>1 || !std::isfinite(float(next.frequency)) || !std::isfinite(float(next.duration)) || !std::isfinite(float(next.duty)) || !std::isfinite(float(next.offset)) || next.duration<0 || next.duty<0 || next.duty>1 || next.offset<0 || next.offset>1 ||
                 (shutter_periodic(next.wave) && next.frequency<0)) {
             next.wave=ShutterWave::Unsupported; next.status=2;
             next.frequency=0; next.duration=0.025; next.duty=1; next.offset=1;
@@ -139,6 +152,10 @@ std::vector<ShutterTrace> PeravizVisualRuntimeCore::shutter_trace(int32_t fixtur
         row.from=b.dmx_from; row.to=b.dmx_to; row.raw=value.raw_value; row.bytes=int32_t(program.sources.size());
         row.physical_from=b.physical_from; row.physical_to=b.physical_to; row.initialized=state.parameters.revision>0 && value.valid;
         row.active=row.initialized && universe.plan.activation_cached(source) && universe.plan.activation(source) && row.raw>=row.from && row.raw<=row.to;
+        if (b.mode_source_program_id) {
+            const auto candidate=context.sources[context.mode_dependency_index];
+            row.active&=universe.plan.activation_cached(candidate) && universe.plan.activation(candidate);
+        }
         row.physical=b.physical_from+(b.physical_to-b.physical_from)*(b.dmx_to>b.dmx_from?double(std::clamp(row.raw,b.dmx_from,b.dmx_to)-b.dmx_from)/double(b.dmx_to-b.dmx_from):0);
         row.mode_from=b.mode_from; row.mode_to=b.mode_to; row.activation_function_id=b.activation_function_id;
         if (context.sources.size()>1) row.master_raw=universe.plan.value(context.sources[1]).raw_value;

@@ -1282,6 +1282,7 @@ bool test_additive_intensity();
 bool test_direct_presentation_pipeline();
 bool test_shutter_runtime();
 bool test_shutter_fidelity();
+int run_shutter_corpus(const std::string &directory);
 bool test_compiled_evaluation_plan();
 bool test_parallel_presentation();
 
@@ -1295,6 +1296,8 @@ int main(int argc, char **argv) {
     if (argc>1 && std::string(argv[1])=="--auto-span") return test_auto_span()?0:1;
     if (!test_shutter_runtime()) return 1;
     if (!test_shutter_fidelity()) return 1;
+    if (argc==3 && std::string(argv[1])=="--shutter-corpus") return run_shutter_corpus(argv[2]);
+    if (argc==2 && std::string(argv[1])=="--shutter") return 0;
     if (argc>1 && std::string(argv[1])=="--parallel-pipeline") return test_parallel_presentation() && test_native_gobo_pos_mode_master_transitions() && test_native_continuous_gobo_rotation_section()?0:1;
     if (!test_parallel_presentation()) return 1;
     if (argc > 1 && std::string(argv[1]) == "--evaluation-plan") return test_compiled_evaluation_plan() && test_native_gobo_pos_mode_master_transitions() && test_native_continuous_gobo_rotation_section() && test_direct_presentation_pipeline() ? 0 : 1;

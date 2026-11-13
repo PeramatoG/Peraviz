@@ -29,9 +29,9 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 | Beam geometry profile | Partial | Setup-time BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, and ColorTemperature are retained for current renderer use. BeamType None and Glow remain emission-only and never allocate a projected cone. The reference Vector Prism and existing gobo surface path use a [shared approximate radial profile](vector-light-profile.md) anchored by BeamAngle/FieldAngle, with BeamType fallbacks. This is Peraviz presentation, not measured photometry. Authored/default provenance is retained; open Spot/Wash/Fresnel/PC retain native unshadowed surface parameters without automatically owning realtime lights; see [bounded surface ownership](surface-light-ownership.md). Scalable visible open footprints, grouped presentation, measured photometry and Focus semantics remain incomplete. |
 | Focus / Iris / Frost | Unsupported/deferred | No authoritative live renderer contract. |
 | Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
-| Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen/PulseClose and explicitly approximate Random variants; persistent native phase, frequency/constant subphysical parameters, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
+| Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen/PulseClose and explicitly approximate Random variants; persistent native phase, frequency and variable subphysical/SubChannelSet timing parameters, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
 | ModeMaster | Partial/native | Exact selected-mode Node paths resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, reach the production setup contract, and evaluate cycle-safely for instantaneous native scalars. Malformed, ambiguous, unresolved, and cyclic graphs are diagnosed during compilation. |
-| Relations | Unsupported/deferred | GDTF Relations are not parsed or evaluated by the compiled production runtime. |
+| Relations | Unsupported/deferred | Declarations are retained only for bounded diagnostics and shutter follower/dependent guards; no Multiply/Override evaluator is claimed. |
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
 | Unsupported attributes | Parsed only or unsupported | Preserve/report data when possible; never infer support from legacy Godot helpers or generic enum values. |
 
@@ -41,17 +41,27 @@ Semantics follow [GDTF 1.2 Tables 60–62](https://gdtf-share.com/help/developer
 and [Annexes B/F](https://gdtf-share.com/help/developers/gdtf_1_2/annex/index.html).
 ChannelFunction PhysicalFrom/PhysicalTo default independently to 0/1. ChannelSet
 DMXFrom defaults to 0/1; its end is the next set minus one or the parent boundary.
-Set physical endpoints inherit the parent's values unless explicitly overridden.
-Ranges are intersected with their parent, inclusive, and interpolated locally in
-ordered 8/16/24/32-bit source resolution; descending ranges remain descending.
+Label-only sets with both physical attributes omitted retain the parent function's
+curve, projected onto the set's effective inclusive endpoints at setup compilation.
+Sets with either physical endpoint supplied use a local interval, independently
+inheriting the missing opposite parent endpoint. Explicit singletons use PhysicalFrom.
+This documented Use Parent Physical compatibility policy resolves the domain ambiguity
+without inferring behavior from names; see [the investigation](strobe-fps-investigation.md).
+Ranges are intersected with their parent in ordered 8/16/24/32-bit resolution;
+descending ranges remain descending.
 Malformed/nonfinite supplied values and duplicate sets are diagnosed, not defaulted.
-The existing bounded nonstandard DMXTo compatibility is retained inside the natural
-function boundary. Unnamed function prefixes retain their parent physical mapping.
+Nonstandard DMXTo is diagnosed and ignored for shutters. Function ends follow the
+next declared XML function start minus one; a reset/equal start ends the previous
+conditional container at the source maximum. Duplicate unconditional starts remain
+invalid. A malformed next start withholds that unbounded function while independently
+bounded valid functions survive. Unnamed function prefixes retain their parent physical mapping.
 
 Square flashes use Duration (default 0.025 s for standard Shutter strobe).
 Annex F triangle/ramp pulses use DutyCycle (default 100%) and TimeOffset at the
-pulse's end (default 100%). Constant SubPhysicalUnits are supported; SubChannelSets
-and variable parameter ranges remain guarded. Zero Hz produces no temporal modulation
+pulse's end (default 100%). Constant and variable SubPhysicalUnits and locally Type-linked SubChannelSet overrides
+for Duration, DutyCycle and TimeOffset are evaluated over the parent function domain,
+independently of ChannelSet frequency intervals. Descending intervals are retained.
+Duplicate, malformed, unresolved and profiled overrides remain guarded. Zero Hz produces no temporal modulation
 (unmodulated/open presentation policy); negative/unrepresentable Hz never becomes an
 arbitrary flashing rate. Explicit English polarity labels use a normalized, exact
 whitelist (status 1), not a normative universal 0=closed/255=open rule or substring
@@ -61,10 +71,12 @@ Split StrobeFrequency/Duration use the existing ModeMaster graph. A ChannelFunct
 master selects its typed mode; channel-wide masters select among the current typed
 mode ranges without a generic selector overriding the waveform. StrobeRate means
 time between flashes and remains explicitly unsupported; it is never treated as Hz.
-A shutter may use a different break/universe from Color/Dimmer, but a shutter's own
-parameter/activation chain must resolve within one universe. Channel-wide typed mode
-candidates with additional ModeMaster conditions remain guarded; direct ChannelFunction
-masters retain the existing native activation-chain evaluation.
+A shutter's mode, frequency, duration and nested activation sources may occupy different
+explicitly resolved breaks/universes. One authority owner uses the existing held-input
+graph; any participating byte change invalidates that authority without another owner
+packet. Channel-wide typed mode candidates retain their own additional activation
+root, including nested and cross-universe ModeMaster links. Invalid/missing routes
+and cycles remain guarded. Auto Span eligibility is unchanged.
 
 **Peraviz random approximation (status 1):** all four numbered Random families and
 StrobeModeRandom variants use the declared nominal Hz, with one deterministic event
@@ -85,8 +97,13 @@ Groups require identical complete temporal authority plus the existing optical/c
 proofs. Shared Random controls retain eligible aggregate shafts and GPU lens batching;
 independent cells/banks use separate sequences and unsafe groups fall back at setup,
 never regrouping per flash. Co-patched fixtures remain independent.
-Unknown custom effects, ambiguous activation, SubChannelSets and cross-universe
-shutter parameter chains remain open with bounded `PVZ-SHUTTER-*` diagnostics/status 2.
+Unknown custom effects, ambiguous activation, unsupported SubChannelSets and unresolved
+shutter parameter chains remain open with bounded `PVZ-SHUTTER-*` diagnostics.
+Installed unsupported bindings publish status 2; unresolved layers have no playback route.
+Explicit ChannelFunction DMXProfiles and Relation followers (including their shutter
+activation dependents) are guarded rather than silently claiming linear physical fidelity.
+Relations and general DMXProfile evaluation remain deferred. See the
+[shutter fidelity audit](gdtf-shutter-fidelity-audit.md) for evidence and bounded follow-ups.
 
 For real-scene diagnosis, set `PERAVIZ_SHUTTER_TRACE=<fixture UUID>` before import
 (optional `PERAVIZ_SHUTTER_TRACE_TARGET=<physical target ID>`, otherwise first output),

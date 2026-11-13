@@ -66,5 +66,5 @@ static func parameters(frame: Dictionary, target: int) -> Dictionary:
 		for row in range(d[b+1]):
 			if ints[d[b+2]+row*10+1] == target:
 				var f: int = d[b+3]+row*7
-				return {"frequency":floats[f],"phase":floats[f+4],"mode":ints[d[b+2]+row*10+3],"status":ints[d[b+2]+row*10+5],"activation":ints[d[b+2]+row*10+7]}
+				return {"frequency":floats[f],"duration":floats[f+1],"duty":floats[f+2],"offset":floats[f+3],"phase":floats[f+4],"mode":ints[d[b+2]+row*10+3],"status":ints[d[b+2]+row*10+5],"activation":ints[d[b+2]+row*10+7]}
 	return {"frequency":-1.0,"phase":-1.0}

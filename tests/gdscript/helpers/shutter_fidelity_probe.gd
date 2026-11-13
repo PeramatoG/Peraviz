@@ -11,14 +11,14 @@ static func run(owner: SceneTree) -> void:
 	owner.send({0:primary,2:cells},0)
 	var baseline: Array = Probe.capture(owner.adapter)
 	var target: int = owner.adapter._outputs[owner.cell_index(0)].canonical_id
-	for pair in [[19,0,-1],[20,2,0],[39,2,1],[40,2,0],[59,2,12],[60,2,20],[79,2,2],[80,2,2],[89,2,10],[90,2,7],[98,2,7],[99,2,12],[100,-1,0]]:
+	for pair in [[19,0,-1],[20,2,0],[39,2,1],[40,2,0],[59,2,12],[60,2,20],[79,2,2],[80,2,2],[89,2,2+8.0*9/19],[90,2,7],[98,2,7],[99,2,12],[100,-1,0],[120,2,1],[160,2,10.5],[200,2,20],[198,2,19.525],[200,2,20]]:
 		cells[0] = pair[0]
 		var frame: Dictionary = owner.send({2:cells},0)
 		var parameters: Dictionary = Probe.parameters(frame,target)
 		# Unchanged physical values may legitimately produce no new temporal row.
 		if parameters.frequency >= 0:
 			owner.test.check(parameters.mode == pair[1],"Production range boundary chooses the declared shutter waveform")
-			if pair[2]>=0: owner.test.check_close(parameters.frequency,pair[2],0.0001,"Production raw DMX resolves exact local Hz/defaults/descending/fixed values")
+			if pair[2]>=0: owner.test.check_close(parameters.frequency,pair[2],0.0001,"Production raw DMX resolves exact parent/local Hz, defaults, descending and fixed values")
 		var evaluations: int = owner.runtime._native_visual_runtime.get_stats().source_programs_evaluated
 		var trace: Dictionary = owner.runtime._native_visual_runtime.get_shutter_trace("50000000-0000-0000-0000-000000000001",target)
 		owner.test.check(owner.runtime._native_visual_runtime.get_stats().source_programs_evaluated == evaluations,"Diagnostic inspection never evaluates physical sources")
@@ -27,7 +27,7 @@ static func run(owner: SceneTree) -> void:
 			if not row.active: continue
 			for key in ["channel_function","channel_set","dmx_from","dmx_to","physical_from","physical_to","frequency_hz","duration_seconds","waveform"]:
 				owner.test.check(row.has(key),"Shutter diagnostic retains source provenance and effective timing: "+key)
-			var ranges: Dictionary = {20:["Default","",20,39,0,1],39:["Default","",20,39,0,1],40:["OnlyTo","",40,59,0,12],59:["OnlyTo","",40,59,0,12],60:["Descending","",60,79,20,2],79:["Descending","",60,79,20,2],80:["Narrow","",80,89,2,10],89:["Narrow","",80,89,2,10],90:["Narrow","Fixed",90,98,7,7],98:["Narrow","Fixed",90,98,7,7],99:["Narrow","Single",99,99,12,12]}
+			var ranges: Dictionary = {20:["Default","",20,39,0,1],39:["Default","",20,39,0,1],40:["OnlyTo","",40,59,0,12],59:["OnlyTo","",40,59,0,12],60:["Descending","",60,79,20,2],79:["Descending","",60,79,20,2],80:["Narrow","",80,89,2,2+8.0*9/19],89:["Narrow","",80,89,2,2+8.0*9/19],90:["Narrow","Fixed",90,98,7,7],98:["Narrow","Fixed",90,98,7,7],99:["Narrow","Single",99,99,12,12],120:["ParentPhysical","Slow",120,120,1,1],160:["ParentPhysical","Medium",160,160,10.5,10.5],200:["ParentPhysical","Fast",200,200,20,20],198:["ParentPhysical","",161,199,10.7375,19.7625]}
 			if ranges.has(pair[0]):
 				var expected: Array = ranges[pair[0]]
 				owner.test.check(row.channel_function == expected[0] and row.channel_set == expected[1],"Trace identifies the exact selected ChannelFunction/ChannelSet")
@@ -155,7 +155,7 @@ static func split_random(owner: SceneTree, channel_master: bool = false, random_
 		owner.test.check_close(frequency.phase,0.375,0.0001,"Split frequency change integrates previous 10 Hz phase")
 	await owner.close_scene()
 
-# A channel-wide selector cannot bypass a typed candidate's additional activation dependencies.
+# A channel-wide selector routes its typed candidate activation through the native source graph.
 static func conditional_mode_guard(owner: SceneTree) -> void:
 	await owner.open_scene(["--split","--channel-master","--conditional-mode"],8)
 	var primary: PackedByteArray = owner.packet(); primary[0] = 255; primary[1] = 255
@@ -166,6 +166,16 @@ static func conditional_mode_guard(owner: SceneTree) -> void:
 	cells[0] = 60
 	var frame: Dictionary = owner.send({2:cells},1)
 	var p: Dictionary = Probe.parameters(frame,owner.adapter._outputs[owner.cell_index(0)].canonical_id)
-	owner.test.check(p.mode == -1 and p.status == 2,"Additional unresolved mode activation chains remain diagnosed instead of ordinary flashing")
+	owner.test.check(p.mode == 2 and p.status == 0,"A typed mode follows its additional resolved activation condition")
+	owner.test.check_close(p.frequency,10,0.0001,"Candidate activation preserves the declared held frequency")
+	owner.adapter._native.advance_shutters(owner.adapter._generation,1.095)
 	Probe.check(owner,baseline,0,1)
+	primary[0] = 0
+	frame = owner.send({0:primary},2)
+	p = Probe.parameters(frame,owner.adapter._outputs[owner.cell_index(0)].canonical_id)
+	owner.test.check(p.mode == 0,"Only the remote additional master deactivates held selector/frequency")
+	primary[0] = 255
+	frame = owner.send({0:primary},3)
+	p = Probe.parameters(frame,owner.adapter._outputs[owner.cell_index(0)].canonical_id)
+	owner.test.check(p.mode == 2 and p.phase == 0,"Remote reactivation starts a new activation without another selector packet")
 	await owner.close_scene()

@@ -162,7 +162,10 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
             std::sort(keys.begin(),keys.end());
             for (int64_t key:keys) {
                 std::vector<uint32_t> inputs;
-                for (int binding:layers.at(key)) inputs.push_back(bindings[binding].sources.front());
+                for (int binding:layers.at(key)) {
+                    if (domain==EvaluationDomain::Shutter) inputs.insert(inputs.end(),bindings[binding].sources.begin(),bindings[binding].sources.end());
+                    else inputs.push_back(bindings[binding].sources.front());
+                }
                 universe.plan.add_consumer(domain,0,key,inputs,true);
             }
         };

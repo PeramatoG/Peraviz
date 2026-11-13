@@ -4,6 +4,7 @@
 #include "scene_model.h"
 #include "dmx/gdtf_xml_reader.h"
 #include "gdtf_runtime/shutter_contract.h"
+#include "gdtf_runtime/shutter_timing.h"
 #include <algorithm>
 #include <charconv>
 #include <unordered_map>
@@ -23,31 +24,37 @@ inline double shutter_physical(tinyxml2::XMLElement *node,const char *name,doubl
     if (parsed.ec!=std::errc() || parsed.ptr!=last || !std::isfinite(value)) { valid=false; return fallback; }
     return value;
 }
-// Uses default 0/1 and the next strictly greater start, including conditional functions with equal starts.
+// Reads activation-container identity without interpreting manufacturer labels.
+inline std::string shutter_condition_field(tinyxml2::XMLElement *fn,const char *name,const char *fallback="") {
+    const char *raw=fn->Attribute(name);
+    if (!raw) raw=fn->Attribute(dmx::lower_ascii(name).c_str());
+    return raw?dmx::trim_ascii(raw):fallback;
+}
+// Uses declared function order: a reset/equal start opens another conditional container, not a negative range.
 inline bool shutter_function_range(tinyxml2::XMLElement *fn,const std::vector<tinyxml2::XMLElement *> &functions,
         size_t bytes,uint32_t &from,uint32_t &to) {
-    const char *raw=fn->Attribute("DMXFrom");
-    if (!raw) raw=fn->Attribute("dmxfrom");
-    if (!parse_and_convert_gdtf_dmx_value(raw?raw:"0/1",uint8_t(bytes),from)) return false;
+    if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(fn,"DMXFrom","0/1"),uint8_t(bytes),from)) return false;
     to=bytes==4?UINT32_MAX:uint32_t((uint64_t(1)<<(bytes*8))-1);
-    for (auto *other:functions) {
-        uint32_t next=0; const char *start=other->Attribute("DMXFrom");
-        if (!start) start=other->Attribute("dmxfrom");
-        if (!parse_and_convert_gdtf_dmx_value(start?start:"0/1",uint8_t(bytes),next)) return false;
-        const auto conditional=[](tinyxml2::XMLElement *node) { const char *master=node->Attribute("ModeMaster"); if (!master) master=node->Attribute("modemaster"); return master && !dmx::trim_ascii(master).empty(); };
-        if (other!=fn && next==from && !conditional(fn) && !conditional(other)) return false;
-        if (next>from) to=std::min(to,next-1);
+    const auto declared=dmx::collect_direct_children_by_name(fn->Parent()->ToElement(),"channelfunction");
+    const auto current=std::find(declared.begin(),declared.end(),fn);
+    if (current!=declared.end() && current+1!=declared.end()) {
+        uint32_t next=0;
+        if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(*(current+1),"DMXFrom","0/1"),uint8_t(bytes),next)) return false;
+        if (next>from) to=next-1;
     }
-    // Retain the existing bounded nonstandard DMXTo compatibility, never beyond the normative boundary.
-    const char *end=fn->Attribute("DMXTo");
-    if (!end) end=fn->Attribute("dmxto");
-    uint32_t explicit_to=to;
-    if (end && (!parse_and_convert_gdtf_dmx_value(end,uint8_t(bytes),explicit_to) || explicit_to<from || explicit_to>to)) return false;
-    to=explicit_to; return true;
+    if (shutter_condition_field(fn,"ModeMaster").empty()) for (auto *other:functions) {
+        uint32_t other_from=0;
+        if (other!=fn && shutter_condition_field(other,"ModeMaster").empty() &&
+                parse_and_convert_gdtf_dmx_value(shutter_condition_field(other,"DMXFrom","0/1"),uint8_t(bytes),other_from) && other_from==from) return false;
+    }
+    // DMXTo is not a GDTF ChannelFunction attribute and cannot change a normative boundary.
+    return true;
 }
-// Retains ordered sets intersected with their parent. Missing DMXFrom means 0/1, not parent start.
+// Clips ordered sets to their parent and projects its mapping for sets without physical overrides.
 inline std::vector<ParsedWheelChannelSet> parse_shutter_sets(tinyxml2::XMLElement *fn,size_t bytes,uint32_t from,uint32_t to,double physical_from,double physical_to,bool &valid) {
-    std::vector<ParsedWheelChannelSet> declared,sets;
+    struct Declaration { ParsedWheelChannelSet set; bool use_parent_physical; };
+    std::vector<Declaration> declared;
+    std::vector<ParsedWheelChannelSet> sets;
     for (auto *node : dmx::collect_direct_children_by_name(fn,"channelset")) {
         const char *raw=node->Attribute("DMXFrom"); uint32_t value=0;
         if (!raw) raw=node->Attribute("dmxfrom");
@@ -56,24 +63,33 @@ inline std::vector<ParsedWheelChannelSet> parse_shutter_sets(tinyxml2::XMLElemen
         set.name=node->Attribute("Name")?node->Attribute("Name"):"";
         set.physical_from=shutter_physical(node,"PhysicalFrom",physical_from,valid);
         set.physical_to=shutter_physical(node,"PhysicalTo",physical_to,valid);
-        declared.push_back(set);
+        const bool use_parent=!node->Attribute("PhysicalFrom") && !node->Attribute("physicalfrom") &&
+            !node->Attribute("PhysicalTo") && !node->Attribute("physicalto");
+        declared.push_back({set,use_parent});
     }
-    std::stable_sort(declared.begin(),declared.end(),[](const auto &a,const auto &b){return a.declared_dmx_from<b.declared_dmx_from;});
+    const auto parent_physical=[&](uint32_t raw) {
+        return physical_from+(physical_to-physical_from)*(to>from?double(raw-from)/double(to-from):0);
+    };
+    std::stable_sort(declared.begin(),declared.end(),[](const auto &a,const auto &b){return a.set.declared_dmx_from<b.set.declared_dmx_from;});
     for (size_t i=0;i<declared.size();++i) {
-        auto set=declared[i];
+        auto set=declared[i].set;
         if (i+1<declared.size()) {
-            if (set.declared_dmx_from==declared[i+1].declared_dmx_from) { valid=false; continue; }
-            set.effective_dmx_to=declared[i+1].declared_dmx_from-1;
+            if (set.declared_dmx_from==declared[i+1].set.declared_dmx_from) { valid=false; continue; }
+            set.effective_dmx_to=declared[i+1].set.declared_dmx_from-1;
         }
         if (set.effective_dmx_to<from) continue;
         set.declared_dmx_from=std::max(from,set.declared_dmx_from);
+        if (declared[i].use_parent_physical) {
+            set.physical_from=parent_physical(set.declared_dmx_from);
+            set.physical_to=parent_physical(set.effective_dmx_to);
+        }
         sets.push_back(set);
     }
     // Named sets do not remove the parent's valid unnamed prefix or rescale its physical mapping.
     if (!sets.empty() && sets.front().declared_dmx_from>from) {
         ParsedWheelChannelSet prefix; prefix.declared_dmx_from=from; prefix.effective_dmx_to=sets.front().declared_dmx_from-1;
         prefix.physical_from=physical_from;
-        prefix.physical_to=to>from?physical_from+(physical_to-physical_from)*double(prefix.effective_dmx_to-from)/double(to-from):physical_from;
+        prefix.physical_to=parent_physical(prefix.effective_dmx_to);
         sets.insert(sets.begin(),prefix);
     }
     return valid?sets:std::vector<ParsedWheelChannelSet>{};
@@ -89,9 +105,8 @@ inline std::vector<ShutterModeChoice> shutter_modes(const ChannelProgram &progra
         const auto declared=shutter_attribute(master.attribute_name).wave;
         if (!shutter_periodic(declared) && declared!=ShutterWave::Unsupported) continue;
         const uint32_t from=std::max(program.mode_master.from,master.dmx_from),to=std::min(program.mode_master.to,master.dmx_to);
-        // A channel-wide reference does not install each candidate function's own activation graph.
-        // Keep such conditional candidates explicit until their additional dependencies can be routed natively.
-        const auto selected=!function && master.mode_master.target_kind!=ModeMasterTargetKind::None?ShutterWave::Unsupported:declared;
+        // Candidate activation is retained as an additional root of the existing source graph.
+        const auto selected=master.shutter_mapping_supported?declared:ShutterWave::Unsupported;
         if (function) modes.push_back({selected,0,UINT32_MAX,master.function_name,master.id});
         else if (from<=to) modes.push_back({selected,from,to,master.function_name,master.id});
     }
@@ -103,6 +118,7 @@ template<class MakeSources>
 void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneModel::FixturePatch &patch,
         const CompiledGdtfFixtureType &fixture,int32_t fixture_id,int32_t &next_id,MakeSources make_sources) {
     std::unordered_set<std::string> reported;
+    std::unordered_map<int32_t,int32_t> mode_sources;
     std::unordered_map<int32_t,const GeometryInstance *> geometries;
     for (const auto &geometry:fixture.geometries) geometries[geometry.id]=&geometry;
     for (const auto &program:fixture.channel_programs) {
@@ -130,23 +146,32 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
         for (const auto &choice:shutter_modes(program,fixture,semantic.wave)) {
             // Distinct typed mode functions retain distinct activation identities even when wave/frequency match.
             const int32_t activation_id=choice.mode_id?next_id++:source.program_id;
+            int32_t mode_source=0;
+            if (choice.mode_id) {
+                auto found=mode_sources.find(choice.mode_id);
+                if (found==mode_sources.end()) {
+                    for (const auto &master:fixture.channel_programs) if (master.id==choice.mode_id) {
+                        runtime::CompiledDmxSourceProgram candidate;
+                        candidate.program_id=next_id++; candidate.parser_program_id=master.id;
+                        candidate.sources=make_sources(master); candidate.dmx_from=master.dmx_from; candidate.dmx_to=master.dmx_to;
+                        candidate.physical_from=master.physical_from; candidate.physical_to=master.physical_to;
+                        candidate.attribute_name=master.attribute_name; candidate.function_name=master.function_name;
+                        candidate.geometry_id=master.geometry_instance_id; candidate.dmx_channel_id=master.dmx_channel_id;
+                        candidate.activation=master.mode_master;
+                        scene.source_programs.push_back(candidate);
+                        found=mode_sources.emplace(master.id,candidate.program_id).first;
+                        break;
+                    }
+                }
+                if (found!=mode_sources.end()) mode_source=found->second;
+            }
             const auto wave=choice.wave;
-            double duration=0.025,duty=1,offset=1;
-            bool supported=wave!=ShutterWave::Unsupported && program.shutter_sets_valid && program.shutter_physical_valid && !program.shutter_subsets_present;
+            const auto timing=compile_shutter_timing(program,attribute);
+            bool supported=wave!=ShutterWave::Unsupported && program.shutter_sets_valid && program.shutter_physical_valid && program.shutter_mapping_supported && timing.valid;
             if (attribute) {
                 if (shutter_periodic(wave) && !attribute->physical_unit.empty() && attribute->physical_unit!="None" && attribute->physical_unit!="Frequency") supported=false;
                 if (wave==ShutterWave::Duration && !attribute->physical_unit.empty() && attribute->physical_unit!="None" && attribute->physical_unit!="Time") supported=false;
-                for (const auto &sub:attribute->subphysical_units) {
-                    if (sub.type!="Duration" && sub.type!="DutyCycle" && sub.type!="TimeOffset") continue;
-                    if (sub.physical_from!=sub.physical_to || !std::isfinite(sub.physical_from)) { supported=false; continue; }
-                    const bool time=sub.type=="Duration";
-                    if (!sub.physical_unit.empty() && sub.physical_unit!="None" && sub.physical_unit!=(time?"Time":"Percent")) supported=false;
-                    if (sub.type=="Duration") duration=sub.physical_from;
-                    if (sub.type=="DutyCycle") duty=sub.physical_from/100.0;
-                    if (sub.type=="TimeOffset") offset=sub.physical_from/100.0;
-                }
             }
-            if (duration<0 || duty<0 || duty>1 || offset<0 || offset>1 || !std::isfinite(offset)) supported=false;
             auto sets=program.shutter_channel_sets;
             if (sets.empty()) { ParsedWheelChannelSet set; set.declared_dmx_from=program.dmx_from; set.effective_dmx_to=program.dmx_to; set.physical_from=program.physical_from; set.physical_to=program.physical_to; sets.push_back(set); }
             bool diagnosed=false;
@@ -159,17 +184,20 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
                         std::any_of(fixture.channel_programs.begin(),fixture.channel_programs.end(),[&](const auto &p){return p.attribute_name=="StrobeFrequency" && p.mode_master.master_channel_id==program.dmx_channel_id;})) continue;
                 }
                 const bool known=effective!=ShutterWave::Unsupported;
-                if (!known && !diagnosed && reported.insert(program.attribute_name+":"+program.function_name).second) { scene.diagnostics.push_back({"PVZ-SHUTTER-SEMANTICS-UNSUPPORTED","warning","Shutter function lacks proven polarity/waveform/activation chain/constant SubPhysicalUnits; it is left open, not interpreted as periodic strobe.",patch.fixture_uuid+" attribute="+program.attribute_name}); diagnosed=true; }
+                if (!known && !diagnosed && reported.insert(program.attribute_name+":"+program.function_name).second) { scene.diagnostics.push_back({"PVZ-SHUTTER-SEMANTICS-UNSUPPORTED","warning","Shutter function lacks proven polarity/waveform/activation chain/supported physical mappings/SubPhysicalUnits; it is left open, not interpreted as periodic strobe.",patch.fixture_uuid+" attribute="+program.attribute_name}); diagnosed=true; }
                 for (const auto &beam:scene.beam_profiles) {
                     const auto &path=geometry->second->path;
                     if (beam.fixture_id!=fixture_id || !(beam.geometry_path==path || beam.geometry_path.rfind(path+"/",0)==0)) continue;
                     runtime::CompiledShutterBinding binding;
                     binding.fixture_id=fixture_id; binding.beam_target_id=beam.render_target_id; binding.shutter_index=semantic.index;
                     binding.source_program_id=source.program_id; binding.wave=effective;
-                    binding.duration=duration; binding.duty=duty; binding.offset=offset;
+                    binding.duration=timing.from[0]; binding.duty=timing.from[1]; binding.offset=timing.from[2];
+                    binding.duration_to=timing.to[0]; binding.duty_to=timing.to[1]; binding.offset_to=timing.to[2];
+                    binding.timing_variable_mask=timing.variable_mask;
+                    binding.timing_dmx_from=program.dmx_from; binding.timing_dmx_to=program.dmx_to;
                     binding.status=!known?2:(wave==ShutterWave::Mode || shutter_random(wave)?1:0);
                     binding.channel_set_name=set.name; binding.gdtf_break=program.dmx_break;
-                    binding.activation_function_id=activation_id;
+                    binding.activation_function_id=activation_id; binding.mode_source_program_id=mode_source;
                     binding.mode_from=choice.from; binding.mode_to=choice.to; binding.mode_function_name=choice.name;
                     binding.dmx_from=set.declared_dmx_from; binding.dmx_to=set.effective_dmx_to;
                     binding.physical_from=set.physical_from; binding.physical_to=set.physical_to;

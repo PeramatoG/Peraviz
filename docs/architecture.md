@@ -74,6 +74,11 @@ Structural setup occurs before live playback. The loader and compiler install fi
 
 The versioned compiled setup payload is encoded and decoded by the shared native `CompiledRuntimeScene` codec. The codec owns field order, version-specific strides, complete cursor validation, and deterministic rejection of truncated or trailing payloads; Godot wrappers only convert packed array containers.
 
+Setup contract 11 adds parent-domain variable shutter timing intervals and an explicit
+additional typed-mode activation source. The decoder retains older constant-timing
+payloads and rejects truncated/invalid new timing records. Authority signatures include
+the complete timing definition and both activation roots; either root invalidates the
+existing source graph without new transport state or per-flash source work.
 Setup contract 10 adds compiler-classified per-Beam implicit RGB intensity authority
 in color-target flags; numeric setup does not carry the geometry paths needed to
 recompute it. See [additive intensity lifecycle](native-dense-presentation-state.md#additive-emitters-without-dimmer).
@@ -91,8 +96,15 @@ measured baseline/candidate fan-out, exact consumer/submission counters and
 regression/Windows validation contracts. Temporal CPU profiling follows the
 existing opt-in performance trace flag.
 
+At setup compilation, shutter ChannelSets without physical overrides project the
+parent function's mapping onto their inclusive DMX bounds. Explicit physical intervals
+remain local. Existing bindings and setup serialization carry the resulting endpoints;
+no extra live mapping state or evaluator is introduced.
+
 The existing native source/activation graph evaluates shutter parameters only when
-relevant DMX bytes change. No flash creates a native snapshot or re-evaluates a source.
+relevant DMX bytes change. Shutter authorities can bind explicitly routed mode, frequency
+and duration dependencies across held universes through the same compiled input graph;
+no additional DMX state or presentation evaluator is introduced. No flash creates a native snapshot or re-evaluates a source.
 The main-thread native presentation owner maps the publication clock once to a steady
 clock, retains phase independently of renderer resources, and samples only active or
 invalidated temporal authorities, broadcasting cached envelopes through indexed physical routes. An injectable clock supports numerical tests without sleeps.
