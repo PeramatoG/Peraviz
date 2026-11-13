@@ -19,8 +19,8 @@ sun_curve = 0.015
 sky_material = SubResource("ProceduralSkyMaterial_ppyta")
 
 [sub_resource type="Environment" id="Environment_viewer"]
-background_mode = 1
-background_color = Color(0.02, 0.02, 0.02, 1)
+background_mode = 2
+background_color = Color(0.129412, 0.137255, 0.156863, 1)
 sky = SubResource("Sky_ykrsh")
 ambient_light_source = 2
 ambient_light_color = Color(1, 1, 1, 1)

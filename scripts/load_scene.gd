@@ -74,7 +74,7 @@ var _visual_environment_baseline := {
 	"glow_bloom": 0.05,
 	"glow_intensity": 0.55,
 	"glow_strength": 0.55,
-	"background_color": Color(0.02, 0.02, 0.02, 1.0),
+	"background_color": Color(0.129412, 0.137255, 0.156863, 1.0),
 }
 var _cached_beam_defaults: Dictionary = {}
 var _beam_params_template_cache: Dictionary = {}
@@ -126,9 +126,8 @@ var _visual_settings := {
 	"volumetric_fog_fade": 0.02,
 	"light_volumetric_fog_energy": 12.0,
 	"use_native_fog_projector_gobos": true,
-	"background_color": Color(0.02, 0.02, 0.02, 1.0),
+	"background_color": Color(0.129412, 0.137255, 0.156863, 1.0),
 	"environment_enabled": true,
-	"environment_use_sky_background": false,
 	"environment_use_continuous_cycle": false,
 	"environment_current_preset": 1,
 	"environment_time_of_day": 0.4,
@@ -466,7 +465,7 @@ func _apply_visual_settings(settings: Dictionary, initialize_environment: bool =
 			world_environment.environment.glow_bloom = float(_visual_environment_baseline.get("glow_bloom", 0.05)) * bloom_multiplier
 			world_environment.environment.glow_intensity = float(_visual_environment_baseline.get("glow_intensity", 0.55)) * bloom_multiplier
 			world_environment.environment.glow_strength = float(_visual_environment_baseline.get("glow_strength", 0.55)) * bloom_multiplier
-			world_environment.environment.background_color = _visual_settings.get("background_color", _visual_environment_baseline.get("background_color", Color(0.02, 0.02, 0.02, 1.0)))
+			world_environment.environment.background_color = _visual_settings.get("background_color", _visual_environment_baseline.get("background_color", Color(0.129412, 0.137255, 0.156863, 1.0)))
 			var ambient_fog_density: float = max(float(_visual_settings.get("ambient_fog_density", 0.0)), 0.0)
 			world_environment.environment.fog_enabled = ambient_fog_density > 0.0001
 			if world_environment.environment.fog_enabled:
@@ -517,7 +516,6 @@ func _refresh_day_night_environment_controller() -> void:
 	day_night_environment_controller.apply_now()
 
 func _apply_day_night_settings_from_visual_controls() -> void:
-	day_night_environment_controller.use_sky_background = bool(_visual_settings.get("environment_use_sky_background", false))
 	day_night_environment_controller.enabled = bool(_visual_settings.get("environment_enabled", true))
 	day_night_environment_controller.use_continuous_cycle = bool(_visual_settings.get("environment_use_continuous_cycle", false))
 	day_night_environment_controller.current_preset = int(clamp(int(_visual_settings.get("environment_current_preset", 1)), 0, 4)) as DayNightEnvironmentController.EnvironmentPreset

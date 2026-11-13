@@ -225,9 +225,11 @@ normal or erroneous transform in that show has been identified. No imported obje
 has been shifted, deduplicated or hidden in production. The newly attempted graphical
 launch again failed with X11/Wayland errors; the host exposes no GPU device.
 
-Confirmed code-level issues were the 200 m finite floor with a relatively reflective
-material, and the controller always selecting sky mode so the existing background
-color control did not determine the enabled environment background. Both are fixed.
+The 200 m finite floor and its relatively reflective material contributed to the
+conspicuous ground appearance. The controller selecting sky mode is established
+day/night behavior, not a defect; it is preserved. The temporary studio-background
+change was reverted following user feedback. Only ground appearance/coverage changes
+remain from that presentation adjustment.
 
 [Godot 4.7 lighting documentation](https://docs.godotengine.org/en/4.7/tutorials/3d/lights_and_shadows.html)
 explains that PSSM divides atlas coverage among camera-depth regions. Shorter shadow
@@ -269,16 +271,13 @@ attenuate that additive projection. Native lighting still depends on receiver
 albedo. Low-intensity Custom and Native output must be judged separately on hardware;
 no optical gain has been raised to compensate.
 
-The default uses BG_COLOR with dark neutral `(0.02, .02, .02)` and the existing
-Background color control. A single checkbox in Environment, **Show day/night sky
-background**, restores procedural sky. The saved key is
-`environment_use_sky_background`; missing keys use the studio default, explicit
-true/false and background color round-trip through PVZ. Presets/time continue to
-change the same light direction, color, energy and ambient state in either background
-mode. Disabling the controller no longer discards the chosen background color.
-The floor/background are not guaranteed to match numerically under every light or
-exposure. A finite border can still be seen at extreme shallow angles or beyond
-normal navigation. No claim of a seamless infinite horizon is made.
+The original procedural sky remains the default, including the existing day/night
+colors, horizon and lighting cycle. The temporary studio-background selector and
+saved-setting owner have been removed. Even a PVZ saved during that intermediate
+implementation with `environment_use_sky_background=false` cannot disable the sky.
+The existing controller-disabled fallback is preserved. Ground changes do not replace
+the sky or force a neutral background. The finite ground can still have a visible
+border at extreme angles; a seamless infinite horizon is not claimed.
 
 ### Extended controlled matrix
 
@@ -364,7 +363,7 @@ present a headless pass as a solved shadow/noise problem.
 
 ### Follow-up execution results
 
-- Godot 4.7.1: `python3 .github/scripts/run_gdscript_tests.py --godot /workspace/.peraviz-tools/godot/Godot_v4.7.1-stable_linux.x86_64 --project /workspace/Peraviz --output /workspace/work/correction-suite --timeout 60`: **52/52 passed**. Includes the updated matte/opaque ground, 2000 m coverage, sky/studio restoration and explicit background color regressions, plus existing footprint, LOD, native projector, haze and Pan/Tilt contracts.
+- Godot 4.7.1: `python3 .github/scripts/run_gdscript_tests.py --godot /workspace/.peraviz-tools/godot/Godot_v4.7.1-stable_linux.x86_64 --project /workspace/Peraviz --output /workspace/work/correction-suite --timeout 60`: **52/52 passed**. Includes the updated matte/opaque ground, 2000 m coverage, the then-current sky/studio restoration and explicit background color regressions (subsequently replaced by sky-preservation regressions), plus existing footprint, LOD, native projector, haze and Pan/Tilt contracts.
 - `ctest --test-dir native/build --output-on-failure --timeout 120`: **15/15 passed**; no native code changes.
 - The 31 follow-up cases plus clean/depth32/A ran headlessly with `--warmup=2 --frames=10`: **34 passed**. Generated small MVR imports passed close/flat/distant moving views. An additional targeted imported-mesh smoke exercised `--no-target-cast`, `--hide-node` and `--world-offset=100000`. These are state/control checks, not visual or performance comparisons.
 - `bash tests/check_no_large_files.sh`, `bash tests/check_runtime_architecture.sh`, `git diff --check`: passed (existing soft-limit file-size warnings remain).
@@ -374,3 +373,17 @@ The larger plane has a 1000 m half-extent versus a 500 m navigation radius, not
 infinite coverage. An 8192 atlas would use four times the depth texels; 32-bit depth
 doubles raw depth storage compared with 16-bit at the same size. These are resource
 ratios, not measured frame-time changes. Both remain diagnostic-only.
+
+### Sky preservation correction
+
+User testing found no appreciable shadow improvement and rejected the studio
+background. Restore the original sky as the sole enabled-controller background and
+remove the added UI/defaults/loader mapping. Keep the opaque dark matte 2000 m ground.
+Regression coverage verifies Day/Night sky restoration and ignores the obsolete
+saved studio flag. The directional shadow parameters were not changed by the
+follow-up; shadow aliasing/surface noise remain unresolved graphical findings.
+
+Sky correction validation: the focused Godot 4.7.1 ambient regression passed, including
+missing-key restoration, the obsolete false studio flag, Day/Night sky, and the retained
+dark matte receiver. Architecture, file-size and diff checks passed. Graphical shadow
+improvement remains unverified and was not established by these tests.
