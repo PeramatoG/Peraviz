@@ -2,7 +2,7 @@ extends SceneTree
 ## Opt-in, process-local comparisons; never save graphics or optical settings.
 ## Each B–J candidate changes exactly one factor from A. Clean is the new default.
 const CASES := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "clean", "msaa2", "ssao", "near", "depth32"]
-const FOLLOWUP_CASES := ["ground2000", "horizon_old","old_bias", "bias_only", "normal_only","previous", "distance36", "distance48", "splits2", "splits_near", "filter_high", "filter_low", "filter_hard", "blur05", "blur025", "high_blur05", "atlas8192", "bias003", "normal_bias1", "no_shadows", "no_sun", "unshaded", "matte", "normals", "no_aa", "msaa4", "taa", "ground_hidden", "ground200", "ground1500", "ground_grey", "sky", "sky_deband", "viewport_deband", "no_post", "lod_original"]
+const FOLLOWUP_CASES := ["horizon_off","ground2000", "horizon_old","old_bias", "bias_only", "normal_only","previous", "distance36", "distance48", "splits2", "splits_near", "filter_high", "filter_low", "filter_hard", "blur05", "blur025", "high_blur05", "atlas8192", "bias003", "normal_bias1", "no_shadows", "no_sun", "unshaded", "matte", "normals", "no_aa", "msaa4", "taa", "ground_hidden", "ground200", "ground1500", "ground_grey", "sky", "sky_deband", "viewport_deband", "no_post", "lod_original"]
 var options := {}
 var atlas_size := 4096
 var depth_bits := 16
@@ -74,6 +74,8 @@ func run() -> void:
 	var light: DirectionalLight3D = app.get_node("DirectionalLight3D")
 	var environment: Environment = app.get_node("WorldEnvironment").environment
 	var ground: MeshInstance3D = app.get_node("Ground")
+	if options.has("preset"):
+		app.day_night_environment_controller.current_preset = clampi(int(options["preset"]), 0, 4)
 	if not options.has("mvr"):
 		var flat := MeshInstance3D.new()
 		flat.name = "AuditFlatBox"
@@ -103,11 +105,13 @@ func run() -> void:
 			mesh.position = Vector3((i % 6) * 2 - 5, 1.5, (i / 6) * 4 - 2)
 	if candidate == "lod_original": app._asset_cache.derived_lods.set_automatic(false, root)
 	apply_case(candidate, light, environment, ground, camera)
+	app.day_night_environment_controller._sync_ground_horizon()
 	if candidate in FOLLOWUP_CASES: isolate_geometry(app, candidate)
 	var inventory := geometry_inventory(app.proxies_root)
 	if options.has("world-offset"):
 		var offset := Vector3(float(options["world-offset"]), 0, float(options["world-offset"]))
 		app.position += offset
+		app._rebuild_loaded_bounds()
 		center += offset
 	var measure_gpu: bool = options.has("gpu-time") and DisplayServer.get_name() != "headless"
 	if measure_gpu: RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
@@ -154,6 +158,7 @@ func run() -> void:
 func apply_case(candidate: String, light: DirectionalLight3D, environment: Environment, ground: MeshInstance3D, camera: Camera3D) -> void:
 	if candidate in FOLLOWUP_CASES:
 		match candidate:
+			"horizon_off": (ground.material_override as ShaderMaterial).set_shader_parameter("horizon_enabled", false)
 			"ground2000": (ground.mesh as PlaneMesh).size = Vector2(2000, 2000)
 			"horizon_old":
 				var sky_material := environment.sky.sky_material as ProceduralSkyMaterial
@@ -254,7 +259,7 @@ func apply_case(candidate: String, light: DirectionalLight3D, environment: Envir
 		"msaa2": root.msaa_3d = Viewport.MSAA_2X
 
 func snapshot(light: DirectionalLight3D, environment: Environment, ground: MeshInstance3D, camera: Camera3D) -> Dictionary:
-	var report := {"godot": Engine.get_version_info(), "renderer": RenderingServer.get_current_rendering_method(), "viewport_size": str(root.size), "window_size": str(DisplayServer.window_get_size()), "camera_transform": str(camera.global_transform), "resolution_3d": str(Vector2i(Vector2(root.size) * root.scaling_3d_scale)), "sky_debanding": (environment.sky.sky_material as ProceduralSkyMaterial).use_debanding, "directional_transform": str(light.global_transform), "directional_energy": light.light_energy, "directional_color": str(light.light_color), "ambient_energy": environment.ambient_light_energy, "ground_size": str((ground.mesh as PlaneMesh).size), "ground_position": str(ground.global_position), "ground_cast_shadow": ground.cast_shadow, "ground_material": str(ground.material_override.albedo_color) if ground.material_override is StandardMaterial3D else "diagnostic shader", "ground_visible": ground.visible, "background_mode": environment.background_mode, "sun_visible": light.visible, "directional_filter_effective": filter_quality, "directional_depth_bits_effective": depth_bits, "directional_atlas_effective": atlas_size}
+	var report := {"godot": Engine.get_version_info(), "renderer": RenderingServer.get_current_rendering_method(), "viewport_size": str(root.size), "window_size": str(DisplayServer.window_get_size()), "camera_transform": str(camera.global_transform), "resolution_3d": str(Vector2i(Vector2(root.size) * root.scaling_3d_scale)), "sky_debanding": (environment.sky.sky_material as ProceduralSkyMaterial).use_debanding, "directional_transform": str(light.global_transform), "directional_energy": light.light_energy, "directional_color": str(light.light_color), "ambient_energy": environment.ambient_light_energy, "ground_size": str((ground.mesh as PlaneMesh).size), "ground_position": str(ground.global_position), "ground_cast_shadow": ground.cast_shadow, "ground_material": str(ground.material_override.albedo_color) if ground.material_override is StandardMaterial3D else str(ground.material_override.get_shader_parameter("ground_color")) if ground.material_override.shader.resource_path == "res://scripts/shaders/ambient_ground.gdshader" else "diagnostic shader", "ground_visible": ground.visible, "background_mode": environment.background_mode, "sun_visible": light.visible, "directional_filter_effective": filter_quality, "directional_depth_bits_effective": depth_bits, "directional_atlas_effective": atlas_size}
 	for pair in [[root, ["msaa_3d", "screen_space_aa", "use_taa", "use_debanding", "scaling_3d_scale", "scaling_3d_mode", "positional_shadow_atlas_size"]], [light, ["light_angular_distance", "shadow_enabled", "shadow_bias", "shadow_normal_bias", "shadow_blur", "directional_shadow_mode", "directional_shadow_max_distance", "directional_shadow_split_1", "directional_shadow_split_2", "directional_shadow_split_3"]], [environment, ["ssao_enabled", "ssao_radius", "ssao_intensity", "ssil_enabled", "ssr_enabled"]], [camera, ["near", "far"]]]:
 		for key in pair[1]: report[key] = pair[0].get(key)
 	for key in ["lights_and_shadows/directional_shadow/size", "environment/ssao/quality"]:

@@ -31,10 +31,11 @@ func run() -> void:
 	var ground: MeshInstance3D = app.get_node("Ground")
 	test.check(ground.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Ground receives without casting shadows")
 	test.check((ground.mesh as PlaneMesh).size == Vector2(20000, 20000), "Empty ground is bounded")
-	var material := ground.material_override as StandardMaterial3D
-	test.check(material.albedo_color.is_equal_approx(Color(0.4, 0.4, 0.4)), "Readable matte grey ground")
-	test.check(material.roughness == 1.0 and material.metallic_specular == 0.0 and material.metallic == 0.0, "Matte receiver")
-	test.check(material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL, "Opaque lit depth/normal receiver")
+	var material := ground.material_override as ShaderMaterial
+	test.check(material != null, "Dedicated ground horizon material")
+	test.check(material.get_shader_parameter("ground_color").is_equal_approx(Color(0.4, 0.4, 0.4)), "Accepted grey receiver preserved")
+	test.check(material.get_shader_parameter("horizon_begin") == 600.0 and material.get_shader_parameter("horizon_end") == 1800.0, "Transition beyond stage and before far clip")
+	test.check(not material.shader.code.contains("ALPHA =") and not material.shader.code.contains("DEPTH =") and not material.shader.code.contains("NORMAL ="), "Opaque unchanged receiver depth and normals")
 	test.check(environment.background_mode == Environment.BG_SKY, "Original sky survives restoration with missing keys")
 	# A saved value from the temporary studio implementation must not suppress the sky.
 	app._restore_visual_project_settings({"environment_use_sky_background": false, "environment_current_preset": 3})
@@ -45,6 +46,8 @@ func run() -> void:
 	test.check(sky_material.ground_horizon_color.is_equal_approx(Color(0.3, 0.3, 0.3)), "Day lower sky is neutral grey")
 	for preset in range(5):
 		app.day_night_environment_controller.current_preset = preset
+		test.check(material.get_shader_parameter("horizon_color").is_equal_approx(sky_material.ground_horizon_color), "Receiver tracks lower sky color")
+		test.check_close(material.get_shader_parameter("horizon_energy"), sky_material.energy_multiplier * sky_material.ground_energy_multiplier, 0.00001, "Receiver tracks sky energy")
 		test.check(sky_material.ground_horizon_color.is_equal_approx(sky_material.ground_bottom_color), "No fixed dark horizon strip for preset " + str(preset))
 	app.day_night_environment_controller.current_preset = 1
 	var imported := MeshInstance3D.new()
@@ -55,6 +58,7 @@ func run() -> void:
 	app._rebuild_loaded_bounds()
 	test.check(imported.transform == original, "Bounds/ground fitting preserves imported local transform")
 	test.check(absf(ground.global_position.x - imported.global_position.x) < 1.0, "Ground follows off-origin scene")
+	test.check(material.get_shader_parameter("stage_min").x < imported.global_position.x and material.get_shader_parameter("stage_max").x > imported.global_position.x, "Off-origin imported show protected from horizon tint")
 	test.check(ground.global_position.y < app._loaded_bounds.position.y, "Ground remains below imported floor")
 	preload("res://scripts/rendering/ambient_ground.gd").fit(ground, AABB(Vector3(-3000, 0, 8000), Vector3(30000, 10, 40000)), true)
 	test.check((ground.mesh as PlaneMesh).size == Vector2(30040, 40040), "Large stages are covered without size cap")

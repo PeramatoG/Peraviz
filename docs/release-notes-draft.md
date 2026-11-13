@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added an opaque ground-only distant color transition toward the lower sky to reduce the remaining floor/horizon band. Imported stage bounds are protected, preserving the accepted lit grey receiver and shadow bias; sky and global haze settings remain unchanged. The existing audit can disable the transition for comparison. Graphical continuity, projector appearance and GPU cost remain pending Windows validation.
+
 - Restored wide fallback-ground coverage and replaced the fixed dark lower-sky horizon strip with neutral day/night ground tones, retaining the accepted grey matte receiver and bias settings. Windows feedback confirms the diagonal flat-surface patterns are gone; remaining shadow silhouette quality is deferred. Horizon continuity still needs graphical confirmation.
 
 - Restored a readable matte grey fallback ground while preserving the day/night sky. Restored Godot directional bias/normal bias defaults (.1/2) as an anti-acne candidate for reported diagonal surface patterns; GPU confirmation and contact-shadow checks remain pending. Added cylindrical casters and old/bias-only/normal-only comparisons without changing import units or geometry.

@@ -1,6 +1,8 @@
 # Ambient rendering baseline (Godot 4.7 Forward+)
 
-Current revision: ground minimum coverage is restored to 20000 m and the lower sky
+Current revision: an opaque ground-only horizon transition now blends distant
+background floor into the lower-sky tone; the imported show area stays fully lit.
+Ground minimum coverage is restored to 20000 m and the lower sky
 uses a neutral preset ground tone through the horizon (no fixed .02 black strip).
 The ground is matte grey `(0.4, 0.4, 0.4)`, with the original sky.
 Directional bias/normal bias now use Godot defaults **0.1 / 2.0** as an anti-acne
@@ -488,3 +490,84 @@ Windows confirmation; a slight floor/background seam may remain under some light
 Compare `clean` with `ground2000` (extent only) and `horizon_old` (old lower sky only)
 in the existing audit. These cases isolate the two horizon changes independently.
 Focused ambient and project-scene-loading regressions passed with Godot 4.7.1.
+
+## Continuous floor/background transition: alternatives and implementation
+
+The new screenshot still shows two differently shaded bands. Enlarging geometry
+cannot make a lit material and an unlit sky numerically agree. It also cannot push
+geometry past the unchanged 4000 m camera far clip.
+
+Research references:
+
+- [Godot environment/fog documentation](https://docs.godotengine.org/en/4.7/tutorials/3d/environment_and_post_processing.html): distance fog and aerial perspective are supported tools for distant scene/background continuity.
+- [Godot user with the same plane/sky lighting mismatch](https://forum.godotengine.org/t/proceduralskymaterial-ocean-blending/123581): illustrates why hand-matching material and sky colors is insufficient; the reply proposes larger geometry, which alone does not solve the lighting difference.
+- [Godot infinite-plane discussion](https://forum.godotengine.org/t/how-to-create-a-plane-that-stretches-into-the-horizon-without-glitches/10141): proposes camera-following ocean geometry. Moving Peraviz's physical receiver that way is undesirable for stable projection ownership.
+- [Blender Mist Pass](https://docs.blender.org/manual/en/5.0/render/cycles/world_settings.html): supplies depth information for distance-based compositing. This is an example of the general depth-blend approach, not evidence about proprietary lighting visualizers.
+- [Godot issue 97803](https://github.com/godotengine/godot/issues/97803): reports that aerial-perspective fog need not perfectly match the sky. Global fog is not an unconditional seam cure.
+- [Godot spatial shader contract](https://docs.godotengine.org/en/4.7/tutorials/shaders/shader_reference/spatial_shader.html): opaque materials can retain normal depth/lighting while controlling albedo/emission.
+
+| Approach | Consequence for Peraviz |
+| --- | --- |
+| Larger plane / farther clipping | Retains a physical receiver; cannot by itself match its lighting to the background; arbitrary far clipping affects precision/visibility |
+| Global depth/volumetric fog | Common atmospheric solution; also changes housings, scenery, beams and existing haze presentation |
+| Analytic infinite ground / fullscreen ray-plane depth | Can eliminate finite edges, but requires correct depth/normals and integration with selection/projection; excessive complexity here |
+| Camera-following tiled plane | Useful for some oceans/terrain; would move this receiver relative to the show |
+| Opaque local ground color transition | Chosen: adds a gentle distant transition without global fog, alpha or geometry movement |
+
+`ambient_ground.gdshader` retains the accepted grey .4, roughness 1, metallic/specular
+0 and default lit/depth/normal behavior near the show. Beyond 600 m camera distance
+it smoothly mixes from lit ground to emission using the same lower-sky color and
+energy, reaching that target at 1800 m before the normal far clip. The shader never
+writes alpha, depth, normals or displaced vertex positions. It reads no screen
+texture and adds no textures/noise/SSR. Sky color/energy are synchronized by the
+existing day/night owner when it applies a state, not by a new per-frame poll.
+The disabled-controller color background is also supported. Each scene has its own
+material; imported materials are untouched.
+
+The blend is additionally zero within imported XZ bounds plus the existing margin;
+its influence grows over 200 m outside that protected area. Empty scenes protect
+the central 200 m square. Coverage/protection bounds update only at import/retirement.
+Thus the show's ground receiver retains full direct-light response even in distant
+overviews. Depth and normals remain available to Custom Footprints. Beyond the show
+in the transition region, native diffuse lighting/shadows intentionally contribute
+less as the background takes over; this is not an optical gain or emitter change.
+Custom additive footprints still use the real opaque receiver. Low-intensity and
+haze/volumetric graphical checks remain required on hardware.
+
+This makes floor/background continuity depend on a smooth radiance transition rather
+than a visually guessed fixed color. It does not make infinite physical geometry.
+For very large shows occupying the far clip or camera navigation outside coverage,
+the protected area/finite border can still be visible. Nondefault global fog, exposure,
+background energy or other sky materials may require additional matching. The
+reference's surface mottling/gloss is deliberately not copied; the goal is its
+continuous grey gradient and sky, retaining a neutral projection receiver.
+
+Use `clean` versus `horizon_off` in the existing diagnostic at `--view=distant`, with
+identical MVR/target/camera and output folders; repeat with `--moving`, Day/Night,
+low/high camera elevations and global haze modes. `horizon_off` sets only the ground
+material's transition toggle false. The 20 km coverage is retained as a guard, not
+increased further; the transition is the new solution, not a still-larger plane.
+
+No shader GPU compilation, visual seamlessness or performance gain is inferred from
+headless tests. The new fragment arithmetic has no additional texture fetch or pass,
+but GPU cost is unmeasured. The existing cloud session has no usable graphics display.
+
+Windows comparison (same workload/view, no DMX required):
+
+```powershell
+foreach ($Case in 'clean','horizon_off') {
+  & $Godot --path . --rendering-method forward_plus --script tests/manual/ambient_render_audit.gd -- "--case=$Case" --view=distant --preset=1 "--out=$Out\horizon-day" --gpu-time
+  & $Godot --path . --rendering-method forward_plus --script tests/manual/ambient_render_audit.gd -- "--case=$Case" --view=distant --preset=3 "--out=$Out\horizon-night" --gpu-time
+}
+```
+
+Add the same `--mvr=...`/`--target=...` to every call for the real show; repeat with
+`--moving`. Preset indices are Dawn=0, Day=1, Dusk=2, Night=3, Blackout=4.
+
+Validation: full GDScript suite **52/52 passed** during this revision. After the final
+protected-area change, reran the focused ambient, project-scene-loading and Custom
+Footprint regressions successfully. Day clean/off/old-horizon and Night clean/off
+smokes completed headlessly; architecture/file-size/diff checks passed, with existing
+soft warnings. Shader rendering, projection brightness and GPU time remain unverified.
+The failed exploratory native-sky shader introspection was discarded; it supplies no
+visual evidence. No native C++ changes were made.

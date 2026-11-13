@@ -6,6 +6,8 @@
 [ext_resource type="Script" uid="uid://cqjoqw1c2pare" path="res://scripts/day_night_environment_controller.gd" id="4_day_night_environment"]
 [ext_resource type="Script" path="res://scripts/ui/app_shell.gd" id="5_app_shell"]
 
+[ext_resource type="Shader" path="res://scripts/shaders/ambient_ground.gdshader" id="6_ground_shader"]
+
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ppyta"]
 sky_top_color = Color(0.3, 0.52, 0.83, 1)
 sky_horizon_color = Color(0.7, 0.82, 0.98, 1)
@@ -37,10 +39,17 @@ adjustment_enabled = true
 adjustment_contrast = 1.05
 adjustment_saturation = 1.05
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.4, 0.4, 0.4, 1)
-metallic_specular = 0.0
-roughness = 1.0
+[sub_resource type="ShaderMaterial" id="StandardMaterial3D_ground"]
+resource_local_to_scene = true
+shader = ExtResource("6_ground_shader")
+shader_parameter/ground_color = Color(0.4, 0.4, 0.4, 1)
+shader_parameter/horizon_color = Color(0.3, 0.3, 0.3, 1)
+shader_parameter/horizon_energy = 1.0
+shader_parameter/horizon_enabled = true
+shader_parameter/horizon_begin = 600.0
+shader_parameter/horizon_end = 1800.0
+shader_parameter/stage_min = Vector2(-100, -100)
+shader_parameter/stage_max = Vector2(100, 100)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
 resource_local_to_scene = true
