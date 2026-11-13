@@ -613,7 +613,7 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                     continue;
                 }
                 const bool declares_mode_master = !dmx::trim_ascii(read_attr(fn, "ModeMaster", "modemaster")).empty();
-                if (has_previous && dmx_from <= previous_to && !declares_mode_master) {
+                if (!is_shutter && has_previous && dmx_from <= previous_to && !declares_mode_master) {
                     fixture.diagnostics.push_back({"PVZ-GDTF-DMX-RANGE-OVERLAP", "warning", "Overlapping ChannelFunction ranges are not compiled for the verified DPT runtime slice.", attribute_name});
                     continue;
                 }
@@ -643,7 +643,23 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                 ChannelProgram program;
                 program.id = next_program_id++;
                 program.shutter_physical_valid=shutter_physical_valid;
-                program.shutter_subsets_present=!dmx::collect_elements_by_name(fn,"subchannelset").empty();
+                if (is_shutter && !dmx::trim_ascii(read_attr(fn,"DMXProfile","dmxprofile")).empty()) {
+                    program.shutter_mapping_supported=false;
+                    fixture.diagnostics.push_back({"PVZ-SHUTTER-PROFILE-UNSUPPORTED","warning","Shutter DMXProfile/Min/Max mapping requires the shared profile evaluator; linear fallback is withheld.",function_name});
+                }
+                if (is_shutter && (!read_attr(fn,"DMXTo","dmxto").empty()))
+                    fixture.diagnostics.push_back({"PVZ-SHUTTER-DMXTO-IGNORED","warning","Nonstandard DMXTo is ignored; the next ChannelFunction start defines the inclusive end.",function_name});
+                for (auto *sub:dmx::collect_direct_children_by_name(fn,"subchannelset")) {
+                    SubPhysicalUnitRecord record;
+                    record.type=dmx::trim_ascii(read_attr(sub,"SubPhysicalUnit","subphysicalunit"));
+                    bool valid=true;
+                    const double missing=std::numeric_limits<double>::quiet_NaN();
+                    record.physical_from=shutter_physical(sub,"PhysicalFrom",missing,valid);
+                    record.physical_to=shutter_physical(sub,"PhysicalTo",missing,valid);
+                    if (!valid || !std::isfinite(record.physical_from) || !std::isfinite(record.physical_to) ||
+                            !dmx::trim_ascii(read_attr(sub,"DMXProfile","dmxprofile")).empty()) program.shutter_subsets_invalid=true;
+                    program.shutter_subsets.push_back(record);
+                }
                 const std::string source_break=read_attr(channel,"DMXBreak","dmxbreak");
                 if (source_break=="Overwrite") program.dmx_break=0;
                 else if (!source_break.empty()) dmx::patch_number(source_break,program.dmx_break,1);
@@ -712,6 +728,23 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
                                            mode_nodes, program.mode_master, diagnostic)) {
             fixture.diagnostics.push_back({diagnostic, "error", "ModeMaster Node link or activation range is invalid.", program.function_name + " link=" + program.mode_master.source_link});
         }
+    }
+    for (auto *relation:dmx::collect_elements_by_name(selected_mode,"relation")) {
+        const auto follower=dmx::trim_ascii(read_attr(relation,"Follower","follower"));
+        for (auto &program:fixture.channel_programs) if (program.node_path==follower) program.shutter_mapping_supported=false;
+        fixture.diagnostics.push_back({"PVZ-GDTF-RELATION-UNSUPPORTED","warning","Relation is not evaluated; affected shutter functions and activation dependents are guarded.",follower});
+    }
+    // Propagate unsupported physical mappings through activation chains once at setup.
+    for (size_t pass=0;pass<fixture.channel_programs.size();++pass) {
+        bool changed=false;
+        for (auto &program:fixture.channel_programs) {
+            if (!program.shutter_mapping_supported || program.mode_master.target_kind==ModeMasterTargetKind::None) continue;
+            for (const auto &master:fixture.channel_programs) if (!master.shutter_mapping_supported &&
+                    (program.mode_master.target_kind==ModeMasterTargetKind::ChannelFunction?master.id==program.mode_master.master_program_id:master.dmx_channel_id==program.mode_master.master_channel_id)) {
+                program.shutter_mapping_supported=false; changed=true; break;
+            }
+        }
+        if (!changed) break;
     }
     std::vector<ChannelFunctionActivation> activation_graph;
     for (const ChannelProgram &program : fixture.channel_programs) activation_graph.push_back({program.id, program.id, program.dmx_from, program.dmx_to, program.mode_master});

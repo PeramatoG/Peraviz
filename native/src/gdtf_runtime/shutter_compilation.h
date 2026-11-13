@@ -23,27 +23,42 @@ inline double shutter_physical(tinyxml2::XMLElement *node,const char *name,doubl
     if (parsed.ec!=std::errc() || parsed.ptr!=last || !std::isfinite(value)) { valid=false; return fallback; }
     return value;
 }
-// Uses default 0/1 and the next strictly greater start, including conditional functions with equal starts.
+// Reads activation-container identity without interpreting manufacturer labels.
+inline std::string shutter_condition_field(tinyxml2::XMLElement *fn,const char *name,const char *fallback="") {
+    const char *raw=fn->Attribute(name);
+    if (!raw) raw=fn->Attribute(dmx::lower_ascii(name).c_str());
+    return raw?dmx::trim_ascii(raw):fallback;
+}
+// Partitions function boundaries by declared ModeMaster container, including equal starts in different containers.
+inline bool shutter_same_container(tinyxml2::XMLElement *a,tinyxml2::XMLElement *b) {
+    const auto master=shutter_condition_field(a,"ModeMaster");
+    if (master!=shutter_condition_field(b,"ModeMaster")) return false;
+    if (master.empty()) return true;
+    for (const auto *field:{"ModeFrom","ModeTo"}) {
+        const auto left=shutter_condition_field(a,field,"0/1"),right=shutter_condition_field(b,field,"0/1");
+        ParsedDmxValue l,r;
+        if (!parse_gdtf_dmx_value(left,l) || !parse_gdtf_dmx_value(right,r)) return false;
+        // Compare in a common resolution only for identical conversion policies.
+        uint32_t lv=0,rv=0;
+        const auto bytes=std::max(l.byte_count,r.byte_count);
+        if (l.conversion!=r.conversion || !convert_gdtf_dmx_value(l,bytes,lv) || !convert_gdtf_dmx_value(r,bytes,rv) || lv!=rv) return false;
+    }
+    return true;
+}
+// Uses normative starts and inclusive ends; malformed siblings do not erase independent valid functions.
 inline bool shutter_function_range(tinyxml2::XMLElement *fn,const std::vector<tinyxml2::XMLElement *> &functions,
         size_t bytes,uint32_t &from,uint32_t &to) {
-    const char *raw=fn->Attribute("DMXFrom");
-    if (!raw) raw=fn->Attribute("dmxfrom");
-    if (!parse_and_convert_gdtf_dmx_value(raw?raw:"0/1",uint8_t(bytes),from)) return false;
+    if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(fn,"DMXFrom","0/1"),uint8_t(bytes),from)) return false;
     to=bytes==4?UINT32_MAX:uint32_t((uint64_t(1)<<(bytes*8))-1);
     for (auto *other:functions) {
-        uint32_t next=0; const char *start=other->Attribute("DMXFrom");
-        if (!start) start=other->Attribute("dmxfrom");
-        if (!parse_and_convert_gdtf_dmx_value(start?start:"0/1",uint8_t(bytes),next)) return false;
-        const auto conditional=[](tinyxml2::XMLElement *node) { const char *master=node->Attribute("ModeMaster"); if (!master) master=node->Attribute("modemaster"); return master && !dmx::trim_ascii(master).empty(); };
-        if (other!=fn && next==from && !conditional(fn) && !conditional(other)) return false;
+        if (other==fn || !shutter_same_container(fn,other)) continue;
+        uint32_t next=0;
+        if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(other,"DMXFrom","0/1"),uint8_t(bytes),next)) continue;
+        if (next==from) return false;
         if (next>from) to=std::min(to,next-1);
     }
-    // Retain the existing bounded nonstandard DMXTo compatibility, never beyond the normative boundary.
-    const char *end=fn->Attribute("DMXTo");
-    if (!end) end=fn->Attribute("dmxto");
-    uint32_t explicit_to=to;
-    if (end && (!parse_and_convert_gdtf_dmx_value(end,uint8_t(bytes),explicit_to) || explicit_to<from || explicit_to>to)) return false;
-    to=explicit_to; return true;
+    // DMXTo is not a GDTF ChannelFunction attribute and cannot change a normative boundary.
+    return true;
 }
 // Retains ordered sets intersected with their parent. Missing DMXFrom means 0/1, not parent start.
 inline std::vector<ParsedWheelChannelSet> parse_shutter_sets(tinyxml2::XMLElement *fn,size_t bytes,uint32_t from,uint32_t to,double physical_from,double physical_to,bool &valid) {
@@ -132,11 +147,18 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
             const int32_t activation_id=choice.mode_id?next_id++:source.program_id;
             const auto wave=choice.wave;
             double duration=0.025,duty=1,offset=1;
-            bool supported=wave!=ShutterWave::Unsupported && program.shutter_sets_valid && program.shutter_physical_valid && !program.shutter_subsets_present;
+            bool supported=wave!=ShutterWave::Unsupported && program.shutter_sets_valid && program.shutter_physical_valid && !program.shutter_subsets_invalid && program.shutter_mapping_supported;
             if (attribute) {
                 if (shutter_periodic(wave) && !attribute->physical_unit.empty() && attribute->physical_unit!="None" && attribute->physical_unit!="Frequency") supported=false;
                 if (wave==ShutterWave::Duration && !attribute->physical_unit.empty() && attribute->physical_unit!="None" && attribute->physical_unit!="Time") supported=false;
-                for (const auto &sub:attribute->subphysical_units) {
+                std::unordered_set<std::string> subtypes;
+                for (auto sub:attribute->subphysical_units) {
+                    if (!subtypes.insert(sub.type).second || !std::isfinite(sub.physical_from) || !std::isfinite(sub.physical_to)) supported=false;
+                    int overrides=0;
+                    for (const auto &override:program.shutter_subsets) if (override.type==sub.type) {
+                        ++overrides; sub.physical_from=override.physical_from; sub.physical_to=override.physical_to;
+                    }
+                    if (overrides>1) supported=false;
                     if (sub.type!="Duration" && sub.type!="DutyCycle" && sub.type!="TimeOffset") continue;
                     if (sub.physical_from!=sub.physical_to || !std::isfinite(sub.physical_from)) { supported=false; continue; }
                     const bool time=sub.type=="Duration";
@@ -145,6 +167,10 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
                     if (sub.type=="DutyCycle") duty=sub.physical_from/100.0;
                     if (sub.type=="TimeOffset") offset=sub.physical_from/100.0;
                 }
+            }
+            for (const auto &override:program.shutter_subsets) {
+                if (override.type!="Duration" && override.type!="DutyCycle" && override.type!="TimeOffset") supported=false;
+                if (!attribute || std::none_of(attribute->subphysical_units.begin(),attribute->subphysical_units.end(),[&](const auto &sub){return sub.type==override.type;})) supported=false;
             }
             if (duration<0 || duty<0 || duty>1 || offset<0 || offset>1 || !std::isfinite(offset)) supported=false;
             auto sets=program.shutter_channel_sets;
@@ -159,7 +185,7 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
                         std::any_of(fixture.channel_programs.begin(),fixture.channel_programs.end(),[&](const auto &p){return p.attribute_name=="StrobeFrequency" && p.mode_master.master_channel_id==program.dmx_channel_id;})) continue;
                 }
                 const bool known=effective!=ShutterWave::Unsupported;
-                if (!known && !diagnosed && reported.insert(program.attribute_name+":"+program.function_name).second) { scene.diagnostics.push_back({"PVZ-SHUTTER-SEMANTICS-UNSUPPORTED","warning","Shutter function lacks proven polarity/waveform/activation chain/constant SubPhysicalUnits; it is left open, not interpreted as periodic strobe.",patch.fixture_uuid+" attribute="+program.attribute_name}); diagnosed=true; }
+                if (!known && !diagnosed && reported.insert(program.attribute_name+":"+program.function_name).second) { scene.diagnostics.push_back({"PVZ-SHUTTER-SEMANTICS-UNSUPPORTED","warning","Shutter function lacks proven polarity/waveform/activation chain/supported physical mappings/SubPhysicalUnits; it is left open, not interpreted as periodic strobe.",patch.fixture_uuid+" attribute="+program.attribute_name}); diagnosed=true; }
                 for (const auto &beam:scene.beam_profiles) {
                     const auto &path=geometry->second->path;
                     if (beam.fixture_id!=fixture_id || !(beam.geometry_path==path || beam.geometry_path.rfind(path+"/",0)==0)) continue;

@@ -19,7 +19,7 @@ void append_shutter_row(SectionedVisualFrame &frame,int fixture,int target,int i
     else d.insert(d.end(),{int32_t(VisualSectionType::ShutterState),1,io,fo,0});
 }
 }
-// Installs source-graph activation contexts once, refusing unresolved or cross-universe layers explicitly.
+// Installs one evaluation owner per authority; existing held-universe inputs route every dependency.
 void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scene,VisualFrameSchemaCapabilities &capabilities) {
     const auto layout=gdtf_runtime::shutter_control_layout(scene);
     struct Pending { CompiledShutterBinding binding; int universe=-1; std::vector<int32_t> ids; std::vector<int> offsets; };
@@ -37,23 +37,25 @@ void PeravizVisualRuntimeCore::install_shutters(const CompiledRuntimeScene &scen
             if (found==source_programs_by_id_.end() || found->second.program.sources.empty()) { valid=false; break; }
             for (const auto &byte:found->second.program.sources) {
                 if (entry.universe<0) entry.universe=byte.universe_id;
-                if (entry.universe!=byte.universe_id) valid=false;
+                if (byte.universe_id<0 || byte.universe_id>32767 || byte.address<0 || byte.address>=512) valid=false;
                 entry.offsets.push_back(byte.address);
             }
+            if (found->second.program.sources.size()>4) valid=false;
             entry.ids.push_back(id);
             const auto &condition=found->second.program.activation;
+            if (!condition.valid || condition.target_kind==gdtf_runtime::ModeMasterTargetKind::Invalid) valid=false;
             id=condition.target_kind==gdtf_runtime::ModeMasterTargetKind::None ? 0 : condition.master_program_id;
         }
         if (id>0 || entry.universe<0) valid=false;
         const auto owner=universe_by_layer.emplace(key,entry.universe);
-        if (!owner.second && owner.first->second!=entry.universe) valid=false;
+        entry.universe=owner.first->second; // All frequency/duration bindings for this layer share one owner.
         if (!valid) invalid.insert(key);
         pending.push_back(std::move(entry));
     }
     std::set<int32_t> reported;
     for (const auto &entry:pending) if (invalid.count(shutter_key(entry.binding.beam_target_id,entry.binding.shutter_index)) && reported.insert(entry.binding.fixture_id).second)
         diagnostics_.push_back({"PVZ-SHUTTER-ACTIVATION-UNRESOLVED","warning",
-            "Shutter parameters/ModeMaster must resolve within one universe; unresolved layers stay open.",std::to_string(entry.binding.fixture_id)});
+            "Shutter parameters/ModeMaster have invalid or unresolved byte routes or activation links; unresolved layers stay open.",std::to_string(entry.binding.fixture_id)});
     std::unordered_set<int64_t> representatives;
     for (auto &entry:pending) {
         const auto &binding=entry.binding;

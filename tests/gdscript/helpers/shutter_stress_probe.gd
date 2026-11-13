@@ -14,7 +14,10 @@ static func run(owner: SceneTree) -> void:
 	owner.send(packets,0)
 	var baseline: Array = preload("res://tests/gdscript/helpers/shutter_output_probe.gd").capture(owner.adapter)
 	var before: Dictionary = owner.adapter._native.get_sizes()
-	owner.test.check(before.gpu_lens_instances > 0,"Compatible independent shutters retain native GPU-instanced lenses")
+	if RenderingServer.get_current_rendering_method() == "forward_plus":
+		owner.test.check(before.gpu_lens_instances > 0,"Compatible independent shutters retain native GPU-instanced lenses")
+	else:
+		owner.test.check(before.gpu_lens_instances == 0,"Other backends retain the supported material lens path")
 	var report: Array = []
 	for scenario in [[0,false],[2,false],[count,false],[0,true],[2,true],[count,true]]:
 		var active: int = scenario[0]

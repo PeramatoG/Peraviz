@@ -12,7 +12,7 @@ from generate_import_compatibility_fixture import entry, channel, mode
 from generate_presentation_lifecycle_fixture import lens_glb, gobo_png
 
 
-def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False, strobe_low=2, strobe_high=10):
+def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False, strobe_low=2, strobe_high=10, split_universes=False):
     xml_attributes = ''
     for name, unit, subs in [
         ('Shutter1', 'None', ''),
@@ -82,6 +82,10 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
                 functions += '<ChannelFunction Name="Narrow" Attribute="Shutter1Strobe" DMXFrom="80/1" PhysicalFrom="2" PhysicalTo="10"><ChannelSet/><ChannelSet Name="Fixed" DMXFrom="90/1" PhysicalFrom="7" PhysicalTo="7"/><ChannelSet Name="Single" DMXFrom="99/1" PhysicalFrom="12" PhysicalTo="12"/></ChannelFunction>'
                 functions += '<ChannelFunction Name="Malformed" Attribute="Shutter1Strobe" DMXFrom="100/1" PhysicalTo="nan"/>'
             channels += f'<DMXChannel Offset="{offset}" Geometry="{target}" {declaration}><LogicalChannel Attribute="Shutter1">{functions}</LogicalChannel></DMXChannel>'
+    if split_universes:
+        assert shared and split and not banks
+        channels = channels.replace(f'Offset="{offset+1}" Geometry="{target}" DMXBreak="1"', f'Offset="{offset+1}" Geometry="{target}" DMXBreak="2"')
+        channels = channels.replace(f'Offset="{offset+2}" Geometry="{target}" DMXBreak="1"', f'Offset="{offset+2}" Geometry="{target}" DMXBreak="3"')
     shutter_channels = channels[shutter_start:]
     if banks:
         channels = channels[:shutter_start] + ''.join(re.sub(r'Offset="(\d+)"',lambda match: f'Offset="{int(match[1])+bank*width}"',shutter_channels.replace('Geometry="Base"',f'Geometry="Bank{bank}"').replace('Base_StrobeModeShutter',f'Bank{bank}_StrobeModeShutter')) for bank in range(banks))
@@ -121,6 +125,7 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
         entry(archive, 'models/gltf/lens.glb', lens_glb(simple_opaque=True))
         if gobo: entry(archive, 'wheels/pattern.png', gobo_png())
     addresses = '<Address>1.1</Address>'
+    if split_universes: addresses += '<Address break="1">3.1</Address><Address break="2">4.1</Address>'
     if ((not shared and not banks) or cell_colors) and not absent:
         for bank in range((outputs-1)//(500//width)+1): addresses += f'<Address break="{bank+1}">{bank+3}.1</Address>'
     source = '<GeneralSceneDescription verMajor="1" verMinor="6"><Scene><Layers><Layer uuid="layer"><ChildList><Fixture uuid="50000000-0000-0000-0000-000000000001" name="Public Shutter"><Matrix>{1,0,0}{0,1,0}{0,0,1}{0,0,3000}</Matrix><GDTFSpec>public.gdtf</GDTFSpec><GDTFMode>Mode</GDTFMode><Addresses>'+addresses+'</Addresses></Fixture></ChildList></Layer></Layers></Scene></GeneralSceneDescription>'
@@ -150,6 +155,6 @@ if __name__ == '__main__':
     parser.add_argument('--shutter-index',type=int,default=1)
     parser.add_argument('--banks',type=int,default=0)
     parser.add_argument('--fixtures',type=int,default=1)
-    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors','mixed-gobo','moving']: parser.add_argument('--'+flag,action='store_true')
+    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors','mixed-gobo','moving','split-universes']: parser.add_argument('--'+flag,action='store_true')
     args = parser.parse_args()
-    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving,args.strobe_low,args.strobe_high)
+    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving,args.strobe_low,args.strobe_high,args.split_universes)

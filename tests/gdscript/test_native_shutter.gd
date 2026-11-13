@@ -145,6 +145,7 @@ func run() -> void:
 	await close_scene()
 	await preload("res://tests/gdscript/helpers/shutter_fidelity_probe.gd").run(self)
 	await split_modes()
+	await split_universes()
 	await shared_groups()
 	await absent_shutter()
 	await preload("res://tests/gdscript/helpers/shutter_stress_probe.gd").run(self)
@@ -214,4 +215,36 @@ func absent_shutter() -> void:
 		test.check(image.get_data() == root.get_texture().get_image().get_data(),"Absent shutter preserves the exact rendered image")
 		print("SHUTTER_GRAPHICS Forward+/Vulkan image equivalence passed")
 	else: print("SHUTTER_GRAPHICS skipped: headless RenderingServer has no rendering device")
+	await close_scene()
+
+# Authored breaks feed the existing held-universe graph and the same physical presentation routes.
+func split_universes() -> void:
+	await open_scene(["--shared","--split","--split-universes"],8)
+	var primary := packet(); primary[0] = 255; primary[1] = 255; primary[4] = 10
+	var frequency := packet(); frequency[5] = 255
+	var duration := packet(); duration[6] = 51
+	send({0:primary,2:frequency,3:duration},0)
+	var baseline: Array = Probe.capture(adapter)
+	var target: int = adapter._outputs[0].canonical_id
+	primary[4] = 20
+	var frame := send({0:primary},1)
+	var parameters: Dictionary = Probe.parameters(frame,target)
+	test.check_close(parameters.frequency,10,0.00001,"Authored break frequency resolves from held remote universe")
+	adapter._native.advance_shutters(adapter._generation,1.095)
+	Probe.check(self,baseline,0,1)
+	duration[6] = 102
+	frame = send({3:duration},1.02)
+	parameters = Probe.parameters(frame,target)
+	test.check_close(parameters.duration,0.02,0.00001,"Remote duration-only change reaches production shutter state")
+	test.check_close(parameters.frequency,10,0.00001,"Duration update preserves held frequency")
+	test.check_close(parameters.phase,0.2,0.00001,"Duration update preserves activation phase")
+	frequency[5] = 0
+	frame = send({2:frequency},1.03)
+	parameters = Probe.parameters(frame,target)
+	test.check_close(parameters.frequency,2,0.00001,"Remote frequency-only change needs no mode packet")
+	test.check_close(parameters.duration,0.02,0.00001,"Frequency update preserves held duration")
+	primary[4] = 0
+	send({0:primary},2)
+	for index in range(8): Probe.check(self,baseline,index,0)
+	Probe.resources(self,baseline)
 	await close_scene()

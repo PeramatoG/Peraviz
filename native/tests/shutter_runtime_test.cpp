@@ -123,14 +123,52 @@ bool test_shutter_runtime() {
     playback.install({{77,1}}); secondary[100]=20; secondary[101]=0;
     core.submit_universe_frame(2,secondary.data(),512); frame=core.consume_latest_visual_frame(); ingest(playback,frame); playback.tick(0.48);
     if (!check(playback.layers()==2 && close(playback.envelopes()[0],0),"Independent closed numbered shutter gates the otherwise open flash")) return false;
-    // Unsupported activation contexts are diagnosed once per fixture and never become default-universe sources.
+    // Explicit cross-universe controls use the existing held-input graph, with one authority owner.
     master.sources={{3,101,0}};
-    auto unresolved=mode_scene; unresolved.source_programs.back()=master;
-    core.install_compiled_scene(unresolved); core.submit_universe_frame(2,secondary.data(),512);
-    frame=core.consume_latest_visual_frame();
-    bool diagnosed=false;
-    for (const auto &d:core.diagnostics()) diagnosed|=d.code=="PVZ-SHUTTER-ACTIVATION-UNRESOLVED";
-    if (!check(diagnosed && parameters(frame).revision==0,"Cross-universe activation remains explicit and unbound")) return false;
+    auto routed=mode_scene; routed.source_programs.back()=master;
+    CompiledDmxSourceProgram duration_source; duration_source.program_id=100; duration_source.sources={{4,99,0}};
+    routed.source_programs.push_back(duration_source);
+    CompiledShutterBinding duration_binding; duration_binding.fixture_id=1; duration_binding.beam_target_id=77;
+    duration_binding.source_program_id=100; duration_binding.wave=ShutterWave::Duration;
+    duration_binding.physical_from=0.01; duration_binding.physical_to=0.11;
+    routed.shutter_bindings.push_back(duration_binding);
+    const auto routed_payload=encode_compiled_runtime_scene(routed);
+    const auto routed_decoded=decode_compiled_runtime_scene(routed_payload.integers,routed_payload.floats);
+    if (!check(routed_decoded.valid,"Cross-universe routing uses the existing versioned setup schema")) return false;
+    core.install_compiled_scene(routed_decoded.scene); core.set_runtime_now_seconds_for_testing(0);
+    std::array<uint8_t,512> mode_packet{},duration_packet{};
+    secondary[100]=20; mode_packet[101]=128; duration_packet[99]=0;
+    core.submit_universe_frame(2,secondary.data(),512); core.submit_universe_frame(3,mode_packet.data(),512);
+    core.submit_universe_frame(4,duration_packet.data(),512);
+    state=parameters(core.consume_latest_visual_frame());
+    if (!check(state.wave==ShutterWave::Strobe && close(state.frequency,2) && close(state.duration,0.01),"Mode/frequency/duration route across three explicitly addressed universes")) return false;
+    core.set_runtime_now_seconds_for_testing(0.125); duration_packet[99]=255;
+    core.submit_universe_frame(4,duration_packet.data(),512); state=parameters(core.consume_latest_visual_frame());
+    if (!check(close(state.duration,0.11) && close(state.frequency,2) && close(state.phase,0.25),"Duration-only remote update preserves frequency and phase without owner packets")) return false;
+    core.set_runtime_now_seconds_for_testing(0.25); secondary[100]=119;
+    core.submit_universe_frame(2,secondary.data(),512); state=parameters(core.consume_latest_visual_frame());
+    if (!check(close(state.frequency,10) && close(state.duration,0.11) && close(state.phase,0.5),"Frequency-only update preserves remote duration")) return false;
+    mode_packet[101]=0; core.submit_universe_frame(3,mode_packet.data(),512);
+    if (!check(parameters(core.consume_latest_visual_frame()).wave==ShutterWave::Open,"Remote master alone deactivates held frequency")) return false;
+    mode_packet[101]=128; core.submit_universe_frame(3,mode_packet.data(),512);
+    if (!check(parameters(core.consume_latest_visual_frame()).wave==ShutterWave::Strobe,"Remote master alone reactivates held frequency")) return false;
+    const auto interests=core.realtime_interest_offsets();
+    if (!check(interests.size()==4,"Subscriptions include Dimmer and every participating shutter universe")) return false;
+    // Invalid/missing/cyclic chains remain guarded after lifting the old single-universe restriction.
+    for (int invalid_case=0;invalid_case<3;++invalid_case) {
+        auto invalid_scene=routed;
+        if (invalid_case==0) invalid_scene.source_programs.back().sources={{4,512,0}};
+        if (invalid_case==1) invalid_scene.source_programs[3].activation.master_program_id=999;
+        if (invalid_case==2) {
+            auto &activation=invalid_scene.source_programs[invalid_scene.source_programs.size()-2].activation;
+            activation.target_kind=ModeMasterTargetKind::ChannelFunction; activation.master_program_id=4;
+        }
+        core.install_compiled_scene(invalid_scene); core.submit_universe_frame(2,secondary.data(),512);
+        frame=core.consume_latest_visual_frame();
+        bool diagnosed=false;
+        for (const auto &d:core.diagnostics()) diagnosed|=d.code=="PVZ-SHUTTER-ACTIVATION-UNRESOLVED";
+        if (!check(diagnosed && parameters(frame).revision==0,"Invalid route/missing master/cycle stays unbound with bounded diagnostics")) return false;
+    }
     // Shared ancestor source programs define one effect despite independent physical target identities.
     auto shared=fixture();
     shared.shutter_bindings[2].wave=ShutterWave::RandomStrobe;

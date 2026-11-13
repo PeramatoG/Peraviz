@@ -92,7 +92,9 @@ regression/Windows validation contracts. Temporal CPU profiling follows the
 existing opt-in performance trace flag.
 
 The existing native source/activation graph evaluates shutter parameters only when
-relevant DMX bytes change. No flash creates a native snapshot or re-evaluates a source.
+relevant DMX bytes change. Shutter authorities can bind explicitly routed mode, frequency
+and duration dependencies across held universes through the same compiled input graph;
+no additional DMX state or presentation evaluator is introduced. No flash creates a native snapshot or re-evaluates a source.
 The main-thread native presentation owner maps the publication clock once to a steady
 clock, retains phase independently of renderer resources, and samples only active or
 invalidated temporal authorities, broadcasting cached envelopes through indexed physical routes. An injectable clock supports numerical tests without sleeps.
