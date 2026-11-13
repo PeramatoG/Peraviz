@@ -73,7 +73,7 @@ bash tests/check_runtime_architecture.sh
 git diff --check
 ```
 
-Build passed. CTest: **15/15 passed**. Focused shutter regressions and optional corpus inspection passed. Architecture and size checks passed; existing file-size advisories remain.
+Final validation after rebasing onto main `42b8daa`: build passed. CTest: **15/15 passed** (10.80 s). Focused shutter regressions and optional corpus inspection passed. Architecture and size checks passed; existing file-size advisories remain.
 
 ```sh
 GODOT=/workspace/.peraviz-tools/godot/Godot_v4.7.1-stable_linux.x86_64
@@ -83,6 +83,6 @@ GODOT=/workspace/.peraviz-tools/godot/Godot_v4.7.1-stable_linux.x86_64
 "$GODOT" --headless --audio-driver Dummy --rendering-method forward_plus --path . --script tests/gdscript/test_shutter_authority.gd
 ```
 
-Editor import and both shutter suites passed. Both backends passed `test_native_shutter.gd` after the backend-aware assertion correction. An initial import without the required XDG settings failed to create sandboxed home directories; rerunning with the environment workflow settings succeeded. The initial Compatibility failure was the test's unsupported batching expectation, not an envelope mismatch.
+Editor import passed. Final post-rebase runs of Forward+, Compatibility and authority tests passed with the repository runner's strict engine/script diagnostic classifier. Both backends passed `test_native_shutter.gd` after the backend-aware assertion correction. An initial import without the required XDG settings failed to create sandboxed home directories; rerunning with the environment workflow settings succeeded. The initial Compatibility failure was the test's unsupported batching expectation, not an envelope mismatch.
 
 Coverage includes archive-level range defaults/malformed values, all temporal shapes, descending/set boundaries, split control, high-resolution nested activation, constant/variable timing overrides, candidate-specific activation and guarded semantics; production consumer assertions cover shaft/lens/footprint/projector energy, held phase, renderer replacement, grouping, independent emitters and unchanged source/resource identities. Stress probes retain exact source-evaluation and authority-sampling counts. No performance or renderer regression was detected in these deterministic checks; no hardware FPS or GPU image claim is made.

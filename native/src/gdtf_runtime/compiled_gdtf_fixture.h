@@ -148,7 +148,7 @@ struct ChannelProgram {
     std::vector<ParsedWheelChannelSet> wheel_channel_sets;
     std::string wheel_reference; // Original ChannelFunction link, including unresolved references.
     bool shutter_physical_valid=true, shutter_subsets_invalid=false;
-    std::vector<SubPhysicalUnitRecord> shutter_subsets; // Constant, locally linked overrides only.
+    std::vector<SubPhysicalUnitRecord> shutter_subsets; // Constant or variable locally linked parameter overrides.
     bool shutter_sets_valid=true;
     bool shutter_mapping_supported=true; // Profiles and Relation followers require a shared native evaluator.
     std::vector<ParsedWheelChannelSet> shutter_channel_sets; // Setup-only explicit labeled Shutter ranges.

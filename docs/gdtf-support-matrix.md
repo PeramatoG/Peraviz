@@ -31,7 +31,7 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 | Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
 | Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen/PulseClose and explicitly approximate Random variants; persistent native phase, frequency and variable subphysical/SubChannelSet timing parameters, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
 | ModeMaster | Partial/native | Exact selected-mode Node paths resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, reach the production setup contract, and evaluate cycle-safely for instantaneous native scalars. Malformed, ambiguous, unresolved, and cyclic graphs are diagnosed during compilation. |
-| Relations | Unsupported/deferred | GDTF Relations are not parsed or evaluated by the compiled production runtime. |
+| Relations | Unsupported/deferred | Declarations are retained only for bounded diagnostics and shutter follower/dependent guards; no Multiply/Override evaluator is claimed. |
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
 | Unsupported attributes | Parsed only or unsupported | Preserve/report data when possible; never infer support from legacy Godot helpers or generic enum values. |
 
