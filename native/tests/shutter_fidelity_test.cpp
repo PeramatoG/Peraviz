@@ -11,6 +11,10 @@
 #include <filesystem>
 #include <iostream>
 #include <tinyxml2.h>
+#include <cstring>
+#include "dmx/artnet_dmx_parser.h"
+#include "dmx/artnet_sequence_tracker.h"
+#include "runtime/realtime_dmx_coordinator.h"
 
 namespace {
 using namespace peraviz;
@@ -116,6 +120,41 @@ static bool test_dynamic_shutter_parameters() {
     }
     return true;
 }
+// Exercises one-shot preset jumps through ArtDmx parsing, sequence acceptance, mailbox filtering and native publication.
+static bool test_shutter_preset_ingress(const CompiledRuntimeScene &scene,bool continuous) {
+    PeravizVisualRuntimeCore core; core.install_compiled_scene(scene); core.set_runtime_now_seconds_for_testing(0);
+    dmx::RealtimeUniverseMailbox mailbox; RealtimeDmxCoordinator coordinator;
+    coordinator.install_subscription(core,mailbox);
+    dmx::ArtNetDmxParser parser; dmx::ArtNetSequenceTracker tracker;
+    std::array<uint8_t,530> packet{};
+    std::memcpy(packet.data(),"Art-Net",8); packet[9]=0x50; packet[11]=14; packet[16]=2; packet.back()=255;
+    uint8_t sequence=0;
+    const auto queue=[&](int raw) {
+        packet[12]=++sequence; packet[18]=uint8_t(raw); dmx::ArtNetDmxFrameView view;
+        return parser.parse(packet.data(),packet.size(),view) && tracker.accept(view.universe_id,view.sequence,{0x7f000001,6454}).accepted &&
+            mailbox.publish(view.universe_id,view.data,view.length,view.sequence,sequence);
+    };
+    const auto frequency=[&](int raw) { return continuous?1+19.0*(raw-50)/150:raw==199?20.0:1.0; };
+    double previous=-1;
+    for (int raw:{50,200,199,50,199,200}) {
+        if (!verify(queue(raw) && coordinator.pump(core,mailbox).states_submitted==1,"A single preset packet reaches the native evaluator regardless of jump magnitude")) return false;
+        const auto frame=core.consume_latest_visual_frame();
+        bool published=false,selected=false;
+        for (size_t index=0;index<frame.descriptors.size();index+=5) published|=frame.descriptors[index]==int(VisualSectionType::ShutterState);
+        for (const auto &trace:core.shutter_trace(scene.fixtures.front().fixture_id,scene.shutter_bindings.front().beam_target_id)) if (trace.active) {
+            selected=trace.raw==uint32_t(raw) && near(trace.parameters.frequency,frequency(raw));
+        }
+        if (!verify(selected && published!=(previous==frequency(raw)),"Cached raw DMX advances on every preset; equal effective Hz legitimately needs no new shutter row")) return false;
+        dmx::DmxFrame held;
+        if (!verify(mailbox.held(0,held) && held.data[0]==raw,"Mailbox holds the actual preset byte without waiting for an encoder packet")) return false;
+        previous=frequency(raw);
+    }
+    if (!verify(queue(51) && queue(198) && queue(199) && coordinator.pump(core,mailbox).states_submitted==1,"A preset burst coalesces to its final value")) return false;
+    core.consume_latest_visual_frame(); bool latest=false;
+    for (const auto &trace:core.shutter_trace(scene.fixtures.front().fixture_id,scene.shutter_bindings.front().beam_target_id)) if (trace.active)
+        latest=trace.raw==199 && near(trace.parameters.frequency,frequency(199));
+    return verify(latest && mailbox.stats().coalesced_states==2,"Coalescing retains the last preset endpoint and does not require an unrelated packet");
+}
 // Separates real source-frequency changes from presentation aliasing using the existing parser, codec and playback.
 static bool test_shutter_cadence_and_label_sets() {
     Probe probe;
@@ -127,7 +166,7 @@ static bool test_shutter_cadence_and_label_sets() {
     if (!verify(reference.frequency==20 && evaluations>0,"Cadence regression starts from an actually evaluated native 20 Hz source")) return false;
     for (const auto &[fps,expected]:std::array<std::pair<int,int>,5>{{{15,5},{20,0},{30,10},{45,20},{120,20}}}) {
         presentation::ShutterPlayback playback;
-        playback.install({{probe.scene.shutter_bindings.front().beam_target_id,probe.scene.fixtures.front().fixture_id}});
+        playback.install({{probe.scene.shutter_bindings.front().beam_target_id,1.0f}});
         if (!verify(playback.ingest(held.descriptors.data(),held.descriptors.size(),held.integers.data(),held.integers.size(),held.floats.data(),held.floats.size()),"Cadence test ingests the real native publication")) return false;
         int flashes=0; double previous=0;
         for (int frame=0;frame<fps*30;++frame) {
@@ -141,6 +180,7 @@ static bool test_shutter_cadence_and_label_sets() {
     const std::string end="</ChannelFunction><ChannelFunction Name=\"Open after strobe\" Attribute=\"Shutter1\" DMXFrom=\"201/1\"/>";
     probe.compile(start+"<ChannelSet Name=\"Slow\" DMXFrom=\"50/1\"/><ChannelSet DMXFrom=\"51/1\"/><ChannelSet Name=\"Medium\" DMXFrom=\"125/1\"/><ChannelSet DMXFrom=\"126/1\"/><ChannelSet Name=\"Fast\" DMXFrom=\"200/1\"/>"+end);
     if (!verify(near(probe.raw(124).frequency,20) && near(probe.raw(125).frequency,1) && near(probe.raw(199).frequency,20) && near(probe.raw(200).frequency,1),"Named singleton sets with inherited endpoints create a semantic 20-to-1 Hz reset independent of FPS")) return false;
+    if (!test_shutter_preset_ingress(probe.scene,false)) return false;
     const std::array<int,5> starts{{50,51,125,126,200}};
     std::string explicit_sets;
     for (size_t index=0;index<starts.size();++index) {
@@ -148,6 +188,7 @@ static bool test_shutter_cadence_and_label_sets() {
         explicit_sets+="<ChannelSet DMXFrom=\""+std::to_string(from)+"/1\" PhysicalFrom=\""+std::to_string(1+19.0*(from-50)/150)+"\" PhysicalTo=\""+std::to_string(1+19.0*(to-50)/150)+"\"/>";
     }
     probe.compile(start+explicit_sets+end);
+    if (!test_shutter_preset_ingress(probe.scene,true)) return false;
     for (int value:{50,51,124,125,126,199,200})
         if (!verify(near(probe.raw(value).frequency,1+19.0*(value-50)/150),"Explicit physical set endpoints can author a continuous linear rate without a fixture-name exception")) return false;
     return true;

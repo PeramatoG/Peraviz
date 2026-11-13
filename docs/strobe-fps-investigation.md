@@ -55,6 +55,28 @@ At 20 FPS, the same 20 Hz signal froze dark at the tested phase. At 15 FPS it pr
 2. Resolve the intended physical progression in the source definition, with explicit ChannelSet physical endpoints or a function-only continuous interval where appropriate. A synthetic regression verifies that explicitly authored endpoints can produce a continuous 1–20 Hz mapping. That is a tested authoring mechanism, not hardware calibration or authorization to rewrite the original archive. Do not hardcode Quantum Wash ranges or globally ignore valid ChannelSets.
 3. For unchanged resolved Hz that look different as scene cadence changes, stabilize/increase actual presentation and display cadence. Temporal exposure integration/antialiasing is an established mitigation, but it averages energy and can make rapid strobes look steadier; it cannot display every flash beyond the display's capacity. Any future Peraviz approximation must be explicit and preserve exact native timing. Do not alter frequency/duration silently or assume generic Godot TAA fixes parameter sampling.
 
+## Preset changes versus lost packets
+
+A subsequent report described Slow/Fast preset changes appearing to remain unchanged until the encoder moved. This must be checked independently of average FPS.
+
+A loopback UDP reproduction used the actual Quantum Wash archive and the production `ArtNetReceiver`, ArtDmx parser/sequence tracker, relevant-byte mailbox, coordinator, runtime evaluator and `ShutterPlayback` ingestion. Only one ArtDmx packet was sent per change, from one source socket with increasing sequence values. Fourteen packets were received and accepted, with zero out-of-order drops. Large jumps, including 50→199 and 0→255, updated the native state immediately.
+
+| Input transition | Mailbox / cached raw after the packet | Resolved output | New shutter publication |
+| --- | --- | --- | --- |
+| Initial 50 | 50 / 50 | 1 Hz | Yes |
+| 50→200 | 200 / 200 | Still 1 Hz | No: effective parameters are identical |
+| 200→199 | 199 / 199 | 20 Hz | Yes, immediately |
+| 199→50 | 50 / 50 | 1 Hz | Yes, immediately |
+| 50→199 | 199 / 199 | 20 Hz | Yes, immediately |
+| 50→255 | 255 / 255 | Random, nominal 1 Hz | Yes: waveform changes |
+| 255→254 | 254 / 254 | Random, nominal 20 Hz | Yes, immediately |
+
+`RealtimeUniverseMailbox::publish` compares subscribed byte values for inequality; it has no magnitude threshold. `ArtNetSequenceTracker` compares packet sequence numbers, not channel values. Source invalidation processes the changed shutter byte. `update_shutter` suppresses a publication only when the effective function, waveform, frequency, duration, duty, offset and status are unchanged. Thus a raw 50→200 change can arrive and be evaluated correctly while producing no perceptible output change with this profile. Moving the encoder to 199 then appears to “unlock” it, because 199 maps to 20 Hz.
+
+This reproduces the reported appearance without losing a packet, but does not establish which bytes grandMA3 sends in the user's own show. It remains necessary to compare the console's DMX sheet with Peraviz's received/cached byte for the actual preset. Stored presets can contain values other than the labeled Slow/Fast endpoints. If the console and incoming/cached byte differ, investigate transport; if the cached byte advances but Hz remains 1, investigate the definition; if Hz changes but the image does not, investigate presentation.
+
+The deterministic `test_shutter_preset_ingress` regression exercises single large jumps, equal-effective-output endpoints, immediate encoder-sized changes and a coalesced burst through parsing, sequence acceptance, mailbox and coordinator. It also verifies immediate preset updates with an explicitly authored continuous reference profile. No production filter or publication policy was changed to force a visual update.
+
 ## Existing diagnostic access
 
 The **Copy shutter diagnostic** button exists in the Debug section (`FixtureDebugController::configure`). It copies a bounded report for the selected fixture. Currently the trace must be enabled before import with `PERAVIZ_SHUTTER_TRACE=<fixture UUID>` and the runtime must be in serial diagnostic mode. Merely pressing the button does not enable metadata collection retrospectively; without setup it copies an unavailable reason and the selected UUID. This is developer-oriented and is not required for the 199/200 comparison.
@@ -74,4 +96,4 @@ git diff --check
 
 The optional external-archive reproduction used a temporary MVR wrapper and a standalone probe linked to the existing native test objects. It imported the untouched Quantum Wash file, serialized/deserialized the production setup, evaluated 23 DMX values and sampled 30-second holds at six cadences. The probe passed and confirmed the original Git blob hash. No production rendering policy was changed; the user's exact archive and actual frame-time sequence remain the final checks for their scene.
 
-Validation result: the focused shutter entry and the complete native visual-runtime CTest target passed (1/1 CTest target, 2.97 s). Architecture, file-size and whitespace checks passed; existing large-file advisories remain. No Godot script or production C++ implementation changed in this investigation.
+Validation result: the focused shutter entry and the complete native visual-runtime CTest target passed after adding the preset-ingress regression (1/1 CTest target, 2.78 s). The external loopback UDP probe also passed all 14 single-packet changes. Architecture, file-size and whitespace checks passed; existing large-file advisories remain. No Godot script or production C++ implementation changed in this investigation.
