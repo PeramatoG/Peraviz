@@ -65,6 +65,7 @@ const CYCLE_KEYFRAMES := [
 
 var _world_environment: WorldEnvironment
 var _directional_light: DirectionalLight3D
+var _ground: MeshInstance3D
 var _runtime_environment: Environment
 var _runtime_sky: Sky
 var _runtime_sky_material: ProceduralSkyMaterial
@@ -101,6 +102,7 @@ func _can_run_runtime_updates() -> bool:
 func _resolve_nodes() -> void:
 	_world_environment = get_node_or_null(world_environment_path) as WorldEnvironment
 	_directional_light = get_node_or_null(directional_light_path) as DirectionalLight3D
+	_ground = get_node_or_null("../Ground") as MeshInstance3D
 
 
 func _prepare_environment_resources() -> void:
@@ -136,6 +138,7 @@ func _apply_environment_state() -> void:
 func _apply_disabled_fallback() -> void:
 	_runtime_environment.background_mode = Environment.BG_COLOR
 	_runtime_environment.background_color = Color(0.1294, 0.1373, 0.1569, 1.0)
+	_sync_ground_horizon()
 	_runtime_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_runtime_environment.ambient_light_color = Color(1.0, 1.0, 1.0, 1.0)
 	_runtime_environment.ambient_light_energy = ambient_energy_day
@@ -172,7 +175,7 @@ func _state_for_preset(preset: EnvironmentPreset) -> Dictionary:
 			return {
 				"sky_top_color": Color(0.12, 0.18, 0.30, 1.0),
 				"sky_horizon_color": _warm_horizon_color(0.52, 0.40),
-				"ground_bottom_color": Color(0.03, 0.04, 0.05, 1.0),
+				"ground_bottom_color": Color(0.10, 0.10, 0.10, 1.0),
 				"sky_energy": 0.38,
 				"ambient_energy": lerpf(ambient_energy_night, ambient_energy_day, 0.35),
 				"directional_energy": dusk_light_intensity,
@@ -184,7 +187,7 @@ func _state_for_preset(preset: EnvironmentPreset) -> Dictionary:
 			return {
 				"sky_top_color": Color(0.30, 0.52, 0.83, 1.0),
 				"sky_horizon_color": Color(0.70, 0.82, 0.98, 1.0),
-				"ground_bottom_color": Color(0.09, 0.10, 0.13, 1.0),
+				"ground_bottom_color": Color(0.30, 0.30, 0.30, 1.0),
 				"sky_energy": 1.0,
 				"ambient_energy": ambient_energy_day,
 				"directional_energy": day_light_intensity,
@@ -196,7 +199,7 @@ func _state_for_preset(preset: EnvironmentPreset) -> Dictionary:
 			return {
 				"sky_top_color": Color(0.12, 0.16, 0.32, 1.0),
 				"sky_horizon_color": _warm_horizon_color(0.60, 0.62),
-				"ground_bottom_color": Color(0.03, 0.03, 0.05, 1.0),
+				"ground_bottom_color": Color(0.10, 0.10, 0.10, 1.0),
 				"sky_energy": 0.32,
 				"ambient_energy": lerpf(ambient_energy_day, ambient_energy_night, 0.55),
 				"directional_energy": dusk_light_intensity,
@@ -262,12 +265,14 @@ func _apply_environment_dict(state: Dictionary) -> void:
 	_runtime_sky_material.sky_top_color = state["sky_top_color"]
 	_runtime_sky_material.sky_horizon_color = state["sky_horizon_color"]
 	_runtime_sky_material.ground_bottom_color = state["ground_bottom_color"]
-	_runtime_sky_material.ground_horizon_color = Color(0.02, 0.02, 0.02, 1.0)
+	# Fill below the horizon with the preset ground tone, not a fixed black band.
+	_runtime_sky_material.ground_horizon_color = state["ground_bottom_color"]
 	_runtime_sky_material.sky_curve = 0.18
 	_runtime_sky_material.ground_curve = 0.20
 	_runtime_sky_material.sun_curve = 0.015
-	_runtime_sky_material.use_debanding = true
+	_runtime_sky_material.use_debanding = false
 	_runtime_sky_material.energy_multiplier = max(float(state["sky_energy"]), 0.0)
+	_sync_ground_horizon()
 
 	if _directional_light != null:
 		var directional_energy: float = max(float(state["directional_energy"]), 0.0)
@@ -296,3 +301,16 @@ func _environment_has_property(environment: Environment, property_name: String) 
 		if str(entry.get("name", "")) == property_name:
 			return true
 	return false
+
+
+# Match the distant opaque receiver to the lower sky in linear HDR, before tonemapping.
+func _sync_ground_horizon() -> void:
+	if _ground == null or not (_ground.material_override is ShaderMaterial):
+		return
+	var material := _ground.material_override as ShaderMaterial
+	if _runtime_environment.background_mode == Environment.BG_COLOR:
+		material.set_shader_parameter("horizon_color", _runtime_environment.background_color)
+		material.set_shader_parameter("horizon_energy", _runtime_environment.background_energy_multiplier)
+		return
+	material.set_shader_parameter("horizon_color", _runtime_sky_material.ground_horizon_color)
+	material.set_shader_parameter("horizon_energy", _runtime_sky_material.energy_multiplier * _runtime_sky_material.ground_energy_multiplier)

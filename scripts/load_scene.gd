@@ -261,7 +261,7 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 		"dof_blur_near_enabled": false,
 	},
 	"medium": {
-		"ssao_enabled": true,
+		"ssao_enabled": false,
 		"ssao_radius": 0.7,
 		"ssao_intensity": 0.35,
 		"glow_enabled": true,
@@ -272,7 +272,7 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 		"dof_blur_near_enabled": false,
 	},
 	"high": {
-		"ssao_enabled": true,
+		"ssao_enabled": false,
 		"ssao_radius": 1.0,
 		"ssao_intensity": 0.5,
 		"glow_enabled": true,
@@ -1226,12 +1226,15 @@ func _node_has_real_visual_descendants(root: Node, ignored_nodes: Array[Node]) -
 
 func _set_has_loaded_bounds(value: bool) -> void:
 	_has_loaded_bounds = value
+	if not value:
+		preload("res://scripts/rendering/ambient_ground.gd").fit($Ground, AABB(), false)
 
 func _rebuild_loaded_bounds() -> void:
 	_has_loaded_bounds = false
 	for child in proxies_root.get_children():
 		if child is Node3D:
 			_expand_loaded_bounds_from_node(child)
+	preload("res://scripts/rendering/ambient_ground.gd").fit($Ground, _loaded_bounds, _has_loaded_bounds)
 	if _shared_haze_controller != null:
 		_shared_haze_controller.update(self, _loaded_bounds, _has_loaded_bounds and int(_visual_settings.get("beam_presentation", 1)) in [0, 2], _visual_settings)
 

@@ -6,12 +6,14 @@
 [ext_resource type="Script" uid="uid://cqjoqw1c2pare" path="res://scripts/day_night_environment_controller.gd" id="4_day_night_environment"]
 [ext_resource type="Script" path="res://scripts/ui/app_shell.gd" id="5_app_shell"]
 
+[ext_resource type="Shader" path="res://scripts/shaders/ambient_ground.gdshader" id="6_ground_shader"]
+
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ppyta"]
 sky_top_color = Color(0.3, 0.52, 0.83, 1)
 sky_horizon_color = Color(0.7, 0.82, 0.98, 1)
 sky_curve = 0.18
-ground_bottom_color = Color(0.09, 0.1, 0.13, 1)
-ground_horizon_color = Color(0.02, 0.02, 0.02, 1)
+ground_bottom_color = Color(0.3, 0.3, 0.3, 1)
+ground_horizon_color = Color(0.3, 0.3, 0.3, 1)
 ground_curve = 0.2
 sun_curve = 0.015
 
@@ -28,7 +30,7 @@ ambient_light_sky_contribution = 0.0
 ambient_light_energy = 0.08
 tonemap_mode = 3
 tonemap_white = 8.0
-ssao_enabled = true
+ssao_enabled = false
 ssao_intensity = 0.5
 glow_intensity = 0.0
 glow_strength = 0.0
@@ -37,12 +39,20 @@ adjustment_enabled = true
 adjustment_contrast = 1.05
 adjustment_saturation = 1.05
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.45, 0.45, 0.45, 1)
-metallic_specular = 0.45
-roughness = 0.78
+[sub_resource type="ShaderMaterial" id="StandardMaterial3D_ground"]
+resource_local_to_scene = true
+shader = ExtResource("6_ground_shader")
+shader_parameter/ground_color = Color(0.4, 0.4, 0.4, 1)
+shader_parameter/horizon_color = Color(0.3, 0.3, 0.3, 1)
+shader_parameter/horizon_energy = 1.0
+shader_parameter/horizon_enabled = true
+shader_parameter/horizon_begin = 600.0
+shader_parameter/horizon_end = 1800.0
+shader_parameter/stage_min = Vector2(-100, -100)
+shader_parameter/stage_max = Vector2(100, 100)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+resource_local_to_scene = true
 size = Vector2(20000, 20000)
 
 [node name="Viewer" type="Node3D" unique_id=701090577]
@@ -60,10 +70,10 @@ script = ExtResource("2_camera_script")
 transform = Transform3D(0.70710677, 0.5572077, -0.4353384, 0, 0.6156615, 0.7880107, 0.70710677, -0.5572077, 0.4353384, 0, 0, 0)
 light_color = Color(1, 0.98, 0.95, 1)
 light_energy = 0.7
-light_angular_distance = 0.35
+light_angular_distance = 0.0
 shadow_enabled = true
-shadow_bias = 0.015
-shadow_normal_bias = 0.7
+shadow_bias = 0.1
+shadow_normal_bias = 2.0
 directional_shadow_split_1 = 0.08
 directional_shadow_split_3 = 0.45
 directional_shadow_blend_splits = true
@@ -76,6 +86,7 @@ script = ExtResource("4_day_night_environment")
 [node name="Ground" type="MeshInstance3D" parent="." unique_id=168744331]
 material_override = SubResource("StandardMaterial3D_ground")
 mesh = SubResource("PlaneMesh_ground")
+cast_shadow = 0
 
 [node name="Proxies" type="Node3D" parent="." unique_id=747662263]
 

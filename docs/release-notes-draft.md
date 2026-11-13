@@ -1,5 +1,15 @@
 # Peraviz v0.x.x
 
+- Added an opaque ground-only distant color transition toward the lower sky to reduce the remaining floor/horizon band. Imported stage bounds are protected, preserving the accepted lit grey receiver and shadow bias; sky and global haze settings remain unchanged. The existing audit can disable the transition for comparison. Graphical continuity, projector appearance and GPU cost remain pending Windows validation.
+
+- Restored wide fallback-ground coverage and replaced the fixed dark lower-sky horizon strip with neutral day/night ground tones, retaining the accepted grey matte receiver and bias settings. Windows feedback confirms the diagonal flat-surface patterns are gone; remaining shadow silhouette quality is deferred. Horizon continuity still needs graphical confirmation.
+
+- Restored a readable matte grey fallback ground while preserving the day/night sky. Restored Godot directional bias/normal bias defaults (.1/2) as an anti-acne candidate for reported diagonal surface patterns; GPU confirmation and contact-shadow checks remain pending. Added cylindrical casters and old/bias-only/normal-only comparisons without changing import units or geometry.
+
+- Refined the ambient theatre baseline with a 20000 m minimum opaque matte grey ground while preserving the original day/night sky, adaptive off-origin coverage and optical receiving. Removed the temporary studio-background default and selector; saved temporary studio flags cannot disable the sky. Removed ineffective legacy rendering keys without changing effective fixture atlas/fog defaults. Extended the same audit with shadow/geometry/material/LOD isolation, targeted camera views and optional GPU timing. Shadow aliasing and flat-surface noise remain pending controlled Windows graphical comparisons.
+
+- Added a conservative ambient rendering baseline: SMAA at native resolution, Soft Medium directional shadows without default PCSS, and SSAO disabled across environment quality presets. The fallback ground no longer casts shadows and follows imported world bounds below imported floors. Import transforms, shadow range and optical settings are preserved. Added reversible rendering comparisons and headless regression coverage; graphical quality and target GPU costs remain unverified. See `docs/rendering-quality-baseline.md`.
+
 - Added Advanced DMX Auto Span project policies: Off (strict), default Automatic — only if free, and Allow overlaps. Native setup analyzes authored footprints and all proposed continuations before admission; overlaps never suppress another fixture or alter incoming DMX. Strict fallback retains complete direct controls while omitting incomplete byte/Color/dependency groups. The policy persists in PVZ, restores before preparation and rebuilds consistently with held-state replay. MVR/GDTF sources, explicit break identities and unsupported semantic guards remain intact.
 
 
