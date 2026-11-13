@@ -139,7 +139,7 @@ private:
         std::vector<uint32_t> sources;
         std::vector<GoboSourceValue> values;
     };
-    struct ShutterBindingRuntime : GoboEvaluationContext { CompiledShutterBinding binding; };
+    struct ShutterBindingRuntime : GoboEvaluationContext { CompiledShutterBinding binding; size_t mode_dependency_index=0; };
     struct GoboBindingRuntime : GoboEvaluationContext { CompiledGoboSelectionBinding binding; };
     struct GoboMotionRuntime : GoboEvaluationContext { CompiledGoboMotionBinding binding; };
 
@@ -251,7 +251,7 @@ private:
     EvaluationResult evaluate_cached_source(UniverseState &universe, uint32_t source);
     EvaluationResult evaluate_property_value(UniverseState &universe, const CompiledPropertyProgram &property);
     void fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context);
-    bool evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context);
+    bool evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context,size_t dependency=0);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
     static void cook_render_state(ComponentState &state, const FixtureRenderParams &params);

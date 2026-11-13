@@ -4,6 +4,7 @@
 #include "scene_model.h"
 #include "dmx/gdtf_xml_reader.h"
 #include "gdtf_runtime/shutter_contract.h"
+#include "gdtf_runtime/shutter_timing.h"
 #include <algorithm>
 #include <charconv>
 #include <unordered_map>
@@ -29,33 +30,22 @@ inline std::string shutter_condition_field(tinyxml2::XMLElement *fn,const char *
     if (!raw) raw=fn->Attribute(dmx::lower_ascii(name).c_str());
     return raw?dmx::trim_ascii(raw):fallback;
 }
-// Partitions function boundaries by declared ModeMaster container, including equal starts in different containers.
-inline bool shutter_same_container(tinyxml2::XMLElement *a,tinyxml2::XMLElement *b) {
-    const auto master=shutter_condition_field(a,"ModeMaster");
-    if (master!=shutter_condition_field(b,"ModeMaster")) return false;
-    if (master.empty()) return true;
-    for (const auto *field:{"ModeFrom","ModeTo"}) {
-        const auto left=shutter_condition_field(a,field,"0/1"),right=shutter_condition_field(b,field,"0/1");
-        ParsedDmxValue l,r;
-        if (!parse_gdtf_dmx_value(left,l) || !parse_gdtf_dmx_value(right,r)) return false;
-        // Compare in a common resolution only for identical conversion policies.
-        uint32_t lv=0,rv=0;
-        const auto bytes=std::max(l.byte_count,r.byte_count);
-        if (l.conversion!=r.conversion || !convert_gdtf_dmx_value(l,bytes,lv) || !convert_gdtf_dmx_value(r,bytes,rv) || lv!=rv) return false;
-    }
-    return true;
-}
-// Uses normative starts and inclusive ends; malformed siblings do not erase independent valid functions.
+// Uses declared function order: a reset/equal start opens another conditional container, not a negative range.
 inline bool shutter_function_range(tinyxml2::XMLElement *fn,const std::vector<tinyxml2::XMLElement *> &functions,
         size_t bytes,uint32_t &from,uint32_t &to) {
     if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(fn,"DMXFrom","0/1"),uint8_t(bytes),from)) return false;
     to=bytes==4?UINT32_MAX:uint32_t((uint64_t(1)<<(bytes*8))-1);
-    for (auto *other:functions) {
-        if (other==fn || !shutter_same_container(fn,other)) continue;
+    const auto declared=dmx::collect_direct_children_by_name(fn->Parent()->ToElement(),"channelfunction");
+    const auto current=std::find(declared.begin(),declared.end(),fn);
+    if (current!=declared.end() && current+1!=declared.end()) {
         uint32_t next=0;
-        if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(other,"DMXFrom","0/1"),uint8_t(bytes),next)) continue;
-        if (next==from) return false;
-        if (next>from) to=std::min(to,next-1);
+        if (!parse_and_convert_gdtf_dmx_value(shutter_condition_field(*(current+1),"DMXFrom","0/1"),uint8_t(bytes),next)) return false;
+        if (next>from) to=next-1;
+    }
+    if (shutter_condition_field(fn,"ModeMaster").empty()) for (auto *other:functions) {
+        uint32_t other_from=0;
+        if (other!=fn && shutter_condition_field(other,"ModeMaster").empty() &&
+                parse_and_convert_gdtf_dmx_value(shutter_condition_field(other,"DMXFrom","0/1"),uint8_t(bytes),other_from) && other_from==from) return false;
     }
     // DMXTo is not a GDTF ChannelFunction attribute and cannot change a normative boundary.
     return true;
@@ -104,9 +94,8 @@ inline std::vector<ShutterModeChoice> shutter_modes(const ChannelProgram &progra
         const auto declared=shutter_attribute(master.attribute_name).wave;
         if (!shutter_periodic(declared) && declared!=ShutterWave::Unsupported) continue;
         const uint32_t from=std::max(program.mode_master.from,master.dmx_from),to=std::min(program.mode_master.to,master.dmx_to);
-        // A channel-wide reference does not install each candidate function's own activation graph.
-        // Keep such conditional candidates explicit until their additional dependencies can be routed natively.
-        const auto selected=!function && master.mode_master.target_kind!=ModeMasterTargetKind::None?ShutterWave::Unsupported:declared;
+        // Candidate activation is retained as an additional root of the existing source graph.
+        const auto selected=master.shutter_mapping_supported?declared:ShutterWave::Unsupported;
         if (function) modes.push_back({selected,0,UINT32_MAX,master.function_name,master.id});
         else if (from<=to) modes.push_back({selected,from,to,master.function_name,master.id});
     }
@@ -118,6 +107,7 @@ template<class MakeSources>
 void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneModel::FixturePatch &patch,
         const CompiledGdtfFixtureType &fixture,int32_t fixture_id,int32_t &next_id,MakeSources make_sources) {
     std::unordered_set<std::string> reported;
+    std::unordered_map<int32_t,int32_t> mode_sources;
     std::unordered_map<int32_t,const GeometryInstance *> geometries;
     for (const auto &geometry:fixture.geometries) geometries[geometry.id]=&geometry;
     for (const auto &program:fixture.channel_programs) {
@@ -145,34 +135,32 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
         for (const auto &choice:shutter_modes(program,fixture,semantic.wave)) {
             // Distinct typed mode functions retain distinct activation identities even when wave/frequency match.
             const int32_t activation_id=choice.mode_id?next_id++:source.program_id;
+            int32_t mode_source=0;
+            if (choice.mode_id) {
+                auto found=mode_sources.find(choice.mode_id);
+                if (found==mode_sources.end()) {
+                    for (const auto &master:fixture.channel_programs) if (master.id==choice.mode_id) {
+                        runtime::CompiledDmxSourceProgram candidate;
+                        candidate.program_id=next_id++; candidate.parser_program_id=master.id;
+                        candidate.sources=make_sources(master); candidate.dmx_from=master.dmx_from; candidate.dmx_to=master.dmx_to;
+                        candidate.physical_from=master.physical_from; candidate.physical_to=master.physical_to;
+                        candidate.attribute_name=master.attribute_name; candidate.function_name=master.function_name;
+                        candidate.geometry_id=master.geometry_instance_id; candidate.dmx_channel_id=master.dmx_channel_id;
+                        candidate.activation=master.mode_master;
+                        scene.source_programs.push_back(candidate);
+                        found=mode_sources.emplace(master.id,candidate.program_id).first;
+                        break;
+                    }
+                }
+                if (found!=mode_sources.end()) mode_source=found->second;
+            }
             const auto wave=choice.wave;
-            double duration=0.025,duty=1,offset=1;
-            bool supported=wave!=ShutterWave::Unsupported && program.shutter_sets_valid && program.shutter_physical_valid && !program.shutter_subsets_invalid && program.shutter_mapping_supported;
+            const auto timing=compile_shutter_timing(program,attribute);
+            bool supported=wave!=ShutterWave::Unsupported && program.shutter_sets_valid && program.shutter_physical_valid && program.shutter_mapping_supported && timing.valid;
             if (attribute) {
                 if (shutter_periodic(wave) && !attribute->physical_unit.empty() && attribute->physical_unit!="None" && attribute->physical_unit!="Frequency") supported=false;
                 if (wave==ShutterWave::Duration && !attribute->physical_unit.empty() && attribute->physical_unit!="None" && attribute->physical_unit!="Time") supported=false;
-                std::unordered_set<std::string> subtypes;
-                for (auto sub:attribute->subphysical_units) {
-                    if (!subtypes.insert(sub.type).second || !std::isfinite(sub.physical_from) || !std::isfinite(sub.physical_to)) supported=false;
-                    int overrides=0;
-                    for (const auto &override:program.shutter_subsets) if (override.type==sub.type) {
-                        ++overrides; sub.physical_from=override.physical_from; sub.physical_to=override.physical_to;
-                    }
-                    if (overrides>1) supported=false;
-                    if (sub.type!="Duration" && sub.type!="DutyCycle" && sub.type!="TimeOffset") continue;
-                    if (sub.physical_from!=sub.physical_to || !std::isfinite(sub.physical_from)) { supported=false; continue; }
-                    const bool time=sub.type=="Duration";
-                    if (!sub.physical_unit.empty() && sub.physical_unit!="None" && sub.physical_unit!=(time?"Time":"Percent")) supported=false;
-                    if (sub.type=="Duration") duration=sub.physical_from;
-                    if (sub.type=="DutyCycle") duty=sub.physical_from/100.0;
-                    if (sub.type=="TimeOffset") offset=sub.physical_from/100.0;
-                }
             }
-            for (const auto &override:program.shutter_subsets) {
-                if (override.type!="Duration" && override.type!="DutyCycle" && override.type!="TimeOffset") supported=false;
-                if (!attribute || std::none_of(attribute->subphysical_units.begin(),attribute->subphysical_units.end(),[&](const auto &sub){return sub.type==override.type;})) supported=false;
-            }
-            if (duration<0 || duty<0 || duty>1 || offset<0 || offset>1 || !std::isfinite(offset)) supported=false;
             auto sets=program.shutter_channel_sets;
             if (sets.empty()) { ParsedWheelChannelSet set; set.declared_dmx_from=program.dmx_from; set.effective_dmx_to=program.dmx_to; set.physical_from=program.physical_from; set.physical_to=program.physical_to; sets.push_back(set); }
             bool diagnosed=false;
@@ -192,10 +180,13 @@ void append_shutter_targets(runtime::CompiledRuntimeScene &scene,const SceneMode
                     runtime::CompiledShutterBinding binding;
                     binding.fixture_id=fixture_id; binding.beam_target_id=beam.render_target_id; binding.shutter_index=semantic.index;
                     binding.source_program_id=source.program_id; binding.wave=effective;
-                    binding.duration=duration; binding.duty=duty; binding.offset=offset;
+                    binding.duration=timing.from[0]; binding.duty=timing.from[1]; binding.offset=timing.from[2];
+                    binding.duration_to=timing.to[0]; binding.duty_to=timing.to[1]; binding.offset_to=timing.to[2];
+                    binding.timing_variable_mask=timing.variable_mask;
+                    binding.timing_dmx_from=program.dmx_from; binding.timing_dmx_to=program.dmx_to;
                     binding.status=!known?2:(wave==ShutterWave::Mode || shutter_random(wave)?1:0);
                     binding.channel_set_name=set.name; binding.gdtf_break=program.dmx_break;
-                    binding.activation_function_id=activation_id;
+                    binding.activation_function_id=activation_id; binding.mode_source_program_id=mode_source;
                     binding.mode_from=choice.from; binding.mode_to=choice.to; binding.mode_function_name=choice.name;
                     binding.dmx_from=set.declared_dmx_from; binding.dmx_to=set.effective_dmx_to;
                     binding.physical_from=set.physical_from; binding.physical_to=set.physical_to;

@@ -29,7 +29,7 @@ Optional Fake Smoke is a Peraviz shaft-presentation effect; it does not add GDTF
 | Beam geometry profile | Partial | Setup-time BeamType, BeamAngle, FieldAngle, BeamRadius, ThrowRatio, RectangleRatio, LuminousFlux, and ColorTemperature are retained for current renderer use. BeamType None and Glow remain emission-only and never allocate a projected cone. The reference Vector Prism and existing gobo surface path use a [shared approximate radial profile](vector-light-profile.md) anchored by BeamAngle/FieldAngle, with BeamType fallbacks. This is Peraviz presentation, not measured photometry. Authored/default provenance is retained; open Spot/Wash/Fresnel/PC retain native unshadowed surface parameters without automatically owning realtime lights; see [bounded surface ownership](surface-light-ownership.md). Scalable visible open footprints, grouped presentation, measured photometry and Focus semantics remain incomplete. |
 | Focus / Iris / Frost | Unsupported/deferred | No authoritative live renderer contract. |
 | Prism selection/rotation | Parsed only | Names may be classified or retained; no production prism behavior is claimed. |
-| Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen/PulseClose and explicitly approximate Random variants; persistent native phase, frequency/constant subphysical parameters and constant SubChannelSet overrides, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
+| Shutter / strobe | Partial/native | Numbered Shutter(n), Strobe, triangular StrobePulse, PulseOpen/PulseClose and explicitly approximate Random variants; persistent native phase, frequency and variable subphysical/SubChannelSet timing parameters, range transitions and generic ModeMaster. Shared ancestor and independent reference/multibreak outputs retain identity. See the bounded temporal contract below. |
 | ModeMaster | Partial/native | Exact selected-mode Node paths resolve to stable DMXChannel or ChannelFunction identities, use resolution-aware inclusive `DMXValue` ranges, reach the production setup contract, and evaluate cycle-safely for instantaneous native scalars. Malformed, ambiguous, unresolved, and cyclic graphs are diagnosed during compilation. |
 | Relations | Unsupported/deferred | GDTF Relations are not parsed or evaluated by the compiled production runtime. |
 | Virtual attributes / DMXProfiles | Unsupported/deferred | No production evaluation contract. |
@@ -45,15 +45,18 @@ Set physical endpoints inherit the parent's values unless explicitly overridden.
 Ranges are intersected with their parent, inclusive, and interpolated locally in
 ordered 8/16/24/32-bit source resolution; descending ranges remain descending.
 Malformed/nonfinite supplied values and duplicate sets are diagnosed, not defaulted.
-Nonstandard DMXTo is diagnosed and ignored for shutters; it cannot alter the natural
-function boundary. ModeMaster containers have independent boundaries; invalid sibling
-starts do not erase independently valid functions. Unnamed function prefixes retain their parent physical mapping.
+Nonstandard DMXTo is diagnosed and ignored for shutters. Function ends follow the
+next declared XML function start minus one; a reset/equal start ends the previous
+conditional container at the source maximum. Duplicate unconditional starts remain
+invalid. A malformed next start withholds that unbounded function while independently
+bounded valid functions survive. Unnamed function prefixes retain their parent physical mapping.
 
 Square flashes use Duration (default 0.025 s for standard Shutter strobe).
 Annex F triangle/ramp pulses use DutyCycle (default 100%) and TimeOffset at the
-pulse's end (default 100%). Constant SubPhysicalUnits and locally Type-linked constant SubChannelSet overrides
-for Duration, DutyCycle and TimeOffset are supported. Duplicate, malformed, unresolved,
-profiled and variable parameter overrides remain guarded. Zero Hz produces no temporal modulation
+pulse's end (default 100%). Constant and variable SubPhysicalUnits and locally Type-linked SubChannelSet overrides
+for Duration, DutyCycle and TimeOffset are evaluated over the parent function domain,
+independently of ChannelSet frequency intervals. Descending intervals are retained.
+Duplicate, malformed, unresolved and profiled overrides remain guarded. Zero Hz produces no temporal modulation
 (unmodulated/open presentation policy); negative/unrepresentable Hz never becomes an
 arbitrary flashing rate. Explicit English polarity labels use a normalized, exact
 whitelist (status 1), not a normative universal 0=closed/255=open rule or substring
@@ -66,9 +69,9 @@ time between flashes and remains explicitly unsupported; it is never treated as 
 A shutter's mode, frequency, duration and nested activation sources may occupy different
 explicitly resolved breaks/universes. One authority owner uses the existing held-input
 graph; any participating byte change invalidates that authority without another owner
-packet. Invalid/missing routes and cycles remain guarded. Auto Span eligibility is unchanged. Channel-wide typed mode
-candidates with additional ModeMaster conditions remain guarded; direct ChannelFunction
-masters retain the existing native activation-chain evaluation.
+packet. Channel-wide typed mode candidates retain their own additional activation
+root, including nested and cross-universe ModeMaster links. Invalid/missing routes
+and cycles remain guarded. Auto Span eligibility is unchanged.
 
 **Peraviz random approximation (status 1):** all four numbered Random families and
 StrobeModeRandom variants use the declared nominal Hz, with one deterministic event

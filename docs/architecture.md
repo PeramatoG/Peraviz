@@ -74,6 +74,11 @@ Structural setup occurs before live playback. The loader and compiler install fi
 
 The versioned compiled setup payload is encoded and decoded by the shared native `CompiledRuntimeScene` codec. The codec owns field order, version-specific strides, complete cursor validation, and deterministic rejection of truncated or trailing payloads; Godot wrappers only convert packed array containers.
 
+Setup contract 11 adds parent-domain variable shutter timing intervals and an explicit
+additional typed-mode activation source. The decoder retains older constant-timing
+payloads and rejects truncated/invalid new timing records. Authority signatures include
+the complete timing definition and both activation roots; either root invalidates the
+existing source graph without new transport state or per-flash source work.
 Setup contract 10 adds compiler-classified per-Beam implicit RGB intensity authority
 in color-target flags; numeric setup does not carry the geometry paths needed to
 recompute it. See [additive intensity lifecycle](native-dense-presentation-state.md#additive-emitters-without-dimmer).

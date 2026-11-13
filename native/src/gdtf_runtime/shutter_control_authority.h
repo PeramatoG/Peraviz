@@ -7,14 +7,16 @@
 #include <unordered_map>
 
 namespace peraviz::gdtf_runtime {
-using ShutterControlSignature=std::array<int64_t,15>;
+using ShutterControlSignature=std::array<int64_t,22>;
 // Retains exact declared scalars for proof; neither current values nor hash collisions establish sharing.
 inline int64_t shutter_control_bits(double value) { int64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
 // Source IDs reference effective instance-qualified bytes, function and activation graphs. Fixture scope prevents co-patch merging.
 inline ShutterControlSignature shutter_control_signature(const runtime::CompiledShutterBinding &b) {
     return {b.source_program_id,b.shutter_index,int64_t(b.wave),b.status,int64_t(b.dmx_from),int64_t(b.dmx_to),
         shutter_control_bits(b.duration),shutter_control_bits(b.duty),shutter_control_bits(b.offset),shutter_control_bits(b.physical_from),shutter_control_bits(b.physical_to),
-        b.fixture_id,int64_t(b.mode_from),int64_t(b.mode_to),b.activation_function_id};
+        b.fixture_id,int64_t(b.mode_from),int64_t(b.mode_to),b.activation_function_id,
+        b.timing_variable_mask,int64_t(b.timing_dmx_from),int64_t(b.timing_dmx_to),shutter_control_bits(b.duration_to),
+        shutter_control_bits(b.duty_to),shutter_control_bits(b.offset_to),b.mode_source_program_id};
 }
 // Uses physical identity solely for routing members, never as temporal control authority or random seed.
 inline int64_t shutter_control_layer(int32_t target,int32_t index) { return (int64_t(target)<<32)|uint32_t(index); }
@@ -42,19 +44,21 @@ inline ShutterControlLayout shutter_control_layout(const runtime::CompiledRuntim
         for (const auto &record:key) for (size_t field=0;field<record.size();++field) {
             int64_t value=record[field];
             // Seeds use transport precision so packed installation and direct native installation agree.
-            if (field>=6 && field<=10) { double scalar; std::memcpy(&scalar,&value,sizeof(scalar)); value=shutter_control_bits(double(float(scalar))); }
+            if ((field>=6 && field<=10) || (field>=18 && field<=20)) { double scalar; std::memcpy(&scalar,&value,sizeof(scalar)); value=shutter_control_bits(double(float(scalar))); }
             seed=shutter_mix(seed^uint64_t(value));
         }
         // Include effective byte routes and activation edges, not just generation-local numeric source handles.
         for (const auto &record:key) {
-            int32_t source=int32_t(record[0]); std::vector<int32_t> visited;
-            while (source>0 && std::find(visited.begin(),visited.end(),source)==visited.end()) {
-                visited.push_back(source); const auto found=sources.find(source); if (found==sources.end()) break;
-                const auto &program=*found->second;
-                for (const auto &byte:program.sources) for (int32_t value:{byte.universe_id,byte.address,byte.byte_order}) seed=shutter_mix(seed^uint32_t(value));
-                const auto &condition=program.activation;
-                for (uint32_t value:{program.dmx_from,program.dmx_to,uint32_t(condition.target_kind),condition.from,condition.to}) seed=shutter_mix(seed^value);
-                source=condition.target_kind==ModeMasterTargetKind::None?0:condition.master_program_id;
+            for (int root:{0,21}) {
+                int32_t source=int32_t(record[root]); std::vector<int32_t> visited;
+                while (source>0 && std::find(visited.begin(),visited.end(),source)==visited.end()) {
+                    visited.push_back(source); const auto found=sources.find(source); if (found==sources.end()) break;
+                    const auto &program=*found->second;
+                    for (const auto &byte:program.sources) for (int32_t value:{byte.universe_id,byte.address,byte.byte_order}) seed=shutter_mix(seed^uint32_t(value));
+                    const auto &condition=program.activation;
+                    for (uint32_t value:{program.dmx_from,program.dmx_to,uint32_t(condition.target_kind),condition.from,condition.to}) seed=shutter_mix(seed^value);
+                    source=condition.target_kind==ModeMasterTargetKind::None?0:condition.master_program_id;
+                }
             }
         }
         result.authorities.push_back({id,int32_t(key.front()[11]),int32_t(key.front()[1]),uint32_t(seed^(seed>>32)),{}});

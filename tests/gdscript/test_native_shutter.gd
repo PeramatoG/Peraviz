@@ -146,6 +146,7 @@ func run() -> void:
 	await preload("res://tests/gdscript/helpers/shutter_fidelity_probe.gd").run(self)
 	await split_modes()
 	await split_universes()
+	await variable_timing()
 	await shared_groups()
 	await absent_shutter()
 	await preload("res://tests/gdscript/helpers/shutter_stress_probe.gd").run(self)
@@ -246,5 +247,42 @@ func split_universes() -> void:
 	primary[4] = 0
 	send({0:primary},2)
 	for index in range(8): Probe.check(self,baseline,index,0)
+	Probe.resources(self,baseline)
+	await close_scene()
+
+# Variable physical intervals reach every retained consumer through the existing native temporal state.
+func variable_timing() -> void:
+	await open_scene(["--shared","--variable-timing"],8)
+	var values := packet(); values[0] = 255; values[1] = 255; values[4] = 10
+	send({0:values},0)
+	var baseline: Array = Probe.capture(adapter)
+	var target: int = adapter._outputs[0].canonical_id
+	values[4] = 20
+	var frame := send({0:values},1)
+	var p: Dictionary = Probe.parameters(frame,target)
+	test.check_close(p.duration,0.01,0.00001,"Variable Duration starts at its declared seconds endpoint")
+	adapter._native.advance_shutters(adapter._generation,1.498)
+	for index in range(8): Probe.check(self,baseline,index,1)
+	values[4] = 119
+	frame = send({0:values},1.125)
+	p = Probe.parameters(frame,target)
+	test.check_close(p.duration,0.05,0.00001,"Variable Duration reaches its declared seconds endpoint")
+	test.check_close(p.phase,0.25,0.00001,"Variable timing/frequency edits retain accumulated phase")
+	values[4] = 120
+	frame = send({0:values},2)
+	p = Probe.parameters(frame,target)
+	test.check_close(p.duty,0.25,0.00001,"Variable DutyCycle uses Percent units")
+	test.check_close(p.offset,0.25,0.00001,"Variable TimeOffset uses Percent units")
+	adapter._native.advance_shutters(adapter._generation,2.0625)
+	for index in range(8): Probe.check(self,baseline,index,1)
+	values[4] = 159
+	frame = send({0:values},2.125)
+	p = Probe.parameters(frame,target)
+	test.check_close(p.duty,0.75,0.00001,"Variable DutyCycle reaches its upper endpoint")
+	test.check_close(p.offset,1.0,0.00001,"Variable TimeOffset reaches its upper endpoint")
+	var evaluations: int = runtime._native_visual_runtime.get_stats().source_programs_evaluated
+	adapter._native.advance_shutters(adapter._generation,2.3125)
+	for index in range(8): Probe.check(self,baseline,index,1)
+	test.check(runtime._native_visual_runtime.get_stats().source_programs_evaluated == evaluations,"Variable timing hold performs no source reevaluation")
 	Probe.resources(self,baseline)
 	await close_scene()

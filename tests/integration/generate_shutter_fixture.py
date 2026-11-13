@@ -12,7 +12,7 @@ from generate_import_compatibility_fixture import entry, channel, mode
 from generate_presentation_lifecycle_fixture import lens_glb, gobo_png
 
 
-def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False, strobe_low=2, strobe_high=10, split_universes=False):
+def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absent=False, shutter_index=1, random_modes=False, fidelity=False, channel_master=False, conditional_mode=False, banks=0, fixtures=1, dual_mode=False, shared_mode=False, cell_colors=False, mixed_gobo=False, moving=False, strobe_low=2, strobe_high=10, split_universes=False, variable_timing=False):
     xml_attributes = ''
     for name, unit, subs in [
         ('Shutter1', 'None', ''),
@@ -107,6 +107,16 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
             # Replace complete XML attribute values, avoiding recursively rewriting already-random families.
             xml = xml.replace('"'+original+'"','"'+replacement+'"')
         for original,replacement in [('StrobeModeStrobe','StrobeModeRandom'),('StrobeModePulse','StrobeModeRandomPulse'),('StrobeModePulseOpen','StrobeModeRandomPulseOpen'),('StrobeModePulseClose','StrobeModeRandomPulseClose')]: xml=xml.replace('"'+original+'"','"'+replacement+'"')
+    if variable_timing:
+        root = ET.fromstring(xml)
+        for attribute in root.findall('./FixtureType/AttributeDefinitions/Attributes/Attribute'):
+            if attribute.get('Name') not in ['Shutter1Strobe', 'Shutter1StrobePulse']:
+                continue
+            for sub in list(attribute): attribute.remove(sub)
+            intervals = [('Duration', 'Time', '0.01', '0.05')] if attribute.get('Name') == 'Shutter1Strobe' else [('DutyCycle', 'Percent', '25', '75'), ('TimeOffset', 'Percent', '25', '100')]
+            for kind, unit, low, high in intervals:
+                ET.SubElement(attribute, 'SubPhysicalUnit', {'Type':kind, 'PhysicalUnit':unit, 'PhysicalFrom':low, 'PhysicalTo':high})
+        xml = ET.tostring(root, encoding='unicode')
     xml = xml.replace("Shutter1", "Shutter%d" % shutter_index)
     if mixed_gobo:
         assert gobo and fixtures == 2
@@ -155,6 +165,6 @@ if __name__ == '__main__':
     parser.add_argument('--shutter-index',type=int,default=1)
     parser.add_argument('--banks',type=int,default=0)
     parser.add_argument('--fixtures',type=int,default=1)
-    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors','mixed-gobo','moving','split-universes']: parser.add_argument('--'+flag,action='store_true')
+    for flag in ['shared','split','gobo','absent','random-modes','fidelity','channel-master','conditional-mode','dual-mode','shared-mode','cell-colors','mixed-gobo','moving','split-universes','variable-timing']: parser.add_argument('--'+flag,action='store_true')
     args = parser.parse_args()
-    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving,args.strobe_low,args.strobe_high,args.split_universes)
+    generate(args.path,args.outputs,args.shared,args.split,args.gobo,args.absent,args.shutter_index,args.random_modes,args.fidelity,args.channel_master,args.conditional_mode,args.banks,args.fixtures,args.dual_mode,args.shared_mode,args.cell_colors,args.mixed_gobo,args.moving,args.strobe_low,args.strobe_high,args.split_universes,args.variable_timing)

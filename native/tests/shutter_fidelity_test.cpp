@@ -3,6 +3,7 @@
 #include <fstream>
 #include "gdtf_runtime/runtime_scene_compiler.h"
 #include "runtime/peraviz_visual_runtime.h"
+#include "runtime/compiled_runtime_scene_codec.h"
 #include "presentation/shutter_playback.h"
 #include "gdtf_runtime/shutter_sampling.h"
 #include <array>
@@ -61,8 +62,63 @@ struct Probe {
     }
 };
 }
+// Exercises variable timing, native setup transport, and candidate-specific activation through real archive compilation.
+static bool test_dynamic_shutter_parameters() {
+    Probe probe;
+    const std::string metadata="<Attribute Name=\"Shutter1Strobe\" PhysicalUnit=\"Frequency\"><SubPhysicalUnit Type=\"Duration\" PhysicalUnit=\"Time\" PhysicalFrom=\"0.01\" PhysicalTo=\"0.05\"/><SubPhysicalUnit Type=\"DutyCycle\" PhysicalUnit=\"Percent\" PhysicalFrom=\"20\" PhysicalTo=\"80\"/><SubPhysicalUnit Type=\"TimeOffset\" PhysicalUnit=\"Percent\" PhysicalFrom=\"100\" PhysicalTo=\"25\"/></Attribute>";
+    for (int bytes=1;bytes<=4;++bytes) {
+        const uint32_t maximum=bytes==4?UINT32_MAX:uint32_t((uint64_t(1)<<(bytes*8))-1),from=maximum/4,to=maximum/2;
+        const std::string resolution="/"+std::to_string(bytes);
+        probe.compile("<ChannelFunction Name=\"Open\" Attribute=\"Shutter1\"/><ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\""+std::to_string(from)+resolution+"\" PhysicalFrom=\"2\" PhysicalTo=\"2\"><ChannelSet DMXFrom=\""+std::to_string(from)+resolution+"\"/><ChannelSet DMXFrom=\""+std::to_string((from+to)/2)+resolution+"\"/></ChannelFunction><ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\""+std::to_string(to+1)+resolution+"\"/>",bytes,"","Shutter1",metadata);
+        const auto packed=encode_compiled_runtime_scene(probe.scene);
+        const auto decoded=decode_compiled_runtime_scene(packed.integers,packed.floats);
+        if (!verify(decoded.valid && decoded.scene.contract_version==11,"Variable parameter mappings survive the version 11 native setup contract")) return false;
+        probe.core.install_compiled_scene(decoded.scene); probe.core.set_runtime_now_seconds_for_testing(0);
+        for (uint32_t raw:{from,(from+to)/2,to}) {
+            const auto p=probe.raw(raw); const double local=double(raw-from)/double(to-from);
+            if (!verify(p.status==0 && near(p.frequency,2) && near(p.duration,0.01+0.04*local) && near(p.duty,0.2+0.6*local) && near(p.offset,1-0.75*local),"Variable physical intervals use the parent function domain across ChannelSet boundaries at every source resolution")) return false;
+        }
+        probe.core.set_runtime_now_seconds_for_testing(0.125);
+        const auto changed=probe.raw(from);
+        if (!verify(near(changed.phase,0.25) && near(changed.duration,0.01),"A timing-only parameter edit preserves the held oscillator phase")) return false;
+    }
+    probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"2\" PhysicalTo=\"2\"><SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"0.06\" PhysicalTo=\"0.02\"/></ChannelFunction>",1,"","Shutter1",metadata);
+    if (!verify(near(probe.raw(0).duration,0.06) && near(probe.raw(255).duration,0.02),"Explicit descending SubChannelSet endpoints override variable attribute defaults")) return false;
+    auto scene=probe.scene; const auto packed=encode_compiled_runtime_scene(scene);
+    auto malformed=packed.integers; malformed.pop_back();
+    if (!verify(!decode_compiled_runtime_scene(malformed,packed.floats).valid,"Truncated variable timing records are rejected atomically")) return false;
+    malformed=packed.integers; malformed[malformed.size()-7]=8;
+    if (!verify(!decode_compiled_runtime_scene(malformed,packed.floats).valid,"Unknown parameter mask bits are rejected")) return false;
+    malformed=packed.integers; malformed[malformed.size()-4]=int32_t(packed.floats.size());
+    if (!verify(!decode_compiled_runtime_scene(malformed,packed.floats).valid,"Invalid parameter float references cannot default silently")) return false;
+    scene.contract_version=10; const auto legacy=encode_compiled_runtime_scene(scene);
+    const auto old=decode_compiled_runtime_scene(legacy.integers,legacy.floats);
+    if (!verify(old.valid && old.scene.shutter_bindings.front().timing_variable_mask==0 && old.scene.shutter_bindings.front().mode_source_program_id==0,"Version 10 setup remains decodable with its original constant timing semantics")) return false;
+    const std::string mode="<DMXChannel Offset=\"8\" Geometry=\"Root\"><LogicalChannel Attribute=\"StrobeModeShutter\"><ChannelFunction Name=\"Open\" Attribute=\"StrobeModeShutter\"/><ChannelFunction Name=\"Strobe\" Attribute=\"StrobeModeStrobe\" DMXFrom=\"20/1\" ModeMaster=\"Root_Gate\" ModeFrom=\"128/1\" ModeTo=\"255/1\"/></LogicalChannel></DMXChannel><DMXChannel Offset=\"12\" Geometry=\"Root\"><LogicalChannel Attribute=\"Gate\"><ChannelFunction Attribute=\"Gate\"/></LogicalChannel></DMXChannel>";
+    probe.compile("<ChannelFunction Attribute=\"StrobeFrequency\" ModeMaster=\"Root_StrobeModeShutter\" ModeFrom=\"20/1\" ModeTo=\"255/1\" PhysicalFrom=\"2\" PhysicalTo=\"10\"/>",1,"","StrobeFrequency","",mode);
+    const auto candidate_payload=encode_compiled_runtime_scene(probe.scene);
+    const auto candidate_decoded=decode_compiled_runtime_scene(candidate_payload.integers,candidate_payload.floats);
+    if (!verify(candidate_decoded.valid,"Candidate-specific activation survives setup transport")) return false;
+    probe.core.install_compiled_scene(candidate_decoded.scene); probe.core.set_runtime_now_seconds_for_testing(0);
+    if (!verify(probe.raw(255,20,1,0).wave==ShutterWave::Open,"An inactive additional condition withholds the selected typed mode")) return false;
+    if (!verify(probe.raw(255,20,1,128).wave==ShutterWave::Strobe && near(probe.raw(255,20,1,128).frequency,10),"Only the extra controlling input activates held mode and frequency")) return false;
+    if (!verify(probe.raw(255,20,1,0).wave==ShutterWave::Open,"Only the extra controlling input deactivates the candidate without a selector edit")) return false;
+    for (bool cycle:{false,true}) {
+        auto guarded=candidate_decoded.scene;
+        int32_t candidate_id=0;
+        for (const auto &binding:guarded.shutter_bindings) if (binding.mode_source_program_id) candidate_id=binding.mode_source_program_id;
+        for (auto &source:guarded.source_programs) if (source.program_id==candidate_id) {
+            source.activation.target_kind=ModeMasterTargetKind::ChannelFunction;
+            source.activation.master_program_id=cycle?candidate_id:999999;
+        }
+        probe.core.install_compiled_scene(guarded);
+        if (!verify(probe.raw(255,20,1,128).revision==0,"Missing/cyclic candidate-specific activation chains remain unbound")) return false;
+    }
+    return true;
+}
 // Verifies standards defaults, supplied values, inclusive boundaries and ordered resolution through actual GDTF ZIP parsing.
 bool test_shutter_fidelity() {
+    if (!test_dynamic_shutter_parameters()) return false;
     Probe probe;
     probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\"/>");
     if (!verify(probe.raw(255).wave==ShutterWave::Strobe && near(probe.raw(255).frequency,1),"Omitted physical fields use valid 0/1 defaults")) return false;
@@ -98,14 +154,14 @@ bool test_shutter_fidelity() {
         "<Attribute Name=\"Shutter1StrobePulse\" PhysicalUnit=\"Frequency\"><SubPhysicalUnit Type=\"DutyCycle\" PhysicalUnit=\"Percent\" PhysicalFrom=\"0\" PhysicalTo=\"100\"/><SubPhysicalUnit Type=\"TimeOffset\" PhysicalUnit=\"Percent\" PhysicalFrom=\"0\" PhysicalTo=\"100\"/></Attribute>");
     const auto constant_pulse=probe.raw(128);
     if (!verify(constant_pulse.status==0 && near(constant_pulse.duty,0.5) && near(constant_pulse.offset,0.75) && near(shutter_envelope(constant_pulse,0.1875),0.5),"Constant DutyCycle and TimeOffset overrides use Percent units in the existing Annex F sampler")) return false;
-    for (const auto &sub:{"<SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"0.01\" PhysicalTo=\"0.02\"/>",
+    for (const auto &sub:{"<SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"-0.01\" PhysicalTo=\"0.02\"/>",
             "<SubChannelSet SubPhysicalUnit=\"Missing\" PhysicalFrom=\"0.01\" PhysicalTo=\"0.01\"/>",
             "<SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalTo=\"0.01\"/>",
             "<SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"bad\" PhysicalTo=\"0.01\"/>",
             "<SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"0.01\" PhysicalTo=\"0.01\" DMXProfile=\"Curve\"/>",
             "<SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"0.01\" PhysicalTo=\"0.01\"/><SubChannelSet SubPhysicalUnit=\"Duration\" PhysicalFrom=\"0.02\" PhysicalTo=\"0.02\"/>"}) {
         probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"2\" PhysicalTo=\"10\">"+std::string(sub)+"</ChannelFunction>",1,"","Shutter1",submetadata);
-        if (!verify(probe.raw(128).status==2,"Variable/unresolved/malformed/profiled/duplicate SubChannelSets remain bounded unsupported states")) return false;
+        if (!verify(probe.raw(128).status==2,"Unresolved/malformed/profiled/duplicate SubChannelSets remain bounded unsupported states")) return false;
     }
     probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"2\" PhysicalTo=\"10\"/><ChannelFunction Attribute=\"Shutter1StrobePulse\"/><ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\"100/1\"/>");
     bool duplicate_diagnosed=false;
@@ -122,8 +178,8 @@ bool test_shutter_fidelity() {
     if (!verify(probe.raw(128).status==2,"Relation followers cannot claim unmodified frequency fidelity")) return false;
     const std::string master="<DMXChannel Offset=\"5\" Geometry=\"Root\"><LogicalChannel Attribute=\"Control\"><ChannelFunction Attribute=\"Control\"/></LogicalChannel></DMXChannel>";
     probe.compile("<ChannelFunction Name=\"A\" Attribute=\"Shutter1Strobe\" ModeMaster=\"Root_Control\" ModeFrom=\"0/1\" ModeTo=\"127/1\" PhysicalFrom=\"2\" PhysicalTo=\"10\"/>"
-        "<ChannelFunction Name=\"B\" Attribute=\"Shutter1StrobePulse\" DMXFrom=\"100/1\" ModeMaster=\"Root_Control\" ModeFrom=\"128/1\" ModeTo=\"255/1\" PhysicalFrom=\"20\" PhysicalTo=\"30\"/>",1,"","Shutter1","",master);
-    if (!verify(near(probe.raw(255).frequency,10),"A different ModeMaster container cannot truncate the active function range")) return false;
+        "<ChannelFunction Name=\"B\" Attribute=\"Shutter1StrobePulse\" DMXFrom=\"0/1\" ModeMaster=\"Root_Control\" ModeFrom=\"128/1\" ModeTo=\"255/1\" PhysicalFrom=\"20\" PhysicalTo=\"30\"/>",1,"","Shutter1","",master);
+    if (!verify(near(probe.raw(255).frequency,10),"A declared reset starts a new ModeMaster container without truncating the preceding function")) return false;
     const std::string open="<ChannelFunction Name=\"Open\" Attribute=\"Shutter1\"/>";
     const std::string closed="<ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\"40/1\"/>";
     probe.compile(open+"<ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\"20/1\" PhysicalFrom=\"2\" PhysicalTo=\"10\"/>"+closed);

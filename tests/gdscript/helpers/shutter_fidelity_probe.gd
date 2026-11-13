@@ -155,7 +155,7 @@ static func split_random(owner: SceneTree, channel_master: bool = false, random_
 		owner.test.check_close(frequency.phase,0.375,0.0001,"Split frequency change integrates previous 10 Hz phase")
 	await owner.close_scene()
 
-# A channel-wide selector cannot bypass a typed candidate's additional activation dependencies.
+# A channel-wide selector routes its typed candidate activation through the native source graph.
 static func conditional_mode_guard(owner: SceneTree) -> void:
 	await owner.open_scene(["--split","--channel-master","--conditional-mode"],8)
 	var primary: PackedByteArray = owner.packet(); primary[0] = 255; primary[1] = 255
@@ -166,6 +166,16 @@ static func conditional_mode_guard(owner: SceneTree) -> void:
 	cells[0] = 60
 	var frame: Dictionary = owner.send({2:cells},1)
 	var p: Dictionary = Probe.parameters(frame,owner.adapter._outputs[owner.cell_index(0)].canonical_id)
-	owner.test.check(p.mode == -1 and p.status == 2,"Additional unresolved mode activation chains remain diagnosed instead of ordinary flashing")
+	owner.test.check(p.mode == 2 and p.status == 0,"A typed mode follows its additional resolved activation condition")
+	owner.test.check_close(p.frequency,10,0.0001,"Candidate activation preserves the declared held frequency")
+	owner.adapter._native.advance_shutters(owner.adapter._generation,1.095)
 	Probe.check(owner,baseline,0,1)
+	primary[0] = 0
+	frame = owner.send({0:primary},2)
+	p = Probe.parameters(frame,owner.adapter._outputs[owner.cell_index(0)].canonical_id)
+	owner.test.check(p.mode == 0,"Only the remote additional master deactivates held selector/frequency")
+	primary[0] = 255
+	frame = owner.send({0:primary},3)
+	p = Probe.parameters(frame,owner.adapter._outputs[owner.cell_index(0)].canonical_id)
+	owner.test.check(p.mode == 2 and p.phase == 0,"Remote reactivation starts a new activation without another selector packet")
 	await owner.close_scene()

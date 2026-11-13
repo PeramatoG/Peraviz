@@ -94,11 +94,11 @@ void PeravizVisualRuntimeCore::fill_gobo_context(UniverseState &universe, GoboEv
     }
 }
 // Executes the existing cycle-safe ModeMaster evaluator once for each affected source context.
-bool PeravizVisualRuntimeCore::evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context) {
-    const uint32_t source=context.sources.front();
+bool PeravizVisualRuntimeCore::evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context,size_t dependency) {
+    const uint32_t source=context.sources[dependency];
     if (!universe.plan.activation_cached(source)) {
         fill_gobo_context(universe,context);
-        const bool active=evaluate_gobo_source_activation(context.dependency_program_ids.front(),*context.programs,context.values);
+        const bool active=evaluate_gobo_source_activation(context.dependency_program_ids[dependency],*context.programs,context.values);
         universe.plan.store_activation(source,active);
         if (performance_trace_enabled_) ++stats_.activation_programs_evaluated;
     } else if (performance_trace_enabled_) ++stats_.activation_cache_hits;

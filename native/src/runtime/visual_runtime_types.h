@@ -9,7 +9,7 @@
 
 namespace peraviz::runtime {
 
-constexpr int32_t kCompiledRuntimeSceneContractVersion = 10;
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 11;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
@@ -339,6 +339,10 @@ struct CompiledShutterBinding {
     uint32_t mode_from=0,mode_to=UINT32_MAX;
     int32_t activation_function_id=0;
     std::string mode_function_name; // Diagnostic sidecar only.
+    int32_t timing_variable_mask=0;
+    uint32_t timing_dmx_from=0,timing_dmx_to=255; // Parent function domain, independent of ChannelSets.
+    double duration_to=0.025,duty_to=1,offset_to=1;
+    int32_t mode_source_program_id=0; // Additional typed candidate activation, not a second oscillator.
 };
 
 struct CompiledRuntimeDiagnostic {

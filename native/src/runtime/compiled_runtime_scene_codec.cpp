@@ -1,6 +1,7 @@
 #include "runtime/compiled_runtime_scene_codec.h"
 
 #include <limits>
+#include <cmath>
 
 namespace peraviz::runtime {
 namespace {
@@ -139,9 +140,12 @@ PackedCompiledRuntimeScene encode_compiled_runtime_scene(const CompiledRuntimeSc
                  {v.binding_id, v.fixture_id, v.beam_render_target_id, v.wheel_id, v.wheel_instance_index, v.source_program_id,
                   static_cast<int32_t>(v.semantic_kind), static_cast<int32_t>(v.controlled_scope), push_float(f, v.physical_from),
                   push_float(f, v.physical_to), v.scalar_evaluable ? 1 : 0, v.rendered ? 1 : 0, v.physical_unit == "Angle" ? 1 : 0});
-    for (const auto &v:scene.shutter_bindings)
+    for (const auto &v:scene.shutter_bindings) {
         i.insert(i.end(),{v.fixture_id,v.beam_target_id,v.shutter_index,v.source_program_id,int32_t(v.wave),v.status,
             int32_t(v.dmx_from),int32_t(v.dmx_to),push_float(f,v.duration),push_float(f,v.duty),push_float(f,v.offset),push_float(f,v.physical_from),push_float(f,v.physical_to),int32_t(v.mode_from),int32_t(v.mode_to),v.activation_function_id});
+        if (scene.contract_version>=11) i.insert(i.end(),{v.timing_variable_mask,int32_t(v.timing_dmx_from),int32_t(v.timing_dmx_to),
+            push_float(f,v.duration_to),push_float(f,v.duty_to),push_float(f,v.offset_to),v.mode_source_program_id});
+    }
     return out;
 }
 
@@ -351,7 +355,7 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
         v.physical_unit = d.read() == 1 ? "Angle" : "None";
         result.scene.gobo_motion_bindings.push_back(v);
     }
-    for (int n=0;n<shutter_count && d.require(version>=9?16:13);++n) {
+    for (int n=0;n<shutter_count && d.require(version>=11?23:version>=9?16:13);++n) {
         CompiledShutterBinding v;
         v.fixture_id=d.read(); v.beam_target_id=d.read(); v.shutter_index=d.read(); v.source_program_id=d.read();
         v.wave=static_cast<gdtf_runtime::ShutterWave>(d.read()); v.status=d.read();
@@ -359,6 +363,17 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
         v.duration=read_float(floats,d.read(),0.025); v.duty=read_float(floats,d.read(),1); v.offset=read_float(floats,d.read(),1);
         v.physical_from=read_float(floats,d.read(),0); v.physical_to=read_float(floats,d.read(),1);
         if (version>=9) { v.mode_from=uint32_t(d.read()); v.mode_to=uint32_t(d.read()); v.activation_function_id=d.read(); }
+        if (version>=11) {
+            v.timing_variable_mask=d.read(); v.timing_dmx_from=uint32_t(d.read()); v.timing_dmx_to=uint32_t(d.read());
+            const int32_t duration=d.read(),duty=d.read(),offset=d.read();
+            if ((v.timing_variable_mask&~7) || v.timing_variable_mask<0 || v.timing_dmx_to<v.timing_dmx_from ||
+                    duration<0 || duty<0 || offset<0 || size_t(duration)>=floats.size() || size_t(duty)>=floats.size() || size_t(offset)>=floats.size())
+                d.fail("PVZ-PACKED-SHUTTER-TIMING: invalid timing range or float reference.");
+            v.duration_to=read_float(floats,duration,0.025); v.duty_to=read_float(floats,duty,1); v.offset_to=read_float(floats,offset,1);
+            v.mode_source_program_id=d.read();
+            if (!std::isfinite(v.duration_to) || !std::isfinite(v.duty_to) || !std::isfinite(v.offset_to) || v.mode_source_program_id<0)
+                d.fail("PVZ-PACKED-SHUTTER-TIMING: nonfinite timing or invalid candidate source.");
+        }
         result.scene.shutter_bindings.push_back(v);
     }
     if (d.valid && d.cursor != integers.size())
