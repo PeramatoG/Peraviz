@@ -1,6 +1,8 @@
 # Ambient rendering baseline (Godot 4.7 Forward+)
 
-Current revision: the ground is matte grey `(0.4, 0.4, 0.4)`, with the original sky.
+Current revision: ground minimum coverage is restored to 20000 m and the lower sky
+uses a neutral preset ground tone through the horizon (no fixed .02 black strip).
+The ground is matte grey `(0.4, 0.4, 0.4)`, with the original sky.
 Directional bias/normal bias now use Godot defaults **0.1 / 2.0** as an anti-acne
 candidate. Earlier sections below record previous iterations; they are not all
 current defaults. GPU validation of this candidate is still pending.
@@ -452,3 +454,37 @@ Grey/bias revision validation: all **52 GDScript regressions passed** with Godot
 close-view bias/no-shadow smoke cases completed headlessly and recorded the expected
 independent values. Runtime architecture, file-size and `git diff --check` passed
 (existing soft warnings remain). No GPU frame-time or visual improvement is claimed.
+
+## Horizon correction after successful Windows acne validation
+
+User testing confirms the bias revision eliminated the fine flat-surface patterns.
+Retain bias .1/2 and all other directional settings; residual stepped/soft caster
+silhouettes are deferred rather than changing the accepted anti-acne result.
+
+The grey ground is retained unchanged (albedo .4, roughness 1, specular/metallic 0).
+Restore the original 20000 m minimum coverage, with adaptive growth and off-origin
+centering still active. The earlier extent reduction did not have demonstrated
+performance benefit: the plane has two triangles and no longer casts shadows.
+Additional visible receiver pixels may still have GPU cost; no timing claim is made.
+Neither camera far clipping nor imported coordinates change.
+
+Extent alone cannot remove the horizon strip: the controller previously forced
+`ground_horizon_color=(.02,.02,.02)` while the day lower sky was a different dark
+blue-grey. Even an arbitrarily large plane stops rendering at the far clip. Replace
+the fixed dark strip with the preset's lower-ground color, uniform below the horizon.
+Day uses neutral .3; dawn/dusk .1; existing night/blackout darkness remains. The
+original upper sky colors, day/night energies, sun direction, physical receiver,
+optical gains and fog settings are preserved. This is a background continuity
+approximation, not an exact radiometric match to every lit pixel of the floor.
+The reference's glossy/mottled appearance is not reproduced with new noise or texture.
+
+No transparent/dithered fade, fullscreen effect, camera-following ground or per-frame
+mesh rebuilding is added. Compare the same overview and near-horizontal views in
+Day/Dawn/Dusk/Night, both stationary and moving. Headless tests cover coverage,
+adaptive growth beyond 20 km, off-origin placement, grey receiver preservation and
+matching lower-sky colors for all five presets. GPU horizon appearance still requires
+Windows confirmation; a slight floor/background seam may remain under some lighting.
+
+Compare `clean` with `ground2000` (extent only) and `horizon_old` (old lower sky only)
+in the existing audit. These cases isolate the two horizon changes independently.
+Focused ambient and project-scene-loading regressions passed with Godot 4.7.1.

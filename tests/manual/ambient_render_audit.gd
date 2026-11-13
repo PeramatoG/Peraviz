@@ -2,7 +2,7 @@ extends SceneTree
 ## Opt-in, process-local comparisons; never save graphics or optical settings.
 ## Each B–J candidate changes exactly one factor from A. Clean is the new default.
 const CASES := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "clean", "msaa2", "ssao", "near", "depth32"]
-const FOLLOWUP_CASES := ["old_bias", "bias_only", "normal_only","previous", "distance36", "distance48", "splits2", "splits_near", "filter_high", "filter_low", "filter_hard", "blur05", "blur025", "high_blur05", "atlas8192", "bias003", "normal_bias1", "no_shadows", "no_sun", "unshaded", "matte", "normals", "no_aa", "msaa4", "taa", "ground_hidden", "ground200", "ground1500", "ground_grey", "sky", "sky_deband", "viewport_deband", "no_post", "lod_original"]
+const FOLLOWUP_CASES := ["ground2000", "horizon_old","old_bias", "bias_only", "normal_only","previous", "distance36", "distance48", "splits2", "splits_near", "filter_high", "filter_low", "filter_hard", "blur05", "blur025", "high_blur05", "atlas8192", "bias003", "normal_bias1", "no_shadows", "no_sun", "unshaded", "matte", "normals", "no_aa", "msaa4", "taa", "ground_hidden", "ground200", "ground1500", "ground_grey", "sky", "sky_deband", "viewport_deband", "no_post", "lod_original"]
 var options := {}
 var atlas_size := 4096
 var depth_bits := 16
@@ -154,6 +154,11 @@ func run() -> void:
 func apply_case(candidate: String, light: DirectionalLight3D, environment: Environment, ground: MeshInstance3D, camera: Camera3D) -> void:
 	if candidate in FOLLOWUP_CASES:
 		match candidate:
+			"ground2000": (ground.mesh as PlaneMesh).size = Vector2(2000, 2000)
+			"horizon_old":
+				var sky_material := environment.sky.sky_material as ProceduralSkyMaterial
+				sky_material.ground_horizon_color = Color(0.02, 0.02, 0.02)
+				sky_material.ground_bottom_color = Color(0.09, 0.1, 0.13)
 			"old_bias":
 				light.shadow_bias = 0.015
 				light.shadow_normal_bias = 0.7

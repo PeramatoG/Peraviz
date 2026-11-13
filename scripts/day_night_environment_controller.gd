@@ -172,7 +172,7 @@ func _state_for_preset(preset: EnvironmentPreset) -> Dictionary:
 			return {
 				"sky_top_color": Color(0.12, 0.18, 0.30, 1.0),
 				"sky_horizon_color": _warm_horizon_color(0.52, 0.40),
-				"ground_bottom_color": Color(0.03, 0.04, 0.05, 1.0),
+				"ground_bottom_color": Color(0.10, 0.10, 0.10, 1.0),
 				"sky_energy": 0.38,
 				"ambient_energy": lerpf(ambient_energy_night, ambient_energy_day, 0.35),
 				"directional_energy": dusk_light_intensity,
@@ -184,7 +184,7 @@ func _state_for_preset(preset: EnvironmentPreset) -> Dictionary:
 			return {
 				"sky_top_color": Color(0.30, 0.52, 0.83, 1.0),
 				"sky_horizon_color": Color(0.70, 0.82, 0.98, 1.0),
-				"ground_bottom_color": Color(0.09, 0.10, 0.13, 1.0),
+				"ground_bottom_color": Color(0.30, 0.30, 0.30, 1.0),
 				"sky_energy": 1.0,
 				"ambient_energy": ambient_energy_day,
 				"directional_energy": day_light_intensity,
@@ -196,7 +196,7 @@ func _state_for_preset(preset: EnvironmentPreset) -> Dictionary:
 			return {
 				"sky_top_color": Color(0.12, 0.16, 0.32, 1.0),
 				"sky_horizon_color": _warm_horizon_color(0.60, 0.62),
-				"ground_bottom_color": Color(0.03, 0.03, 0.05, 1.0),
+				"ground_bottom_color": Color(0.10, 0.10, 0.10, 1.0),
 				"sky_energy": 0.32,
 				"ambient_energy": lerpf(ambient_energy_day, ambient_energy_night, 0.55),
 				"directional_energy": dusk_light_intensity,
@@ -262,7 +262,8 @@ func _apply_environment_dict(state: Dictionary) -> void:
 	_runtime_sky_material.sky_top_color = state["sky_top_color"]
 	_runtime_sky_material.sky_horizon_color = state["sky_horizon_color"]
 	_runtime_sky_material.ground_bottom_color = state["ground_bottom_color"]
-	_runtime_sky_material.ground_horizon_color = Color(0.02, 0.02, 0.02, 1.0)
+	# Fill below the horizon with the preset ground tone, not a fixed black band.
+	_runtime_sky_material.ground_horizon_color = state["ground_bottom_color"]
 	_runtime_sky_material.sky_curve = 0.18
 	_runtime_sky_material.ground_curve = 0.20
 	_runtime_sky_material.sun_curve = 0.015
