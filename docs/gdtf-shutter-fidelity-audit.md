@@ -30,7 +30,7 @@ The source-order range rule is also corroborated by `GdtfDmxChannelFunction::Get
 
 ## Verified behavior retained
 
-`parse_shutter_sets` already implements parent endpoint inheritance, independent one-sided overrides, inclusive next-start boundaries and descending interpolation. Label-only sets therefore restart the inherited physical interval: the characterized discontinuity is intentional, and was retained. Single-value sets use their PhysicalFrom endpoint.
+`parse_shutter_sets` already implements parent endpoint inheritance, independent one-sided overrides, inclusive next-start boundaries and descending interpolation. The current evaluator restarts the inherited physical interval for label-only sets and selects PhysicalFrom for single-value sets. These are characterized implementation policies, not proof of intended fixture behavior. The subsequent [boundary/inheritance review](strobe-fps-investigation.md#boundary-and-inherited-physical-review) distinguishes normative integer limits from the unresolved inherited interpolation domain; the earlier description of those resets as intentional was too strong.
 
 `mode_master.cpp`, cached activation and the compiled input graph remain authoritative. New tests cover channel and function masters, nested activation, equal starts under distinct conditions, reversed master byte offsets and 8/16/24/32-bit master bounds. Mode-only, frequency-only and duration-only updates operate independently; parameter edits preserve phase and function transitions restart activation.
 
@@ -45,7 +45,7 @@ Six unmodified archives were downloaded from [Perastage fixtures](https://github
 | `Robe_Lighting@Robin_MegaPointe@Perastage.gdtf` | 2 | Each mode compiles 25 standard and 6 approximate bindings. At DMX 128 the trace reports 0.087 Hz, 1% duty and 1% offset. The XML supplies those percentages and separately supplies zero Duration for ordinary strobe. These declarations must not be silently replaced by full-period pulses or 25 ms flashes. |
 | `GLP@impression_X4_Bar_20@Perastage.gdtf` | 7 | Norm/High Resolution also have an independently active unsupported shutter Effect. Comp at DMX 128 resolves approximately 0.516129 Hz and 1% duty/offset. Four pixel modes are withheld by existing ordered-offset guards. |
 | `Martin@Mac_Aura_XB@Perastage.gdtf` | 2 | Standard has supported strobe ranges plus an unlabeled generic shutter interval, which remains unsupported. Extended is withheld by the existing selected-tree geometry guard. |
-| `PROLIGHT_SPAIN@PIXEL_STROBE_400_RGB@Perastage.gdtf` | 1 | DMX 128 resolves approximately 14.8789 Hz within set 6–129. Multiple inherited sets deliberately create frequency discontinuities. |
+| `PROLIGHT_SPAIN@PIXEL_STROBE_400_RGB@Perastage.gdtf` | 1 | DMX 128 resolves approximately 14.8789 Hz within set 6–129. Current set-local evaluation creates frequency discontinuities; manufacturer intent was not established. |
 | `Blearred@JDC-1@Perastage.gdtf` | 1 | StrobeRate has PhysicalUnit None; an inverse-Hz interpretation cannot be established. The imported mode has no Beam output, and unsupported rate metadata is diagnosed. |
 | `Custom@Chauvet_Color_Strike_M@Perastage.gdtf` | 2 | One mode has invalid ordered offsets; the other supplies no shutter/strobe functions. No new shutter behavior is inferred. |
 

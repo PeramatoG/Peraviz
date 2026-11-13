@@ -1,18 +1,18 @@
 # MAC Quantum Wash Basic: strobe rate versus frame sampling
 
-Investigation date: 2026-11-13. Runtime reference: `873d80e`. This investigation changes no production waveform, interpolation or source archive. The user's reported cadence was approximately 45 FPS; their exact source archive and DMX value have not been supplied.
+Investigation date: 2026-11-13. Runtime reference: `873d80e`. This investigation changes no production waveform, interpolation or source archive. The user's reported cadence was approximately 45 FPS. Subsequent console screenshots showed Slow=50, Medium=125, Fast=200 and an encoder adjustment to 198; the user confirmed they were using the same MVR. This is user-confirmed source identity, not an independent byte-for-byte comparison of their local MVR.
 
 ## Main result
 
 Two distinct mechanisms can produce a slow-looking strobe. Both were reproduced, but the inspected Quantum Wash profile supplies a particularly direct explanation: increasing DMX from **199 to 200 changes the resolved physical frequency from 20 Hz to 1 Hz**, independently of render cadence.
 
-The inspected source is [Perastage's MAC Quantum Wash GDTF](https://github.com/PeramatoG/Perastage/blob/47b480220688ee057e5288aa0216d157bdb0cb24/library/fixtures/Martin_Professional%40MAC_Quantum_Wash%40Perastage.gdtf), mode `Basic`, pinned to commit `47b480220688ee057e5288aa0216d157bdb0cb24`. Git blob: `6816edf404a467d95fc421575e98479393d0080f`; SHA-256: `3b7bbf13bfc535de0aede095bcab82c2101392c5c7da46de51c7c888a6ae2e4e`. The original file still matches that blob after testing. This is a public sample, not proof that the user's archive is identical.
+The inspected source is [Perastage's MAC Quantum Wash GDTF](https://github.com/PeramatoG/Perastage/blob/47b480220688ee057e5288aa0216d157bdb0cb24/library/fixtures/Martin_Professional%40MAC_Quantum_Wash%40Perastage.gdtf), mode `Basic`, pinned to commit `47b480220688ee057e5288aa0216d157bdb0cb24`. Git blob: `6816edf404a467d95fc421575e98479393d0080f`; SHA-256: `3b7bbf13bfc535de0aede095bcab82c2101392c5c7da46de51c7c888a6ae2e4e`. The original file still matches that blob after testing. The user's later confirmation associates this reproduction with their MVR; the local MVR itself was not independently hashed.
 
 ## Profile interpretation
 
 The regular strobe function declares DMX 50–200 and physical frequency 1–20 Hz. Its ChannelSets start at 50, 51, 125, 126 and 200. None supplies physical endpoints. The function's inherited endpoints therefore apply separately to each set; singleton sets currently use PhysicalFrom. A label such as Medium or Fast does not replace physical metadata.
 
-[GDTF 1.2 Table 61](https://gdtf-share.com/help/developers/gdtf_1_2/file-format-definition/index.html) defines parent endpoint inheritance. These declarations should be distinguished from [Martin's Basic-mode DMX chart](https://www.martin.com/en-US/site_elements/mac-quantum-wash-user-guide), which describes 50–200 as slow-to-fast strobe and 211–255 as slow-to-fast random strobe. The apparent resets are therefore an authoring/interpretation mismatch with that intended progression, not evidence of a reversed clock. A singleton with inherited unequal endpoints cannot describe two distinct physical endpoint values at the same DMX input; explicit authored endpoints avoid that ambiguity.
+[GDTF 1.2 Table 61](https://gdtf-share.com/help/developers/gdtf_1_2/file-format-definition/index.html) defines parent endpoint inheritance. These declarations should be distinguished from [Martin's Basic-mode DMX chart](https://www.martin.com/en-US/site_elements/mac-quantum-wash-user-guide), which describes 50–200 as slow-to-fast strobe and 211–255 as slow-to-fast random strobe. The apparent resets are an interpretation mismatch with that intended progression, not evidence of a reversed clock. They do not establish that the source file is malformed or that a manufacturer intended these discontinuities. A singleton with inherited unequal endpoints cannot describe two distinct physical endpoint values at the same DMX input; explicit authored endpoints avoid that ambiguity.
 
 The production archive importer, selected-mode compiler, setup codec, native evaluator and cached trace produced:
 
@@ -29,6 +29,26 @@ The production archive importer, selected-mode compiler, setup codec, native eva
 | 255 | 255–255, Fast | 1 nominal Hz | Approximate Random |
 
 No Duration subphysical value is supplied, so this runtime uses its existing standard 25 ms duration. No ModeMaster or DMXProfile explains these regular-strobe resets. Random event timing remains a documented approximation.
+
+## Boundary and inherited-physical review
+
+The user subsequently asked whether one application chooses the upper boundary while the other chooses the lower boundary. The official [GDTF 1.2 Tables 60/61](https://gdtf-share.com/help/developers/gdtf_1_2/file-format-definition/index.html) make the integer boundaries clear: the strobe function ends at 200 because the next function starts at 201, and a set ends one integer before the next set starts. The set intervals are therefore 50–50, 51–124, 125–125, 126–199 and 200–200. These are inclusive integer intervals, with no epsilon, floating-point margin or overlapping ownership at 125 or 200. The source declares one byte, so fine-byte conversion is not involved.
+
+The physical evaluation needs to be distinguished from those interval boundaries. Peraviz computes `(raw - set_from) / (set_to - set_from)` for nonzero-width intervals and explicitly chooses zero for singleton intervals (`visual_runtime_shutter.cpp`, including trace reconstruction). Consequently each inherited singleton selects PhysicalFrom=1. Choosing one instead would select PhysicalTo=20 for **all three** labels; choosing the midpoint would give 10.5 for all three. None of these uniform singleton rules provides the desired Slow/Medium/Fast progression.
+
+| DMX | Current set-local evaluation | Upper endpoint for singletons only | Parent-function interpolation reference |
+| ---: | ---: | ---: | ---: |
+| 50, Slow | 1 Hz | 20 Hz | 1 Hz |
+| 125, Medium | 1 Hz | 20 Hz | 10.5 Hz |
+| 198, encoder | 19.739726 Hz | 19.739726 Hz | 19.746667 Hz |
+| 199 | 20 Hz | 20 Hz | 19.873333 Hz |
+| 200, Fast | 1 Hz | 20 Hz | 20 Hz |
+
+The parent reference is `1 + 19 * (raw - 50) / 150`, calculated from the untouched XML. It is a comparison model, not a measurement of grandMA3's internal frequencies. The console screenshots identify raw selections, not its physical mapping algorithm.
+
+There is important evidence against treating the current local restart as settled normative intent. The official [Builder ChannelSet help](https://gdtf-share.com/help/users/gdtf_builder/dmx/addchannelset/index.html) describes the default **Use Parent Physical** option, and says sets can represent minimum and maximum strobe speed. The official [libMVRgdtf implementation](https://github.com/mvrdevelopment/libMVRgdtf/blob/9f5a6420c72f24fdd249cfe8133f257026c5590b/src/GDTFManager.cpp#L6834) preserves this distinction: omitted physical attributes leave `fSetPhysical` false; `GetUsePhysicalFromParent()` reports its inverse; serialization omits those physical attributes when the flag is false. Its stored physical getters are not a renderer or interpolation oracle. In particular, the SDK cannot be cited as proof that label-only sets must restart the parent interval locally.
+
+Table 61 specifies the inherited endpoint defaults but does not explicitly prescribe a singleton tie-break for unequal endpoints, or provide a worked label-only interpolation example resolving the domain question. The earlier audit's statement that the discontinuity was "intentional" was too strong. Current tests characterize Peraviz's policy; passing them does not settle this interpretation. A parent-domain interpretation when both physical attributes are omitted explains the desired three speeds, but the consulted sources do not establish grandMA3's exact algorithm. No global endpoint swap, source rewrite, fixture-name exception or silent normative-conformance claim is justified by this evidence. Explicit physical overrides must remain meaningful, including deliberate descending or discontinuous intervals and independent one-sided defaults.
 
 ## Controlled FPS comparison
 
@@ -94,6 +114,6 @@ bash tests/check_runtime_architecture.sh
 git diff --check
 ```
 
-The optional external-archive reproduction used a temporary MVR wrapper and a standalone probe linked to the existing native test objects. It imported the untouched Quantum Wash file, serialized/deserialized the production setup, evaluated 23 DMX values and sampled 30-second holds at six cadences. The probe passed and confirmed the original Git blob hash. No production rendering policy was changed; the user's exact archive and actual frame-time sequence remain the final checks for their scene.
+The optional external-archive reproduction used a temporary MVR wrapper and a standalone probe linked to the existing native test objects. It imported the untouched Quantum Wash file, serialized/deserialized the production setup, evaluated 23 DMX values and sampled 30-second holds at six cadences. The probe passed and confirmed the original Git blob hash. No production rendering policy was changed; the user's actual frame-time sequence remains a final check for their scene; the follow-up source confirmation and raw selections are recorded above.
 
 Validation result: the focused shutter entry and the complete native visual-runtime CTest target passed after adding the preset-ingress regression (1/1 CTest target, 2.78 s). The external loopback UDP probe also passed all 14 single-packet changes. Architecture, file-size and whitespace checks passed; existing large-file advisories remain. No Godot script or production C++ implementation changed in this investigation.
