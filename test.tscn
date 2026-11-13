@@ -38,7 +38,7 @@ adjustment_contrast = 1.05
 adjustment_saturation = 1.05
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.12549, 0.12549, 0.12549, 1)
+albedo_color = Color(0.4, 0.4, 0.4, 1)
 metallic_specular = 0.0
 roughness = 1.0
 
@@ -63,8 +63,8 @@ light_color = Color(1, 0.98, 0.95, 1)
 light_energy = 0.7
 light_angular_distance = 0.0
 shadow_enabled = true
-shadow_bias = 0.015
-shadow_normal_bias = 0.7
+shadow_bias = 0.1
+shadow_normal_bias = 2.0
 directional_shadow_split_1 = 0.08
 directional_shadow_split_3 = 0.45
 directional_shadow_blend_splits = true

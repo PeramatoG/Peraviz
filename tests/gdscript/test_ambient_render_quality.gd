@@ -16,8 +16,8 @@ func run() -> void:
 	var light: DirectionalLight3D = app.get_node("DirectionalLight3D")
 	test.check(light.shadow_enabled and light.light_angular_distance == 0.0, "Directional shadows retained without PCSS")
 	test.check(light.directional_shadow_max_distance == 72.0 and light.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS, "Shadow range and cascades preserved")
-	test.check_close(light.shadow_bias, 0.015, 0.00001, "Bias preserved")
-	test.check_close(light.shadow_normal_bias, 0.7, 0.00001, "Normal bias preserved")
+	test.check_close(light.shadow_bias, 0.1, 0.00001, "Engine bias restored")
+	test.check_close(light.shadow_normal_bias, 2.0, 0.00001, "Engine normal bias restored")
 	test.check(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality") == 3, "Soft Medium")
 	test.check(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size") == 4096 and ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/16_bits"), "4096 16-bit shadow atlas")
 	var environment: Environment = app.world_environment.environment
@@ -32,7 +32,7 @@ func run() -> void:
 	test.check(ground.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Ground receives without casting shadows")
 	test.check((ground.mesh as PlaneMesh).size == Vector2(2000, 2000), "Empty ground is bounded")
 	var material := ground.material_override as StandardMaterial3D
-	test.check(material.albedo_color.is_equal_approx(Color("202020")), "Charcoal ground")
+	test.check(material.albedo_color.is_equal_approx(Color(0.4, 0.4, 0.4)), "Readable matte grey ground")
 	test.check(material.roughness == 1.0 and material.metallic_specular == 0.0 and material.metallic == 0.0, "Matte receiver")
 	test.check(material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL, "Opaque lit depth/normal receiver")
 	test.check(environment.background_mode == Environment.BG_SKY, "Original sky survives restoration with missing keys")

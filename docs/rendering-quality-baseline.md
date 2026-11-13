@@ -1,5 +1,10 @@
 # Ambient rendering baseline (Godot 4.7 Forward+)
 
+Current revision: the ground is matte grey `(0.4, 0.4, 0.4)`, with the original sky.
+Directional bias/normal bias now use Godot defaults **0.1 / 2.0** as an anti-acne
+candidate. Earlier sections below record previous iterations; they are not all
+current defaults. GPU validation of this candidate is still pending.
+
 ## Scope and evidence
 
 This is a conservative candidate for ambient rendering, independent of the optical
@@ -387,3 +392,63 @@ Sky correction validation: the focused Godot 4.7.1 ambient regression passed, in
 missing-key restoration, the obsolete false studio flag, Day/Night sky, and the retained
 dark matte receiver. Architecture, file-size and diff checks passed. Graphical shadow
 improvement remains unverified and was not established by these tests.
+
+## Grey ground and bias correction after Windows feedback
+
+The charcoal floor was too dark in daylight. Restore a readable grey albedo .4
+(original .45), keeping roughness 1, metallic/specular 0, opaque lighting, adaptive
+2000 m coverage and no shadow casting. Preserve the original sky. Floor size is not
+assumed to be a performance problem simply because its extent is large; it remains
+a minimal plane. Its finite edge can still appear at grazing viewing angles.
+
+[Godot 4.7 Light3D](https://docs.godotengine.org/en/4.7/classes/class_light3d.html)
+uses bias .1 and normal bias 2.0. The scene's custom .015/.7 values reduce separation
+between receiver and stored shadow depth, making acne a plausible cause of the fine
+surface pattern. Restore the engine values as a concrete candidate, without changing
+shadow resolution, filter, AA, range, cascades or geometry. This has no added atlas
+allocation or filter sample count, but may detach or thin shadows: inspect cylinder
+contacts before accepting. It is not a verified cure for silhouette aliasing.
+
+The [Godot forum example](https://forum.godotengine.org/t/why-are-my-shadows-dithered/142905)
+separates filtering grain from cascade resolution. Historical issue
+[12028](https://github.com/godotengine/godot/issues/12028) concerns 3.x SpotLights;
+it does not establish a 4.7 directional-light defect here. No workaround from that
+old issue is applied. In particular, camera far-plane reductions from orthographic
+examples are not blindly applied to this perspective editor camera.
+
+Scale review: `gdtf_scene_builder.cpp::convert_translation_m_to_mm` converts GDTF
+local translations to the importer's intermediate millimetres; native scene
+conversion exports Godot metres. Loader `IMPORTED_CONTENT_SCALE` remains 1.0.
+The existing imported-transform tests remain the guardrail. This source review
+finds no global double scaling; it cannot rule out a malformed individual mesh
+without the original show. No unit conversion, hierarchy or imported transform is
+changed. The repeating texture is still a hypothesis of acne, not proof of bad scale.
+
+The same synthetic scene now includes two 10 cm diameter horizontal CylinderMeshes
+above the flat box to reproduce the reported caster type. Compare `clean` (.1/2),
+`old_bias` (.015/.7), `bias_only` (.1/.7), `normal_only` (.015/2), then `no_shadows`:
+
+```powershell
+foreach ($Case in 'clean','old_bias','bias_only','normal_only','no_shadows') {
+  & $Godot --path . --rendering-method forward_plus --script tests/manual/ambient_render_audit.gd -- "--case=$Case" --view=close "--out=$Out\bias" --gpu-time
+}
+```
+
+Repeat on the actual flat imported panel using the same `--mvr`/`--target` for every
+case, then repeat with `--moving`. If the pattern persists with shadows disabled,
+bias is not sufficient: compare unshaded/matte/normals and coplanar-face diagnostics.
+If bias cleans the surface but the edge remains stepped, that is a separate
+resolution/filter comparison; larger atlases or TAA have not been enabled by default.
+
+Source cross-check: the [Godot 4.7 Forward+ scene shader](https://github.com/godotengine/godot/blob/4.7-stable/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl)
+applies directional depth bias and an angle-dependent projected normal offset before
+sampling the shadow map. This supports testing receiver self-shadow precision; it
+is not a claim that the screenshots prove acne. The native metre conversion is
+explicit in `coordinate_mapper.cpp::map_position_mm_to_m` (division by 1000, plus
+axis mapping). No project-scale workaround was applied.
+
+Grey/bias revision validation: all **52 GDScript regressions passed** with Godot
+4.7.1 via `run_gdscript_tests.py` (logs in `/workspace/work/grey-bias-suite`). The five
+close-view bias/no-shadow smoke cases completed headlessly and recorded the expected
+independent values. Runtime architecture, file-size and `git diff --check` passed
+(existing soft warnings remain). No GPU frame-time or visual improvement is claimed.

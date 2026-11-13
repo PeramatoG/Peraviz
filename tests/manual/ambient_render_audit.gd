@@ -2,7 +2,7 @@ extends SceneTree
 ## Opt-in, process-local comparisons; never save graphics or optical settings.
 ## Each B–J candidate changes exactly one factor from A. Clean is the new default.
 const CASES := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "clean", "msaa2", "ssao", "near", "depth32"]
-const FOLLOWUP_CASES := ["previous", "distance36", "distance48", "splits2", "splits_near", "filter_high", "filter_low", "filter_hard", "blur05", "blur025", "high_blur05", "atlas8192", "bias003", "normal_bias1", "no_shadows", "no_sun", "unshaded", "matte", "normals", "no_aa", "msaa4", "taa", "ground_hidden", "ground200", "ground1500", "ground_grey", "sky", "sky_deband", "viewport_deband", "no_post", "lod_original"]
+const FOLLOWUP_CASES := ["old_bias", "bias_only", "normal_only","previous", "distance36", "distance48", "splits2", "splits_near", "filter_high", "filter_low", "filter_hard", "blur05", "blur025", "high_blur05", "atlas8192", "bias003", "normal_bias1", "no_shadows", "no_sun", "unshaded", "matte", "normals", "no_aa", "msaa4", "taa", "ground_hidden", "ground200", "ground1500", "ground_grey", "sky", "sky_deband", "viewport_deband", "no_post", "lod_original"]
 var options := {}
 var atlas_size := 4096
 var depth_bits := 16
@@ -81,6 +81,18 @@ func run() -> void:
 		flat_box.size = Vector3(14, 0.1, 10)
 		flat.mesh = flat_box
 		app.add_child(flat)
+		for tube_index in range(2):
+			var tube := MeshInstance3D.new()
+			tube.name = "AuditCylinder" + str(tube_index)
+			var cylinder := CylinderMesh.new()
+			cylinder.top_radius = 0.05
+			cylinder.bottom_radius = 0.05
+			cylinder.height = 10.0
+			cylinder.radial_segments = 32
+			tube.mesh = cylinder
+			app.add_child(tube)
+			tube.position = Vector3(0, 2.0, tube_index * 3 - 1.5)
+			tube.rotation.z = PI / 2.0
 		# Repeatable thin edges, contacts and uniform surfaces without DMX input.
 		for i in range(12):
 			var mesh := MeshInstance3D.new()
@@ -142,7 +154,14 @@ func run() -> void:
 func apply_case(candidate: String, light: DirectionalLight3D, environment: Environment, ground: MeshInstance3D, camera: Camera3D) -> void:
 	if candidate in FOLLOWUP_CASES:
 		match candidate:
+			"old_bias":
+				light.shadow_bias = 0.015
+				light.shadow_normal_bias = 0.7
+			"bias_only": light.shadow_normal_bias = 0.7
+			"normal_only": light.shadow_bias = 0.015
 			"previous":
+				light.shadow_bias = 0.015
+				light.shadow_normal_bias = 0.7
 				(ground.mesh as PlaneMesh).size = Vector2(200, 200)
 				ground.material_override = grey_material()
 				environment.background_mode = Environment.BG_SKY
@@ -205,6 +224,8 @@ func apply_case(candidate: String, light: DirectionalLight3D, environment: Envir
 	root.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	root.msaa_3d = Viewport.MSAA_DISABLED
 	root.use_taa = false
+	light.shadow_bias = 0.015
+	light.shadow_normal_bias = 0.7
 	light.light_angular_distance = 0.35
 	environment.ssao_enabled = true
 	environment.ssao_radius = 1.0
