@@ -1,6 +1,6 @@
 extends RefCounted
 ## Setup-only fallback ground coverage. Never mutate imported nodes or resources.
-const EMPTY_SIZE := Vector2(200.0, 200.0)
+const EMPTY_SIZE := Vector2(2000.0, 2000.0)
 const MARGIN_M := 20.0
 const FLOOR_CLEARANCE_M := 0.05
 

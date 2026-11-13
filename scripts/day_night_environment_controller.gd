@@ -40,6 +40,8 @@ const CYCLE_KEYFRAMES := [
 		if use_continuous_cycle:
 			_apply_environment_state()
 
+@export var use_sky_background: bool = false
+
 @export var auto_advance: bool = false
 @export_range(0.0, 1.0, 0.0001) var cycle_speed: float = 0.02
 
@@ -135,7 +137,6 @@ func _apply_environment_state() -> void:
 
 func _apply_disabled_fallback() -> void:
 	_runtime_environment.background_mode = Environment.BG_COLOR
-	_runtime_environment.background_color = Color(0.1294, 0.1373, 0.1569, 1.0)
 	_runtime_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_runtime_environment.ambient_light_color = Color(1.0, 1.0, 1.0, 1.0)
 	_runtime_environment.ambient_light_energy = ambient_energy_day
@@ -252,7 +253,7 @@ func _lerp_states(start: Dictionary, target: Dictionary, t: float) -> Dictionary
 
 
 func _apply_environment_dict(state: Dictionary) -> void:
-	_runtime_environment.background_mode = Environment.BG_SKY
+	_runtime_environment.background_mode = Environment.BG_SKY if use_sky_background else Environment.BG_COLOR
 	_runtime_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_runtime_environment.ambient_light_color = Color(1.0, 1.0, 1.0, 1.0)
 	_runtime_environment.ambient_light_energy = max(float(state["ambient_energy"]), 0.0)

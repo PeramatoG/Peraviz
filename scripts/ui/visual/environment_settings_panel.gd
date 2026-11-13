@@ -7,6 +7,7 @@ signal setting_changed(key: String, value: Variant)
 
 const BASIC_KEYS := {
 	"environment_enabled": true,
+	"environment_use_sky_background": true,
 	"environment_current_preset": true,
 	"environment_time_of_day": true,
 	"environment_auto_advance": true,
@@ -26,6 +27,7 @@ func _ready() -> void:
 func _build_ui() -> void:
 	add_theme_constant_override("separation", 10)
 	_add_toggle_row("Enable environment controller", "environment_enabled")
+	_add_toggle_row("Show day/night sky background", "environment_use_sky_background")
 	_add_toggle_row("Use continuous cycle", "environment_use_continuous_cycle")
 	_add_option_row("Environment preset", "environment_current_preset", ["Dawn", "Day", "Dusk", "Night", "BlackoutNight"])
 	_add_slider_row("Time of day", "environment_time_of_day", 0.0, 1.0, 0.001)

@@ -39,17 +39,16 @@ from a headless dummy renderer is not a GPU performance comparison.
 | SSAO | enabled, radius 1.0, intensity 0.5 | disabled; retained radius/intensity | Startup High preset overrides scene |
 | SSAO quality | Medium (2), half-size | Same (inactive) | Godot defaults |
 | SSIL / SSR | disabled / disabled | Same | Godot defaults |
-| Ground dimensions | 20000 × 20000 m | 200 × 200 m empty; adaptive on import | Scene + setup-only ground helper |
+| Ground dimensions | 20000 × 20000 m | 2000 × 2000 m empty; adaptive on import | Scene + setup-only ground helper |
 | Ground casting / receiving | on / on | off / on | MeshInstance3D; ordinary opaque material still receives |
-| Ground material | grey 0.45, specular 0.45, roughness 0.78 | Same | StandardMaterial3D scene resource |
+| Ground material | grey 0.45, specular 0.45, roughness 0.78 | #202020, specular 0, metallic 0, roughness 1 | StandardMaterial3D scene resource |
 | Camera near / far | 0.05 / 4000 m | Same | Godot defaults; camera script never changes clipping |
 | Positional shadow atlas | **4096** | Same | Godot default, see malformed settings below |
 
 `project.godot` originally placed `rendering/lights_and_shadows/...` and
 `rendering/environment/volumetric_fog/...` inside `[rendering]`. These become
 `rendering/rendering/...`, unrecognized custom settings. In particular the apparent
-1024 positional atlas request was ineffective. These pre-existing positional/fog
-entries are left untouched to avoid an unrelated fixture-rendering change. New
+1024 positional atlas request was ineffective. These ineffective entries have now been removed; no replacement override was added, preserving the effective positional/fog engine defaults. New
 ambient settings use the correct section-relative keys. The effective positional
 atlas remains 4096, not 1024.
 
@@ -65,7 +64,7 @@ settings without applying arbitrary keys to the Viewport or Environment. MVR
 loading does not reapply AA or directional quality settings.
 
 Ground fitting runs only when loaded world bounds are rebuilt or retired. It uses
-the existing transformed imported mesh AABBs, with a minimum 200 m size and 20 m
+the existing transformed imported mesh AABBs, with a minimum 2000 m size and 20 m
 margin on each horizontal side, without a maximum size cap. Its center follows the
 world bounds, including off-origin scenes. Imported transforms and
 `IMPORTED_CONTENT_SCALE` remain untouched. The plane resource is local to each scene
@@ -153,9 +152,7 @@ mutation is required between diagnostic cases.
 JSON records actual engine/renderer, viewport/window size, AA/scale, light values,
 AO, ground, clipping, camera, average frame time, standard deviation, reciprocal FPS
 and object/primitive/draw-call counters. Global filter/depth values have no getter
-and are reported from the explicit applied case. GPU frame time is marked
-unavailable: collect it with Godot's GPU profiler on target hardware, with the same
-profiling overhead for all cases. Headless reports are marked and must not be used
+and are reported from the explicit applied case. GPU timing can now be requested with `--gpu-time` using the engine Viewport timing API. Unsupported/headless samples produce null; compare identical profiling overhead. Headless reports are marked and must not be used
 as visual/performance evidence. Run several trials on a quiet machine; evaluate
 image quality and frame-time variability as well as mean FPS.
 
@@ -215,3 +212,165 @@ cloud tool directories. CMake/CTest came from `/workspace/.peraviz-tools/python/
 No native optical/protocol source files were modified. Automated successes establish
 behavioral contracts and diagnostic reproducibility; they do not establish the
 visual acceptance criteria or a measured GPU advantage.
+
+## Follow-up: flat surfaces, shadow edges and theatre ground
+
+### Findings and limits
+
+The supplied Windows images show a finite bright ground rectangle against black,
+large shadow-edge steps, and a fine diagonal pattern across the light region as
+well as shadow edges. These are observations, not a verified single cause. No MVR
+corresponding to those images is available here. No coplanar face pair, invalid
+normal or erroneous transform in that show has been identified. No imported object
+has been shifted, deduplicated or hidden in production. The newly attempted graphical
+launch again failed with X11/Wayland errors; the host exposes no GPU device.
+
+Confirmed code-level issues were the 200 m finite floor with a relatively reflective
+material, and the controller always selecting sky mode so the existing background
+color control did not determine the enabled environment background. Both are fixed.
+
+[Godot 4.7 lighting documentation](https://docs.godotengine.org/en/4.7/tutorials/3d/lights_and_shadows.html)
+explains that PSSM divides atlas coverage among camera-depth regions. Shorter shadow
+ranges improve texel density but remove distant coverage. Increasing blur exposes
+filter grain; High/Ultra filtering also increases the sampling radius. Low bias
+can cause acne, while excessive bias detaches shadows; normal bias can thin them.
+32-bit depth and larger atlases cost resources and need scene-specific evidence.
+These mechanisms explain plausible causes, not a diagnosis of the supplied show.
+The [referenced forum discussion](https://forum.godotengine.org/t/why-are-my-shadows-dithered/142905)
+describes a related filtering problem, not proof that Peraviz has the same cause.
+The linked Store demo was inaccessible through the research tool; the official
+documentation links the [source demo](https://github.com/godotengine/godot-demo-projects/tree/master/3d/lights_and_shadows).
+
+The fine pattern could be acne, overlapping geometry, shading/normal artifacts,
+specular aliasing, LOD or post-processing. SMAA is not a cure for shadow-map texel
+resolution or coplanar geometry. The current bias is below the engine default;
+that warrants an isolated comparison, not a blind global reset. Until GPU comparisons
+resolve these causes, directional defaults remain **72 m, four splits .08/.20/.45,
+blend on, bias .015, normal bias .7, blur 1, Soft Medium, 4096/16-bit, angular distance
+0**. AA remains **SMAA only**, scale 1; TAA/MSAA/SSAO/SSIL/SSR/debanding remain off.
+No speculative 8192, temporal AA, shortened shadow range or softened default was
+promoted. Shadow/noise correction is still awaiting target-machine evidence.
+
+### Ground and background corrections
+
+The fallback receiver is now #202020, roughness 1, metallic/specular 0, opaque and
+per-pixel lit. Minimum coverage is 2000 × 2000 m, still using imported world bounds
+plus margins with no upper cap, following off-origin bounds only at setup and
+retirement. Its height/clearance and no-casting policy are unchanged. The two-triangle
+plane adds no geometry complexity; more visible receiver pixels and its extended
+coverage may affect fragment cost. No GPU cost is measured here.
+
+There is no alpha, distance dithering, noise, texture, camera-following movement or
+fullscreen concealment. Production shading normals are preserved. Custom Footprints
+(`scripts/shaders/custom_footprint.gdshader`) reconstruct depth and sample normals;
+the additive projector does not multiply its output by ground albedo. Thus the
+receiver remains suitable structurally, and a dark albedo does not mathematically
+attenuate that additive projection. Native lighting still depends on receiver
+albedo. Low-intensity Custom and Native output must be judged separately on hardware;
+no optical gain has been raised to compensate.
+
+The default uses BG_COLOR with dark neutral `(0.02, .02, .02)` and the existing
+Background color control. A single checkbox in Environment, **Show day/night sky
+background**, restores procedural sky. The saved key is
+`environment_use_sky_background`; missing keys use the studio default, explicit
+true/false and background color round-trip through PVZ. Presets/time continue to
+change the same light direction, color, energy and ambient state in either background
+mode. Disabling the controller no longer discards the chosen background color.
+The floor/background are not guaranteed to match numerically under every light or
+exposure. A finite border can still be seen at extreme shallow angles or beyond
+normal navigation. No claim of a seamless infinite horizon is made.
+
+### Extended controlled matrix
+
+Use the same `tests/manual/ambient_render_audit.gd`; there is no second harness.
+Legacy A–J keep their original reference meaning. The following cases instead vary
+one factor from current `clean`, unless explicitly described as combined:
+
+| Cases | Change |
+| --- | --- |
+| previous | Prior cleanup: 200 m, grey floor, sky (combined reference) |
+| distance36 / distance48 | 36 / 48 m versus clean 72 m |
+| splits2 | Two PSSM splits, other values unchanged |
+| splits_near | Four splits .05/.15/.40, versus .08/.20/.45 |
+| filter_high / filter_low / filter_hard | High / Low / Hard, versus Medium |
+| blur05 / blur025 | Blur .5 / .25, versus 1 |
+| high_blur05 | High + blur .5 (explicit combined candidate) |
+| atlas8192 / depth32 | 8192/16-bit or 4096/32-bit, versus 4096/16-bit |
+| bias003 / normal_bias1 | Bias .03 or normal bias 1, one at a time |
+| no_shadows / no_sun | Disable directional shadows / sun; ambient retained |
+| no_aa / msaa4 / taa | None / MSAA4 / TAA; never stacked with SMAA |
+| unshaded / matte / normals | Per-instance diagnostic override, shared assets untouched |
+| ground_hidden / ground200 / ground1500 / ground_grey | Hide ground / size 200 / size 1500 / old material |
+| sky / sky_deband / viewport_deband | Sky without/with sky debanding; viewport debanding alone |
+| no_post / lod_original | Disable adjustment+glow (combined); restore exact original casing geometry |
+
+`--view=overview|close|flat|distant` chooses deterministic framing. `--target=Proxies/...`
+centers the chosen MeshInstance3D for all cases, important for a real show's flat
+wall or distant truss. Without a target the scene bounds center is used. A synthetic
+untextured `AuditFlatBox` is included alongside thin box casters when no MVR is given.
+`--moving` follows the same per-frame orbit/zoom sequence; use video for temporal
+flicker/ghosting. Filenames now include the view to avoid overwriting different views.
+
+PowerShell example (Godot executable as in the earlier instructions):
+
+```powershell
+$Out = Join-Path $PWD 'ambient-followup'
+$Cases = 'clean','previous','distance36','distance48','splits2','splits_near','filter_high','filter_low','filter_hard','blur05','blur025','high_blur05','atlas8192','bias003','normal_bias1','depth32','no_shadows','no_sun','unshaded','matte','normals','no_aa','msaa4','taa','ground_hidden','ground200','ground1500','ground_grey','sky','sky_deband','viewport_deband','no_post','lod_original'
+foreach ($View in 'overview','close','flat','distant') {
+  foreach ($Case in $Cases) {
+    & $Godot --path . --rendering-method forward_plus --audio-driver Dummy --script tests/manual/ambient_render_audit.gd -- "--case=$Case" "--view=$View" "--out=$Out\synthetic" --gpu-time
+    if ($LASTEXITCODE -ne 0) { throw "Audit failed: $Case / $View" }
+  }
+}
+# Repeat with the SAME real MVR and target path on EVERY call:
+$Mvr = 'C:\Shows\representative.mvr'
+$Target = 'Proxies/path/to/flat/MeshInstance3D'
+& $Godot --path . --rendering-method forward_plus --script tests/manual/ambient_render_audit.gd -- --case=no_shadows --view=flat "--mvr=$Mvr" "--target=$Target" "--out=$Out\show" --gpu-time
+# Repeat the matrix with --moving, including clean and TAA, and record video.
+```
+
+Keep `--gpu-time` consistent across trials. JSON contains actual frame-time mean,
+standard deviation, reciprocal FPS, counters and GPU mean/sample count from the
+Viewport timing API. A null GPU value means unsupported/not requested; never treat
+zero or headless results as GPU measurements. Default warmup/sample counts remain
+120/300. `--warmup=2 --frames=10` is only a fast structural smoke, not a benchmark.
+
+Isolation sequence on the *same target*:
+
+1. Compare clean, no_shadows and no_sun at flat and close views. If the pattern
+   disappears only with shadows off, prioritize shadow acne/filtering, not materials.
+2. Compare matte, unshaded and normals; then no_aa and no_post. A persistent pattern
+   in unshaded geometry is a reason to investigate depth/overlap rather than lighting.
+3. Compare the synthetic box against imported surfaces, ground_hidden, lod_original
+   and near (0.1 m). Check whether artifacts track mesh edges, camera distance or sun.
+4. JSON inventory records up to 256 imported meshes with paths, parent ownership,
+   resources, transforms, determinant, bounds and missing-normal surface counts.
+   Identical AABBs are candidates only: intersecting bounds do not prove coplanar
+   faces. Inspect the actual vertex/index faces and ownership in Godot before any fix.
+   `--hide-node=Proxies/exact/path` can explicitly hide one suspected object for this
+   diagnostic process; it never changes production or shared resources.
+5. With `--target`, use `--no-target-cast` to remove only that object's casting while
+   retaining receiving, testing self-shadow involvement. Compare world origin against
+   `--world-offset=100000` in a separate output directory. This shifts only the
+   diagnostic root (camera/scene together), leaving imported local transforms intact;
+   it is never an import correction or a production coordinate remap.
+6. Then compare shadow distance, splits, filter/blur, bias, depth and AA independently.
+   Reject detached/thinned contacts and missing distant shadows even if grain improves.
+
+No supplied real-show mesh is diagnosed as defective. Housing, selection, LOD,
+Pan/Tilt, prisms, both projection backends, haze and live DMX still need graphical
+acceptance after selecting a shadow candidate. This follow-up deliberately does not
+present a headless pass as a solved shadow/noise problem.
+
+### Follow-up execution results
+
+- Godot 4.7.1: `python3 .github/scripts/run_gdscript_tests.py --godot /workspace/.peraviz-tools/godot/Godot_v4.7.1-stable_linux.x86_64 --project /workspace/Peraviz --output /workspace/work/correction-suite --timeout 60`: **52/52 passed**. Includes the updated matte/opaque ground, 2000 m coverage, sky/studio restoration and explicit background color regressions, plus existing footprint, LOD, native projector, haze and Pan/Tilt contracts.
+- `ctest --test-dir native/build --output-on-failure --timeout 120`: **15/15 passed**; no native code changes.
+- The 31 follow-up cases plus clean/depth32/A ran headlessly with `--warmup=2 --frames=10`: **34 passed**. Generated small MVR imports passed close/flat/distant moving views. An additional targeted imported-mesh smoke exercised `--no-target-cast`, `--hide-node` and `--world-offset=100000`. These are state/control checks, not visual or performance comparisons.
+- `bash tests/check_no_large_files.sh`, `bash tests/check_runtime_architecture.sh`, `git diff --check`: passed (existing soft-limit file-size warnings remain).
+- Graphical command attempted: `Godot_v4.7.1-stable_linux.x86_64 --path . --quit-after 2` with writable XDG directories. Failed to initialize X11/Wayland. No GPU timing, new screenshots or image-quality claims are available from this environment.
+
+The larger plane has a 1000 m half-extent versus a 500 m navigation radius, not
+infinite coverage. An 8192 atlas would use four times the depth texels; 32-bit depth
+doubles raw depth storage compared with 16-bit at the same size. These are resource
+ratios, not measured frame-time changes. Both remain diagnostic-only.

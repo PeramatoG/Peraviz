@@ -19,8 +19,8 @@ sun_curve = 0.015
 sky_material = SubResource("ProceduralSkyMaterial_ppyta")
 
 [sub_resource type="Environment" id="Environment_viewer"]
-background_mode = 2
-background_color = Color(0.129412, 0.137255, 0.156863, 1)
+background_mode = 1
+background_color = Color(0.02, 0.02, 0.02, 1)
 sky = SubResource("Sky_ykrsh")
 ambient_light_source = 2
 ambient_light_color = Color(1, 1, 1, 1)
@@ -38,13 +38,13 @@ adjustment_contrast = 1.05
 adjustment_saturation = 1.05
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.45, 0.45, 0.45, 1)
-metallic_specular = 0.45
-roughness = 0.78
+albedo_color = Color(0.12549, 0.12549, 0.12549, 1)
+metallic_specular = 0.0
+roughness = 1.0
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
 resource_local_to_scene = true
-size = Vector2(200, 200)
+size = Vector2(2000, 2000)
 
 [node name="Viewer" type="Node3D" unique_id=701090577]
 script = ExtResource("1_script")
