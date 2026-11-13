@@ -41,9 +41,14 @@ Semantics follow [GDTF 1.2 Tables 60–62](https://gdtf-share.com/help/developer
 and [Annexes B/F](https://gdtf-share.com/help/developers/gdtf_1_2/annex/index.html).
 ChannelFunction PhysicalFrom/PhysicalTo default independently to 0/1. ChannelSet
 DMXFrom defaults to 0/1; its end is the next set minus one or the parent boundary.
-Set physical endpoints inherit the parent's values unless explicitly overridden.
-Ranges are intersected with their parent, inclusive, and interpolated locally in
-ordered 8/16/24/32-bit source resolution; descending ranges remain descending.
+Label-only sets with both physical attributes omitted retain the parent function's
+curve, projected onto the set's effective inclusive endpoints at setup compilation.
+Sets with either physical endpoint supplied use a local interval, independently
+inheriting the missing opposite parent endpoint. Explicit singletons use PhysicalFrom.
+This documented Use Parent Physical compatibility policy resolves the domain ambiguity
+without inferring behavior from names; see [the investigation](strobe-fps-investigation.md).
+Ranges are intersected with their parent in ordered 8/16/24/32-bit resolution;
+descending ranges remain descending.
 Malformed/nonfinite supplied values and duplicate sets are diagnosed, not defaulted.
 Nonstandard DMXTo is diagnosed and ignored for shutters. Function ends follow the
 next declared XML function start minus one; a reset/equal start ends the previous

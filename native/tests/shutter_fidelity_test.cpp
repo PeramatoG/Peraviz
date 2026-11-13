@@ -134,9 +134,9 @@ static bool test_shutter_preset_ingress(const CompiledRuntimeScene &scene,bool c
         return parser.parse(packet.data(),packet.size(),view) && tracker.accept(view.universe_id,view.sequence,{0x7f000001,6454}).accepted &&
             mailbox.publish(view.universe_id,view.data,view.length,view.sequence,sequence);
     };
-    const auto frequency=[&](int raw) { return continuous?1+19.0*(raw-50)/150:raw==199?20.0:1.0; };
+    const auto frequency=[&](int raw) { return continuous?1+19.0*(raw-50)/150:(raw==50 || raw==200)?1.0:1+19.0*(raw-51)/148; };
     double previous=-1;
-    for (int raw:{50,200,199,50,199,200}) {
+    for (int raw:{50,125,200,198,199,50,200,199,200}) {
         if (!verify(queue(raw) && coordinator.pump(core,mailbox).states_submitted==1,"A single preset packet reaches the native evaluator regardless of jump magnitude")) return false;
         const auto frame=core.consume_latest_visual_frame();
         bool published=false,selected=false;
@@ -155,7 +155,38 @@ static bool test_shutter_preset_ingress(const CompiledRuntimeScene &scene,bool c
         latest=trace.raw==199 && near(trace.parameters.frequency,frequency(199));
     return verify(latest && mailbox.stats().coalesced_states==2,"Coalescing retains the last preset endpoint and does not require an unrelated packet");
 }
-// Separates real source-frequency changes from presentation aliasing using the existing parser, codec and playback.
+// Preserves parent-domain mapping across label boundaries, clipping, source resolutions and setup serialization.
+static bool test_shutter_parent_physical() {
+    Probe probe;
+    for (int bytes=1;bytes<=4;++bytes) {
+        const uint32_t maximum=bytes==4?UINT32_MAX:uint32_t((uint64_t(1)<<(bytes*8))-1);
+        const uint32_t first=maximum/4,last=maximum/2,middle=first+(last-first)/2;
+        const auto value=[&](uint32_t raw) { return std::to_string(raw)+"/"+std::to_string(bytes); };
+        const std::string begin="<ChannelFunction Name=\"Open\" Attribute=\"Shutter1\"/><ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\""+value(first)+"\" PhysicalFrom=\"20\" PhysicalTo=\"2\">";
+        const std::string end="</ChannelFunction><ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\""+value(last+1)+"\"/>";
+        // Omitted set DMXFrom clips to the parent start; unnamed prefixes obey the same mapping.
+        for (bool prefix:{false,true}) {
+            probe.compile(begin+(prefix?"":"<ChannelSet/>")+std::string("<ChannelSet DMXFrom=\"")+value(middle)+"\"/><ChannelSet Name=\"Endpoint\" DMXFrom=\""+value(last)+"\"/>"+end,bytes);
+            const auto packed=encode_compiled_runtime_scene(probe.scene);
+            const auto decoded=decode_compiled_runtime_scene(packed.integers,packed.floats);
+            if (!verify(decoded.valid,"Projected inherited mappings survive the existing setup codec")) return false;
+            probe.core.install_compiled_scene(decoded.scene);
+            for (uint32_t raw:{first,middle-1,middle,middle+1,last-1,last}) {
+                const double expected=20-18.0*double(raw-first)/double(last-first);
+                if (!verify(near(probe.raw(raw).frequency,expected),"Label sets retain descending parent mapping at 8/16/24/32-bit boundaries")) return false;
+            }
+        }
+    }
+    // One-sided explicit overrides keep the previous independent parent-endpoint defaults and local domain.
+    for (bool override_from:{false,true}) {
+        probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"2\" PhysicalTo=\"10\"><ChannelSet/><ChannelSet DMXFrom=\"100/1\" "+
+            std::string(override_from?"PhysicalFrom=\"7\"":"PhysicalTo=\"6\"")+"/><ChannelSet DMXFrom=\"200/1\"/></ChannelFunction>");
+        if (!verify(near(probe.raw(100).frequency,override_from?7:2) && near(probe.raw(199).frequency,override_from?10:6) &&
+                near(probe.raw(200).frequency,2+8.0*200/255),"Explicit one-sided intervals remain local while adjacent inherited sets use their parent")) return false;
+    }
+    return true;
+}
+// Separates physical mapping corrections from presentation aliasing using the existing parser and playback.
 static bool test_shutter_cadence_and_label_sets() {
     Probe probe;
     probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"20\" PhysicalTo=\"20\"/>");
@@ -179,7 +210,11 @@ static bool test_shutter_cadence_and_label_sets() {
     const std::string start="<ChannelFunction Name=\"Open\" Attribute=\"Shutter1\"/><ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\"50/1\" PhysicalFrom=\"1\" PhysicalTo=\"20\">";
     const std::string end="</ChannelFunction><ChannelFunction Name=\"Open after strobe\" Attribute=\"Shutter1\" DMXFrom=\"201/1\"/>";
     probe.compile(start+"<ChannelSet Name=\"Slow\" DMXFrom=\"50/1\"/><ChannelSet DMXFrom=\"51/1\"/><ChannelSet Name=\"Medium\" DMXFrom=\"125/1\"/><ChannelSet DMXFrom=\"126/1\"/><ChannelSet Name=\"Fast\" DMXFrom=\"200/1\"/>"+end);
-    if (!verify(near(probe.raw(124).frequency,20) && near(probe.raw(125).frequency,1) && near(probe.raw(199).frequency,20) && near(probe.raw(200).frequency,1),"Named singleton sets with inherited endpoints create a semantic 20-to-1 Hz reset independent of FPS")) return false;
+    for (int raw:{50,51,124,125,126,198,199,200})
+        if (!verify(near(probe.raw(raw).frequency,1+19.0*(raw-50)/150),"Label-only sets retain the parent progression through Slow, Medium, Fast and adjacent encoder values")) return false;
+    if (!test_shutter_preset_ingress(probe.scene,true)) return false;
+    // Explicit set-local discontinuities remain authored behavior, including equal-output preset endpoints.
+    probe.compile(start+"<ChannelSet DMXFrom=\"50/1\" PhysicalFrom=\"1\" PhysicalTo=\"1\"/><ChannelSet DMXFrom=\"51/1\" PhysicalFrom=\"1\" PhysicalTo=\"20\"/><ChannelSet DMXFrom=\"200/1\" PhysicalFrom=\"1\" PhysicalTo=\"1\"/>"+end);
     if (!test_shutter_preset_ingress(probe.scene,false)) return false;
     const std::array<int,5> starts{{50,51,125,126,200}};
     std::string explicit_sets;
@@ -189,13 +224,13 @@ static bool test_shutter_cadence_and_label_sets() {
     }
     probe.compile(start+explicit_sets+end);
     if (!test_shutter_preset_ingress(probe.scene,true)) return false;
-    for (int value:{50,51,124,125,126,199,200})
+    for (int value:{50,51,124,125,126,198,199,200})
         if (!verify(near(probe.raw(value).frequency,1+19.0*(value-50)/150),"Explicit physical set endpoints can author a continuous linear rate without a fixture-name exception")) return false;
     return true;
 }
 // Verifies standards defaults, supplied values, inclusive boundaries and ordered resolution through actual GDTF ZIP parsing.
 bool test_shutter_fidelity() {
-    if (!test_dynamic_shutter_parameters() || !test_shutter_cadence_and_label_sets()) return false;
+    if (!test_dynamic_shutter_parameters() || !test_shutter_parent_physical() || !test_shutter_cadence_and_label_sets()) return false;
     Probe probe;
     probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\"/>");
     if (!verify(probe.raw(255).wave==ShutterWave::Strobe && near(probe.raw(255).frequency,1),"Omitted physical fields use valid 0/1 defaults")) return false;
@@ -265,7 +300,7 @@ bool test_shutter_fidelity() {
         if (!verify(raw==19?p.wave==ShutterWave::Open:raw==40?p.wave==ShutterWave::Closed:p.wave==ShutterWave::Strobe && near(p.frequency,raw==20?2:10),"Function start-1/start/end/end+1 select exact waveform and Hz")) return false;
     }
     probe.compile(open+"<ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\"20/1\" PhysicalFrom=\"8\" PhysicalTo=\"4\"><ChannelSet/><ChannelSet DMXFrom=\"30/1\" PhysicalFrom=\"12\" PhysicalTo=\"12\"/><ChannelSet DMXFrom=\"39/1\" PhysicalFrom=\"7\" PhysicalTo=\"7\"/></ChannelFunction>"+closed);
-    for (const auto &[raw,hz]:std::array<std::pair<uint32_t,double>,6>{{{20,8},{29,4},{30,12},{38,12},{39,7},{40,0}}}) {
+    for (const auto &[raw,hz]:std::array<std::pair<uint32_t,double>,6>{{{20,8},{29,8-4.0*9/19},{30,12},{38,12},{39,7},{40,0}}}) {
         const auto p=probe.raw(raw);
         if (!verify(raw==40?p.wave==ShutterWave::Closed:near(p.frequency,hz),"Default set start, inherited descending endpoints, fixed values and inclusive narrow boundaries")) return false;
     }
@@ -359,10 +394,10 @@ bool test_shutter_fidelity() {
         const double expected=wave==ShutterWave::Pulse?0.5:wave==ShutterWave::PulseOpen?0.25:0.75;
         if (!verify(near(shutter_envelope(p,cycle/p.frequency),expected),"Annex F end offsets and low/high duty cycles preserve triangle/ramp samples")) return false;
     }
-    // Characterizes the existing inherited-set contract without correcting fixture data or semantic interpretation here.
+    // Label-only sets preserve the same parent mapping up to and including the final singleton.
     probe.compile("<ChannelFunction Name=\"Public rate\" Attribute=\"Shutter1Strobe\" DMXFrom=\"20/1\" PhysicalFrom=\"3\" PhysicalTo=\"11\"><ChannelSet Name=\"Lower label\" DMXFrom=\"20/1\"/><ChannelSet Name=\"Middle label\" DMXFrom=\"65/1\"/><ChannelSet Name=\"Upper label\" DMXFrom=\"110/1\"/></ChannelFunction><ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\"111/1\"/>");
-    if (!verify(near(probe.raw(109).frequency,11) && near(probe.raw(110).frequency,3),
-            "A label-only single-value set exposes the existing inherited endpoint discontinuity without changing Hz semantics")) return false;
+    if (!verify(near(probe.raw(109).frequency,3+8.0*89/90) && near(probe.raw(110).frequency,11),
+            "A final label-only single-value set retains the parent endpoint without a frequency reset")) return false;
     ShutterParameters short_flash; short_flash.wave=ShutterWave::Strobe; short_flash.frequency=10; short_flash.duration=0.001;
     const auto samples=shutter_sampling(short_flash);
     if (!verify(samples[1].events==20 && samples[1].visible_events<20 && near(samples[1].event_window_seconds,0.02),"Exact 1 ms flashes can alias at 30 FPS without any wrong DMX/Hz mapping")) return false;

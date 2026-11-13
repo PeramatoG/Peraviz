@@ -96,6 +96,11 @@ measured baseline/candidate fan-out, exact consumer/submission counters and
 regression/Windows validation contracts. Temporal CPU profiling follows the
 existing opt-in performance trace flag.
 
+At setup compilation, shutter ChannelSets without physical overrides project the
+parent function's mapping onto their inclusive DMX bounds. Explicit physical intervals
+remain local. Existing bindings and setup serialization carry the resulting endpoints;
+no extra live mapping state or evaluator is introduced.
+
 The existing native source/activation graph evaluates shutter parameters only when
 relevant DMX bytes change. Shutter authorities can bind explicitly routed mode, frequency
 and duration dependencies across held universes through the same compiled input graph;

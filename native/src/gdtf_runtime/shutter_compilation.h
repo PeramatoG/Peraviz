@@ -50,9 +50,11 @@ inline bool shutter_function_range(tinyxml2::XMLElement *fn,const std::vector<ti
     // DMXTo is not a GDTF ChannelFunction attribute and cannot change a normative boundary.
     return true;
 }
-// Retains ordered sets intersected with their parent. Missing DMXFrom means 0/1, not parent start.
+// Clips ordered sets to their parent and projects its mapping for sets without physical overrides.
 inline std::vector<ParsedWheelChannelSet> parse_shutter_sets(tinyxml2::XMLElement *fn,size_t bytes,uint32_t from,uint32_t to,double physical_from,double physical_to,bool &valid) {
-    std::vector<ParsedWheelChannelSet> declared,sets;
+    struct Declaration { ParsedWheelChannelSet set; bool use_parent_physical; };
+    std::vector<Declaration> declared;
+    std::vector<ParsedWheelChannelSet> sets;
     for (auto *node : dmx::collect_direct_children_by_name(fn,"channelset")) {
         const char *raw=node->Attribute("DMXFrom"); uint32_t value=0;
         if (!raw) raw=node->Attribute("dmxfrom");
@@ -61,24 +63,33 @@ inline std::vector<ParsedWheelChannelSet> parse_shutter_sets(tinyxml2::XMLElemen
         set.name=node->Attribute("Name")?node->Attribute("Name"):"";
         set.physical_from=shutter_physical(node,"PhysicalFrom",physical_from,valid);
         set.physical_to=shutter_physical(node,"PhysicalTo",physical_to,valid);
-        declared.push_back(set);
+        const bool use_parent=!node->Attribute("PhysicalFrom") && !node->Attribute("physicalfrom") &&
+            !node->Attribute("PhysicalTo") && !node->Attribute("physicalto");
+        declared.push_back({set,use_parent});
     }
-    std::stable_sort(declared.begin(),declared.end(),[](const auto &a,const auto &b){return a.declared_dmx_from<b.declared_dmx_from;});
+    const auto parent_physical=[&](uint32_t raw) {
+        return physical_from+(physical_to-physical_from)*(to>from?double(raw-from)/double(to-from):0);
+    };
+    std::stable_sort(declared.begin(),declared.end(),[](const auto &a,const auto &b){return a.set.declared_dmx_from<b.set.declared_dmx_from;});
     for (size_t i=0;i<declared.size();++i) {
-        auto set=declared[i];
+        auto set=declared[i].set;
         if (i+1<declared.size()) {
-            if (set.declared_dmx_from==declared[i+1].declared_dmx_from) { valid=false; continue; }
-            set.effective_dmx_to=declared[i+1].declared_dmx_from-1;
+            if (set.declared_dmx_from==declared[i+1].set.declared_dmx_from) { valid=false; continue; }
+            set.effective_dmx_to=declared[i+1].set.declared_dmx_from-1;
         }
         if (set.effective_dmx_to<from) continue;
         set.declared_dmx_from=std::max(from,set.declared_dmx_from);
+        if (declared[i].use_parent_physical) {
+            set.physical_from=parent_physical(set.declared_dmx_from);
+            set.physical_to=parent_physical(set.effective_dmx_to);
+        }
         sets.push_back(set);
     }
     // Named sets do not remove the parent's valid unnamed prefix or rescale its physical mapping.
     if (!sets.empty() && sets.front().declared_dmx_from>from) {
         ParsedWheelChannelSet prefix; prefix.declared_dmx_from=from; prefix.effective_dmx_to=sets.front().declared_dmx_from-1;
         prefix.physical_from=physical_from;
-        prefix.physical_to=to>from?physical_from+(physical_to-physical_from)*double(prefix.effective_dmx_to-from)/double(to-from):physical_from;
+        prefix.physical_to=parent_physical(prefix.effective_dmx_to);
         sets.insert(sets.begin(),prefix);
     }
     return valid?sets:std::vector<ParsedWheelChannelSet>{};

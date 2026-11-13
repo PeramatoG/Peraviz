@@ -12,6 +12,7 @@ Table 60 supplies function bounds and activation references; Table 61 supplies s
 
 | Source and function | Finding | Correction / evidence |
 | --- | --- | --- |
+| `shutter_compilation.h`: `parse_shutter_sets` | Label-only sets restarted the inherited interval; a Fast singleton resolved to the minimum Hz. | Project the parent physical curve onto each clipped set interval only when both physical attributes are omitted. Explicit and one-sided overrides retain their local domain. Quantum Basic presets now resolve to 1/10.5/20 Hz without a fixture exception. |
 | `native/src/gdtf_runtime/shutter_compilation.h`: `shutter_function_range` | Sorting/using every greater sibling start lost conditional container resets. One invalid start rejected all shutter functions in the LogicalChannel. | Bounds now follow the next ChannelFunction in original XML order. Equal/decreasing starts reset a conditional container to the channel maximum; a later start bounds the current function regardless of a different condition. Duplicate unconditional starts remain invalid. An invalid next start withholds the function whose end cannot be established while independently bounded later functions survive. Archive and production mode regressions cover these cases. |
 | Same function | Nonstandard DMXTo shortened a valid normative range and rescaled its frequency. | Shutter DMXTo is ignored with `PVZ-SHUTTER-DMXTO-IGNORED`; the next start determines the end. Generic non-shutter compatibility is unchanged. |
 | `native/src/gdtf_runtime/compiled_gdtf_fixture.cpp`: `compile_gdtf_fixture_type` | The generic previous-range check could reject independently conditional shutter functions already checked by shutter compilation. | Shutter ranges use their own container validation. Runtime simultaneous activation still becomes an unsupported state, never arbitrary precedence. |
@@ -30,7 +31,7 @@ The source-order range rule is also corroborated by `GdtfDmxChannelFunction::Get
 
 ## Verified behavior retained
 
-`parse_shutter_sets` already implements parent endpoint inheritance, independent one-sided overrides, inclusive next-start boundaries and descending interpolation. The current evaluator restarts the inherited physical interval for label-only sets and selects PhysicalFrom for single-value sets. These are characterized implementation policies, not proof of intended fixture behavior. The subsequent [boundary/inheritance review](strobe-fps-investigation.md#boundary-and-inherited-physical-review) distinguishes normative integer limits from the unresolved inherited interpolation domain; the earlier description of those resets as intentional was too strong.
+`parse_shutter_sets` preserves independent one-sided overrides, inclusive next-start boundaries and descending interpolation. Following the user's hardware/grandMA3 comparison, sets omitting both physical attributes now retain the parent function curve, projected onto their clipped endpoints at setup compilation. Explicit overrides retain their local domain and explicit singletons use PhysicalFrom. This Use Parent Physical compatibility decision fixes the label-only Slow/Medium/Fast resets without changing source archives or live sampling. See the [mapping investigation](strobe-fps-investigation.md) for the specification ambiguity, decision, production UDP reproduction and regression coverage. Earlier claims that the inherited resets were intentional were withdrawn.
 
 `mode_master.cpp`, cached activation and the compiled input graph remain authoritative. New tests cover channel and function masters, nested activation, equal starts under distinct conditions, reversed master byte offsets and 8/16/24/32-bit master bounds. Mode-only, frequency-only and duration-only updates operate independently; parameter edits preserve phase and function transitions restart activation.
 
@@ -45,7 +46,7 @@ Six unmodified archives were downloaded from [Perastage fixtures](https://github
 | `Robe_Lighting@Robin_MegaPointe@Perastage.gdtf` | 2 | Each mode compiles 25 standard and 6 approximate bindings. At DMX 128 the trace reports 0.087 Hz, 1% duty and 1% offset. The XML supplies those percentages and separately supplies zero Duration for ordinary strobe. These declarations must not be silently replaced by full-period pulses or 25 ms flashes. |
 | `GLP@impression_X4_Bar_20@Perastage.gdtf` | 7 | Norm/High Resolution also have an independently active unsupported shutter Effect. Comp at DMX 128 resolves approximately 0.516129 Hz and 1% duty/offset. Four pixel modes are withheld by existing ordered-offset guards. |
 | `Martin@Mac_Aura_XB@Perastage.gdtf` | 2 | Standard has supported strobe ranges plus an unlabeled generic shutter interval, which remains unsupported. Extended is withheld by the existing selected-tree geometry guard. |
-| `PROLIGHT_SPAIN@PIXEL_STROBE_400_RGB@Perastage.gdtf` | 1 | DMX 128 resolves approximately 14.8789 Hz within set 6–129. Current set-local evaluation creates frequency discontinuities; manufacturer intent was not established. |
+| `PROLIGHT_SPAIN@PIXEL_STROBE_400_RGB@Perastage.gdtf` | 1 | Pre-correction DMX 128 resolved approximately 14.8789 Hz within set 6–129. Label-only sets now retain the parent function progression; this archive is included in the post-correction corpus check. |
 | `Blearred@JDC-1@Perastage.gdtf` | 1 | StrobeRate has PhysicalUnit None; an inverse-Hz interpretation cannot be established. The imported mode has no Beam output, and unsupported rate metadata is diagnosed. |
 | `Custom@Chauvet_Color_Strike_M@Perastage.gdtf` | 2 | One mode has invalid ordered offsets; the other supplies no shutter/strobe functions. No new shutter behavior is inferred. |
 
@@ -58,6 +59,8 @@ Six unmodified archives were downloaded from [Perastage fixtures](https://github
 - **Presentation:** short flashes can alias at render cadence. Random timing remains a documented approximation. GPU pixel fidelity and hardware timing were not validated; the headless engine has no RenderingDevice, and this environment has no `/dev/dri` or Xvfb. Real hardware/manual comparison remains necessary for the observed zero-duration/1% definitions and undocumented effects.
 
 ## Validation
+
+Follow-up mapping correction on 2026-11-14: full native build and 15/15 CTests passed (9.31 s); focused visual-runtime rerun passed after extending equal-endpoint ingress coverage (2.96 s). Corpus: 7 unchanged archives / 17 modes. Godot shutter tests passed in Forward+ and Compatibility; authority tests passed in Forward+. Real loopback UDP accepted all 16 one-shot changes and the original Quantum source hash was unchanged. See the investigation for corrected numerical results and exact commands.
 
 Environment: existing Debug CMake/Ninja build, retained dependencies, pinned Godot 4.7.1. The local tool build profile needed existing rendering classes enabled; no tracked dependencies or lockfiles were changed.
 

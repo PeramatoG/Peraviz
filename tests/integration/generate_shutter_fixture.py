@@ -81,6 +81,8 @@ def generate(path: Path, outputs=4, shared=False, split=False, gobo=False, absen
                 functions += '<ChannelFunction Name="Descending" Attribute="Shutter1Strobe" DMXFrom="60/1" PhysicalFrom="20" PhysicalTo="2"/>'
                 functions += '<ChannelFunction Name="Narrow" Attribute="Shutter1Strobe" DMXFrom="80/1" PhysicalFrom="2" PhysicalTo="10"><ChannelSet/><ChannelSet Name="Fixed" DMXFrom="90/1" PhysicalFrom="7" PhysicalTo="7"/><ChannelSet Name="Single" DMXFrom="99/1" PhysicalFrom="12" PhysicalTo="12"/></ChannelFunction>'
                 functions += '<ChannelFunction Name="Malformed" Attribute="Shutter1Strobe" DMXFrom="100/1" PhysicalTo="nan"/>'
+                # Label-only speed presets share their parent's physical progression, including singleton sets.
+                functions += '<ChannelFunction Name="ParentPhysical" Attribute="Shutter1Strobe" DMXFrom="120/1" PhysicalFrom="1" PhysicalTo="20"><ChannelSet Name="Slow" DMXFrom="120/1"/><ChannelSet DMXFrom="121/1"/><ChannelSet Name="Medium" DMXFrom="160/1"/><ChannelSet DMXFrom="161/1"/><ChannelSet Name="Fast" DMXFrom="200/1"/></ChannelFunction><ChannelFunction Name="Open" Attribute="Shutter1" DMXFrom="201/1"/>'
             channels += f'<DMXChannel Offset="{offset}" Geometry="{target}" {declaration}><LogicalChannel Attribute="Shutter1">{functions}</LogicalChannel></DMXChannel>'
     if split_universes:
         assert shared and split and not banks
