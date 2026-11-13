@@ -3,6 +3,7 @@ extends Window
 
 class_name VisualSettingsWindow
 
+signal project_dmx_reset
 signal settings_changed(settings: Dictionary)
 
 const VisualSettingsMigration = preload("res://scripts/visual_settings_migration.gd")
@@ -201,6 +202,7 @@ var _tabs: TabContainer
 var _preset_option: OptionButton
 var _backend_status: Label
 var _applying_controls: bool = false
+var _dmx_policy_panel: Control
 var _advanced_mode_toggle: CheckBox
 var _renderer_panel: RendererSettingsPanel
 var _environment_panel: EnvironmentSettingsPanel
@@ -353,8 +355,15 @@ func _sync_quick_preset_selection() -> void:
 			return
 	_preset_option.select(BeamPresentationOptionsScript.PRESET_NAMES.size())
 
+func install_dmx_policy_panel(panel: Control) -> void:
+	_dmx_policy_panel = panel
+	_tabs.add_child(panel)
+	_apply_mode_to_panels()
+
 func _apply_mode_to_panels() -> void:
 	var advanced_enabled: bool = _advanced_mode_toggle != null and _advanced_mode_toggle.button_pressed
+	if _dmx_policy_panel != null:
+		_tabs.set_tab_hidden(_dmx_policy_panel.get_index(), not advanced_enabled)
 	if _renderer_panel != null:
 		_renderer_panel.set_advanced_mode(advanced_enabled)
 	if _environment_panel != null:
@@ -403,6 +412,7 @@ func _on_advanced_mode_toggled(_enabled: bool) -> void:
 	_apply_mode_to_panels()
 
 func _on_reset_pressed() -> void:
+	project_dmx_reset.emit()
 	_settings = DEFAULT_SETTINGS.duplicate(true)
 	_apply_settings_to_controls()
 	_emit_settings_changed()

@@ -221,8 +221,9 @@ bool test_auto_span() {
         }
         require(test_strip(model,1,-1,{})==canonical,"Strict rendering must retain the same canonical target");
         patch_at(model,1,1); const auto normal=gdtf_runtime::compile_runtime_scene(model,-1); require(normal.color_targets.size()==60,"Strict single-universe fixture regressed");
-        patch_at(model,1,511); const auto strict=gdtf_runtime::compile_runtime_scene(model,-1);
-        require(strict.fixtures.empty() && !strict.diagnostics.empty(),"Auto Span must be disabled by default");
+        patch_at(model,1,511); gdtf_runtime::RuntimeRoutingOptions off; off.policy=gdtf_runtime::AutoSpanPolicy::Off;
+        const auto strict=gdtf_runtime::compile_runtime_scene(model,-1,off);
+        require(strict.fixtures.size()==1 && strict.color_targets.empty() && std::all_of(strict.source_programs.begin(),strict.source_programs.end(),[](const auto &source){return source.sources.front().universe_id==0;}) && !strict.diagnostics.empty(),"Off must omit incomplete RGB groups without decoding missing bytes");
         patch_at(model,32768,400); const auto overflow=gdtf_runtime::compile_runtime_scene(model,-1,options);
         require(overflow.fixtures.empty() && !overflow.diagnostics.empty() && overflow.diagnostics.back().message.find("Port-Address")!=std::string::npos,"Port-Address overflow must reject the complete fixture explicitly");
         patch_at(model,32768,1); require(gdtf_runtime::compile_runtime_scene(model,-1,options).fixtures.size()==1,"Highest valid Port-Address must remain usable");

@@ -841,12 +841,25 @@ void finalize_fixture_activations(runtime::CompiledRuntimeScene &scene,
 } // namespace
 
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
-runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset, const RuntimeRoutingOptions &routing) {
+runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset, const RuntimeRoutingOptions &routing, FixtureTypeCache *cache) {
     runtime::CompiledRuntimeScene out;
     out.mvr_fixture_patches = static_cast<int32_t>(scene.fixture_patches.size());
     int32_t next_program_id = 1;
     std::unordered_set<int32_t> generated_ids;
-    std::unordered_map<std::string, CompiledGdtfFixtureType> fixture_type_cache;
+    FixtureTypeCache local_cache;
+    auto &fixture_type_cache=cache?*cache:local_cache;
+    const auto eligible=[](const CompiledGdtfFixtureType &type) {
+        for (const auto &program:type.channel_programs) {
+            const auto *attribute=find_attribute(type,program.attribute_id);
+            if (!attribute || semantic_for_attribute(*attribute)==runtime::CompiledSemantic::Unknown || !program.wheel_reference.empty()) return false;
+        }
+        return !type.channel_programs.empty();
+    };
+    const auto plan=plan_auto_span(scene,universe_offset,routing,fixture_type_cache,eligible);
+    out.diagnostics=plan.diagnostics;
+    out.routing_replay_sources=plan.replay_sources;
+    std::unordered_set<int32_t> unavailable;
+    std::unordered_set<std::string> counted_types;
     std::unordered_map<std::string, std::vector<const SceneNode *>> beams_by_fixture;
     for (const auto &node : scene.nodes) if (node.is_beam) {
         const auto separator = node.gdtf_geometry_key.find('/');
@@ -867,24 +880,20 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const int32_t fixture_id = stable_id(patch.fixture_uuid, "fixture");
         check_generated_id(generated_ids, out, fixture_id, patch.fixture_uuid);
         const std::string cache_key = fixture_type_cache_key(patch);
-        auto cache_it = fixture_type_cache.find(cache_key);
-        if (cache_it == fixture_type_cache.end()) {
-            cache_it = fixture_type_cache.emplace(cache_key, compile_gdtf_fixture_type(patch.gdtf_path, patch.dmx_mode)).first;
-            add_fixture_type_counters(out, cache_it->second);
-        }
-        const CompiledGdtfFixtureType &fixture_type = cache_it->second;
+        const auto &fixture_type=cached_fixture_type(patch,fixture_type_cache);
+        if (counted_types.insert(cache_key).second) add_fixture_type_counters(out,fixture_type);
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
         if (!fixture_type.dmx_patch_supported) continue;
-        const bool auto_span=routing.auto_span_fixture_uuids.count(patch.fixture_uuid)!=0;
-        auto address_issue=validate_resolved_addresses(patch,fixture_type,universe_offset,auto_span);
-        if (auto_span && address_issue.empty()) for (const auto &program:fixture_type.channel_programs) {
-            const auto *attribute=find_attribute(fixture_type,program.attribute_id);
-            if (!attribute || semantic_for_attribute(*attribute)==runtime::CompiledSemantic::Unknown || !program.wheel_reference.empty()) {
-                address_issue="Auto Span currently supports Dimmer, Pan/Tilt, Zoom and direct color controls; disable Auto Span for wheel, gobo, shutter or unsupported attributes.";
-                break;
-            }
+        const auto &decision=plan.fixtures.at(patch.fixture_uuid);
+        const bool auto_span=decision.span;
+        auto address_issue=decision.error;
+        if (address_issue.empty()) {
+            if (decision.strict_partial) {
+                // Validate authored patches without requiring inferred universes to exist.
+                address_issue=validate_resolved_addresses(patch,fixture_type,universe_offset,false,true);
+            } else address_issue=validate_resolved_addresses(patch,fixture_type,universe_offset,auto_span);
         }
         if (!address_issue.empty()) {
             out.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",address_issue,patch.fixture_uuid});
@@ -921,6 +930,23 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         append_shutter_targets(out,patch,fixture_type,fixture_id,next_program_id,[&](const ChannelProgram &p){return make_sources(patch,p,artnet_universe);});
         append_activation_master_sources(out, patch, fixture_type, artnet_universe, source_program_start, next_program_id);
         finalize_fixture_activations(out, patch, source_program_start, motion_binding_start);
+        size_t omitted_details=0, omitted_sources=0;
+        if (decision.strict_partial) for (size_t i=source_program_start;i<out.source_programs.size();++i) {
+            const auto *original=find_channel_program(fixture_type,out.source_programs[i].parser_program_id);
+            if (!original) continue;
+            const auto entry=source_patch(patch,original->dmx_break);
+            for (int offset:original->dmx_offsets_1_based) if (int64_t(entry.address)+offset-2>=512) {
+                unavailable.insert(out.source_programs[i].program_id);
+                ++omitted_sources;
+                if (omitted_details++<8 && out.diagnostics.size()<256) out.diagnostics.push_back({"PVZ-DMX-STRICT-CONTROL-OMITTED","warning",
+                    "Omitted complete "+original->attribute_name+" control at "+out.source_programs[i].geometry_name+
+                    "; unavailable authored break "+std::to_string(original->dmx_break)+" slot "+std::to_string(int64_t(entry.address)+offset-1)+
+                    " from MVR "+std::to_string(entry.universe)+"."+std::to_string(entry.address)+"; required Color groups and activation dependents are omitted atomically.",patch.fixture_uuid});
+                break;
+            }
+        }
+        if (omitted_sources && out.diagnostics.size()<257) out.diagnostics.push_back({"PVZ-DMX-STRICT-OMITTED-SUMMARY","warning",
+            "Strict fallback omitted unavailable source controls: "+std::to_string(omitted_sources)+"; retained independently complete controls only.",patch.fixture_uuid});
         if (out.properties.size() == property_start && out.color_targets.size() == color_start &&
             out.wheel_bindings.size() == wheel_start && out.gobo_bindings.size() == gobo_start &&
             out.gobo_motion_bindings.size() == motion_binding_start && out.shutter_bindings.size() == shutter_start) {
@@ -931,6 +957,8 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         }
     }
     runtime::classify_additive_intensity(out);
+    retain_strict_controls(out,unavailable);
+    out.strict_overflow_retained=!unavailable.empty();
     for (const auto &property : out.properties) {
         check_generated_id(generated_ids, out, property.property_id, std::to_string(property.fixture_id));
         check_generated_id(generated_ids, out, property.component_id, std::to_string(property.fixture_id));

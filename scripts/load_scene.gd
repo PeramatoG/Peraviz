@@ -349,6 +349,7 @@ func _ready() -> void:
 		Callable(self, "_resolve_dmx_controls_host"),
 		Callable(self, "_apply_dmx_controls_to_fixture")
 	)
+	_dmx_controller.install_auto_span_settings(visual_settings_window)
 	_dmx_controller.set_status_callbacks(
 		Callable(self, "_on_dmx_status_changed"),
 		Callable(self, "_on_dmx_start_failed")
@@ -747,6 +748,7 @@ func _collect_dmx_project_settings() -> Dictionary:
 	var settings: Dictionary = _project_archive.get_default_dmx_settings()
 	if _dmx_controller != null:
 		settings["universe_offset"] = _dmx_controller.get_universe_offset()
+		settings["auto_span_policy"] = _dmx_controller.get_auto_span_policy()
 		settings["dmx_enabled_when_saved"] = _dmx_controller.is_dmx_enabled()
 	settings["auto_start_dmx"] = _user_preferences != null and _user_preferences.auto_start_dmx
 	return settings

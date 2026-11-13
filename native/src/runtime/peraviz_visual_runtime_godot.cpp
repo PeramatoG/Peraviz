@@ -43,6 +43,10 @@ void PeravizVisualRuntime::install_compiled_scene(const Dictionary &packed_scene
         schema_cache_=core_->schema(); interests_cache_=core_->realtime_interest_offsets();
         return;
     }
+    decoded.scene.strict_overflow_retained=packed_scene.get("strict_overflow_retained",false);
+    const PackedInt32Array replay=packed_scene.get("dmx_replay_interests",PackedInt32Array());
+    for (int64_t i=0;i+1<replay.size();i+=2) if (replay[i]>=0 && replay[i]<=32767 && replay[i+1]>=0 && replay[i+1]<512)
+        decoded.scene.routing_replay_sources.push_back({replay[i],replay[i+1],0});
     core_->install_compiled_scene(decoded.scene);
     schema_cache_=core_->schema(); interests_cache_=core_->realtime_interest_offsets(); stats_cache_=core_->stats(); sizes_cache_=core_->state_sizes();
 }

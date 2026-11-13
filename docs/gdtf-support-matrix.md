@@ -120,7 +120,7 @@ order; no break identifier is added to a universe. GDTF's absent DMXBreak means 
 | --- | --- | --- |
 | Primary patch and independent targets | Absolute/dotted addresses, universe offset −1/0, nonzero starts, UUID/component/target identities, reflected hierarchy/pivots, independent RGB/Dimmer, gobo media | Existing behavior preserved |
 | Multiple and sparse breaks | One fixture reads distinct universes; native sparse MVR break 7 → GDTF break 8, without requiring primary 0 | Supported |
-| Optional Peraviz Auto Span | Explicit C++ setup UUID override for supported single-effective-break direct Color/Dimmer/Pan/Tilt/Zoom fixtures; continuous ordered bytes across physical universes, including one RGB target or multibyte value split at a boundary; native held-state composition | Partial; disabled by default, no GUI/persistence; see [Auto Span](dmx-auto-span.md) |
+| Optional Peraviz Auto Span | Project `off` / default `auto_safe` / `auto_overlap`; native setup-only occupancy with order-independent conservative admission; shared inputs retain independent ownership; complete direct controls survive strict overflow while incomplete Color/byte/dependency groups are omitted | Partial; Advanced GUI and PVZ policy persistence; wheel/gobo/shutter/unknown/nested reference Auto Span remains guarded; see [Auto Span](dmx-auto-span.md) |
 | Ordered source bytes | Native noncontiguous 16/32-bit sources; actual renderer 16-bit Pan and 24-bit Tilt on explicit break 2 | Supported up to four bytes; never truncate an invalid fine byte |
 | Repeated GeometryReference | Distinct qualified source paths, numbered-break offsets, final-child Overwrite mapping, independent RGB/Dimmer, same-instance ModeMaster and common-ancestor controls | Supported for one reference level |
 | Shared assets and lifecycle | Immutable models/media shared; fixture state independent; archive SHA-256, held universes, per-instance blackout/restore, serial/forced native async playback, renderer replacement and reload | Verified scoped support |
@@ -132,7 +132,7 @@ Reference children correspond in ascending order to the numbered breaks used by
 referenced channels; their DMXBreak must identify that source break. The final
 child supplies Overwrite's effective break/offset. Offsets are one-based and added
 to every ordered byte; supported reference DMXAddress forms are 1–512 and `1.Address`.
-GeometryReference offsets crossing the currently supported first 512-slot break remain guarded (valid broader GDTF DMXAddress forms are unsupported, not intrinsically invalid). Patch-adjusted bytes remain strict unless the supported fixture explicitly enables Peraviz Auto Span. Mechanical
+GeometryReference offsets crossing the currently supported first 512-slot break remain guarded (valid broader GDTF DMXAddress forms are unsupported, not intrinsically invalid). Patch-adjusted continuation follows the Peraviz project policy; declined spans retain complete supported direct controls and omit incomplete groups without decoding missing bytes. Explicit breaks never become a continuous stream. Mechanical
 hierarchies and source geometries are not rewritten. Existing inherited control
 ownership and ChannelFunction/ModeMaster evaluation remain unchanged; this adds
 addressing, not new composition/Relation semantics.
@@ -146,9 +146,7 @@ a vendor corpus or external hardware validation. Unknown data stays in the untou
 source archive; no editor/export representation is added.
 
 `PVZ-MVR-DMX-PATCH-UNSUPPORTED` validates standard entries; the GDTF equivalent
-validates effective instance sources and dependencies. Each failure withholds the
-affected fixture atomically, preserving independent valid fixtures and graphical
-geometry. Warnings remain bounded; complete structured issues are available in
+validates effective instance sources and dependencies. Genuinely invalid/unresolved source patches withhold the affected fixture atomically, preserving independent valid fixtures and graphical geometry. Bounded strict overflow in supported direct modes instead omits complete unavailable controls/Color/dependency groups and retains independent complete controls. Warnings remain bounded; complete structured issues are available in
 `compile_diagnostics`, without raw XML dumps. The legacy single-universe metadata API
 withholds complex patches; only compiled native routing drives production playback.
 Nonstandard scalar MVR addresses remain a compatibility fallback only when standard

@@ -122,7 +122,11 @@ int test_import_compatibility(const std::filesystem::path &root) {
         if (!out.source_programs.empty() || out.diagnostics.empty()) return fail("Malformed/unsupported ordered byte declaration was partially interpreted");
     }
     auto crossing=compatibility_scene(root,"<Addresses><Address>3.512</Address></Addresses>","","<Beam Name=\"Pixel\"/>",channel("Dimmer","1,2","1"));
-    if (!gdtf_runtime::compile_runtime_scene(crossing,-1).source_programs.empty()) return fail("Out-of-range fine byte produced a misleading partial coarse-only program");
+    gdtf_runtime::RuntimeRoutingOptions strict; strict.policy=gdtf_runtime::AutoSpanPolicy::Off;
+    if (!gdtf_runtime::compile_runtime_scene(crossing,-1,strict).source_programs.empty()) return fail("Out-of-range fine byte produced a misleading partial coarse-only program");
+    const auto automatic=gdtf_runtime::compile_runtime_scene(crossing,-1);
+    if (automatic.source_programs.size()!=1 || automatic.source_programs[0].sources.size()!=2 || automatic.source_programs[0].sources[1].universe_id!=3 || automatic.source_programs[0].sources[1].address!=0)
+        return fail("Default automatic policy did not retain both ordered bytes across the boundary");
     for (const auto &offset : {"4,2,3,1","2,1"}) {
         auto model=compatibility_scene(root,addresses,"","<Beam Name=\"Pixel\"/>",channel("Dimmer",offset,"2"));
         auto out=gdtf_runtime::compile_runtime_scene(model,-1);
