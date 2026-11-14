@@ -35,6 +35,15 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 		"texture_preparation_ms":0.0,
 		"scene_clone_calls":0,
 		"orientation_plan_ms":0.0,
+		"shell_creation_ms":0.0,
+		"visual_creation_ms":0.0,
+		"visual_attach_ms":0.0,
+		"mesh_instance_creation_ms":0.0,
+		"mesh_instance_assignment_ms":0.0,
+		"dummy_creation_ms":0.0,
+		"dummy_instances_created":0,
+		"dummy_material_ms":0.0,
+		"primitive_creation_ms":0.0,
 	}
 	asset_cache.model_inspection_metrics = ModelGeometry.new_metrics(_profile_setup)
 	_inspection_metrics = asset_cache.model_inspection_metrics
@@ -54,6 +63,7 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 				continue
 			var started: int = Time.get_ticks_usec() if _profile_setup else 0
 			var node: Node3D = create_scene_node(item, loader, asset_cache, true)
+			if _profile_setup: setup_metrics.shell_creation_ms += (Time.get_ticks_usec()-started)/1000.0
 			if _profile_setup: setup_metrics.node_construction_ms += (Time.get_ticks_usec()-started)/1000.0
 			constructed.append(node)
 			node_index[node_id] = node
@@ -201,10 +211,14 @@ func _install_scene_visual(root: Node3D, data: Dictionary, loader: PeravizLoader
 	var item_class: String = _extract_node_class(data,item_type)
 	var is_fixture: bool = bool(data.get("is_fixture",false))
 	var visual_scale_hint: float = _extract_visual_scale_hint(data)
+	var started: int = Time.get_ticks_usec() if _profile_setup else 0
 	var model_node: Node3D = _build_visual_node(data,item_type,item_class,is_fixture,visual_scale_hint,loader,asset_cache,flip_orientation)
+	_record_setup("visual_creation_ms",started)
+	started = Time.get_ticks_usec() if _profile_setup else 0
 	if model_node != null:
 		root.add_child(model_node)
 		root.set_meta("peraviz_model_visual",model_node)
+	_record_setup("visual_attach_ms",started)
 
 func _is_basis_valid(candidate_basis: Basis) -> bool:
 	return preload("res://scripts/scene_loading/transform_validation.gd").is_basis_valid(candidate_basis)
@@ -352,7 +366,9 @@ func _build_visual_node(data: Dictionary, item_type: String, _item_class: String
 		var primitive: String = str(data.get("primitive_type", "")).to_lower()
 		var known_primitive: bool = primitive in ["cube", "cylinder", "sphere", "base", "yoke", "head", "scanner", "conventional", "pigtail", "base1_1", "scanner1_1", "conventional1_1"]
 		if known_primitive or failed:
+			var primitive_started: int = Time.get_ticks_usec() if _profile_setup else 0
 			var substitute: Node3D = _create_gdtf_primitive_mesh(data)
+			_record_setup("primitive_creation_ms",primitive_started)
 			if failed:
 				substitute.set_meta("peraviz_model_fallback", true)
 				substitute.set_meta("peraviz_dummy_placeholder", true)
@@ -368,9 +384,11 @@ func _build_visual_node(data: Dictionary, item_type: String, _item_class: String
 		if not primitive.is_empty() and primitive != "undefined":
 			data["asset_error"] = "unsupported_primitive"
 		return null
-	var dummy: Node3D = _create_dummy_mesh(is_fixture, visual_scale_hint, asset_cache)
+	var dummy_started: int = Time.get_ticks_usec() if _profile_setup else 0
+	var dummy: Node3D = _create_dummy_mesh(is_fixture, visual_scale_hint)
+	_record_setup("dummy_creation_ms",dummy_started)
 	if failed: dummy.set_meta("peraviz_model_fallback", true)
-	_force_double_sided_materials(dummy)
+	# Built-in dummy materials are already independent and double-sided.
 	return dummy
 
 func _force_double_sided_materials(root: Node, static_cache: PeravizRuntimeAssetCache = null) -> void:
@@ -458,8 +476,12 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			mesh_cache_key = "%s#flipped" % asset_path
 		var cached_mesh: Mesh = asset_cache.get_mesh(mesh_cache_key)
 		if cached_mesh != null:
+			var instance_started: int = Time.get_ticks_usec() if _profile_setup else 0
 			var cached_mesh_instance := MeshInstance3D.new()
+			_record_setup("mesh_instance_creation_ms",instance_started)
+			instance_started = Time.get_ticks_usec() if _profile_setup else 0
 			cached_mesh_instance.mesh = cached_mesh
+			_record_setup("mesh_instance_assignment_ms",instance_started)
 			cached_mesh_instance.set_meta("peraviz_asset_path", asset_path)
 			cached_mesh_instance.set_meta("peraviz_asset_kind", "mesh")
 			cached_mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
@@ -473,8 +495,12 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			asset_cache.mark_failed(asset_path, "mesh_construction_failed", "mesh_creation")
 			return null
 		asset_cache.store_mesh(mesh_cache_key, mesh)
+		var instance_started: int = Time.get_ticks_usec() if _profile_setup else 0
 		var mesh_instance := MeshInstance3D.new()
+		_record_setup("mesh_instance_creation_ms",instance_started)
+		instance_started = Time.get_ticks_usec() if _profile_setup else 0
 		mesh_instance.mesh = mesh
+		_record_setup("mesh_instance_assignment_ms",instance_started)
 		mesh_instance.set_meta("peraviz_asset_path", asset_path)
 		mesh_instance.set_meta("peraviz_asset_kind", "mesh")
 		mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
@@ -661,7 +687,8 @@ func _load_3ds_texture(path: String, asset_cache: PeravizRuntimeAssetCache) -> T
 	if asset_cache != null: asset_cache.store_texture(path,texture)
 	return texture
 
-func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float, asset_cache: PeravizRuntimeAssetCache) -> Node3D:
+func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float) -> Node3D:
+	setup_metrics["dummy_instances_created"] = int(setup_metrics.get("dummy_instances_created",0)) + 1
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.set_meta("peraviz_dummy_placeholder", true)
 	var world_target_size: float = 0.35
@@ -677,14 +704,18 @@ func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float, asset_cache:
 		var box := BoxMesh.new()
 		box.size = Vector3.ONE * (0.3 * local_size_multiplier)
 		mesh_instance.mesh = box
-	var material_key: String = "builtin://material/dummy_fixture" if is_fixture else "builtin://material/dummy_object"
-	var material: Material = asset_cache.get_material(material_key, true)
-	if material == null:
-		var base_material := StandardMaterial3D.new()
-		base_material.albedo_color = Color(1.0, 0.5, 0.1) if is_fixture else Color(0.2, 0.8, 1.0)
-		asset_cache.store_material(material_key, base_material)
-		material = asset_cache.get_material(material_key, true)
+	var material_started: int = Time.get_ticks_usec() if _profile_setup else 0
+	# This is a known built-in descriptor, not an authored material. Construct its
+	# final independent state directly instead of deep-duplicating every stored
+	# property. The latter dominated the Forward+ placeholder preparation probe.
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.5, 0.1) if is_fixture else Color(0.2, 0.8, 1.0)
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mesh_instance.material_override = material
+	# Preserve the legacy surface override too, including when a caller clears
+	# the whole-instance override. Both resources remain independently editable.
+	mesh_instance.set_surface_override_material(0,_create_default_double_sided_material())
+	_record_setup("dummy_material_ms",material_started)
 	return mesh_instance
 
 func _create_gdtf_primitive_mesh(data: Dictionary) -> Node3D:
@@ -776,3 +807,8 @@ func refresh_scene_visibility(node_index: Dictionary, budget: SceneLoadBudget = 
 	asset_load_summary["visibility_audited_after_activation"] = true
 	print("[Peraviz] Activated geometry attached=", attached, " visible=", visible, " fixtures_visible=", visible_fixtures.size(), " invalid_world_bounds=", invalid_bounds)
 	return true
+
+# Bounded aggregate setup spans; nested timings are not additive phase totals.
+func _record_setup(key: String, started: int) -> void:
+	if _profile_setup:
+		setup_metrics[key] = float(setup_metrics.get(key,0.0)) + (Time.get_ticks_usec()-started)/1000.0

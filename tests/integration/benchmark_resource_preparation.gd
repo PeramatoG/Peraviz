@@ -31,8 +31,8 @@ func _run() -> void:
 				var material: Material = instance.get_active_material(surface)
 				if material is BaseMaterial3D and material.albedo_texture != null: textures[material.albedo_texture] = true
 
-	print("RESOURCE_PREPARATION_BENCHMARK ",JSON.stringify({"ok":ok,"nodes":nodes.size(),"wall_ms":(Time.get_ticks_usec()-started)/1000.0,"metrics":factory.setup_metrics,"cache":cache.debug_summary(),"texture_resources":textures.size()}))
-	parent.free()
+	print("RESOURCE_PREPARATION_BENCHMARK ",JSON.stringify({"ok":ok,"nodes":nodes.size(),"wall_ms":(Time.get_ticks_usec()-started)/1000.0,"yielded_frames":budget.yields,"budget_yield_wait_ms":budget.yield_wait_us/1000.0,"metrics":factory.setup_metrics,"cache":cache.debug_summary(),"texture_resources":textures.size()}))
+	parent.queue_free()
 	cache.clear()
 	loader.free()
 	await process_frame

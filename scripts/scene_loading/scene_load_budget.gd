@@ -8,6 +8,7 @@ var current: Callable
 var slice_start: int = Time.get_ticks_usec()
 var max_block_us: int = 0
 var yields: int = 0
+var yield_wait_us: int = 0
 signal phase_changed(value: String)
 signal render_progress_changed(completed: int, total: int)
 
@@ -35,7 +36,9 @@ func checkpoint(force: bool = false) -> bool:
 			max_block_us = elapsed
 			max_block_phase = phase
 		yields += 1
+		var wait_started := Time.get_ticks_usec()
 		await tree.process_frame
+		yield_wait_us += Time.get_ticks_usec() - wait_started
 		slice_start = Time.get_ticks_usec()
 	return valid()
 
