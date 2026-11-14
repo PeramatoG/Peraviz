@@ -8,6 +8,8 @@ var derived_lods = preload("res://scripts/scene_loading/runtime_mesh_lod_cache.g
 var geometry_facts: Dictionary = {}
 var model_inspection_metrics: Dictionary = {}
 var _static_double_sided: Dictionary = {}
+var _texture_cache: Dictionary = {}
+var _failed_texture_paths: Dictionary = {}
 var _mesh_cache: Dictionary = {}
 var _scene_cache: Dictionary = {}
 var _material_cache: Dictionary = {}
@@ -20,11 +22,13 @@ var _hit_by_kind: Dictionary = {
 	"mesh": 0,
 	"scene": 0,
 	"material": 0,
+	"texture": 0,
 }
 var _miss_by_kind: Dictionary = {
 	"mesh": 0,
 	"scene": 0,
 	"material": 0,
+	"texture": 0,
 }
 
 var _debug_logging_enabled: bool = false
@@ -39,6 +43,8 @@ func clear() -> void:
 	geometry_facts.clear()
 	model_inspection_metrics.clear()
 	_static_double_sided.clear()
+	_texture_cache.clear()
+	_failed_texture_paths.clear()
 	_mesh_cache.clear()
 	_scene_cache.clear()
 	_material_cache.clear()
@@ -64,6 +70,25 @@ func static_double_sided(source: Material) -> Material:
 	prepared.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_static_double_sided[key] = prepared
 	return prepared
+
+# Decoded 3DS albedo images are immutable. Keys retain exact resolved paths, so
+# distinct source files are never merged by basename or content resemblance.
+func get_texture(path: String) -> Texture2D:
+	var cached: Variant = _texture_cache.get(path)
+	if cached is Texture2D:
+		_register_hit("texture",path)
+		return cached
+	_register_miss("texture",path)
+	return null
+
+func store_texture(path: String, texture: Texture2D) -> void:
+	if not path.is_empty() and texture != null: _texture_cache[path] = texture
+
+func is_texture_failed(path: String) -> bool:
+	return _failed_texture_paths.has(path)
+
+func mark_texture_failed(path: String) -> void:
+	_failed_texture_paths[path] = true
 
 func get_mesh(asset_path: String) -> Mesh:
 	if _failed_paths.has(asset_path):
@@ -137,7 +162,9 @@ func debug_summary() -> Dictionary:
 		"misses": _miss_count,
 		"hits_by_kind": _hit_by_kind.duplicate(true),
 		"misses_by_kind": _miss_by_kind.duplicate(true),
-		"unique_resources": _mesh_cache.size() + _scene_cache.size() + _material_cache.size() + _static_double_sided.size(),
+		"unique_resources": _mesh_cache.size() + _scene_cache.size() + _material_cache.size() + _static_double_sided.size() + _texture_cache.size(),
+		"texture_unique": _texture_cache.size(),
+		"texture_failed_unique": _failed_texture_paths.size(),
 		"static_material_unique": _static_double_sided.size(),
 		"inspected_mesh_unique": geometry_facts.size(),
 		"mesh_unique": _mesh_cache.size(),
