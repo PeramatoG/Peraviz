@@ -1018,21 +1018,10 @@ func _rebuild_debug_gizmos() -> void:
 
 
 func _is_basis_valid(candidate_basis: Basis) -> bool:
-	var determinant: float = candidate_basis.determinant()
-	if is_zero_approx(determinant):
-		return false
-	return is_finite(determinant)
+	return _node_factory._is_basis_valid(candidate_basis)
 
 func _safe_basis_from_data(data: Dictionary) -> Basis:
-	var basis_x: Vector3 = data.get("basis_x", Vector3.RIGHT)
-	var basis_y: Vector3 = data.get("basis_y", Vector3.UP)
-	var basis_z: Vector3 = data.get("basis_z", Vector3.BACK)
-	var candidate_basis := Basis(basis_x, basis_y, basis_z)
-	if _is_basis_valid(candidate_basis):
-		return candidate_basis
-
-	print("[PeravizCoordDebug] event=invalid_basis_fallback basis_x=", basis_x, " basis_y=", basis_y, " basis_z=", basis_z)
-	return Basis.IDENTITY
+	return _node_factory._safe_basis_from_data(data)
 
 func _safe_position(value: Vector3, context: String) -> Vector3:
 	if is_finite(value.x) and is_finite(value.y) and is_finite(value.z):
@@ -1041,25 +1030,7 @@ func _safe_position(value: Vector3, context: String) -> Vector3:
 	return Vector3.ZERO
 
 func _safe_scale_from_data(data: Dictionary, context: String) -> Vector3:
-	var raw_scale: Vector3 = data.get("scale", Vector3.ONE)
-	if not is_finite(raw_scale.x) or not is_finite(raw_scale.y) or not is_finite(raw_scale.z):
-		print("[PeravizCoordDebug] event=invalid_scale_fallback context=", context, " scale=", raw_scale)
-		return Vector3.ONE
-
-	var min_axis: float = 0.0001
-	var sx: float = raw_scale.x
-	var sy: float = raw_scale.y
-	var sz: float = raw_scale.z
-	if is_zero_approx(sx):
-		sx = min_axis
-	if is_zero_approx(sy):
-		sy = min_axis
-	if is_zero_approx(sz):
-		sz = min_axis
-
-	if not is_equal_approx(sx, raw_scale.x) or not is_equal_approx(sy, raw_scale.y) or not is_equal_approx(sz, raw_scale.z):
-		print("[PeravizCoordDebug] event=zero_scale_sanitized context=", context, " raw_scale=", raw_scale, " sanitized_scale=", Vector3(sx, sy, sz))
-	return Vector3(sx, sy, sz)
+	return _node_factory._safe_scale_from_data(data, context)
 
 func _safe_target_global_position(target: Node3D) -> Vector3:
 	if target == null:

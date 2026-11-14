@@ -389,6 +389,11 @@ Reproduce with the pinned engine (`GODOT_BIN` from the cloud setup):
 
 ## Scene setup and loading
 
+The [large MVR import audit](large-mvr-import-performance.md) records archive indexing,
+small-transform/group correctness, shared scenery preparation, adaptive first-render
+activation, synthetic 10k regressions and the separate persistent-cache follow-up.
+
+
 PR #105 owner validation retained 1,095 physical outputs, grouped 1,000 compact
 Wash emitters into 20 actual shafts and produced 115 renderer rows at about
 40 FPS with Color active (previously about 23 FPS). This branch changes setup,

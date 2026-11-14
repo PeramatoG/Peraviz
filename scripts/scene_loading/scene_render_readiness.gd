@@ -1,6 +1,9 @@
 extends RefCounted
 
-const MAX_BATCH_SIZE: int = 16
+const MIN_BATCH_SIZE: int = 64
+const MAX_BATCH_SIZE: int = 256
+const ACTIVATION_SLICE_US: int = 4000
+const TARGET_BATCH_MS: float = 33.0
 # An absent callback must fail while drawable, never publish false readiness.
 # This watchdog cannot interrupt an engine/driver call blocking the main thread.
 var no_ack_timeout_us: int = 15000000
@@ -21,6 +24,7 @@ var metrics: Dictionary = {
 	"render_draw_submissions": 0, "render_window_deferred_ms": 0.0,
 	"render_activation_batches": 0, "render_batches_acknowledged": 0,
 	"render_post_draw_acks": 0, "max_render_activation_batch_ms": 0.0,
+	"render_activation_ms": 0.0, "max_render_activation_cpu_ms": 0.0,
 	"final_render_wait_ms": 0.0, "final_render_acks": 0,
 }
 
@@ -52,11 +56,13 @@ func prepare_scene(scene: Node3D, budget: SceneLoadBudget) -> bool:
 		draw_ack_signal.connect(_on_frame_post_draw)
 	scene.show()
 	budget.breadcrumb("render_root_show_end")
+	var activation_started := Time.get_ticks_usec()
+	var batch_size: int = MIN_BATCH_SIZE
 	var cursor: int = 0
 	var next_breadcrumb: int = 0
 	while cursor < visuals.size() and budget.valid():
 		var batch_started := Time.get_ticks_usec()
-		var end := mini(cursor + MAX_BATCH_SIZE, visuals.size())
+		var end := mini(cursor + batch_size, visuals.size())
 		# First, midpoint and final batch only; never per-node logging.
 		var trace_batch: bool = cursor >= next_breadcrumb or end == visuals.size()
 		if trace_batch:
@@ -65,6 +71,9 @@ func prepare_scene(scene: Node3D, budget: SceneLoadBudget) -> bool:
 		while cursor < end:
 			if is_instance_valid(visuals[cursor]): visuals[cursor].show()
 			cursor += 1
+			# A single renderer call cannot be preempted; bound work between calls.
+			if (cursor & 15) == 0 and Time.get_ticks_usec()-batch_started >= ACTIVATION_SLICE_US: break
+		metrics["max_render_activation_cpu_ms"] = maxf(metrics["max_render_activation_cpu_ms"],(Time.get_ticks_usec()-batch_started)/1000.0)
 		metrics["render_instances_activated"] = cursor
 		metrics["render_activation_batches"] += 1
 		# Display only the last acknowledged batch, never queued work as 100%.
@@ -74,10 +83,12 @@ func prepare_scene(scene: Node3D, budget: SceneLoadBudget) -> bool:
 		if not await _wait_for_frames(budget, 1): break
 		var batch_ms := (Time.get_ticks_usec() - batch_started) / 1000.0
 		metrics["max_render_activation_batch_ms"] = maxf(metrics["max_render_activation_batch_ms"], batch_ms)
+		batch_size = _next_batch_size(batch_size,batch_ms)
 		if require_draw_ack: metrics["render_batches_acknowledged"] += 1
 		else: metrics["render_headless_batches"] += 1
 		budget.report_render_progress(cursor, visuals.size())
 		if trace_batch: budget.breadcrumb("render_batch_ack", metrics)
+	metrics["render_activation_ms"] = (Time.get_ticks_usec()-activation_started)/1000.0
 	var ready: bool = budget.valid() and error_message.is_empty()
 	if ready:
 		budget.phase = "render_completion"
@@ -97,6 +108,11 @@ func prepare_scene(scene: Node3D, budget: SceneLoadBudget) -> bool:
 		_budget = null
 	if not ready: _restore_hidden(scene, visuals)
 	return ready
+
+# Adapt only after the prior batch is acknowledged. Node counts and CPU slices
+# stay bounded even when a software renderer or v-sync dominates frame duration.
+func _next_batch_size(previous: int, acknowledged_ms: float) -> int:
+	return mini(previous * 2,MAX_BATCH_SIZE) if acknowledged_ms <= TARGET_BATCH_MS else maxi(MIN_BATCH_SIZE,int(previous / 2.0))
 
 # Retired resources cannot become visible during restoration or failure cleanup.
 func _restore_hidden(scene: Node3D, visuals: Array[VisualInstance3D]) -> void:

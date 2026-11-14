@@ -7,6 +7,11 @@ extends Camera3D
 @export var max_distance: float = 500.0
 @export var smoothing_speed: float = 12.0
 
+var _default_min_distance: float = 0.5
+var _default_max_distance: float = 500.0
+var _default_near: float = 0.05
+var _default_far: float = 4000.0
+
 var target_position: Vector3 = Vector3.ZERO
 var target_yaw: float = 0.0
 var target_pitch: float = -0.3
@@ -28,17 +33,37 @@ var _middle_down: bool = false
 var _drag_mode: DragMode = DragMode.NONE
 
 func focus_on_aabb(bounds: AABB) -> void:
-	if bounds.size.length_squared() <= 0.0:
-		return
-
+	if not bounds.position.is_finite() or not bounds.size.is_finite() or bounds.size.length_squared() <= 0.0: return
 	target_position = bounds.get_center()
-
-	var radius: float = max(bounds.size.length() * 0.5, min_distance)
+	var radius: float = bounds.size.length() * 0.5
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var aspect: float = viewport_size.x / maxf(viewport_size.y,1.0)
 	var half_fov: float = deg_to_rad(fov) * 0.5
-	var fit_distance: float = radius / max(tan(half_fov), 0.01)
-	target_distance = clamp(fit_distance * 1.2, min_distance, max_distance)
+	var other_half: float = atan(tan(half_fov) * aspect) if keep_aspect == KEEP_HEIGHT else atan(tan(half_fov) / maxf(aspect,0.001))
+	var fit_distance: float = radius / maxf(sin(minf(half_fov,other_half)),0.001) * 1.15
+	# Navigation limits and clipping must permit both millimetre-scale details
+	# and venues larger than the default 500 m orbit range.
+	min_distance = minf(_default_min_distance,maxf(radius * 0.05,0.00001))
+	max_distance = maxf(_default_max_distance,fit_distance * 4.0)
+	far = maxf(_default_far,fit_distance + radius * 2.0)
+	# An enormous far/near ratio degenerates Forward+'s frustum planes for
+	# tiny scenes. Retain the far range for optics and move the camera back
+	# enough to fit the model beyond a numerically usable near plane.
+	near = maxf(minf(_default_near,maxf(radius * 0.01,0.000001)),far / 1000000.0)
+	min_distance = maxf(min_distance,near * 1.1)
+	fit_distance = maxf(fit_distance,near + radius * 1.2)
+	target_distance = clampf(fit_distance,min_distance,max_distance)
+	# Publication must start with the scene framed, including the first draw.
+	current_distance = target_distance
+	current_yaw = target_yaw
+	current_pitch = target_pitch
+	_update_camera_transform()
 
 func _ready() -> void:
+	_default_min_distance = min_distance
+	_default_max_distance = max_distance
+	_default_near = near
+	_default_far = far
 	_initialize_from_transform()
 	_set_mouse_mode(false)
 

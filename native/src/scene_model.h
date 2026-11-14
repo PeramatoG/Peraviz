@@ -1,4 +1,5 @@
 #pragma once
+#include "asset_cache_metrics.h"
 
 #include <map>
 #include <filesystem>
@@ -115,6 +116,8 @@ struct SceneModel {
     };
 
     // Setup-only observations, outside canonical fixture and runtime semantics.
+    AssetCacheMetrics asset_metrics;
+    double xml_parse_ms = 0.0;
     double archive_xml_ms = 0.0, geometry_ms = 0.0;
     size_t geometry_definitions = 0, geometry_template_hits = 0;
     int fixture_count = 0;

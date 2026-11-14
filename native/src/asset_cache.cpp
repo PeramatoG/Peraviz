@@ -3,6 +3,7 @@
 #include "archive/zip_archive.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <fstream>
@@ -148,13 +149,65 @@ std::string parent_archive_dir(const std::string &normalized_path) {
 namespace peraviz {
 
 // Creates one content-keyed workspace and indexes its source archive once.
-ZipAssetCache::ZipAssetCache(std::string source_path)
-    : source_path_(std::filesystem::u8path(source_path)) {
+ZipAssetCache::ZipAssetCache(std::string source_path, AssetCacheMetrics *aggregate)
+    : aggregate_(aggregate), source_path_(std::filesystem::u8path(source_path)) {
+    const auto started = std::chrono::steady_clock::now();
     const std::string cache_key = "archive_" + hash_file_contents(source_path_);
     cache_lease_ = runtime_storage::acquire_session_cache_directory(cache_key);
     cache_dir_ = cache_lease_.path();
-    if (archive_.open_read(source_path_)) entries_ = archive_.list_files();
+    if (archive_.open_read(source_path_)) build_indexes(archive_.list_files());
     else last_error_ = "archive_open_failed";
+    metrics_.archive_open_index_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+}
+
+// Publishes observations before this archive owner's extraction lease retires.
+ZipAssetCache::~ZipAssetCache() {
+    if (aggregate_) aggregate_->add(metrics_);
+}
+
+// Indexes aliases, destination collisions and conservative directory companions once.
+void ZipAssetCache::build_indexes(const std::vector<std::string> &entries) {
+    metrics_.archive_entries = entries.size();
+    exact_entries_.reserve(entries.size());
+    destinations_.reserve(entries.size());
+    std::unordered_map<std::string, std::string> destination_owners;
+    const auto add_alias = [](auto &index, const std::string &key, const std::string &entry) {
+        const auto inserted = index.emplace(key, entry);
+        if (!inserted.second && inserted.first->second != entry) inserted.first->second.clear();
+    };
+    for (const auto &entry : archive_.ambiguous_files()) {
+        folded_entries_[entry] = "";
+        basename_entries_[to_lower_ascii(std::filesystem::u8path(entry).filename().u8string())] = "";
+        destination_owners.emplace(to_lower_ascii(cache_safe_relative_path(entry).generic_u8string()), entry);
+    }
+    for (const auto &entry : entries) {
+        exact_entries_.insert(entry);
+        if (mvr_description_entry_.empty() && to_lower_ascii(entry).find("generalscenedescription.xml") != std::string::npos)
+            mvr_description_entry_ = entry;
+        add_alias(folded_entries_, to_lower_ascii(entry), entry);
+        add_alias(basename_entries_, to_lower_ascii(std::filesystem::u8path(entry).filename().u8string()), entry);
+        const auto relative = cache_safe_relative_path(entry);
+        destinations_.emplace(entry, relative);
+        const auto inserted = destination_owners.emplace(to_lower_ascii(relative.generic_u8string()), entry);
+        if (!inserted.second) {
+            colliding_entries_.insert(entry);
+            colliding_entries_.insert(inserted.first->second);
+        }
+        if (!is_supported_texture_or_scene_dependency_extension(path_extension_lower(entry))) continue;
+        auto directory = parent_archive_dir(entry);
+        if (directory.empty()) directory_dependencies_[""].push_back(entry);
+        // Non-root model directories historically include all nested companions.
+        while (!directory.empty()) {
+            directory_dependencies_[directory].push_back(entry);
+            directory.pop_back();
+            directory = parent_archive_dir(directory);
+        }
+    }
+}
+
+// Reuses the opened archive and preserves the historical sorted XML selection.
+std::string ZipAssetCache::read_mvr_scene_description() const {
+    return mvr_description_entry_.empty() ? std::string{} : archive_.read_text_file(mvr_description_entry_);
 }
 
 // Returns the directory used to store extracted cache files.
@@ -174,23 +227,20 @@ std::string ZipAssetCache::resolve_entry(const std::string &reference, bool base
     if (!archive_.is_open()) { last_error_ = "archive_open_failed"; return {}; }
     const std::string normalized = normalize_archive_path(reference);
     if (normalized.empty()) { last_error_ = "invalid_resource_reference"; return {}; }
-    const auto exact = std::find(entries_.begin(), entries_.end(), normalized);
-    if (exact != entries_.end()) return *exact;
-    const std::string folded = to_lower_ascii(normalized);
-    std::string match;
-    for (const auto &entry : entries_) {
-        if (to_lower_ascii(entry) != folded) continue;
-        if (!match.empty()) { last_error_ = "ambiguous_resource_reference"; return {}; }
-        match = entry;
+    ++metrics_.indexed_lookups;
+    if (lookup_references_.insert(normalized).second) ++metrics_.unique_lookup_references;
+    if (exact_entries_.count(normalized)) return normalized;
+    const auto folded = folded_entries_.find(to_lower_ascii(normalized));
+    if (folded != folded_entries_.end()) {
+        if (folded->second.empty()) last_error_ = "ambiguous_resource_reference";
+        return folded->second;
     }
-    if (!match.empty() || !basename_fallback) return match;
+    if (!basename_fallback) return {};
     const auto filename = to_lower_ascii(std::filesystem::u8path(normalized).filename().u8string());
-    for (const auto &entry : entries_) {
-        if (to_lower_ascii(std::filesystem::u8path(entry).filename().u8string()) != filename) continue;
-        if (!match.empty()) { last_error_ = "ambiguous_resource_reference"; return {}; }
-        match = entry;
-    }
-    return match;
+    const auto basename = basename_entries_.find(filename);
+    if (basename == basename_entries_.end()) return {};
+    if (basename->second.empty()) last_error_ = "ambiguous_resource_reference";
+    return basename->second;
 }
 
 // Extracts the canonical archive entry without aliasing sanitized filesystem names.
@@ -201,22 +251,31 @@ std::string ZipAssetCache::ensure_extracted(const std::string &reference) {
         if (last_error_.empty()) last_error_ = archive_.is_open() ? "resource_not_found" : "archive_open_failed";
         return {};
     }
-    if (const auto found = resolved_.find(entry); found != resolved_.end()) return found->second;
-    const auto relative = cache_safe_relative_path(entry);
-    // Reject mappings that collide after Windows filename sanitation on every OS.
-    for (const auto &other : entries_) {
-        if (other != entry && to_lower_ascii(cache_safe_relative_path(other).generic_u8string()) ==
-                              to_lower_ascii(relative.generic_u8string())) {
-            last_error_ = "ambiguous_extraction_path";
-            return {};
-        }
+    if (referenced_entries_.insert(entry).second) ++metrics_.unique_asset_references;
+    if (const auto found = resolved_.find(entry); found != resolved_.end()) {
+        ++metrics_.cache_hits;
+        return found->second;
     }
-    const auto output = cache_dir_ / relative;
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(output, ec) && !archive_.extract_file(entry, output)) {
-        last_error_ = "resource_extraction_failed";
+    if (colliding_entries_.count(entry)) {
+        last_error_ = "ambiguous_extraction_path";
         return {};
     }
+    const auto output = cache_dir_ / destinations_.at(entry);
+    const auto started = std::chrono::steady_clock::now();
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(output, ec)) {
+        ++metrics_.cache_hits;
+    } else {
+        ++metrics_.cache_misses;
+        if (!archive_.extract_file(entry, output)) {
+            last_error_ = "resource_extraction_failed";
+            return {};
+        }
+        ++metrics_.extraction_count;
+        const auto bytes = std::filesystem::file_size(output, ec);
+        if (!ec) metrics_.extracted_bytes += bytes;
+    }
+    metrics_.extraction_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
     extracted_.insert(entry);
     return resolved_.emplace(entry, output.u8string()).first->second;
 }
@@ -241,12 +300,12 @@ std::string ZipAssetCache::ensure_gdtf_spec_extracted(const std::string &spec) {
 void ZipAssetCache::extract_model_dependencies(const std::string &entry) {
     const auto directory = parent_archive_dir(entry);
     if (!dependencies_extracted_.insert(directory).second) return;
-    for (const auto &dependency : entries_) {
-        if ((!directory.empty() && dependency.rfind(directory, 0) != 0) ||
-            (directory.empty() && dependency.find('/') != std::string::npos)) continue;
-        if (is_supported_texture_or_scene_dependency_extension(path_extension_lower(dependency)))
-            ensure_extracted(dependency);
-    }
+    const auto started = std::chrono::steady_clock::now();
+    const auto found = directory_dependencies_.find(directory);
+    metrics_.dependency_discovery_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    if (found == directory_dependencies_.end()) return;
+    metrics_.dependency_candidates += found->second.size();
+    for (const auto &dependency : found->second) ensure_extracted(dependency);
 }
 
 // Resolves models without substituting a different explicit format or ambiguous stem.

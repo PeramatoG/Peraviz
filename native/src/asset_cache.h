@@ -1,6 +1,8 @@
 #pragma once
 
 #include <filesystem>
+#include <unordered_set>
+#include "asset_cache_metrics.h"
 #include "archive/zip_archive.h"
 #include <unordered_map>
 #include <vector>
@@ -14,13 +16,17 @@ enum class GdtfModelDetail { Default, Low, High };
 
 class ZipAssetCache {
 public:
-    explicit ZipAssetCache(std::string source_path);
+    explicit ZipAssetCache(std::string source_path, AssetCacheMetrics *aggregate = nullptr);
+    ~ZipAssetCache();
+    // Returns this archive owner's setup-only cache observations.
+    const AssetCacheMetrics &metrics() const { return metrics_; }
 
     const std::filesystem::path &cache_dir() const;
     runtime_storage::RuntimeDirectoryLease cache_lease() const;
     int extracted_assets() const;
     const std::string &last_error() const;
 
+    std::string read_mvr_scene_description() const;
     std::string ensure_extracted(const std::string &archive_relative_path);
     std::string ensure_archive_file_extracted(const std::string &file_name);
     std::string ensure_gdtf_spec_extracted(const std::string &gdtf_spec);
@@ -33,7 +39,17 @@ public:
 
 private:
     archive::ZipArchive archive_;
-    std::vector<std::string> entries_;
+    std::unordered_set<std::string> exact_entries_;
+    // Empty values mark ambiguous aliases; exact paths retain precedence.
+    std::unordered_map<std::string, std::string> folded_entries_, basename_entries_;
+    std::unordered_map<std::string, std::filesystem::path> destinations_;
+    std::unordered_set<std::string> colliding_entries_;
+    std::unordered_map<std::string, std::vector<std::string>> directory_dependencies_;
+    std::unordered_set<std::string> lookup_references_, referenced_entries_;
+    std::string mvr_description_entry_;
+    AssetCacheMetrics metrics_;
+    AssetCacheMetrics *aggregate_ = nullptr;
+    void build_indexes(const std::vector<std::string> &entries);
     std::unordered_map<std::string, std::string> resolved_;
     std::set<std::string> dependencies_extracted_;
     std::string last_error_;

@@ -25,7 +25,8 @@ is already complete. This transaction is not subject to the 8 ms construction
 budget; its wall time is recorded separately. Initial light defaults yield, and
 hidden fixture-inspection tables retain data without allocating row Controls;
 visible tables build eight rows per frame with generation-safe replacement.
-The completed scene activates at most 16 visual instances per rendered batch
+The completed scene activates adaptive batches of 64–256 visual instances (with
+a soft 4 ms submission slice that may stop earlier) per rendered batch
 behind an opaque modal shield before its removal. This avoids exposing the whole
 hidden scene to the graphics backend in one frame and restores exact local
 visibility, transforms and resource identity; cancellation hides the retired

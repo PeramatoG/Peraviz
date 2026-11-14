@@ -3,6 +3,11 @@ class_name NodeFactory
 
 var _missing_cache_roots_reported: Dictionary = {}
 var asset_load_summary: Dictionary = {}
+var _mesh_facts: Dictionary = {}
+var _inspection_metrics: Dictionary = {}
+var setup_metrics: Dictionary = {}
+var _profile_setup: bool = false
+var invalid_basis_fallbacks: int = 0
 var fixture_casing_lod: bool = true
 const ModelGeometry = preload("res://scripts/scene_loading/model_geometry.gd")
 const AssetDiagnostics = preload("res://scripts/scene_loading/scene_asset_diagnostics.gd")
@@ -10,8 +15,14 @@ var asset_diagnostics: RefCounted = AssetDiagnostics.new()
 
 func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, budget: SceneLoadBudget = null) -> bool:
 	var constructed: Array[Node3D] = []
+	_profile_setup = budget != null and budget.trace_enabled
+	setup_metrics = {"node_construction_ms":0.0,"resource_decode_ms":0.0,"scene_instantiation_ms":0.0,"material_preparation_ms":0.0,"orientation_ms":0.0,"dummy_removal_ms":0.0,"lod_installation_ms":0.0,"bounds_diagnostics_ms":0.0}
+	asset_cache.model_inspection_metrics = ModelGeometry.new_metrics(_profile_setup)
+	_inspection_metrics = asset_cache.model_inspection_metrics
+	_mesh_facts = asset_cache.geometry_facts
 	node_index.clear()
 	_missing_cache_roots_reported.clear()
+	invalid_basis_fallbacks = 0
 	asset_diagnostics.reset(nodes)
 	asset_load_summary = asset_diagnostics.counts
 	for item in nodes:
@@ -22,7 +33,9 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 			var node_id: String = str(item.get("node_id", ""))
 			if node_id.is_empty():
 				continue
+			var started: int = Time.get_ticks_usec() if _profile_setup else 0
 			var node: Node3D = create_scene_node(item, loader, asset_cache)
+			if _profile_setup: setup_metrics.node_construction_ms += (Time.get_ticks_usec()-started)/1000.0
 			constructed.append(node)
 			node_index[node_id] = node
 
@@ -41,15 +54,27 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 				parent_node = node_index[parent_id]
 			parent_node.add_child(node)
 
+	var phase_started := Time.get_ticks_usec()
 	_apply_mesh_orientation_corrections(proxies_root, false, loader, asset_cache)
+	setup_metrics.orientation_ms = (Time.get_ticks_usec()-phase_started)/1000.0
+	phase_started = Time.get_ticks_usec()
 	_remove_redundant_dummy_meshes(proxies_root)
+	setup_metrics.dummy_removal_ms = (Time.get_ticks_usec()-phase_started)/1000.0
+	phase_started = Time.get_ticks_usec()
 	asset_cache.derived_lods.automatic = fixture_casing_lod
 	if not await preload("res://scripts/scene_loading/housing_lod_installation.gd").install(nodes,node_index,asset_cache.derived_lods,budget): return false
+	setup_metrics.lod_installation_ms = (Time.get_ticks_usec()-phase_started)/1000.0
+	phase_started = Time.get_ticks_usec()
 	rebuild_loaded_bounds.call()
 	for item: Dictionary in nodes:
 		var created: Node3D = node_index.get(str(item.get("node_id", "")))
 		if created != null: asset_diagnostics.observe(item, created, asset_cache)
+	asset_load_summary["invalid_basis_fallbacks"] = invalid_basis_fallbacks
+	if invalid_basis_fallbacks > 0:
+		push_warning("[Peraviz] Invalid basis fallback occurrences=%d" % invalid_basis_fallbacks)
 	asset_diagnostics.finish()
+	setup_metrics.bounds_diagnostics_ms = (Time.get_ticks_usec()-phase_started)/1000.0
+	setup_metrics.merge(ModelGeometry.metrics(_inspection_metrics))
 	return true
 
 func _discard_unattached_nodes(constructed: Array[Node3D]) -> void:
@@ -85,9 +110,6 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	var node_position: Vector3 = _safe_position(data.get("pos", Vector3.ZERO), "create_scene_node:" + root.name)
 	if bool(data.get("has_basis", false)):
 		var node_basis: Basis = _safe_basis_from_data(data)
-		if not _is_basis_valid(node_basis):
-			print("[PeravizCoordDebug] event=basis_invalid_fallback node=", root.name)
-			node_basis = Basis.IDENTITY
 		flip_orientation = node_basis.determinant() < 0.0
 		root.transform = Transform3D(node_basis, node_position)
 	else:
@@ -115,10 +137,7 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	return root
 
 func _is_basis_valid(candidate_basis: Basis) -> bool:
-	var determinant: float = candidate_basis.determinant()
-	if is_zero_approx(determinant):
-		return false
-	return is_finite(determinant)
+	return preload("res://scripts/scene_loading/transform_validation.gd").is_basis_valid(candidate_basis)
 
 func _safe_basis_from_data(data: Dictionary) -> Basis:
 	var basis_x: Vector3 = data.get("basis_x", Vector3.RIGHT)
@@ -128,7 +147,7 @@ func _safe_basis_from_data(data: Dictionary) -> Basis:
 	if _is_basis_valid(candidate_basis):
 		return candidate_basis
 
-	print("[PeravizCoordDebug] event=invalid_basis_fallback basis_x=", basis_x, " basis_y=", basis_y, " basis_z=", basis_z)
+	invalid_basis_fallbacks += 1
 	return Basis.IDENTITY
 
 func _safe_position(value: Vector3, context: String) -> Vector3:
@@ -147,11 +166,11 @@ func _safe_scale_from_data(data: Dictionary, context: String) -> Vector3:
 	var sx: float = raw_scale.x
 	var sy: float = raw_scale.y
 	var sz: float = raw_scale.z
-	if is_zero_approx(sx):
+	if sx == 0.0:
 		sx = min_axis
-	if is_zero_approx(sy):
+	if sy == 0.0:
 		sy = min_axis
-	if is_zero_approx(sz):
+	if sz == 0.0:
 		sz = min_axis
 
 	if not is_equal_approx(sx, raw_scale.x) or not is_equal_approx(sy, raw_scale.y) or not is_equal_approx(sz, raw_scale.z):
@@ -186,7 +205,9 @@ func _rebuild_mesh_instance_for_orientation(mesh_instance: MeshInstance3D, flip_
 
 	var cached_mesh: Mesh = asset_cache.get_mesh(mesh_cache_key)
 	if cached_mesh == null:
+		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
 		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
+		if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-decode_started)/1000.0
 		if not bool(mesh_data.get("ok", false)):
 			return
 		var rebuilt_mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation)
@@ -217,6 +238,7 @@ func _remove_redundant_dummy_meshes(root: Node) -> void:
 	for placeholder in placeholders_to_remove:
 		if root_node.has_meta("peraviz_model_visual") and root_node.get_meta("peraviz_model_visual") == placeholder:
 			root_node.remove_meta("peraviz_model_visual")
+		root_node.remove_child(placeholder)
 		placeholder.queue_free()
 
 func _node_has_real_visual_descendants(root: Node, ignored_nodes: Array[Node]) -> bool:
@@ -233,6 +255,7 @@ func _node_has_real_visual_descendants(root: Node, ignored_nodes: Array[Node]) -
 	return false
 
 func _build_visual_node(data: Dictionary, item_type: String, _item_class: String, is_fixture: bool, visual_scale_hint: float, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, flip_orientation: bool = false) -> Node3D:
+	if item_type == "group": return null
 	var asset_path: String = str(data.get("asset_path", ""))
 	var asset_kind: String = _extract_asset_kind(data, asset_path)
 	var failed: bool = not str(data.get("asset_error", "")).is_empty()
@@ -241,7 +264,7 @@ func _build_visual_node(data: Dictionary, item_type: String, _item_class: String
 		if loaded is Node3D:
 			var visual: Node3D = loaded
 			if item_type == "fixture_geometry":
-				var normalized: Dictionary = ModelGeometry.dimension_fixture_model(visual, data.get("model_dimensions", Vector3.ZERO))
+				var normalized: Dictionary = ModelGeometry.dimension_fixture_model(visual, data.get("model_dimensions", Vector3.ZERO), asset_cache.geometry_facts, asset_cache.model_inspection_metrics)
 				if normalized.ok:
 					visual = normalized.visual
 				else:
@@ -251,7 +274,10 @@ func _build_visual_node(data: Dictionary, item_type: String, _item_class: String
 					data["asset_error"] = normalized.error
 					data["asset_error_stage"] = "mesh_creation"
 			if visual != null:
-				_force_double_sided_materials(visual)
+				var material_started: int = Time.get_ticks_usec() if _profile_setup else 0
+				var immutable_scenery: bool = item_type == "model_part" and not is_fixture and (asset_path.get_extension().to_lower() == "3ds" or bool(visual.get_meta("peraviz_static_scenery",false)))
+				_force_double_sided_materials(visual, asset_cache if immutable_scenery else null)
+				if _profile_setup: setup_metrics.material_preparation_ms += (Time.get_ticks_usec()-material_started)/1000.0
 				return visual
 		failed = true
 	if item_type == "fixture" or item_type == "fixture_geometry":
@@ -279,47 +305,50 @@ func _build_visual_node(data: Dictionary, item_type: String, _item_class: String
 	_force_double_sided_materials(dummy)
 	return dummy
 
-func _force_double_sided_materials(root: Node) -> void:
+func _force_double_sided_materials(root: Node, static_cache: PeravizRuntimeAssetCache = null) -> void:
 	if root == null:
 		return
 	if root is MeshInstance3D:
-		_apply_double_sided_to_mesh_instance(root as MeshInstance3D)
+		_apply_double_sided_to_mesh_instance(root as MeshInstance3D, static_cache)
 	elif root is MultiMeshInstance3D:
-		_apply_double_sided_to_multimesh_instance(root as MultiMeshInstance3D)
+		_apply_double_sided_to_multimesh_instance(root as MultiMeshInstance3D, static_cache)
 	for child in root.get_children():
-		_force_double_sided_materials(child)
+		_force_double_sided_materials(child, static_cache)
 
-func _apply_double_sided_to_mesh_instance(mesh_instance: MeshInstance3D) -> void:
+func _apply_double_sided_to_mesh_instance(mesh_instance: MeshInstance3D, static_cache: PeravizRuntimeAssetCache = null) -> void:
 	if mesh_instance == null:
 		return
 	if mesh_instance.material_override != null:
-		mesh_instance.material_override = _duplicate_as_double_sided(mesh_instance.material_override)
-	_apply_double_sided_to_mesh_surfaces(mesh_instance, mesh_instance.mesh)
+		mesh_instance.material_override = _duplicate_as_double_sided(mesh_instance.material_override, static_cache)
+	_apply_double_sided_to_mesh_surfaces(mesh_instance, mesh_instance.mesh, static_cache)
 
-func _apply_double_sided_to_multimesh_instance(multimesh_instance: MultiMeshInstance3D) -> void:
+func _apply_double_sided_to_multimesh_instance(multimesh_instance: MultiMeshInstance3D, static_cache: PeravizRuntimeAssetCache = null) -> void:
 	if multimesh_instance == null:
 		return
 	if multimesh_instance.material_override != null:
-		multimesh_instance.material_override = _duplicate_as_double_sided(multimesh_instance.material_override)
+		multimesh_instance.material_override = _duplicate_as_double_sided(multimesh_instance.material_override, static_cache)
 	var mesh: Mesh = multimesh_instance.multimesh.mesh if multimesh_instance.multimesh != null else null
-	_apply_double_sided_to_mesh_surfaces(multimesh_instance, mesh)
+	_apply_double_sided_to_mesh_surfaces(multimesh_instance, mesh, static_cache)
 
-func _apply_double_sided_to_mesh_surfaces(geometry_instance: GeometryInstance3D, mesh: Mesh) -> void:
+func _apply_double_sided_to_mesh_surfaces(geometry_instance: GeometryInstance3D, mesh: Mesh, static_cache: PeravizRuntimeAssetCache = null) -> void:
 	if geometry_instance == null or mesh == null:
 		return
 	var surface_count: int = mesh.get_surface_count()
 	for surface_index in range(surface_count):
 		var override_material: Material = geometry_instance.get_surface_override_material(surface_index)
 		if override_material != null:
-			geometry_instance.set_surface_override_material(surface_index, _duplicate_as_double_sided(override_material))
+			geometry_instance.set_surface_override_material(surface_index, _duplicate_as_double_sided(override_material, static_cache))
 			continue
 		var surface_material: Material = mesh.surface_get_material(surface_index)
 		if surface_material != null:
-			geometry_instance.set_surface_override_material(surface_index, _duplicate_as_double_sided(surface_material))
+			geometry_instance.set_surface_override_material(surface_index, _duplicate_as_double_sided(surface_material, static_cache))
 		else:
-			geometry_instance.set_surface_override_material(surface_index, _create_default_double_sided_material())
+			geometry_instance.set_surface_override_material(surface_index, static_cache.static_double_sided(null) if static_cache != null else _create_default_double_sided_material())
 
-func _duplicate_as_double_sided(material: Material) -> Material:
+func _duplicate_as_double_sided(material: Material, static_cache: PeravizRuntimeAssetCache = null) -> Material:
+	if static_cache != null:
+		var prepared: Material = static_cache.static_double_sided(material)
+		if prepared != null: return prepared
 	if material is not BaseMaterial3D:
 		return material
 	var base_material: BaseMaterial3D = material as BaseMaterial3D
@@ -340,6 +369,7 @@ func _extract_visual_scale_hint(data: Dictionary) -> float:
 		var basis_y: Vector3 = data.get("basis_y", Vector3.UP)
 		var basis_z: Vector3 = data.get("basis_z", Vector3.BACK)
 		var average_basis_length: float = (basis_x.length() + basis_y.length() + basis_z.length()) / 3.0
+		if not is_finite(average_basis_length): return 1.0
 		return max(average_basis_length, 0.0001)
 	var node_scale: Vector3 = data.get("scale", Vector3.ONE)
 	var average_scale: float = (abs(node_scale.x) + abs(node_scale.y) + abs(node_scale.z)) / 3.0
@@ -366,7 +396,9 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			cached_mesh_instance.set_meta("peraviz_asset_kind", "mesh")
 			cached_mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
 			return cached_mesh_instance
+		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
 		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
+		if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-decode_started)/1000.0
 		if not bool(mesh_data.get("ok", false)):
 			asset_cache.mark_failed(asset_path, str(mesh_data.get("error", "invalid_3ds")))
 			return null
@@ -382,7 +414,9 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
 		return mesh_instance
 	if resolved_asset_kind == "scene" or extension == "glb" or extension == "gltf":
+		var instance_started: int = Time.get_ticks_usec() if _profile_setup else 0
 		var cached_scene_instance: Node3D = asset_cache.instantiate_scene(asset_path)
+		if _profile_setup: setup_metrics.scene_instantiation_ms += (Time.get_ticks_usec()-instance_started)/1000.0
 		if cached_scene_instance != null:
 			return cached_scene_instance
 		if not FileAccess.file_exists(asset_path):
@@ -392,6 +426,7 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 				push_error("path_missing_before_godot_load: fixture asset cache is missing: %s" % cache_root)
 			asset_cache.mark_failed(asset_path, "file_missing", "decoding")
 			return null
+		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
 		var gltf := GLTFDocument.new()
 		var state := GLTFState.new()
 		var err: int = gltf.append_from_file(asset_path, state)
@@ -399,7 +434,9 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			asset_cache.mark_failed(asset_path, "scene_parse_failed:%d" % err)
 			return null
 		var generated: Node = gltf.generate_scene(state)
+		if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-decode_started)/1000.0
 		if generated is Node3D and _has_renderable_mesh(generated):
+			generated.set_meta("peraviz_static_scenery",generated.find_children("*","AnimationMixer",true,false).is_empty() and generated.find_children("*","Skeleton3D",true,false).is_empty())
 			var packed_scene := PackedScene.new()
 			if packed_scene.pack(generated) == OK:
 				asset_cache.store_scene(asset_path, packed_scene)
@@ -615,7 +652,7 @@ func refresh_scene_visibility(node_index: Dictionary, budget: SceneLoadBudget = 
 		if not node.has_meta("peraviz_model_visual"): continue
 		var visual: Variant = node.get_meta("peraviz_model_visual")
 		if not is_instance_valid(visual) or visual.get_meta("peraviz_model_fallback", false): continue
-		var report: Dictionary = ModelGeometry.inspect(visual)
+		var report: Dictionary = ModelGeometry.inspect(visual, _mesh_facts, _inspection_metrics)
 		if report.meshes == 0 or not report.has_bounds: continue
 		if not visual.is_inside_tree(): continue
 		attached += 1

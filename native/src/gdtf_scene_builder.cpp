@@ -184,7 +184,7 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
     GdtfGeometryBuildResult result;
     std::vector<SceneNode> &nodes = result.nodes;
 
-    ZipAssetCache gdtf_cache(request.gdtf_archive_path);
+    ZipAssetCache gdtf_cache(request.gdtf_archive_path, request.asset_metrics);
     result.cache_lease = gdtf_cache.cache_lease();
     result.cache_path = gdtf_cache.cache_dir().u8string();
     const std::string description_path = gdtf_cache.ensure_archive_file_extracted("description.xml");
@@ -505,7 +505,7 @@ GdtfGeometryBuildResult FixtureGeometryTemplates::instantiate(const GdtfBuildReq
     const auto key = std::make_tuple(request.gdtf_archive_path, request.gdtf_mode, revision, size, request.model_detail);
     auto found = templates_.find(key);
     if (found == templates_.end()) {
-        const GdtfBuildRequest definition{request.gdtf_archive_path, request.gdtf_mode, "", "", request.model_detail};
+        const GdtfBuildRequest definition{request.gdtf_archive_path, request.gdtf_mode, "", "", request.model_detail, request.asset_metrics};
         found = templates_.emplace(key, build_fixture_geometry_nodes(definition, "", MatrixUtils::Identity(), extracted_asset_count)).first;
     } else ++hits_;
     GdtfGeometryBuildResult result = found->second;

@@ -170,17 +170,23 @@ int test_mvr_gdtf_active_scene_lifetime(const std::filesystem::path &root) {
 #include "fixture_geometry_templates_test.h"
 #include "archive_resource_resolution_test.h"
 #include "import_compatibility_test.h"
+#include "large_mvr_import_test.h"
+#include "archive_cache_benchmark.h"
 
 } // namespace
 
 // Runs active-scene extraction ownership regressions in an isolated runtime root.
-int main() {
+int main(int argc, char **argv) {
+    if (argc > 1 && std::string(argv[1]) == "--archive-benchmark")
+        return benchmark_archive_cache(argc > 2 ? std::stoi(argv[2]) : 4500);
     const std::filesystem::path root = std::filesystem::temp_directory_path() / "peraviz_scene_asset_lifetime_test";
     std::filesystem::remove_all(root);
     peraviz::runtime_storage::set_runtime_root_for_tests(root / std::filesystem::u8path(u8"runtime\u00f1\u6a21\u578b"));
     if (const int result = test_scene_lease_set_deduplication(); result != 0) return result;
     if (const int result = test_mvr_gdtf_active_scene_lifetime(root); result != 0) return result;
     if (const int result = test_fixture_geometry_templates(root); result != 0) return result;
+    if (const int result = test_large_mvr_hierarchy(root); result != 0) return result;
+    if (const int result = test_archive_index_scaling(root); result != 0) return result;
     if (const int result = test_archive_resource_resolution(root); result != 0) return result;
     if (const int result = test_import_compatibility(root); result != 0) return result;
     peraviz::runtime_storage::cleanup_current_session();

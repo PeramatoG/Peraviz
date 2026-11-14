@@ -3,6 +3,11 @@ class_name PeravizRuntimeAssetCache
 
 var derived_lods = preload("res://scripts/scene_loading/runtime_mesh_lod_cache.gd").new()
 
+# Raw imported meshes/materials are immutable during setup. Instance optics retain
+# their existing independent material path; these caches retire with the scene.
+var geometry_facts: Dictionary = {}
+var model_inspection_metrics: Dictionary = {}
+var _static_double_sided: Dictionary = {}
 var _mesh_cache: Dictionary = {}
 var _scene_cache: Dictionary = {}
 var _material_cache: Dictionary = {}
@@ -31,6 +36,9 @@ func configure_debug_logging(enabled: bool, log_interval: int = 50) -> void:
 
 func clear() -> void:
 	derived_lods.clear()
+	geometry_facts.clear()
+	model_inspection_metrics.clear()
+	_static_double_sided.clear()
 	_mesh_cache.clear()
 	_scene_cache.clear()
 	_material_cache.clear()
@@ -41,6 +49,21 @@ func clear() -> void:
 		_hit_by_kind[kind] = 0
 	for kind in _miss_by_kind.keys():
 		_miss_by_kind[kind] = 0
+
+# Only ordinary opaque scenery can reuse this prepared material. Returning null
+# keeps the existing per-instance preparation for mutable/special material state.
+func static_double_sided(source: Material) -> Material:
+	if source != null and (not source is StandardMaterial3D or source.resource_local_to_scene or source.emission_enabled or source.next_pass != null or source.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED): return null
+	var key: Variant = source if source != null else "default"
+	if _static_double_sided.has(key): return _static_double_sided[key]
+	if source != null:
+		for slot in range(BaseMaterial3D.TEXTURE_MAX):
+			var texture: Texture2D = source.get_texture(slot)
+			if texture != null and (texture.resource_local_to_scene or texture is ViewportTexture or texture is AnimatedTexture): return null
+	var prepared: StandardMaterial3D = source.duplicate(false) if source != null else StandardMaterial3D.new()
+	prepared.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_static_double_sided[key] = prepared
+	return prepared
 
 func get_mesh(asset_path: String) -> Mesh:
 	if _failed_paths.has(asset_path):
@@ -114,7 +137,9 @@ func debug_summary() -> Dictionary:
 		"misses": _miss_count,
 		"hits_by_kind": _hit_by_kind.duplicate(true),
 		"misses_by_kind": _miss_by_kind.duplicate(true),
-		"unique_resources": _mesh_cache.size() + _scene_cache.size() + _material_cache.size(),
+		"unique_resources": _mesh_cache.size() + _scene_cache.size() + _material_cache.size() + _static_double_sided.size(),
+		"static_material_unique": _static_double_sided.size(),
+		"inspected_mesh_unique": geometry_facts.size(),
 		"mesh_unique": _mesh_cache.size(),
 		"failed_unique": _failed_paths.size(),
 		"scene_unique": _scene_cache.size(),
