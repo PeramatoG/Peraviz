@@ -389,6 +389,10 @@ Reproduce with the pinned engine (`GODOT_BIN` from the cloud setup):
 
 ## Scene setup and loading
 
+The [distinct-resource preparation follow-up](scene-model-preparation-performance.md)
+records inherited-winding planning, scene-owned 3DS image reuse, native bulk packed
+transfers, operation counters and the intentionally unchanged glTF lifecycle.
+
 The [large MVR import audit](large-mvr-import-performance.md) records archive indexing,
 small-transform/group correctness, shared scenery preparation, adaptive first-render
 activation, synthetic 10k regressions and the separate persistent-cache follow-up.

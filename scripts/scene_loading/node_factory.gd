@@ -16,7 +16,26 @@ var asset_diagnostics: RefCounted = AssetDiagnostics.new()
 func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary, rebuild_loaded_bounds: Callable, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, budget: SceneLoadBudget = null) -> bool:
 	var constructed: Array[Node3D] = []
 	_profile_setup = budget != null and budget.trace_enabled
-	setup_metrics = {"node_construction_ms":0.0,"resource_decode_ms":0.0,"scene_instantiation_ms":0.0,"material_preparation_ms":0.0,"orientation_ms":0.0,"dummy_removal_ms":0.0,"lod_installation_ms":0.0,"bounds_diagnostics_ms":0.0}
+	setup_metrics = {
+		"node_construction_ms":0.0,
+		"resource_decode_ms":0.0,
+		"scene_instantiation_ms":0.0,
+		"material_preparation_ms":0.0,
+		"orientation_ms":0.0,
+		"dummy_removal_ms":0.0,
+		"lod_installation_ms":0.0,
+		"bounds_diagnostics_ms":0.0,
+		"mesh_decode_calls":0,
+		"mesh_build_calls":0,
+		"texture_decode_calls":0,
+		"scene_decode_calls":0,
+		"scene_pack_calls":0,
+		"scene_pack_ms":0.0,
+		"mesh_creation_ms":0.0,
+		"texture_preparation_ms":0.0,
+		"scene_clone_calls":0,
+		"orientation_plan_ms":0.0,
+	}
 	asset_cache.model_inspection_metrics = ModelGeometry.new_metrics(_profile_setup)
 	_inspection_metrics = asset_cache.model_inspection_metrics
 	_mesh_facts = asset_cache.geometry_facts
@@ -34,10 +53,27 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 			if node_id.is_empty():
 				continue
 			var started: int = Time.get_ticks_usec() if _profile_setup else 0
-			var node: Node3D = create_scene_node(item, loader, asset_cache)
+			var node: Node3D = create_scene_node(item, loader, asset_cache, true)
 			if _profile_setup: setup_metrics.node_construction_ms += (Time.get_ticks_usec()-started)/1000.0
 			constructed.append(node)
 			node_index[node_id] = node
+
+	var plan_started := Time.get_ticks_usec()
+	var orientation_flags: Dictionary = await _plan_orientation(nodes,node_index,proxies_root,budget)
+	setup_metrics.orientation_plan_ms = (Time.get_ticks_usec()-plan_started)/1000.0
+	if budget != null and not budget.valid():
+		_discard_unattached_nodes(constructed)
+		return false
+	for item: Dictionary in nodes:
+		if budget != null and not await budget.checkpoint():
+			_discard_unattached_nodes(constructed)
+			return false
+		var id: String = str(item.get("node_id",""))
+		var node: Node3D = node_index.get(id)
+		if node == null: continue
+		var started: int = Time.get_ticks_usec() if _profile_setup else 0
+		_install_scene_visual(node,item,loader,asset_cache,bool(orientation_flags.get(id,node.transform.basis.determinant()<0.0)))
+		if _profile_setup: setup_metrics.node_construction_ms += (Time.get_ticks_usec()-started)/1000.0
 
 	for item in nodes:
 		if budget != null and not await budget.checkpoint():
@@ -77,15 +113,43 @@ func build_node_tree(nodes: Array, proxies_root: Node3D, node_index: Dictionary,
 	setup_metrics.merge(ModelGeometry.metrics(_inspection_metrics))
 	return true
 
+# Generation-local derived flags use the same validated transforms and parent
+# IDs as attachment. Resolve in O(nodes), including child-before-parent payloads;
+# no scene node is attached early and no alternate live transform state survives.
+func _plan_orientation(nodes: Array, index: Dictionary, proxies_root: Node3D, budget: SceneLoadBudget) -> Dictionary:
+	var children: Dictionary = {}
+	var flags: Dictionary = {}
+	var pending: Array[String] = []
+	var root_flip: bool = proxies_root.transform.basis.determinant() < 0.0
+	for data: Dictionary in nodes:
+		if budget != null and not await budget.checkpoint(): return {}
+		var id: String = str(data.get("node_id",""))
+		var node: Node3D = index.get(id)
+		if node == null: continue
+		var parent: String = str(data.get("parent_id",""))
+		if index.has(parent):
+			if not children.has(parent): children[parent] = []
+			children[parent].append(id)
+		else:
+			flags[id] = root_flip != (node.transform.basis.determinant() < 0.0)
+			pending.append(id)
+	while not pending.is_empty():
+		if budget != null and not await budget.checkpoint(): return {}
+		var parent: String = pending.pop_back()
+		for id: String in children.get(parent,[]):
+			var node: Node3D = index[id]
+			flags[id] = bool(flags[parent]) != (node.transform.basis.determinant() < 0.0)
+			pending.append(id)
+	return flags
+
 func _discard_unattached_nodes(constructed: Array[Node3D]) -> void:
 	for node in constructed:
 		if is_instance_valid(node) and node.get_parent() == null:
 			node.free()
 
-func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache) -> Node3D:
+func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, defer_visual: bool = false) -> Node3D:
 	var item_type: String = str(data.get("type", "scene_object"))
 	var item_class: String = _extract_node_class(data, item_type)
-	var is_fixture: bool = bool(data.get("is_fixture", false))
 	var is_axis: bool = bool(data.get("is_axis", false))
 	var is_emitter: bool = bool(data.get("is_emitter", false))
 	var is_lens: bool = bool(data.get("is_lens", false))
@@ -128,13 +192,19 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 		emitter.name = "EmitterMarker"
 		root.add_child(emitter)
 
+	if not defer_visual:
+		_install_scene_visual(root,data,loader,asset_cache,flip_orientation)
+	return root
+
+func _install_scene_visual(root: Node3D, data: Dictionary, loader: PeravizLoader, asset_cache: PeravizRuntimeAssetCache, flip_orientation: bool) -> void:
+	var item_type: String = str(data.get("type","scene_object"))
+	var item_class: String = _extract_node_class(data,item_type)
+	var is_fixture: bool = bool(data.get("is_fixture",false))
 	var visual_scale_hint: float = _extract_visual_scale_hint(data)
-	var model_node: Node3D = _build_visual_node(data, item_type, item_class, is_fixture, visual_scale_hint, loader, asset_cache, flip_orientation)
+	var model_node: Node3D = _build_visual_node(data,item_type,item_class,is_fixture,visual_scale_hint,loader,asset_cache,flip_orientation)
 	if model_node != null:
 		root.add_child(model_node)
-		root.set_meta("peraviz_model_visual", model_node)
-
-	return root
+		root.set_meta("peraviz_model_visual",model_node)
 
 func _is_basis_valid(candidate_basis: Basis) -> bool:
 	return preload("res://scripts/scene_loading/transform_validation.gd").is_basis_valid(candidate_basis)
@@ -205,12 +275,10 @@ func _rebuild_mesh_instance_for_orientation(mesh_instance: MeshInstance3D, flip_
 
 	var cached_mesh: Mesh = asset_cache.get_mesh(mesh_cache_key)
 	if cached_mesh == null:
-		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
-		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
-		if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-decode_started)/1000.0
+		var mesh_data: Dictionary = _decode_3ds_mesh(asset_path,loader)
 		if not bool(mesh_data.get("ok", false)):
 			return
-		var rebuilt_mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation)
+		var rebuilt_mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation, asset_cache)
 		if rebuilt_mesh == null:
 			return
 		asset_cache.store_mesh(mesh_cache_key, rebuilt_mesh)
@@ -396,13 +464,11 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			cached_mesh_instance.set_meta("peraviz_asset_kind", "mesh")
 			cached_mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
 			return cached_mesh_instance
-		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
-		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
-		if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-decode_started)/1000.0
+		var mesh_data: Dictionary = _decode_3ds_mesh(asset_path,loader)
 		if not bool(mesh_data.get("ok", false)):
 			asset_cache.mark_failed(asset_path, str(mesh_data.get("error", "invalid_3ds")))
 			return null
-		var mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation)
+		var mesh: ArrayMesh = _build_3ds_mesh(mesh_data, flip_orientation, asset_cache)
 		if mesh == null:
 			asset_cache.mark_failed(asset_path, "mesh_construction_failed", "mesh_creation")
 			return null
@@ -414,9 +480,7 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
 		return mesh_instance
 	if resolved_asset_kind == "scene" or extension == "glb" or extension == "gltf":
-		var instance_started: int = Time.get_ticks_usec() if _profile_setup else 0
-		var cached_scene_instance: Node3D = asset_cache.instantiate_scene(asset_path)
-		if _profile_setup: setup_metrics.scene_instantiation_ms += (Time.get_ticks_usec()-instance_started)/1000.0
+		var cached_scene_instance: Node3D = _instantiate_cached_scene(asset_path,asset_cache)
 		if cached_scene_instance != null:
 			return cached_scene_instance
 		if not FileAccess.file_exists(asset_path):
@@ -427,6 +491,7 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			asset_cache.mark_failed(asset_path, "file_missing", "decoding")
 			return null
 		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
+		setup_metrics["scene_decode_calls"] = int(setup_metrics.get("scene_decode_calls",0)) + 1
 		var gltf := GLTFDocument.new()
 		var state := GLTFState.new()
 		var err: int = gltf.append_from_file(asset_path, state)
@@ -438,10 +503,14 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 		if generated is Node3D and _has_renderable_mesh(generated):
 			generated.set_meta("peraviz_static_scenery",generated.find_children("*","AnimationMixer",true,false).is_empty() and generated.find_children("*","Skeleton3D",true,false).is_empty())
 			var packed_scene := PackedScene.new()
-			if packed_scene.pack(generated) == OK:
+			setup_metrics["scene_pack_calls"] = int(setup_metrics.get("scene_pack_calls",0)) + 1
+			var pack_started: int = Time.get_ticks_usec() if _profile_setup else 0
+			var pack_error: Error = packed_scene.pack(generated)
+			if _profile_setup: setup_metrics.scene_pack_ms += (Time.get_ticks_usec()-pack_started)/1000.0
+			if pack_error == OK:
 				asset_cache.store_scene(asset_path, packed_scene)
 				generated.free()
-				return asset_cache.instantiate_scene(asset_path)
+				return _instantiate_cached_scene(asset_path,asset_cache)
 			asset_cache.mark_failed(asset_path, "scene_pack_failed", "scene_instantiation")
 			generated.free()
 			return null
@@ -449,15 +518,23 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			generated.free()
 		asset_cache.mark_failed(asset_path, "no_renderable_geometry", "scene_instantiation")
 		return null
-	var scene_instance: Node3D = asset_cache.instantiate_scene(asset_path)
+	var scene_instance: Node3D = _instantiate_cached_scene(asset_path,asset_cache)
 	if scene_instance != null:
 		return scene_instance
 	var resource: Resource = load(asset_path)
 	if resource is PackedScene:
 		asset_cache.store_scene(asset_path, resource)
-		return asset_cache.instantiate_scene(asset_path)
+		return _instantiate_cached_scene(asset_path,asset_cache)
 	asset_cache.mark_failed(asset_path)
 	return null
+
+func _instantiate_cached_scene(path: String, asset_cache: PeravizRuntimeAssetCache) -> Node3D:
+	var started: int = Time.get_ticks_usec() if _profile_setup else 0
+	var instance: Node3D = asset_cache.instantiate_scene(path)
+	if instance != null:
+		setup_metrics["scene_clone_calls"] = int(setup_metrics.get("scene_clone_calls",0)) + 1
+	if _profile_setup: setup_metrics.scene_instantiation_ms += (Time.get_ticks_usec()-started)/1000.0
+	return instance
 
 func _has_renderable_mesh(node: Node) -> bool:
 	if node is MeshInstance3D and node.mesh != null and node.mesh.get_surface_count() > 0:
@@ -499,7 +576,21 @@ func _infer_asset_kind_from_extension(asset_path: String) -> String:
 		return "scene"
 	return "none"
 
-func _build_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false) -> ArrayMesh:
+func _decode_3ds_mesh(asset_path: String, loader: PeravizLoader) -> Dictionary:
+	setup_metrics["mesh_decode_calls"] = int(setup_metrics.get("mesh_decode_calls",0)) + 1
+	var started: int = Time.get_ticks_usec() if _profile_setup else 0
+	var data: Dictionary = loader.load_3ds_mesh_data(asset_path)
+	if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-started)/1000.0
+	return data
+
+func _build_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false, asset_cache: PeravizRuntimeAssetCache = null) -> ArrayMesh:
+	setup_metrics["mesh_build_calls"] = int(setup_metrics.get("mesh_build_calls",0)) + 1
+	var started: int = Time.get_ticks_usec() if _profile_setup else 0
+	var mesh: ArrayMesh = _create_3ds_mesh(mesh_data,flip_orientation,asset_cache)
+	if _profile_setup: setup_metrics.mesh_creation_ms += (Time.get_ticks_usec()-started)/1000.0
+	return mesh
+
+func _create_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false, asset_cache: PeravizRuntimeAssetCache = null) -> ArrayMesh:
 	var vertices: PackedVector3Array = mesh_data.get("vertices", PackedVector3Array())
 	var normals: PackedVector3Array = mesh_data.get("normals", PackedVector3Array())
 	var texcoords: PackedVector2Array = mesh_data.get("texcoords", PackedVector2Array())
@@ -530,19 +621,13 @@ func _build_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false) -> A
 	if array_mesh.get_surface_count() == 0:
 		return null
 	if not texture_path.is_empty() and texcoords.size() == vertices.size():
-		var image := Image.new()
-		var image_error: Error = image.load(texture_path)
-		if image_error == OK:
-			if image.get_format() != Image.FORMAT_RGBA8:
-				image.convert(Image.FORMAT_RGBA8)
-			var texture: ImageTexture = ImageTexture.create_from_image(image)
+		var texture: Texture2D = _load_3ds_texture(texture_path,asset_cache)
+		if texture != null:
 			var material := StandardMaterial3D.new()
-			material.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
+			material.albedo_color = Color.WHITE
 			material.albedo_texture = texture
 			material.cull_mode = BaseMaterial3D.CULL_DISABLED
-			array_mesh.surface_set_material(0, material)
-		else:
-			push_warning("[Peraviz] Failed to load 3DS texture image: %s (error=%d)" % [texture_path, image_error])
+			array_mesh.surface_set_material(0,material)
 	elif has_material_base_color:
 		var base_color_material := StandardMaterial3D.new()
 		base_color_material.albedo_color = material_base_color
@@ -554,6 +639,27 @@ func _build_3ds_mesh(mesh_data: Dictionary, flip_orientation: bool = false) -> A
 		textured_fallback_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 		array_mesh.surface_set_material(0, textured_fallback_material)
 	return array_mesh
+
+# Image decoding/upload is once per exact resolved path and import generation.
+# Missing images keep the previous material fallback and retry on the next import.
+func _load_3ds_texture(path: String, asset_cache: PeravizRuntimeAssetCache) -> Texture2D:
+	if asset_cache != null:
+		if asset_cache.is_texture_failed(path): return null
+		var cached: Texture2D = asset_cache.get_texture(path)
+		if cached != null: return cached
+	setup_metrics["texture_decode_calls"] = int(setup_metrics.get("texture_decode_calls",0)) + 1
+	var started: int = Time.get_ticks_usec() if _profile_setup else 0
+	var image := Image.new()
+	var error: Error = image.load(path)
+	if error != OK:
+		if asset_cache != null: asset_cache.mark_texture_failed(path)
+		push_warning("[Peraviz] Failed to load 3DS texture image: %s (error=%d)" % [path,error])
+		return null
+	if image.get_format() != Image.FORMAT_RGBA8: image.convert(Image.FORMAT_RGBA8)
+	var texture: ImageTexture = ImageTexture.create_from_image(image)
+	if _profile_setup: setup_metrics.texture_preparation_ms += (Time.get_ticks_usec()-started)/1000.0
+	if asset_cache != null: asset_cache.store_texture(path,texture)
+	return texture
 
 func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float, asset_cache: PeravizRuntimeAssetCache) -> Node3D:
 	var mesh_instance := MeshInstance3D.new()

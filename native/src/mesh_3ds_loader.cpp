@@ -666,7 +666,8 @@ bool load_3ds(const std::string &path, MeshData &mesh, std::string &error) {
 
 namespace peraviz {
 
-// Decodes a Godot path to UTF-8 and returns validated packed mesh data or a stable failure reason.
+// Copies validated source data into pre-sized writable packed buffers, avoiding
+// per-element Godot ABI calls while retaining the coordinate conversion and errors.
 bool load_3ds_mesh_data(const godot::String &path,
                         godot::PackedVector3Array &out_vertices,
                         godot::PackedVector3Array &out_normals,
@@ -684,36 +685,49 @@ bool load_3ds_mesh_data(const godot::String &path,
         return false;
     }
 
-    out_vertices.resize(static_cast<int64_t>(mesh.vertices.size() / 3));
-    for (int64_t i = 0; i < out_vertices.size(); ++i) {
+    const int64_t vertex_count = static_cast<int64_t>(mesh.vertices.size() / 3U);
+    const int64_t normal_count = static_cast<int64_t>(mesh.normals.size() / 3U);
+    const int64_t index_count = static_cast<int64_t>(mesh.indices.size());
+    const int64_t texcoord_count = static_cast<int64_t>(mesh.texcoords.size() / 2U);
+    out_vertices.resize(vertex_count);
+    out_normals.resize(normal_count);
+    out_indices.resize(index_count);
+    out_texcoords.resize(texcoord_count);
+    if (out_vertices.size() != vertex_count || out_normals.size() != normal_count ||
+        out_indices.size() != index_count || out_texcoords.size() != texcoord_count) {
+        out_error = "mesh_data_allocation_failed";
+        return false;
+    }
+    auto *vertices = vertex_count ? out_vertices.ptrw() : nullptr;
+    auto *normals = normal_count ? out_normals.ptrw() : nullptr;
+    auto *indices = index_count ? out_indices.ptrw() : nullptr;
+    auto *texcoords = texcoord_count ? out_texcoords.ptrw() : nullptr;
+    if ((vertex_count && !vertices) || (normal_count && !normals) ||
+        (index_count && !indices) || (texcoord_count && !texcoords)) {
+        out_error = "mesh_data_allocation_failed";
+        return false;
+    }
+    for (int64_t i = 0; i < vertex_count; ++i) {
         const std::array<float, 3> source_vertex = {
             mesh.vertices[i * 3] * kMillimetersToMeters,
             mesh.vertices[i * 3 + 1] * kMillimetersToMeters,
             mesh.vertices[i * 3 + 2] * kMillimetersToMeters,
         };
         const auto mapped = coordinate_mapper::map_source_vector_to_godot(source_vertex);
-        out_vertices.set(i, godot::Vector3(mapped[0], mapped[1], mapped[2]));
+        vertices[i] = godot::Vector3(mapped[0], mapped[1], mapped[2]);
     }
-
-    out_normals.resize(static_cast<int64_t>(mesh.normals.size() / 3));
-    for (int64_t i = 0; i < out_normals.size(); ++i) {
+    for (int64_t i = 0; i < normal_count; ++i) {
         const std::array<float, 3> source_normal = {
-            mesh.normals[i * 3],
-            mesh.normals[i * 3 + 1],
-            mesh.normals[i * 3 + 2],
+            mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2],
         };
         const auto mapped = coordinate_mapper::map_source_vector_to_godot(source_normal);
-        out_normals.set(i, godot::Vector3(mapped[0], mapped[1], mapped[2]));
+        normals[i] = godot::Vector3(mapped[0], mapped[1], mapped[2]);
     }
-
-    out_indices.resize(static_cast<int64_t>(mesh.indices.size()));
-    for (int64_t i = 0; i < out_indices.size(); ++i) {
-        out_indices.set(i, static_cast<int32_t>(mesh.indices[i]));
+    for (int64_t i = 0; i < index_count; ++i) {
+        indices[i] = static_cast<int32_t>(mesh.indices[i]);
     }
-
-    out_texcoords.resize(static_cast<int64_t>(mesh.texcoords.size() / 2U));
-    for (int64_t i = 0; i < out_texcoords.size(); ++i) {
-        out_texcoords.set(i, godot::Vector2(mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]));
+    for (int64_t i = 0; i < texcoord_count; ++i) {
+        texcoords[i] = godot::Vector2(mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1]);
     }
 
     out_texture_path = godot::String::utf8(mesh.texture_path.c_str());

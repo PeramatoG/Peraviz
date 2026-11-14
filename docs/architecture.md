@@ -18,7 +18,11 @@ geometry expansion, selected-mode compilation and Control/Render Group classific
 Generation-scoped geometry templates retain model leases and rebind UUIDs/keys per
 instance; scene replacement retires them. Setup indexes follow actual fixture/resource
 ownership. Godot transfers the completed data, builds nodes/targets in frame-budgeted
-batches. Renderer target/material/group installation is a single main-thread
+batches. Setup derives inherited 3DS winding from validated native shells before
+model creation, then retains the existing attachment/repair order. Exact-path 3DS
+albedo images share one immutable, scene-owned texture cache; retirement clears it.
+Runtime glTF retains PackedScene prototypes and independent instances.
+Renderer target/material/group installation is a single main-thread
 transaction, matching main’s publication order: no rendering turn consumes
 individual resources before their final sharing/aggregate bindings. CPU preparation
 is already complete. This transaction is not subject to the 8 ms construction
