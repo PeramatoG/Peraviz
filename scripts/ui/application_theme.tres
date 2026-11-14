@@ -1,0 +1,49 @@
+[gd_resource type="Theme" load_steps=5 format=3]
+
+[sub_resource type="StyleBoxFlat" id="Panel"]
+bg_color = Color(0.09, 0.105, 0.125, 1)
+content_margin_left = 10.0
+content_margin_right = 10.0
+content_margin_top = 8.0
+content_margin_bottom = 8.0
+border_width_right = 1
+border_color = Color(0.19, 0.22, 0.26, 1)
+
+[sub_resource type="StyleBoxFlat" id="Button"]
+bg_color = Color(0.14, 0.16, 0.19, 1)
+content_margin_left = 9.0
+content_margin_right = 9.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_left = 3
+corner_radius_bottom_right = 3
+
+[sub_resource type="StyleBoxFlat" id="Hover"]
+bg_color = Color(0.22, 0.26, 0.31, 1)
+content_margin_left = 9.0
+content_margin_right = 9.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="Pressed"]
+bg_color = Color(0.15, 0.34, 0.46, 1)
+content_margin_left = 9.0
+content_margin_right = 9.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[resource]
+default_font_size = 13
+Button/styles/normal = SubResource("Button")
+Button/styles/hover = SubResource("Hover")
+Button/styles/pressed = SubResource("Pressed")
+Button/styles/focus = SubResource("Hover")
+Button/colors/font_color = Color(0.86, 0.89, 0.93, 1)
+Button/colors/font_disabled_color = Color(0.43, 0.47, 0.53, 1)
+PanelContainer/styles/panel = SubResource("Panel")
+PopupMenu/styles/panel = SubResource("Panel")
+Tree/colors/selection_color = Color(0.15, 0.34, 0.46, 1)
+VBoxContainer/constants/separation = 8
+HBoxContainer/constants/separation = 5

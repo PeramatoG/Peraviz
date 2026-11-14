@@ -66,7 +66,7 @@ func set_dmx_badge(is_running: bool, receiving_signal: bool) -> void:
 	if not is_running:
 		_set_badge("DMX", "OFF")
 		return
-	_set_badge("DMX", "Connected" if receiving_signal else "No signal")
+	_set_badge("DMX", "Receiving" if receiving_signal else "Listening")
 
 func set_mvr_xchange_badge(is_running: bool, station_count: int, state: String = "") -> void:
 	match state:
@@ -95,7 +95,7 @@ func set_mvr_xchange_badge(is_running: bool, station_count: int, state: String =
 		_set_badge("MVR-xchange", "%d stations" % station_count)
 
 func set_selected_fixture_badge(fixture_uuid: String) -> void:
-	_set_badge("Selected Fixture", "None" if fixture_uuid.is_empty() else fixture_uuid)
+	_set_badge("Selected Fixture", "None" if fixture_uuid.is_empty() else "Selected")
 
 func set_render_mode_badge(render_mode_label: String) -> void:
 	_set_badge("Render Mode", render_mode_label)
@@ -142,11 +142,7 @@ func _ensure_badges(load_button: Button, show_advanced_controls_toggle: CheckBut
 	else:
 		_topbar_row.add_child(_badge_row)
 
-	_create_badge("MVR")
 	_create_badge("DMX")
-	_create_badge("MVR-xchange")
-	_create_badge("Selected Fixture")
-	_create_badge("Render Mode")
 
 	if load_button != null:
 		load_button.tooltip_text = "Load an MVR or Peraviz project file"
@@ -169,6 +165,8 @@ func _create_badge(name: String) -> void:
 
 func _set_badge(name: String, value: String) -> void:
 	if not _badge_labels.has(name):
+		_badge_values[name] = value
+		if _status_label != null: _status_label.tooltip_text = JSON.stringify(_badge_values, "  ")
 		return
 	if str(_badge_values.get(name, "")) == value:
 		return

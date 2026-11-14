@@ -200,3 +200,16 @@ Changes since the previous Peraviz release.
 - Added a production-integrated native GDTF gobo scalar contract with exact semantic identities, generic structured mode dependencies, ChannelSet physical ranges, and standards-based node defaults as groundwork for later visible gobo motion.
 - Moved live scene playback to native DMX subscriptions, generation-safe dirty-ID handoff, bounded latest-state coalescing, direct native runtime submission, and held-state rehydration without routing raw universe payloads through scripts.
 - Corrected ordered ArtDmx sequence validation and receiver-session lifecycle, reduced endpoint work on the receive thread, drained sockets until would-block, and made Technical Monitor payload capture fresh-session, budgeted, and subordinate to scene playback.
+
+### Professional application shell
+
+- Added resizable Scene Explorer and contextual read-only Inspector, shared UUID
+  selection, search, viewport framing and a compact application toolbar.
+- Added independent panel toggles, restoreable distraction-free mode, F11
+  nonexclusive fullscreen and migrated layout/UI-scale preferences.
+- Moved connection and diagnostic tools into optional windows; FPS defaults off
+  for new preferences. Added a shared dark theme and bundled vector icons.
+- Removed the unused startup ping script and obsolete section/DMX UI bridges.
+  MVR/PVZ ownership and the native rendering/DMX pipeline are preserved.
+- MVR document mutations and standard MVR Pan/Tilt inversion evaluation remain
+  deferred. See `application-ui.md` for controls, tradeoffs and editing handoff.

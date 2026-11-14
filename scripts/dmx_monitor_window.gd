@@ -24,6 +24,7 @@ func _init() -> void:
 	unresizable = false
 
 func _ready() -> void:
+	preload("res://scripts/ui/window_modes.gd").install_escape(self)
 	close_requested.connect(_on_close_requested)
 	var root: VBoxContainer = VBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)

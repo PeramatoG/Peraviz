@@ -49,3 +49,5 @@ Contributor rules are in [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTI
 ## License
 
 Peraviz is licensed under the [GNU General Public License v3.0](LICENSE.txt).
+
+- [Application UI and shortcuts](docs/application-ui.md): layout, selection, diagnostic tools and the MVR editing handoff.

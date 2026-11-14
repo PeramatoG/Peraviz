@@ -7,6 +7,8 @@ var _loaded_nodes: Array = []
 var _fixture_node_lookup: Dictionary = {}
 var _fixture_patch_lookup: Dictionary = {}
 var _runtime_fixture_rows: Dictionary = {}
+var _binding_by_uuid: Dictionary = {}
+var _unbound_by_uuid: Dictionary = {}
 var _bindings: Array = []
 var _unbound: Array = []
 
@@ -21,6 +23,8 @@ func clear() -> void:
 	_fixture_node_lookup.clear()
 	_fixture_patch_lookup.clear()
 	_runtime_fixture_rows.clear()
+	_binding_by_uuid.clear()
+	_unbound_by_uuid.clear()
 	_bindings.clear()
 	_unbound.clear()
 
@@ -33,6 +37,12 @@ func set_loaded_nodes(nodes: Array) -> void:
 func set_dmx_state(bindings: Array, unbound: Array) -> void:
 	_bindings = bindings.duplicate(true)
 	_unbound = unbound.duplicate(true)
+	_binding_by_uuid.clear()
+	_unbound_by_uuid.clear()
+	for row in _bindings:
+		if row is Dictionary: _binding_by_uuid[str(row.get("fixture_uuid", ""))] = row
+	for row in _unbound:
+		if row is Dictionary: _unbound_by_uuid[str(row.get("fixture_uuid", ""))] = row
 	_rebuild_fixture_patch_lookup()
 	_rebuild_runtime_fixture_rows()
 
@@ -54,6 +64,7 @@ func get_fixture_row(fixture_uuid: String) -> Dictionary:
 	var fixture_node: Node = _scene_registry.get_fixture(fixture_uuid) if _scene_registry != null else null
 	return {
 		"fixture_uuid": fixture_uuid,
+		"dmx_mode": _resolve_runtime_cell(runtime_row, 7, str(patch.get("dmx_mode", ""))),
 		"fixture_name": _resolve_runtime_cell(runtime_row, 1, _resolve_fixture_name(node_data, patch, binding, fixture_node)),
 		"fixture_id": _resolve_runtime_cell(runtime_row, 0, _resolve_fixture_id(node_data, patch, binding, fixture_node)),
 		"fixture_type": _resolve_runtime_cell(runtime_row, 2, _resolve_fixture_type(node_data, patch, binding, fixture_node)),
@@ -149,16 +160,10 @@ func _collect_known_fixture_uuids() -> PackedStringArray:
 	return uuids
 
 func _find_binding_for_fixture(fixture_uuid: String) -> Dictionary:
-	for binding in _bindings:
-		if binding is Dictionary and str(binding.get("fixture_uuid", "")) == fixture_uuid:
-			return binding
-	return {}
+	return _binding_by_uuid.get(fixture_uuid, {})
 
 func _find_unbound_for_fixture(fixture_uuid: String) -> Dictionary:
-	for row in _unbound:
-		if row is Dictionary and str(row.get("fixture_uuid", "")) == fixture_uuid:
-			return row
-	return {}
+	return _unbound_by_uuid.get(fixture_uuid, {})
 
 func _resolve_fixture_name(node_data: Dictionary, patch: Dictionary, binding: Dictionary, fixture_node: Node) -> String:
 	var fixture_name: String = _first_non_empty_string(node_data, ["fixture_name", "fixture_label", "name", "label"])

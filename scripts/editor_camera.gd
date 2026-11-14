@@ -27,6 +27,9 @@ enum DragMode {
 	PAN,
 }
 
+var navigation_area: Control
+var scene_view_rect := Rect2()
+
 var _left_down: bool = false
 var _right_down: bool = false
 var _middle_down: bool = false
@@ -40,7 +43,10 @@ func focus_on_aabb(bounds: AABB) -> void:
 	var aspect: float = viewport_size.x / maxf(viewport_size.y,1.0)
 	var half_fov: float = deg_to_rad(fov) * 0.5
 	var other_half: float = atan(tan(half_fov) * aspect) if keep_aspect == KEEP_HEIGHT else atan(tan(half_fov) / maxf(aspect,0.001))
-	var fit_distance: float = radius / maxf(sin(minf(half_fov,other_half)),0.001) * 1.15
+	var visible_fraction: float = 1.0
+	if scene_view_rect.has_area():
+		visible_fraction = minf(scene_view_rect.size.x / viewport_size.x, scene_view_rect.size.y / viewport_size.y)
+	var fit_distance: float = radius / maxf(sin(minf(half_fov,other_half)),0.001) * 1.15 / maxf(visible_fraction, 0.05)
 	# Navigation limits and clipping must permit both millimetre-scale details
 	# and venues larger than the default 500 m orbit range.
 	min_distance = minf(_default_min_distance,maxf(radius * 0.05,0.00001))
@@ -67,7 +73,16 @@ func _ready() -> void:
 	_initialize_from_transform()
 	_set_mouse_mode(false)
 
+func _input(event: InputEvent) -> void:
+	# A captured navigation drag must end even when release falls over a dock.
+	if event is InputEventMouseButton and not event.pressed and _is_dragging():
+		if event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+			_handle_mouse_button(event)
+
 func _unhandled_input(event: InputEvent) -> void:
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus is LineEdit or focus is TextEdit: return
+	if event is InputEventMouseButton and event.pressed and navigation_area != null and not navigation_area.get_global_rect().has_point(event.position): return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion:
@@ -100,13 +115,8 @@ func _initialize_from_transform() -> void:
 	current_pitch = target_pitch
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		_left_down = event.pressed
-		_update_drag_mode(event.shift_pressed)
-		_set_mouse_mode(_is_dragging())
-		if event.pressed:
-			get_viewport().set_input_as_handled()
-		return
+	# Left click belongs to ordinary selection; right drag retains orbit navigation.
+	if event.button_index == MOUSE_BUTTON_LEFT: return
 
 	if event.button_index == MOUSE_BUTTON_RIGHT:
 		_right_down = event.pressed
@@ -267,6 +277,14 @@ func _update_camera_transform() -> void:
 
 	global_position = target_position + orbit_offset
 	look_at(target_position, Vector3.UP)
+	# Keep one root viewport and native renderer ownership. Shift the camera so its
+	# orbit target projects into the unobscured UI rectangle; rays remain root pixels.
+	if scene_view_rect.has_area():
+		var viewport_size := get_viewport().get_visible_rect().size
+		var center_delta := scene_view_rect.get_center() - viewport_size * 0.5
+		var span: float = 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
+		var pixels: float = viewport_size.y if keep_aspect == KEEP_HEIGHT else viewport_size.x
+		global_position += (-global_basis.x * center_delta.x + global_basis.y * center_delta.y) * span / maxf(pixels, 1.0)
 
 func _set_mouse_mode(active: bool) -> void:
 	if active:

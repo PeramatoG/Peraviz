@@ -169,6 +169,8 @@ func create_scene_node(data: Dictionary, loader: PeravizLoader, asset_cache: Per
 	var root := Node3D.new()
 	root.name = "%s_%s" % [item_class, node_name]
 	root.set_meta("peraviz_type", item_type)
+	root.set_meta("peraviz_object_id", str(data.get("node_id", "")))
+	root.set_meta("peraviz_name", node_name)
 	root.set_meta("peraviz_asset_archive_path",str(data.get("asset_archive_path","")))
 	root.set_meta("peraviz_model_quality",str(data.get("model_quality","")))
 	root.set_meta("peraviz_is_axis", is_axis)

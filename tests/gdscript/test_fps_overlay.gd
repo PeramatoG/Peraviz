@@ -13,7 +13,8 @@ func run() -> void:
 	var existed := FileAccess.file_exists(Preferences.SETTINGS_FILE_PATH)
 	var saved := FileAccess.get_file_as_bytes(Preferences.SETTINGS_FILE_PATH) if existed else PackedByteArray()
 	var preferences = Preferences.new()
-	test.check(preferences.show_fps, "FPS defaults on")
+	test.check(not preferences.show_fps, "FPS defaults off for new users")
+	preferences.show_fps = true
 	var topbar := HBoxContainer.new()
 	var viewport_area := Control.new()
 	get_root().add_child(topbar)
@@ -26,6 +27,8 @@ func run() -> void:
 	await create_timer(0.3).timeout
 	test.check(overlay.text.begins_with("FPS "), "Timer updates normal Godot frame statistics")
 	var menu: MenuButton = topbar.get_node("ViewMenu")
+	menu.get_popup().id_pressed.emit(2)
+	test.check(preferences.show_fps and overlay.visible, "Other View actions do not change FPS choice")
 	menu.get_popup().id_pressed.emit(0)
 	var loaded = Preferences.new()
 	loaded.load_from_disk()
