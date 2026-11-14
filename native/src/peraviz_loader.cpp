@@ -254,6 +254,20 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
 // Serializes instance-local node records only on the main thread after native preparation.
 Array PeravizLoader::serialize_scene_nodes(bool peraviz_debug_baseline, bool peraviz_debug_coords) {
     load_metrics_["gdtf_model_detail"] = model_detail_ == peraviz::GdtfModelDetail::Low ? "low" : model_detail_ == peraviz::GdtfModelDetail::High ? "high" : "default";
+    const auto &assets = last_scene_model_.asset_metrics;
+    load_metrics_["archive_open_index_ms"] = assets.archive_open_index_ms;
+    load_metrics_["archive_entries"] = int64_t(assets.archive_entries);
+    load_metrics_["unique_asset_references"] = int64_t(assets.unique_asset_references);
+    load_metrics_["indexed_lookups"] = int64_t(assets.indexed_lookups);
+    load_metrics_["unique_lookup_references"] = int64_t(assets.unique_lookup_references);
+    load_metrics_["extraction_cache_hits"] = int64_t(assets.cache_hits);
+    load_metrics_["extraction_cache_misses"] = int64_t(assets.cache_misses);
+    load_metrics_["extraction_count"] = int64_t(assets.extraction_count);
+    load_metrics_["extracted_bytes"] = int64_t(assets.extracted_bytes);
+    load_metrics_["extraction_ms"] = assets.extraction_ms;
+    load_metrics_["dependency_discovery_ms"] = assets.dependency_discovery_ms;
+    load_metrics_["dependency_candidates"] = int64_t(assets.dependency_candidates);
+    load_metrics_["xml_parse_ms"] = last_scene_model_.xml_parse_ms;
     load_metrics_["archive_xml_ms"] = last_scene_model_.archive_xml_ms;
     load_metrics_["geometry_ms"] = last_scene_model_.geometry_ms;
     load_metrics_["geometry_definitions"] = int64_t(last_scene_model_.geometry_definitions);

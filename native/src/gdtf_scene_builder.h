@@ -19,6 +19,7 @@ struct GdtfBuildRequest {
     std::string fixture_node_id;
     std::string fixture_name;
     GdtfModelDetail model_detail = GdtfModelDetail::Default;
+    AssetCacheMetrics *asset_metrics = nullptr;
 };
 
 struct GdtfGeometryBuildResult {

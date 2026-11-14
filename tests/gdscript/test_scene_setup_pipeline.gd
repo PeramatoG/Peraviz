@@ -88,7 +88,8 @@ func _render_activation_contract() -> void:
 	budget.render_progress_changed.connect(func(completed: int, _total: int) -> void: steps.append(completed))
 	var readiness := preload("res://scripts/scene_loading/scene_render_readiness.gd").new()
 	test.check(await readiness.prepare_scene(scene, budget), "Staged graphics activation completes")
-	test.check(steps == [16, 32, 39] and readiness.metrics.render_activation_batches == 3, "Actual visual resources activate in bounded batches")
+	test.check(steps == [39] and readiness.metrics.render_activation_batches == 1, "Actual visual resources activate in bounded batches")
+	test.check(readiness._next_batch_size(64,10.0) == 128 and readiness._next_batch_size(256,10.0) == 256 and readiness._next_batch_size(256,50.0) == 128 and readiness._next_batch_size(64,50.0) == 64, "Acknowledged activation cost adapts within bounded limits")
 	for node in originals:
 		var state: Dictionary = originals[node]
 		test.check(node.visible == state.visible and node.transform == state.transform and node.mesh == state.mesh, "Activation preserves exact local visibility, transform and resource identity")

@@ -42,6 +42,7 @@ ZipArchive::~ZipArchive() {
 ZipArchive::ZipArchive(ZipArchive &&other) noexcept
     : archive_(other.archive_), writable_(other.writable_) {
     other.index_ready_ = false;
+    other.ambiguous_entries_.clear();
     other.entries_.clear();
     other.folded_entries_.clear();
     other.archive_ = nullptr;
@@ -55,6 +56,7 @@ ZipArchive &ZipArchive::operator=(ZipArchive &&other) noexcept {
         archive_ = other.archive_;
         writable_ = other.writable_;
         other.index_ready_ = false;
+        other.ambiguous_entries_.clear();
         other.entries_.clear();
         other.folded_entries_.clear();
         other.archive_ = nullptr;
@@ -97,6 +99,12 @@ std::vector<std::string> ZipArchive::list_files() const {
     for (const auto &entry : entries_) files.push_back(entry.first);
     std::sort(files.begin(), files.end());
     return files;
+}
+
+// Exposes rejected aliases so higher-level fallback cannot redirect ambiguous paths.
+std::vector<std::string> ZipArchive::ambiguous_files() const {
+    build_index();
+    return {ambiguous_entries_.begin(), ambiguous_entries_.end()};
 }
 
 // Returns whether a file exists in the archive.
@@ -267,6 +275,7 @@ std::string ZipArchive::normalize_path(const std::string &archive_path) {
 // Discards an open archive handle without committing changes.
 void ZipArchive::reset() {
     index_ready_ = false;
+    ambiguous_entries_.clear();
     entries_.clear();
     folded_entries_.clear();
     if (archive_) {
@@ -279,9 +288,10 @@ void ZipArchive::reset() {
 // Indexes normalized identities while retaining original ZIP spellings for reads.
 void ZipArchive::build_index() const {
     if (index_ready_ || !archive_) return;
+    ambiguous_entries_.clear();
     entries_.clear();
     folded_entries_.clear();
-    std::unordered_set<std::string> ambiguous;
+
     const zip_int64_t count = zip_get_num_entries(archive_, 0);
     for (zip_int64_t i = 0; i < count; ++i) {
         const char *raw = zip_get_name(archive_, static_cast<zip_uint64_t>(i), ZIP_FL_ENC_GUESS);
@@ -289,12 +299,12 @@ void ZipArchive::build_index() const {
         const std::string normalized = normalize_path(raw);
         if (normalized.empty() || is_directory_entry(normalized)) continue;
         const std::string folded = lower_ascii(normalized);
-        if (ambiguous.count(folded)) continue;
+        if (ambiguous_entries_.count(folded)) continue;
         const auto prior = folded_entries_.find(folded);
         if (prior != folded_entries_.end()) {
             entries_.erase(prior->second);
             folded_entries_.erase(prior);
-            ambiguous.insert(folded);
+            ambiguous_entries_.insert(folded);
             continue;
         }
         entries_.emplace(normalized, raw);

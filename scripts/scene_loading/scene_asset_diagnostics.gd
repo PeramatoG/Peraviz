@@ -29,7 +29,7 @@ func observe(data: Dictionary, node: Node3D, asset_cache: PeravizRuntimeAssetCac
 		if asset_cache.is_failed(path):
 			reason = asset_cache.failure_reason(path)
 			stage = asset_cache.failure_stage(path)
-	var report: Dictionary = ModelGeometry.inspect(visual) if visual != null else {}
+	var report: Dictionary = ModelGeometry.inspect(visual, asset_cache.geometry_facts, asset_cache.model_inspection_metrics) if visual != null else {}
 	var real: bool = not fallback and report.get("meshes", 0) > 0 and report.get("has_bounds", false) and report.get("valid", false)
 	var attached: bool = visual != null and visual.is_inside_tree() and node.is_inside_tree()
 	if real:

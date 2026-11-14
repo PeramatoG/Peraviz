@@ -145,6 +145,8 @@ func import_scene(path: String,
 	phases["finalize_ms"] = (Time.get_ticks_usec() - phase_start) / 1000.0
 	phases["total_ms"] = (Time.get_ticks_usec() - load_start) / 1000.0
 	phases.merge(loader.get_load_metrics())
+	phases.merge(node_factory.setup_metrics)
+	phases["asset_cache"] = asset_cache.debug_summary()
 
 	return {
 		"load_metrics": phases,

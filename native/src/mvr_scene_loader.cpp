@@ -74,24 +74,6 @@ const char *child_text_ci(tinyxml2::XMLElement *parent,
     return nullptr;
 }
 
-// Reads and parses an XML document embedded in an MVR archive.
-std::string read_xml_from_mvr(const std::string &path) {
-    peraviz::archive::ZipArchive archive;
-    if (!archive.open_read(std::filesystem::u8path(path))) {
-        return {};
-    }
-
-    for (const std::string &entry_name : archive.list_files()) {
-        const std::string file_name = lower_ascii(peraviz::archive::ZipArchive::normalize_path(entry_name));
-        if (file_name.find("generalscenedescription.xml") == std::string::npos) {
-            continue;
-        }
-        return archive.read_text_file(entry_name);
-    }
-
-    return {};
-}
-
 // Returns a stable identifier string for an XML node.
 std::string node_id(tinyxml2::XMLElement *node, int serial) {
     if (const char *uuid = node->Attribute("uuid")) {
@@ -715,11 +697,12 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
     model.cache_lease = mvr_cache.cache_lease();
     model.asset_leases.retain(model.cache_lease);
 
-    const std::string xml_content = read_xml_from_mvr(path);
+    const std::string xml_content = mvr_cache.read_mvr_scene_description();
     if (xml_content.empty()) {
         return model;
     }
 
+    const auto xml_started = std::chrono::steady_clock::now();
     tinyxml2::XMLDocument doc;
     if (doc.Parse(xml_content.c_str()) != tinyxml2::XML_SUCCESS) {
         return model;
@@ -742,6 +725,7 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
     }
 
     const auto symdefs = parse_symdefs(root);
+    model.xml_parse_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - xml_started).count();
 
     model.archive_xml_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - load_start).count();
     int serial = 0;
@@ -760,13 +744,21 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
             node.node_id = id;
             node.parent_id = parent_id;
             node.name = parse_name(child, node_name);
-            node.local_transform = peraviz::coordinate_mapper::to_godot_transform(local_transform);
+            // Layers are containers outside the emitted node graph. Fold their
+            // elevation into top-level children once; nested nodes remain local.
+            node.local_transform = peraviz::coordinate_mapper::to_godot_transform(parent_id.empty() ? node_world : local_transform);
 
             peraviz::debug_runtime::log_coordinate_debug_event(
                 "instantiate_node", node_name,
                 "node_id=" + id + " parent_id=" + parent_id + " name=" + node.name);
 
-            if (node_name_lower == "fixture") {
+            if (node_name_lower == "groupobject") {
+                // A missing group node loses its basis and leaves dangling parent IDs.
+                node.type = "group";
+                node.node_class = "group";
+                node.asset_kind = "none";
+                append_scene_node(model, node);
+            } else if (node_name_lower == "fixture") {
                 node.type = "fixture";
                 node.node_class = "fixture";
                 node.asset_kind = "none";
@@ -788,7 +780,8 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                 const std::string gdtf_path = fixture_patch.gdtf_path;
 
                 if (!gdtf_path.empty()) {
-                    const GdtfBuildRequest request{gdtf_path, gdtf_mode, id, node.name, model_detail};
+                    GdtfBuildRequest request{gdtf_path, gdtf_mode, id, node.name, model_detail};
+                    request.asset_metrics = &model.asset_metrics;
                     const auto geometry_start = std::chrono::steady_clock::now();
                     GdtfGeometryBuildResult fixture_geometry = reuse_templates
                         ? templates.instantiate(request, id, model.extracted_asset_count)
@@ -843,12 +836,13 @@ SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
             continue;
         }
         if (tinyxml2::XMLElement *child_list = first_child_element_ci(layer, "childlist")) {
-            parse_child_list(child_list, MatrixUtils::Identity(), "");
+            parse_child_list(child_list, parse_matrix_node(layer), "");
         }
     }
 
     if (reuse_templates) model.geometry_definitions = templates.definitions();
     model.geometry_template_hits = templates.hits();
+    model.asset_metrics.add(mvr_cache.metrics());
     model.extracted_asset_count += mvr_cache.extracted_assets();
     return model;
 }

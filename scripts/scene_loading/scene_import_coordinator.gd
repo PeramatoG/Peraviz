@@ -84,6 +84,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		if budget.valid() and not await render_readiness.prepare_scene(app.proxies_root, budget):
 			import_result["ok"] = false
 			import_result["error"] = render_readiness.error_message if not render_readiness.error_message.is_empty() else "scene import cancelled"
+	var visibility_started := Time.get_ticks_usec()
 	if bool(import_result.get("ok", false)) and budget.valid():
 		budget.phase = "geometry_visibility_audit"
 		if not await app._node_factory.refresh_scene_visibility(app._node_index, budget):
@@ -91,6 +92,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 			import_result["error"] = "scene import cancelled"
 		else:
 			import_result["geometry_summary"] = app._node_factory.asset_load_summary.duplicate(true)
+	var visibility_audit_ms := (Time.get_ticks_usec()-visibility_started)/1000.0
 	var first_render_ms := (Time.get_ticks_usec() - first_render_started) / 1000.0
 	if not budget.valid():
 		import_result = {"ok": false, "error": "scene import cancelled", "node_count": 0}
@@ -140,10 +142,12 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	budget.breadcrumb("scene_publish_end", {"ok": bool(import_result.get("ok", false))})
 	# Only remove feedback after scene registration and real rendered frames complete.
 	var metrics: Dictionary = import_result.get("load_metrics", {})
+	metrics.merge(preload("res://scripts/scene_loading/model_geometry.gd").metrics(app._asset_cache.model_inspection_metrics),true)
 	metrics["project_settings_ms"] = project_settings_ms
 	metrics["loaded_file_type"] = loaded_file_type
 	metrics.merge(render_readiness.metrics)
 	metrics["first_render_ms"] = first_render_ms
+	metrics["visibility_audit_ms"] = visibility_audit_ms
 	budget.phase = "resource_summary"
 	budget.breadcrumb("scene_resources_sample_begin")
 	metrics.merge(app._scene_setup_resource_metrics)

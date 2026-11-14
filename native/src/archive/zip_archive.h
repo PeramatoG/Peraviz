@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 struct zip;
 
@@ -25,6 +26,7 @@ public:
     bool open_create_or_modify(const std::filesystem::path &path);
     bool is_open() const;
     std::vector<std::string> list_files() const;
+    std::vector<std::string> ambiguous_files() const;
     bool file_exists(const std::string &archive_path) const;
     std::vector<std::uint8_t> read_file(const std::string &archive_path) const;
     std::string read_text_file(const std::string &archive_path) const;
@@ -39,6 +41,7 @@ private:
     zip *archive_ = nullptr;
     bool writable_ = false;
 
+    mutable std::unordered_set<std::string> ambiguous_entries_;
     mutable bool index_ready_ = false;
     mutable std::unordered_map<std::string, std::string> entries_;
     mutable std::unordered_map<std::string, std::string> folded_entries_;

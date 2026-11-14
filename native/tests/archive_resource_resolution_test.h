@@ -5,7 +5,7 @@ bool write_raw_resource_zip(const std::filesystem::path &path) {
     zip_t *archive = zip_open(path.u8string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error);
     if (!archive) return false;
     for (const char *name : {u8"./nested\\modelo\u00f1\u6a21\u578b.3ds", "a/shared.3ds", "b/shared.3ds",
-                             "a/other.glb", "a/Same.3ds", "a/same.3ds", "../escape.3ds",
+                             "a/other.glb", "elsewhere/same.3ds", "a/Same.3ds", "a/same.3ds", "../escape.3ds",
                              "a/collision?.3ds", "a/collision*.3ds", u8"nested/fixture\u00f1.gdtf",
                              ".hidden.3ds", "models/3ds/base_1.1.3ds",
                              "models/3ds/base.v2.1.3ds", "models/gltf/head.v2.1.glb",
@@ -49,6 +49,8 @@ int test_archive_resource_resolution(const std::filesystem::path &root) {
             return fail("Repeated case-compatible model did not share canonical path");
         if (!cache.ensure_mvr_model_extracted("shared.3ds").empty() || cache.last_error() != "ambiguous_resource_reference")
             return fail("Ambiguous model basename was accepted");
+        if (!cache.ensure_mvr_model_extracted("a/Same.3ds").empty() || cache.last_error() != "ambiguous_resource_reference")
+            return fail("Rejected case ambiguity redirected to an unrelated basename");
         if (cache.ensure_mvr_model_extracted("a/shared.3ds").empty()) return fail("Exact nested reference was not preferred");
         if (!cache.ensure_mvr_model_extracted("other.3ds").empty()) return fail("Explicit extension was substituted by an unrelated format");
         if (!cache.ensure_mvr_model_extracted("a/collision?.3ds").empty() || cache.last_error() != "ambiguous_extraction_path")
@@ -92,5 +94,43 @@ int test_archive_resource_resolution(const std::filesystem::path &root) {
         if (separate.cache_dir() == workspace) return fail("Different archives shared a content cache");
     }
     if (std::filesystem::exists(workspace)) return fail("Resource cache survived its last owner");
+    return 0;
+}
+
+// Checks deterministic work counts and sharing at production-like archive cardinality.
+int test_archive_index_scaling(const std::filesystem::path &root) {
+    const auto source = root / "indexed-stress.mvr";
+    constexpr int count = 4500;
+    {
+        peraviz::archive::ZipArchive archive;
+        if (!archive.open_create_or_modify(source)) return fail("Cannot create indexed stress archive");
+        for (int i = 0; i < count; ++i) {
+            const auto directory = "models/" + std::to_string(i) + "/";
+            if (!archive.write_file(directory + "part.3ds", "geometry") ||
+                !archive.write_file(directory + "texture.png", "texture")) return fail("Cannot write stress entries");
+        }
+        if (!archive.write_file("root.3ds", "geometry") || !archive.write_file("root.png", "texture") ||
+            !archive.write_file("unrelated/other.bin", "unrelated") || !archive.close()) return fail("Cannot finish stress archive");
+    }
+    peraviz::ZipAssetCache cache(source.u8string());
+    for (int i = 0; i < count; ++i) {
+        const auto path = cache.ensure_mvr_model_extracted("models/" + std::to_string(i) + "/part.3ds");
+        if (path.empty() || read_binary(path) != "geometry") return fail("Indexed stress model identity lost");
+    }
+    const auto shared = cache.ensure_mvr_model_extracted("MODELS/0/PART.3DS");
+    for (int i = 0; i < 10000; ++i)
+        if (cache.ensure_mvr_model_extracted("MODELS/0/PART.3DS") != shared) return fail("Shared extraction path changed");
+    if (!cache.ensure_mvr_model_extracted("part.3ds").empty() || cache.last_error() != "ambiguous_resource_reference")
+        return fail("Stress basename ambiguity was silently resolved");
+    if (cache.ensure_mvr_model_extracted("root.3ds").empty()) return fail("Root model did not resolve");
+    const auto &metrics = cache.metrics();
+    if (metrics.archive_entries != count * 2 + 3 || metrics.extraction_count != count * 2 + 2 ||
+        metrics.dependency_candidates != count + 1 || metrics.extracted_bytes != count * 15 + 15 ||
+        metrics.cache_hits < 10000 || std::filesystem::exists(cache.cache_dir() / "unrelated/other.bin"))
+        return fail("Indexed extraction/dependency work or sharing scaled incorrectly");
+    // A second owner reuses files only while the first lease is alive.
+    peraviz::ZipAssetCache warm(source.u8string());
+    if (warm.ensure_mvr_model_extracted("root.3ds").empty() || warm.metrics().extraction_count != 0 || warm.metrics().cache_hits != 2)
+        return fail("Live session lease did not reuse extracted model and texture");
     return 0;
 }

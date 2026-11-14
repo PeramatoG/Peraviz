@@ -1018,21 +1018,10 @@ func _rebuild_debug_gizmos() -> void:
 
 
 func _is_basis_valid(candidate_basis: Basis) -> bool:
-	var determinant: float = candidate_basis.determinant()
-	if is_zero_approx(determinant):
-		return false
-	return is_finite(determinant)
+	return _node_factory._is_basis_valid(candidate_basis)
 
 func _safe_basis_from_data(data: Dictionary) -> Basis:
-	var basis_x: Vector3 = data.get("basis_x", Vector3.RIGHT)
-	var basis_y: Vector3 = data.get("basis_y", Vector3.UP)
-	var basis_z: Vector3 = data.get("basis_z", Vector3.BACK)
-	var candidate_basis := Basis(basis_x, basis_y, basis_z)
-	if _is_basis_valid(candidate_basis):
-		return candidate_basis
-
-	print("[PeravizCoordDebug] event=invalid_basis_fallback basis_x=", basis_x, " basis_y=", basis_y, " basis_z=", basis_z)
-	return Basis.IDENTITY
+	return _node_factory._safe_basis_from_data(data)
 
 func _safe_position(value: Vector3, context: String) -> Vector3:
 	if is_finite(value.x) and is_finite(value.y) and is_finite(value.z):

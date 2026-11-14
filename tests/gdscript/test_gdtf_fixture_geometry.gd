@@ -75,6 +75,8 @@ func _run() -> void:
 		test.check(not failure.source.is_empty() and failure.fixture_type == "Synthetic Geometry" and failure.fixture_instances.size() == 2 and failure.occurrences == 2, "Failure identifies source/type and counts distinct affected instances")
 	var summary: Dictionary = app._node_factory.asset_load_summary
 	test.check(summary.failure == 2 and summary.fallback == 2 and summary.fixtures_renderable == 5 and summary.fixtures_missing == 0 and summary.fixtures_visible == 5 and summary.invalid_world_bounds == 0 and summary.visibility_audited_after_activation, "Full scene setup reports actual model and per-fixture outcomes")
+	if OS.get_cmdline_user_args().has("--render-import-probe"):
+		await _render_probe(app)
 	app._clear_scene()
 	app.queue_free()
 	await process_frame
@@ -111,3 +113,19 @@ func _check_bounds(node: Node3D, expected_size: Vector3, expected_position: Vect
 		first = false
 	test.check((bounds.size - expected_size).length() < 0.0001, "Geometry size matches declared meters: %s expected=%s actual=%s" % [node.name, expected_size, bounds.size])
 	test.check((bounds.position - expected_position).length() < 0.0001, "Authored model origin and embedded transforms are preserved: %s expected=%s actual=%s" % [node.name, expected_position, bounds.position])
+
+# Counts actual viewport differences after publication, independent of node counts.
+func _render_probe(app: Node) -> void:
+	for frame in range(3): await RenderingServer.frame_post_draw
+	var visible_image: Image = root.get_texture().get_image()
+	app.proxies_root.hide()
+	for frame in range(3): await RenderingServer.frame_post_draw
+	var hidden_image: Image = root.get_texture().get_image()
+	var changed: int = 0
+	for y in range(visible_image.get_height()):
+		for x in range(visible_image.get_width()):
+			if visible_image.get_pixel(x,y) != hidden_image.get_pixel(x,y): changed += 1
+	app.proxies_root.show()
+	test.check(changed > 100,"Published imported geometry contributes actual viewport pixels")
+	test.check(app.camera.is_position_in_frustum(app._loaded_bounds.get_center()),"Published camera contains the imported scene center")
+	print("IMPORT_RENDER_PROBE ",JSON.stringify({"changed_pixels":changed,"root_visible":app.proxies_root.visible,"loading":app._scene_loading,"bounds":str(app._loaded_bounds)}))
