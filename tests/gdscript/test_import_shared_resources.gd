@@ -36,6 +36,21 @@ func _run() -> void:
 	test.check(first.bounds != moved.bounds and moved.locally_visible_meshes == 0 and facts.size() == 1,"Mesh facts reuse preserves current per-instance transform and visibility inspection")
 	source.emission_enabled = true
 	test.check(cache.static_double_sided(source) == null,"Optical/emissive materials cannot enter immutable scenery preparation")
+	var owner := Node3D.new()
+	var placeholder := MeshInstance3D.new()
+	var huge := BoxMesh.new()
+	huge.size = Vector3.ONE * 1000000
+	placeholder.mesh = huge
+	placeholder.set_meta("peraviz_dummy_placeholder",true)
+	owner.add_child(placeholder)
+	var actual := MeshInstance3D.new()
+	var tiny := BoxMesh.new()
+	tiny.size = Vector3.ONE * 0.001
+	actual.mesh = tiny
+	owner.add_child(actual)
+	factory._remove_redundant_dummy_meshes(owner)
+	test.check(placeholder.get_parent() == null and inspector.inspect(owner).bounds.size.is_equal_approx(tiny.size),"Queued dummy removal cannot inflate the first camera bounds")
+	owner.free()
 	cache.clear()
 	test.check(facts.is_empty() and cache.debug_summary().static_material_unique == 0,"Scene retirement releases mesh facts and prepared material resources")
 	for instance in instances: instance.free()

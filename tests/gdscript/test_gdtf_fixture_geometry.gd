@@ -93,7 +93,8 @@ func _meshes(node: Node3D) -> Array[MeshInstance3D]:
 	var result: Array[MeshInstance3D] = []
 	if node == null: return result
 	for child in node.get_children():
-		if child.has_meta("peraviz_type"): continue
+		# Physical model dimensions exclude renderer shafts parented below lights.
+		if child.has_meta("peraviz_type") or child is Light3D: continue
 		if child is MeshInstance3D and child.mesh != null and not child.get_meta("peraviz_dummy_placeholder", false): result.append(child)
 		if child is Node3D: result.append_array(_meshes(child))
 	return result

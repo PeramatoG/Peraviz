@@ -675,6 +675,7 @@ void append_geometry_children(SceneModel &scene, tinyxml2::XMLElement *node, con
 
 namespace peraviz {
 
+// Loads local MVR hierarchy and shared assets while preserving group/layer transforms.
 SceneModel load_mvr(const std::string &path, bool peraviz_debug_baseline,
                     bool peraviz_debug_coords, GdtfModelDetail model_detail) {
     peraviz::debug_runtime::set_baseline_debug_enabled(peraviz_debug_baseline);

@@ -166,11 +166,11 @@ func _safe_scale_from_data(data: Dictionary, context: String) -> Vector3:
 	var sx: float = raw_scale.x
 	var sy: float = raw_scale.y
 	var sz: float = raw_scale.z
-	if is_zero_approx(sx):
+	if sx == 0.0:
 		sx = min_axis
-	if is_zero_approx(sy):
+	if sy == 0.0:
 		sy = min_axis
-	if is_zero_approx(sz):
+	if sz == 0.0:
 		sz = min_axis
 
 	if not is_equal_approx(sx, raw_scale.x) or not is_equal_approx(sy, raw_scale.y) or not is_equal_approx(sz, raw_scale.z):
@@ -238,6 +238,7 @@ func _remove_redundant_dummy_meshes(root: Node) -> void:
 	for placeholder in placeholders_to_remove:
 		if root_node.has_meta("peraviz_model_visual") and root_node.get_meta("peraviz_model_visual") == placeholder:
 			root_node.remove_meta("peraviz_model_visual")
+		root_node.remove_child(placeholder)
 		placeholder.queue_free()
 
 func _node_has_real_visual_descendants(root: Node, ignored_nodes: Array[Node]) -> bool:
@@ -368,6 +369,7 @@ func _extract_visual_scale_hint(data: Dictionary) -> float:
 		var basis_y: Vector3 = data.get("basis_y", Vector3.UP)
 		var basis_z: Vector3 = data.get("basis_z", Vector3.BACK)
 		var average_basis_length: float = (basis_x.length() + basis_y.length() + basis_z.length()) / 3.0
+		if not is_finite(average_basis_length): return 1.0
 		return max(average_basis_length, 0.0001)
 	var node_scale: Vector3 = data.get("scale", Vector3.ONE)
 	var average_scale: float = (abs(node_scale.x) + abs(node_scale.y) + abs(node_scale.z)) / 3.0
@@ -394,7 +396,9 @@ func _load_3d_asset(asset_path: String, loader: PeravizLoader, asset_cache: Pera
 			cached_mesh_instance.set_meta("peraviz_asset_kind", "mesh")
 			cached_mesh_instance.set_meta("peraviz_flip_orientation_applied", flip_orientation)
 			return cached_mesh_instance
+		var decode_started: int = Time.get_ticks_usec() if _profile_setup else 0
 		var mesh_data: Dictionary = loader.load_3ds_mesh_data(asset_path)
+		if _profile_setup: setup_metrics.resource_decode_ms += (Time.get_ticks_usec()-decode_started)/1000.0
 		if not bool(mesh_data.get("ok", false)):
 			asset_cache.mark_failed(asset_path, str(mesh_data.get("error", "invalid_3ds")))
 			return null

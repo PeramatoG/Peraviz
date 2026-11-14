@@ -18,6 +18,7 @@ class ZipAssetCache {
 public:
     explicit ZipAssetCache(std::string source_path, AssetCacheMetrics *aggregate = nullptr);
     ~ZipAssetCache();
+    // Returns this archive owner's setup-only cache observations.
     const AssetCacheMetrics &metrics() const { return metrics_; }
 
     const std::filesystem::path &cache_dir() const;

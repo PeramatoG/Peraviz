@@ -1030,25 +1030,7 @@ func _safe_position(value: Vector3, context: String) -> Vector3:
 	return Vector3.ZERO
 
 func _safe_scale_from_data(data: Dictionary, context: String) -> Vector3:
-	var raw_scale: Vector3 = data.get("scale", Vector3.ONE)
-	if not is_finite(raw_scale.x) or not is_finite(raw_scale.y) or not is_finite(raw_scale.z):
-		print("[PeravizCoordDebug] event=invalid_scale_fallback context=", context, " scale=", raw_scale)
-		return Vector3.ONE
-
-	var min_axis: float = 0.0001
-	var sx: float = raw_scale.x
-	var sy: float = raw_scale.y
-	var sz: float = raw_scale.z
-	if is_zero_approx(sx):
-		sx = min_axis
-	if is_zero_approx(sy):
-		sy = min_axis
-	if is_zero_approx(sz):
-		sz = min_axis
-
-	if not is_equal_approx(sx, raw_scale.x) or not is_equal_approx(sy, raw_scale.y) or not is_equal_approx(sz, raw_scale.z):
-		print("[PeravizCoordDebug] event=zero_scale_sanitized context=", context, " raw_scale=", raw_scale, " sanitized_scale=", Vector3(sx, sy, sz))
-	return Vector3(sx, sy, sz)
+	return _node_factory._safe_scale_from_data(data, context)
 
 func _safe_target_global_position(target: Node3D) -> Vector3:
 	if target == null:

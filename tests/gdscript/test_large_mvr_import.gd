@@ -42,6 +42,7 @@ func _run() -> void:
 		test.check(parts == 10000 and meshes.size() <= 3 and materials.size() <= 3,"10k Symdef/3DS/GLB models reuse immutable meshes/materials")
 		test.check(app.proxies_root.visible and not app._scene_loading,"Published scene is visible after rendering readiness")
 		test.check(result.load_metrics.extraction_count < 20 and result.load_metrics.archive_entries >= 4500,"Unrelated padding assets do not extract")
+		test.check(app._native_target_registry.get_summary().get("duplicate_manifest_target_ids",0) == 0,"Repeated scenery does not create duplicate renderer target handles")
 		test.check(app._loader.get_fixtures_patch().size() == 3,"All fixtures retain patch records")
 		print("LARGE_IMPORT_REGRESSION ",JSON.stringify({"run":run,"parts":parts,"mesh_resources":meshes.size(),"material_resources":materials.size(),"metrics":result.load_metrics}))
 	app._clear_scene()
