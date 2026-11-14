@@ -166,6 +166,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	metrics["max_main_thread_block_ms"] = budget.max_block_us / 1000.0
 	metrics["max_main_thread_block_phase"] = budget.max_block_phase
 	metrics["yielded_frames"] = budget.yields
+	metrics["budget_yield_wait_ms"] = budget.yield_wait_us / 1000.0
 	app._scene_load_failed = not bool(import_result.get("ok", false))
 	app._scene_loading = false
 	import_result["load_metrics"] = metrics

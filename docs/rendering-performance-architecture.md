@@ -389,6 +389,10 @@ Reproduce with the pinned engine (`GODOT_BIN` from the cloud setup):
 
 ## Scene setup and loading
 
+The [first-import placeholder investigation](mvr-placeholder-material-performance.md)
+records the production trace, graphical reproduction and direct construction of
+independent built-in materials instead of prototype deep duplication.
+
 The [distinct-resource preparation follow-up](scene-model-preparation-performance.md)
 records inherited-winding planning, scene-owned 3DS image reuse, native bulk packed
 transfers, operation counters and the intentionally unchanged glTF lifecycle.

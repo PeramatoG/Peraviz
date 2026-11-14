@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Avoid costly deep duplication of built-in placeholder materials during first MVR import while preserving independent material state and exact presentation. Add bounded construction and frame-wait telemetry plus graphical and 10k-object regressions.
+
 - Reduced repeated scene-model preparation: inherited winding is planned before 3DS construction, exact-path albedo textures share one scene-owned decode/upload, and native packed mesh buffers use bulk writes. Added operation-level telemetry and distinct-resource regressions/benchmarks. Existing glTF/PackedScene, fixture-control and resource ownership behavior remains. See `docs/scene-model-preparation-performance.md`; production-file timing is not established.
 
 - Fixed large MVR archive resolution with reusable path, collision and companion indexes; preserved small/reflected transforms, GroupObject hierarchy and layer elevation. Static scenery now reuses safe material preparation and mesh facts, first visibility uses bounded adaptive acknowledged batches, and camera framing handles tiny/large scenes without including queued placeholders. Added bounded import metrics, public 10k stress regressions and a separate persistent-cache proposal. See `docs/large-mvr-import-performance.md`; Windows/RTX 3070 and proprietary-show validation remain pending.

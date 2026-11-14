@@ -21,7 +21,11 @@ ownership. Godot transfers the completed data, builds nodes/targets in frame-bud
 batches. Setup derives inherited 3DS winding from validated native shells before
 model creation, then retains the existing attachment/repair order. Exact-path 3DS
 albedo images share one immutable, scene-owned texture cache; retirement clears it.
-Runtime glTF retains PackedScene prototypes and independent instances.
+Runtime glTF retains PackedScene prototypes and independent instances. Built-in
+placeholder materials are constructed directly in their final independent state;
+no per-owner prototype deep copy or temporary culling variant is needed. The
+[placeholder investigation](mvr-placeholder-material-performance.md) records its
+separate timing, graphical equivalence and setup ownership boundary.
 Renderer target/material/group installation is a single main-thread
 transaction, matching main’s publication order: no rendering turn consumes
 individual resources before their final sharing/aggregate bindings. CPU preparation
