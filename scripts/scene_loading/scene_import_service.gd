@@ -166,4 +166,5 @@ func _print_asset_cache_summary(asset_cache: PeravizRuntimeAssetCache) -> void:
 		" unique=", cache_summary.get("unique_resources", 0),
 		" mesh(hit/miss)=", hit_by_kind.get("mesh", 0), "/", miss_by_kind.get("mesh", 0),
 		" scene(hit/miss)=", hit_by_kind.get("scene", 0), "/", miss_by_kind.get("scene", 0),
-		" material(hit/miss)=", hit_by_kind.get("material", 0), "/", miss_by_kind.get("material", 0))
+		" material(hit/miss)=", hit_by_kind.get("material", 0), "/", miss_by_kind.get("material", 0),
+		" texture(hit/miss)=", hit_by_kind.get("texture", 0), "/", miss_by_kind.get("texture", 0))

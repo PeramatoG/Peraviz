@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Reduced repeated scene-model preparation: inherited winding is planned before 3DS construction, exact-path albedo textures share one scene-owned decode/upload, and native packed mesh buffers use bulk writes. Added operation-level telemetry and distinct-resource regressions/benchmarks. Existing glTF/PackedScene, fixture-control and resource ownership behavior remains. See `docs/scene-model-preparation-performance.md`; production-file timing is not established.
+
 - Fixed large MVR archive resolution with reusable path, collision and companion indexes; preserved small/reflected transforms, GroupObject hierarchy and layer elevation. Static scenery now reuses safe material preparation and mesh facts, first visibility uses bounded adaptive acknowledged batches, and camera framing handles tiny/large scenes without including queued placeholders. Added bounded import metrics, public 10k stress regressions and a separate persistent-cache proposal. See `docs/large-mvr-import-performance.md`; Windows/RTX 3070 and proprietary-show validation remain pending.
 
 - Added an opaque ground-only distant color transition toward the lower sky to reduce the remaining floor/horizon band. Imported stage bounds are protected, preserving the accepted lit grey receiver and shadow bias; sky and global haze settings remain unchanged. The existing audit can disable the transition for comparison. Graphical continuity, projector appearance and GPU cost remain pending Windows validation.
