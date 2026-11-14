@@ -4,7 +4,7 @@ extends SceneTree
 # Authored imported materials never pass through this descriptor constructor.
 class LegacyFactory extends NodeFactory:
 	var reference_cache := PeravizRuntimeAssetCache.new()
-	func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float) -> Node3D:
+	func _create_dummy_mesh(is_fixture: bool, visual_scale_hint: float, _asset_cache: PeravizRuntimeAssetCache = null) -> Node3D:
 		setup_metrics["dummy_instances_created"] = int(setup_metrics.get("dummy_instances_created",0)) + 1
 		var visual := MeshInstance3D.new()
 		visual.set_meta("peraviz_dummy_placeholder",true)
