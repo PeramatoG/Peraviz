@@ -6,6 +6,7 @@ class_name AppShell
 @export var modules_container_path: NodePath
 
 var selection := SceneSelection.new()
+var document: RefCounted
 var explorer: SceneExplorer
 var inspector: FixtureInspectionPanel
 var _owner: Node3D
@@ -54,7 +55,9 @@ func configure(owner_node: Node3D, preferences: UserPreferences, details: Fixtur
 	_build_toolbar()
 	inspector.show_object_uuids = preferences.show_object_uuids
 	explorer.show_object_uuids = preferences.show_object_uuids
-	inspector.configure(selection, _owner._fixture_row_provider)
+	document = preload("res://scripts/document/mvr_editing_service.gd").new()
+	document.configure(_owner, self)
+	inspector.configure(selection, _owner._fixture_row_provider, document)
 	selection.changed.connect(_selection_changed)
 	_configured = true
 	_outer.resized.connect(func() -> void: _restore_widths.call_deferred())
@@ -296,10 +299,11 @@ func publish_scene(project_path: String = "") -> void:
 	set_project_name(project_path if not project_path.is_empty() else _owner._loaded_mvr_path)
 
 func set_project_name(path: String) -> void:
-	_project_label.text = path.get_file() if not path.is_empty() else "Untitled"
+	_project_label.text = (path.get_file() if not path.is_empty() else "Untitled") + (" *" if document != null and document.state().dirty else "")
 	_project_label.tooltip_text = path
 
 func retire_scene() -> void:
+	if document != null: document.retire()
 	selection.retire()
 	_pick_bounds.clear()
 	if explorer != null: explorer.publish({}, _owner._fixture_row_provider)
@@ -475,6 +479,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F:
 				if event.shift_pressed: _owner._focus_loaded_scene()
 				else: frame_selection()
+			KEY_Z:
+				if not event.ctrl_pressed: return
+				document.history(event.shift_pressed)
+			KEY_Y:
+				if not event.ctrl_pressed: return
+				document.history(true)
 			KEY_O:
 				if not event.ctrl_pressed: return
 				_owner._ui_controller._on_load_pressed()

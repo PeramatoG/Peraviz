@@ -1,6 +1,7 @@
 extends RefCounted
 class_name UiController
 
+var open_guard: Callable
 var _load_button: Button
 var _save_project_button: Button
 var _visual_settings_button: Button
@@ -60,7 +61,9 @@ func _on_file_dialog_file_selected(path: String) -> void:
 			_save_file_selected_callback.call(path)
 		return
 	if _open_file_selected_callback.is_valid():
-		_open_file_selected_callback.call(path)
+		var action := _open_file_selected_callback.bind(path)
+		if open_guard.is_valid() and not open_guard.call(action): return
+		action.call()
 
 func _on_visual_settings_pressed() -> void:
 	if not _open_visual_settings_callback.is_valid():

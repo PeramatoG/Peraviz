@@ -14,6 +14,7 @@ int64_t now_us() {
 }
 // Exposes setup-only physical/resource binding and a single renderer-oriented snapshot contract.
 void PeravizPresentationState::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("set_fixture_inversions","runtime","generation","triples"),&PeravizPresentationState::set_fixture_inversions);
     ClassDB::bind_method(D_METHOD("install", "ids", "scales", "routes"), &PeravizPresentationState::install);
     ClassDB::bind_method(D_METHOD("replay_presentation_gains", "shafts", "surfaces", "surface_gain", "trace"), &PeravizPresentationState::replay_presentation_gains);
     ClassDB::bind_method(D_METHOD("invalidate_renderer"), &PeravizPresentationState::invalidate_renderer);

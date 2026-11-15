@@ -2,6 +2,7 @@
 
 #include "hello_world.h"
 #include "application_options.h"
+#include "document/mvr_document_godot.h"
 #include "peraviz_loader.h"
 #include "gobo_vectorizer.h"
 
@@ -21,6 +22,7 @@ void initialize_peraviz_module(godot::ModuleInitializationLevel p_level) {
         return;
     }
 
+    godot::ClassDB::register_class<godot::PeravizMvrDocument>();
     godot::ClassDB::register_class<godot::PeravizApplicationOptions>();
     godot::ClassDB::register_class<godot::HelloWorld>();
     godot::ClassDB::register_class<godot::PeravizLoader>();

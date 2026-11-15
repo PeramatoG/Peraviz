@@ -1,3 +1,4 @@
+#include "document/mvr_inversion_xml.h"
 #include "dmx/mvr_patch_addresses.h"
 #include "mvr_scene_loader.h"
 #include "scene_setup_options.h"
@@ -281,6 +282,9 @@ SceneModel::FixturePatch parse_fixture_patch(tinyxml2::XMLElement *fixture_node,
                                              peraviz::ZipAssetCache &mvr_cache) {
     SceneModel::FixturePatch patch;
     patch.fixture_uuid = fixture_uuid;
+    patch.invert_pan=peraviz::document::read_inversion(fixture_node,"DMXInvertPan");
+    patch.invert_tilt=peraviz::document::read_inversion(fixture_node,"DMXInvertTilt");
+    if(!patch.invert_pan.valid || !patch.invert_tilt.valid)patch.dmx_import_error=patch.invert_pan.diagnostic+" "+patch.invert_tilt.diagnostic;
 
     std::string gdtf_spec;
     if (const char *spec_text = child_text_ci(fixture_node, "gdtfspec")) {

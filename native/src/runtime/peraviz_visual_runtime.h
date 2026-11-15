@@ -59,6 +59,7 @@ public:
     std::vector<HeldUniverse> held_universes() const;
     void clear();
     void install_compiled_scene(const CompiledRuntimeScene &scene);
+    bool set_fixture_inversions(const std::vector<int32_t> &triples);
     void submit_universe_frame(int universe_id, const uint8_t *data, int length);
     SectionedVisualFrame consume_latest_visual_frame();
     void consume_latest_visual_frame(SectionedVisualFrame &frame);
@@ -83,6 +84,7 @@ private:
         SemanticParameter parameter = SemanticParameter::Unknown;
         std::vector<uint32_t> sources;
         bool range_selector = false;
+        bool inverted = false;
     };
 
     struct InstalledSourceProgram {
@@ -250,6 +252,8 @@ private:
     void emit_source_warnings(const InstalledSourceProgram &program,uint8_t warnings);
     EvaluationResult evaluate_cached_source(UniverseState &universe, uint32_t source);
     EvaluationResult evaluate_property_value(UniverseState &universe, const CompiledPropertyProgram &property);
+    bool mechanical_active(UniverseState &universe,uint32_t source,uint32_t own_raw,size_t depth=0);
+    EvaluationResult mechanical_value(UniverseState &universe,uint32_t source,bool inverted);
     void fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context);
     bool evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context,size_t dependency=0);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
@@ -287,6 +291,7 @@ private:
     std::chrono::steady_clock::time_point runtime_epoch_ = std::chrono::steady_clock::now();
     double test_runtime_now_seconds_ = -1.0;
     std::unordered_map<int64_t, int32_t> gobo_asset_by_wheel_slot_;
+    std::unordered_set<int32_t> multi_transform_fixtures_;
     std::unordered_map<int, int32_t> pan_component_id_by_fixture_;
     std::unordered_map<int, int32_t> tilt_component_id_by_fixture_;
     std::unordered_map<int, uint32_t> installed_visual_mask_by_fixture_;

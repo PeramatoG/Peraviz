@@ -182,3 +182,13 @@ Native C++ owns the supported semantic paths and prepares renderer-ready values.
 ## Realtime transport note
 
 The native subscription, mailbox, and direct pump are the active transport path and do not expand GDTF attribute support. Pan/Tilt remains immediate physical-degree evaluation in this pass; `RealFade` and `RealAcceleration` physical response is not yet claimed.
+
+### MVR fixture DMX inversion
+
+`DMXInvertPan` / `DMXInvertTilt` are MVR Fixture children, not GDTF attributes.
+Supported 1–4-byte assembled values invert as `maximum - raw` per mechanical
+consumer before active function range selection and physical mapping. Shared
+source caches and ModeMaster input bytes remain unchanged; qualified Pan/Tilt
+targets retain fixture ownership. Malformed/duplicate flags diagnose and exclude
+the fixture from live compilation instead of guessing. See
+[mvr-document-editing.md](mvr-document-editing.md) for editing/persistence scope.

@@ -41,6 +41,8 @@ godot::Array serialize_fixture_patches(const peraviz::SceneModel &model) {
     for (const auto &patch : model.fixture_patches) {
         godot::Dictionary d;
         d["fixture_uuid"] = godot::String::utf8(patch.fixture_uuid.c_str());
+        d["invert_pan"] = patch.invert_pan.value;d["invert_pan_present"]=patch.invert_pan.present;d["invert_pan_valid"]=patch.invert_pan.valid;
+        d["invert_tilt"] = patch.invert_tilt.value;d["invert_tilt_present"]=patch.invert_tilt.present;d["invert_tilt_valid"]=patch.invert_tilt.valid;
         d["mvr_universe"] = patch.mvr_universe;
         d["mvr_address"] = patch.mvr_address;
         d["dmx_mode"] = godot::String::utf8(patch.dmx_mode.c_str());
@@ -132,6 +134,7 @@ namespace godot {
 
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("sync_document_inversions","values"), &PeravizLoader::sync_document_inversions);
     ClassDB::bind_method(D_METHOD("set_gdtf_model_detail", "detail"), &PeravizLoader::set_gdtf_model_detail);
     ClassDB::bind_method(D_METHOD("set_dmx_auto_span_policy", "policy"), &PeravizLoader::set_dmx_auto_span_policy);
     ClassDB::bind_method(D_METHOD("get_dmx_auto_span_policy"), &PeravizLoader::get_dmx_auto_span_policy);

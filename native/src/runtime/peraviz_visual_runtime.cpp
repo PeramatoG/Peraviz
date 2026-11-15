@@ -51,6 +51,7 @@ void PeravizVisualRuntimeCore::clear() {
     transform_state_by_fixture_.clear();
     property_state_by_property_.clear();
     color_state_by_target_.clear();
+    multi_transform_fixtures_.clear();
     pan_component_id_by_fixture_.clear();
     tilt_component_id_by_fixture_.clear();
     installed_visual_mask_by_fixture_.clear();
@@ -103,7 +104,7 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
     frame.descriptors.clear(); frame.integers.clear(); frame.floats.clear();
     frame.schema_generation = schema_.schema_generation;
     if (prefetch_) prefetch_->prepare();
-    struct PendingRow { int fixture_id = 0; int32_t render_target_id = 0; uint32_t changed_visual_mask = 0; ComponentState state; CookedEmitterColor color; int32_t wheel_id = 0; int32_t slot_a = 0; int32_t slot_b = 0; float normalized_phase = 0.0f; float split_fraction = 0.0f; float boundary_angle_degrees = 0.0f; CompiledWheelMode wheel_mode = CompiledWheelMode::Select; int32_t revision = 0; bool wheel_row = false; };
+    struct PendingRow { int fixture_id = 0; int32_t render_target_id = 0; uint32_t changed_visual_mask = 0; ComponentState state; CookedEmitterColor color; int32_t wheel_id = 0; int32_t slot_a = 0; int32_t slot_b = 0; float normalized_phase = 0.0f; float split_fraction = 0.0f; float boundary_angle_degrees = 0.0f; CompiledWheelMode wheel_mode = CompiledWheelMode::Select; int32_t revision = 0; bool wheel_row = false; int32_t explicit_pan=0,explicit_tilt=0; };
     std::vector<PendingRow> rows;
     struct GoboRow { int32_t fixture_id; int32_t beam_target_id; int32_t wheel_id; int32_t wheel_instance_index; int32_t slot_index; int32_t asset_id; CompiledGoboSelectionMode mode; int32_t revision; };
     std::vector<GoboRow> gobo_rows;
@@ -298,6 +299,19 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
                 add_visual_mask_stats(change.changed_visual_mask);
                 ++stats_.fixtures_dirty;
                 rows.push_back({program.property.fixture_id, program.property.render_target_id, change.changed_visual_mask, state, {}});
+                continue;
+            }
+            if(multi_transform_fixtures_.count(program.property.fixture_id)) {
+                ComponentState state;
+                const auto old=property_state_by_property_.find(program.property.property_id);
+                if(old!=property_state_by_property_.end())state=old->second;
+                apply_semantic_value(state,program.parameter,semantic_value);
+                const auto change=merge_property_state(program.property.property_id,state,VisualChangeTransform);
+                if(change.changed) {
+                    PendingRow row;row.fixture_id=program.property.fixture_id;row.changed_visual_mask=VisualChangeTransform;row.state=state;
+                    if(program.parameter==SemanticParameter::Pan)row.explicit_pan=program.property.component_id;else row.explicit_tilt=program.property.component_id;
+                    rows.push_back(row);add_visual_mask_stats(VisualChangeTransform);++stats_.fixtures_dirty;
+                }
                 continue;
             }
             ComponentState &state = pending_transform_by_fixture[program.property.fixture_id];
@@ -521,8 +535,8 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
         const int32_t float_offset = static_cast<int32_t>(frame.floats.size());
         for (const PendingRow &row : rows) {
             if ((row.changed_visual_mask & VisualChangeTransform) == 0U) continue;
-            const int32_t pan_component_id = pan_component_id_by_fixture_.count(row.fixture_id) != 0 ? pan_component_id_by_fixture_[row.fixture_id] : 0;
-            const int32_t tilt_component_id = tilt_component_id_by_fixture_.count(row.fixture_id) != 0 ? tilt_component_id_by_fixture_[row.fixture_id] : 0;
+            const int32_t pan_component_id = (row.explicit_pan || row.explicit_tilt)?row.explicit_pan:pan_component_id_by_fixture_.count(row.fixture_id) != 0 ? pan_component_id_by_fixture_[row.fixture_id] : 0;
+            const int32_t tilt_component_id = (row.explicit_pan || row.explicit_tilt)?row.explicit_tilt:tilt_component_id_by_fixture_.count(row.fixture_id) != 0 ? tilt_component_id_by_fixture_[row.fixture_id] : 0;
             frame.integers.insert(frame.integers.end(), {row.fixture_id, pan_component_id, tilt_component_id, static_cast<int32_t>(row.changed_visual_mask)});
             frame.floats.insert(frame.floats.end(), {row.state.pan, row.state.tilt});
         }
@@ -891,6 +905,7 @@ PeravizVisualRuntimeCore::FixtureChangeResult PeravizVisualRuntimeCore::merge_pr
     if (!previous.initialized) {
         result.changed_visual_mask = installed_mask;
     } else {
+        if (!nearly_equal(previous.pan,next_state.pan,kAngleEpsilon) || !nearly_equal(previous.tilt,next_state.tilt,kAngleEpsilon)) result.changed_visual_mask |= installed_mask & VisualChangeTransform;
         if (!nearly_equal(previous.dimmer, next_state.dimmer, kDefaultEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Dimmer);
         if (previous.has_zoom_physical != next_state.has_zoom_physical || !nearly_equal(previous.zoom, next_state.zoom, kAngleEpsilon) || !nearly_equal(previous.zoom_normalized, next_state.zoom_normalized, kDefaultEpsilon) || !nearly_equal(previous.beam_angle, next_state.beam_angle, kAngleEpsilon)) result.changed_visual_mask |= installed_mask & visual_mask_for_parameter(SemanticParameter::Zoom);
     }

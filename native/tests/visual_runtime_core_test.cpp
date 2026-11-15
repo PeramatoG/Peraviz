@@ -1281,6 +1281,7 @@ bool test_control_group_compiler_inheritance();
 bool test_additive_intensity();
 bool test_direct_presentation_pipeline();
 bool test_shutter_runtime();
+bool test_mvr_inversion_runtime();
 bool test_shutter_fidelity();
 int run_shutter_corpus(const std::string &directory);
 bool test_compiled_evaluation_plan();
@@ -1294,6 +1295,7 @@ bool test_automatic_auto_span();
 int main(int argc, char **argv) {
     if (argc>1 && std::string(argv[1])=="--automatic-auto-span") return test_automatic_auto_span()?0:1;
     if (argc>1 && std::string(argv[1])=="--auto-span") return test_auto_span()?0:1;
+    if (!test_mvr_inversion_runtime()) return 1;
     if (!test_shutter_runtime()) return 1;
     if (!test_shutter_fidelity()) return 1;
     if (argc==3 && std::string(argv[1])=="--shutter-corpus") return run_shutter_corpus(argv[2]);

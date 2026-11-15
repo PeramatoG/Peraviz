@@ -11,7 +11,10 @@ const APP_STATE_PATH: String = "app_state.json"
 const FIXTURE_OVERRIDES_PATH: String = "fixture_overrides.json"
 const CACHE_DIR: String = "user://pvz_cache"
 
-func save_project(project_path: String, source_mvr_path: String, peraviz_version: String, visual_settings: Dictionary, dmx_settings: Dictionary, app_state: Dictionary) -> Dictionary:
+func save_project(project_path: String, source_mvr_path: String, peraviz_version: String, visual_settings: Dictionary, dmx_settings: Dictionary, app_state: Dictionary, document: Object = null, preserved: Dictionary = {}) -> Dictionary:
+	if document != null:
+		source_mvr_path = document.canonical_path()
+		if source_mvr_path.is_empty(): return _error("Canonical MVR serialization failed: " + str(document.state().error))
 	if source_mvr_path.is_empty() or not FileAccess.file_exists(source_mvr_path):
 		return _error("No loaded MVR file is available to save into the project archive.")
 
@@ -26,35 +29,58 @@ func save_project(project_path: String, source_mvr_path: String, peraviz_version
 		return _error("Unable to create PVZ archive because the target directory does not exist: %s" % normalized_path.get_base_dir())
 
 	var packer := ZIPPacker.new()
-	var open_error: Error = packer.open(normalized_path)
+	var staged_path: String = normalized_path + ".peraviz-" + str(Time.get_ticks_usec()) + ".tmp"
+	var open_error: Error = packer.open(staged_path)
 	if open_error != OK:
+		DirAccess.remove_absolute(staged_path)
 		return _error("Unable to create PVZ archive: %s" % error_string(open_error))
 
-	var project_metadata := {
+	var project_metadata: Dictionary = preserved.get("project", {}).duplicate(true)
+	project_metadata.merge({
 		"format": FORMAT_NAME,
 		"format_version": FORMAT_VERSION,
 		"peraviz_version": peraviz_version,
 		"scene_mvr": SCENE_MVR_PATH,
-	}
+	}, true)
+	var saved_app: Dictionary = preserved.get("app_state", {}).duplicate(true)
+	saved_app.merge(app_state, true)
+	var saved_dmx: Dictionary = preserved.get("dmx_settings", {}).duplicate(true)
+	saved_dmx.merge(dmx_settings, true)
 	var write_error: Error = _write_json_file(packer, PROJECT_JSON_PATH, project_metadata)
 	if write_error == OK:
 		write_error = _write_raw_file(packer, SCENE_MVR_PATH, mvr_bytes)
 	if write_error == OK:
 		write_error = _write_json_file(packer, VISUAL_SETTINGS_PATH, _normalize_json_value(visual_settings))
 	if write_error == OK:
-		write_error = _write_json_file(packer, DMX_SETTINGS_PATH, _merge_dmx_defaults(dmx_settings))
+		write_error = _write_json_file(packer, DMX_SETTINGS_PATH, _merge_dmx_defaults(saved_dmx))
 	if write_error == OK:
-		write_error = _write_json_file(packer, APP_STATE_PATH, app_state)
+		write_error = _write_json_file(packer, APP_STATE_PATH, saved_app)
 	if write_error == OK:
-		write_error = _write_json_file(packer, FIXTURE_OVERRIDES_PATH, {})
+		write_error = _write_json_file(packer, FIXTURE_OVERRIDES_PATH, preserved.get("fixture_overrides", {}))
 
 	var close_error: Error = packer.close()
-	if write_error != OK:
-		return _error("Unable to write PVZ archive: %s" % error_string(write_error))
-	if close_error != OK:
-		return _error("Unable to finalize PVZ archive: %s" % error_string(close_error))
-	if not FileAccess.file_exists(normalized_path):
-		return _error("PVZ archive was finalized but no file appeared at the selected path: %s" % normalized_path)
+	# Release the packer input before validating its embedded copy.
+	mvr_bytes = PackedByteArray()
+	var canonical_hash: String = FileAccess.get_sha256(source_mvr_path)
+	if write_error != OK or close_error != OK:
+		DirAccess.remove_absolute(staged_path)
+		return _error("Unable to finalize staged PVZ archive.")
+	var verified := ZIPReader.new()
+	if verified.open(staged_path) != OK:
+		DirAccess.remove_absolute(staged_path)
+		return _error("Staged PVZ validation failed.")
+	var hash := HashingContext.new()
+	hash.start(HashingContext.HASH_SHA256)
+	hash.update(verified.read_file(SCENE_MVR_PATH))
+	var exact: bool = hash.finish().hex_encode() == canonical_hash
+	verified.close()
+	if not exact:
+		DirAccess.remove_absolute(staged_path)
+		return _error("Staged PVZ did not retain the canonical MVR bytes.")
+	var publish_error: Error = DirAccess.rename_absolute(staged_path, normalized_path)
+	if publish_error != OK:
+		DirAccess.remove_absolute(staged_path)
+		return _error("Unable to publish PVZ safely; existing project and document edits are intact: " + error_string(publish_error))
 
 	return {
 		"ok": true,

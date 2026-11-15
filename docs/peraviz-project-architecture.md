@@ -15,7 +15,11 @@ MVR owns scene-level fixture data:
 - Position, rotation, and scene hierarchy.
 - References to GDTF files.
 
-Future MVR writing must be implemented against the official MVR specification. Peraviz should not write partial or non-standard MVR mutations as a shortcut.
+The scene-owned native MVR document is authoritative for standard MVR properties.
+Phase 1 supports source-preserving `DMXInvertPan` and `DMXInvertTilt` commands,
+Undo/Redo and export. It never regenerates an MVR from the partial runtime
+SceneModel. The importer reads the same immutable document snapshot used by the
+editor. See [MVR editing foundation](mvr-document-editing.md).
 
 ### GDTF fixture definition data
 
@@ -38,7 +42,8 @@ Format details are documented in `docs/pvz-project-format.md`. Project archives 
 - Art-Net / DMX settings.
 - UI and application state.
 - Visual-only fixture overrides.
-- Pan / tilt visual inversion.
+- Explicitly distinguished visual-only corrections; standard MVR DMX inversion
+  is stored exclusively in the embedded canonical MVR.
 - Debug or advanced visualizer options.
 
 Global preferences such as recently opened paths and auto-start settings are user preferences, not project source data, and should remain outside `.pvz` archives.
@@ -48,7 +53,8 @@ Global preferences such as recently opened paths and auto-start settings are use
 Editing features must first identify the owning data layer:
 
 - Patch, position, rotation, fixture name, and fixture number belong to MVR.
-- Fixture modes, geometry, wheels, gobos, and capabilities belong to GDTF.
+- Fixture mode definitions, geometry, wheels, gobos, and capabilities belong to GDTF.
+  A fixture instance's selected GDTFSpec/GDTFMode reference belongs to MVR.
 - Visual environment, camera, Art-Net settings, visual-only overrides, and UI state belong to Peraviz project data.
 - Live DMX values are runtime state and should not be saved as fixture definitions.
 
@@ -62,3 +68,14 @@ The [DMX Auto Span policy](dmx-auto-span.md) belongs to Peraviz project metadata
 MVR patches and resolved GDTF breaks. It is not a second patch model. Occupancy,
 effective addresses and live/held DMX are never persisted. Saved policy is restored
 before native setup; ordinary MVR import and Reset use `auto_safe`.
+
+## Canonical document persistence
+
+`scene.mvr` in PVZ is the current native document serialization, including all
+committed standard MVR edits. Save PVZ and File > Export MVR consume the same
+validated archive per revision. An unmodified accepted document copies original
+MVR bytes; edited XML patches preserve all unrelated XML bytes and all resource
+contents. Reopening a project imports its embedded edited MVR. `fixture_overrides.json`
+remains distinct visual-only data and cannot impersonate MVR inversion flags.
+Only successful PVZ publication advances the document save point; export, camera,
+rendering and user-preference changes do not clear pending document edits.

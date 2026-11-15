@@ -131,7 +131,7 @@ void PeravizVisualRuntimeCore::compile_evaluation_plans() {
             }
             const bool mechanical=property.parameter==SemanticParameter::Pan || property.parameter==SemanticParameter::Tilt;
             const int32_t target=mechanical?property.property.component_id:property.property.render_target_id;
-            universe.plan.add_consumer(EvaluationDomain::Property,i,target,property.sources,false);
+            universe.plan.add_consumer(EvaluationDomain::Property,i,target,property.sources,mechanical);
         }
         for (uint32_t i=0;i<universe.color_targets.size();++i) {
             auto &target=universe.color_targets[i]; std::vector<uint32_t> inputs;

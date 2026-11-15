@@ -100,6 +100,10 @@ endif()
 
 if(PERAVIZ_BUILD_GDEXTENSION)
 add_library(peraviz_native SHARED
+    src/document/mvr_document.cpp
+    src/document/mvr_document_archive.cpp
+    src/document/mvr_document_godot.cpp
+    src/peraviz_document_bridge.cpp
     src/application_options.cpp
     src/hello_world.cpp
     src/archive/zip_archive.cpp
@@ -151,6 +155,7 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/visual_runtime_replay.cpp
         src/runtime/visual_runtime_install.cpp
         src/runtime/visual_runtime_evaluation.cpp
+    src/runtime/visual_runtime_inversion.cpp
         src/runtime/visual_runtime_plan.cpp
         src/runtime/realtime_interest_descriptor.cpp
         src/runtime/realtime_dmx_coordinator.cpp
@@ -271,6 +276,13 @@ if(BUILD_TESTING)
     )
     target_include_directories(peraviz_native_realtime_dmx_state_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     add_test(NAME peraviz_native_realtime_dmx_state_tests COMMAND peraviz_native_realtime_dmx_state_tests)
+
+    add_executable(peraviz_native_mvr_document_tests
+        tests/mvr_document_test.cpp src/document/mvr_document.cpp
+        src/document/mvr_document_archive.cpp src/archive/zip_archive.cpp src/runtime_storage.cpp)
+    target_include_directories(peraviz_native_mvr_document_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(peraviz_native_mvr_document_tests PRIVATE tinyxml2::tinyxml2 libzip::zip)
+    add_test(NAME peraviz_native_mvr_document_tests COMMAND peraviz_native_mvr_document_tests)
 
     add_executable(peraviz_native_runtime_storage_tests
         tests/runtime_storage_test.cpp
@@ -397,6 +409,7 @@ if(BUILD_TESTING)
         tests/automatic_auto_span_test.cpp
         tests/auto_span_test.cpp
         tests/visual_runtime_core_test.cpp
+        tests/mvr_inversion_runtime_test.cpp
         tests/shutter_runtime_test.cpp
         tests/shutter_fidelity_test.cpp
         src/coordinate_mapper.cpp
@@ -427,6 +440,7 @@ if(BUILD_TESTING)
         src/runtime/visual_runtime_replay.cpp
         src/runtime/visual_runtime_install.cpp
         src/runtime/visual_runtime_evaluation.cpp
+    src/runtime/visual_runtime_inversion.cpp
         src/runtime/visual_runtime_plan.cpp
         src/runtime/realtime_interest_descriptor.cpp
         src/runtime/realtime_dmx_coordinator.cpp

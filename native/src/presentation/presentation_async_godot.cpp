@@ -31,6 +31,16 @@ void PeravizPresentationState::retire_async(bool replay_domains) {
     async_.reset(); async_runtime_.unref(); async_snapshot_bytes_=async_worker_bytes_=0;
     state_.invalidate_renderer(); projection_.invalidate();
 }
+// Reclaim worker ownership at a document-command boundary without rebuilding renderer resources.
+bool PeravizPresentationState::set_fixture_inversions(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,const PackedInt32Array &triples) {
+    if(runtime.is_null() || uint64_t(generation)!=(async_?async_->binding_generation():state_.generation()))return false;
+    retire_async();
+    if(!runtime->async_available())return false;
+    std::vector<int32_t> values;if(!triples.is_empty())values.assign(triples.ptr(),triples.ptr()+triples.size());
+    const bool accepted=runtime->native_core().set_fixture_inversions(values);
+    if(accepted)resume_pending_=true;
+    return accepted;
+}
 // Consumes a complete immutable snapshot through atomic handoff; it contains no wait for native calculations.
 Dictionary PeravizPresentationState::poll_async(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,int32_t schema_generation,bool trace) {
     Dictionary result;

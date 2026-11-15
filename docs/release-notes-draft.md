@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added canonical MVR document editing for per-fixture DMX Pan/Tilt inversion, with atomic multi-selection commands, Undo/Redo, dirty-state protection, explicit MVR export and edited-MVR PVZ persistence. Source-preserving XML splices and validated archive copying retain unrelated scene data/resources; no-op exports retain original bytes. Native full-width, consumer-local inversion preserves shared DMX sources, held input and qualified mechanical targets without a geometry reload. Save PVZ and Export MVR share one byte-identical canonical serialization per revision. Patch, GDTF Mode and Transform editors remain deferred.
+
 - Added a user-only View > FPS limit preference (30, default 60, 120 or Unlimited), applied live while preserving explicit Godot FPS options and existing V-Sync. Settled cameras now skip unchanged transform writes, stopped DMX resets and status notifications occur only when needed, and an empty continuous-gobo set skips the clock read. Held gobo/shutter playback remains independent of DMX reception; no rendering-quality or performance-gain claim is made.
 
 - Home and Pan icons now remain neutral until hovered or pressed. Select is a true toggle: disable it for left-drag orbit and Shift+left-drag pan in the scene, while retaining wheel, keyboard and existing mouse navigation. Selection mode preserves ordinary click selection. Navigation releases safely over panels and on mode changes or focus loss.
