@@ -66,11 +66,12 @@ func run() -> void:
 	cells[0] = 119; cells[1] = 20; cells[2] = 120; cells[3] = 160
 	send({2:cells},1.0)
 	var source_evaluations: int = runtime._native_visual_runtime.get_stats().source_programs_evaluated
+	app._dmx_controller.stop_dmx()
 	for now in [1.08,2.08,5.08]:
 		adapter._native.advance_shutters(adapter._generation,now)
 		Probe.check(self,baseline,0,1.0)
 		Probe.check(self,baseline,1,0.0)
-	test.check(runtime._native_visual_runtime.get_stats().source_programs_evaluated == source_evaluations,"Seconds of autonomous 10 Hz hold create no new physical source evaluations")
+	test.check(runtime._native_visual_runtime.get_stats().source_programs_evaluated == source_evaluations,"Seconds of autonomous 10 Hz hold with DMX OFF create no new physical source evaluations")
 	adapter._native.advance_shutters(adapter._generation,1.125)
 	Probe.check(self,baseline,0,0.0)
 	Probe.check(self,baseline,2,0.5)

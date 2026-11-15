@@ -88,6 +88,16 @@ func _test_rotation_lifecycle(failures: PackedStringArray) -> void:
 	_check(int(counters.get("active_continuous_layers", 0)) == 2 and int(counters.get("deferred_multi_wheel_warnings", 0)) > 0, "Motion diagnostics must expose active and deferred multi-layer state.", failures)
 	registry.reset_scene_state()
 	_check(int(registry.counters().get("active_continuous_layers", -1)) == 0, "A true new-scene reset must clear obsolete motion state.", failures)
+	# Exercise the production clock entry point, without any further DMX publication.
+	registry.install_or_update_assets(assets)
+	registry.apply_selection(77,11,1,1,101,0,target)
+	registry.apply_rotation_state(77,11,1,2,1,0.0,30.0,0.0,0.0,target,0)
+	registry.advance_motion(0.016,targets)
+	_check(RotationPresentationScript.physical_angle(beam) > 0.0, "Held continuous rotation survives the idle guard without incoming DMX.", failures)
+	registry.apply_rotation_state(77,11,1,1,2,12.0,0.0,0.0,0.0,target)
+	registry.advance_motion(0.016,targets)
+	_check(is_equal_approx(RotationPresentationScript.physical_angle(beam),12.0), "Empty continuous set preserves the indexed gobo pose.", failures)
+
 	beam.free()
 	light.free()
 	DirAccess.remove_absolute(path)

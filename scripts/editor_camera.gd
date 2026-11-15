@@ -32,6 +32,14 @@ enum DragMode {
 	PAN,
 }
 
+var _transform_initialized: bool = false
+var _applied_position := Vector3.ZERO
+var _applied_pose := Vector4.ZERO
+var _applied_view := Rect2()
+var _applied_viewport := Vector2.ZERO
+var _applied_projection := Vector4.ZERO
+var _applied_transform := Transform3D.IDENTITY
+
 var selection_enabled: bool = true
 var navigation_area: Control
 var scene_view_rect := Rect2()
@@ -114,10 +122,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	var alpha: float = clamp(delta * smoothing_speed, 0.0, 1.0)
-	current_roll = lerp_angle(current_roll, target_roll, alpha)
-	current_yaw = lerp_angle(current_yaw, target_yaw, alpha)
-	current_pitch = lerp(current_pitch, target_pitch, alpha)
-	current_distance = lerp(current_distance, target_distance, alpha)
+	current_roll = target_roll if absf(angle_difference(current_roll,target_roll)) < 0.000001 else lerp_angle(current_roll,target_roll,alpha)
+	current_yaw = target_yaw if absf(angle_difference(current_yaw,target_yaw)) < 0.000001 else lerp_angle(current_yaw,target_yaw,alpha)
+	current_pitch = target_pitch if absf(current_pitch-target_pitch) < 0.000001 else lerp(current_pitch,target_pitch,alpha)
+	current_distance = target_distance if absf(current_distance-target_distance) < maxf(0.0000001,absf(target_distance)*0.0000001) else lerp(current_distance,target_distance,alpha)
 	_update_camera_transform()
 
 func _initialize_from_transform() -> void:
@@ -305,6 +313,12 @@ func _is_dragging() -> bool:
 	return _left_down or _right_down or _middle_down
 
 func _update_camera_transform() -> void:
+	var pose := Vector4(current_yaw,current_pitch,current_roll,current_distance)
+	var viewport_size := get_viewport().get_visible_rect().size
+	var projection_state := Vector4(fov,size,keep_aspect,projection)
+	# Include layout/projection and target translation, not just smoothed angles.
+	if _transform_initialized and _applied_position == target_position and _applied_pose == pose and _applied_view == scene_view_rect and _applied_viewport == viewport_size and _applied_projection == projection_state and _applied_transform == global_transform:
+		return
 	var cos_pitch: float = cos(current_pitch)
 	var sin_pitch: float = sin(current_pitch)
 	var sin_yaw: float = sin(current_yaw)
@@ -323,11 +337,18 @@ func _update_camera_transform() -> void:
 	# Keep one root viewport and native renderer ownership. Shift the camera so its
 	# orbit target projects into the unobscured UI rectangle; rays remain root pixels.
 	if scene_view_rect.has_area():
-		var viewport_size := get_viewport().get_visible_rect().size
 		var center_delta := scene_view_rect.get_center() - viewport_size * 0.5
 		var span: float = size if projection == PROJECTION_ORTHOGONAL else 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
 		var pixels: float = viewport_size.y if keep_aspect == KEEP_HEIGHT else viewport_size.x
 		global_position += (-global_basis.x * center_delta.x + global_basis.y * center_delta.y) * span / maxf(pixels, 1.0)
+
+	_transform_initialized = true
+	_applied_position = target_position
+	_applied_pose = pose
+	_applied_view = scene_view_rect
+	_applied_viewport = viewport_size
+	_applied_projection = projection_state
+	_applied_transform = global_transform
 
 func _set_mouse_mode(active: bool) -> void:
 	if active:

@@ -100,6 +100,7 @@ endif()
 
 if(PERAVIZ_BUILD_GDEXTENSION)
 add_library(peraviz_native SHARED
+    src/application_options.cpp
     src/hello_world.cpp
     src/archive/zip_archive.cpp
     src/asset_cache.cpp

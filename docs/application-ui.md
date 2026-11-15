@@ -86,7 +86,10 @@ Stopped, listening and receiving are distinct. Tools offers DMX connection
 controls, the existing technical monitor, MVR-xchange, and fixture diagnostics.
 The existing scale cube and optional FPS are in View. FPS appears in amber at
 the right of the bottom status bar, outside the viewport toolbar. It defaults
-off only when no explicit choice was saved. Visual Settings keeps Graphics and Beams,
+off only when no explicit choice was saved. View > FPS limit selects 30, 60
+(the default), 120 or Unlimited; it applies immediately and persists only in
+UserPreferences. Explicit Godot `--max-fps` / `--fixed-fps` options take precedence
+and disable this submenu for that run. Existing V-Sync is unchanged. Visual Settings keeps Graphics and Beams,
 Environment, Fake Smoke, Geometry and explicit advanced diagnostics/DMX policy;
 serialized settings and Reset still use their existing project ownership.
 
