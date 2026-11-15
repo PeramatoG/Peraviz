@@ -18,6 +18,8 @@ config/icon="res://icon.svg"
 [display]
 
 window/size/mode=2
+window/size/viewport_width=1366
+window/size/viewport_height=768
 
 [editor]
 

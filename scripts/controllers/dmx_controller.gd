@@ -521,7 +521,7 @@ func _update_dmx_toggle_color(enabled: bool, receiving_signal: bool) -> void:
 	if not enabled:
 		_dmx_toggle_button.modulate = Color(0.75, 0.75, 0.75)
 		return
-	_dmx_toggle_button.modulate = Color(0.25, 0.95, 0.25) if receiving_signal else Color(0.95, 0.25, 0.25)
+	_dmx_toggle_button.modulate = Color.GREEN if receiving_signal else preload("res://scripts/ui/ui_palette.gd").AMBER
 
 func _refresh_dmx_monitor_window(running: bool) -> void:
 	if _dmx_monitor_window == null or not is_instance_valid(_dmx_monitor_window) or not _dmx_monitor_window.visible:

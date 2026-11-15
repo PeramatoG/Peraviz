@@ -33,30 +33,18 @@ func _scene() -> Node3D:
 
 func _inspector_contract() -> void:
 	var panel := preload("res://scripts/ui/fixture_inspection_panel.gd").new()
-	panel.hide()
 	root.add_child(panel)
+	var details := panel._details
 	var rows: Array = []
-	for i in range(82): rows.append({"fixture_uuid": str(i), "fixture_name": "Generic fixture " + str(i)})
+	for i in range(5000): rows.append({"fixture_uuid": str(i)})
 	panel.refresh(rows)
-	test.check(panel._row_labels.is_empty() and panel._pending_rows.size() == 82, "Hidden inspector stores all fixture data without allocating row Controls")
-	panel.show()
-	test.check(panel._row_labels.size() == 64, "Visible inspector constructs only eight rows before yielding")
-	await process_frame
-	panel.refresh([{"fixture_name": "Replacement"}])
-	await process_frame
-	test.check(panel._row_labels.size() == 8 and not panel._dirty, "A replacement generation cancels old UI batches without stale rows")
-	panel.refresh(rows)
+	test.check(panel._details == details and panel.get_child_count() == 1, "Large imports retain one contextual inspector, without allocating per-fixture Controls")
 	panel.hide()
-	await process_frame
-	test.check(not panel._building and panel._dirty, "Hiding the inspector interrupts construction safely")
+	panel.refresh([])
 	panel.show()
 	var budget := _budget({"valid": true})
-	test.check(await panel.finish_visible_refresh(budget), "Import can await all visible details through the normal event loop")
-	test.check(panel._row_labels.size() == 656 and not panel._dirty, "All 82 fixtures retain their eight final inspection fields")
-	var retained_label: Label = panel._row_labels[0]
-	panel.hide()
-	panel.show()
-	test.check(panel._row_labels[0] == retained_label and not panel._dirty, "Reopening completed inspection data reuses existing Controls")
+	test.check(await panel.finish_visible_refresh(budget), "Contextual inspector preserves import generation cancellation contract")
+	test.check(panel._details == details, "Showing panels reuses inspector resources")
 	panel.queue_free()
 	await process_frame
 

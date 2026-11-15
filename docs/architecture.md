@@ -31,8 +31,8 @@ transaction, matching main’s publication order: no rendering turn consumes
 individual resources before their final sharing/aggregate bindings. CPU preparation
 is already complete. This transaction is not subject to the 8 ms construction
 budget; its wall time is recorded separately. Initial light defaults yield, and
-hidden fixture-inspection tables retain data without allocating row Controls;
-visible tables build eight rows per frame with generation-safe replacement.
+the contextual inspector reuses one selected-object view without allocating
+per-fixture property rows; scene publication builds lightweight explorer TreeItems.
 The completed scene activates adaptive batches of 64–256 visual instances (with
 a soft 4 ms submission slice that may stop earlier) per rendered batch
 behind an opaque modal shield before its removal. This avoids exposing the whole
@@ -423,3 +423,18 @@ Art-Net reception records cheap metadata for all valid traffic, but only univers
 Production playback is scheduled by `load_scene.gd::_process`, which calls `DmxController.process_dmx`, the native receiver/coordinator pump, completed-snapshot polling through `PeravizPresentationState.consume_runtime`, and `SectionedVisualFrameApplier.apply_snapshot` in the same render-process opportunity. The serial fallback completes its native transaction there; asynchronous native work can complete between opportunities. The 125 ms status refresh only updates monitor UI and does not gate playback. Apply completion is recorded after cached Godot renderer targets have been mutated. This is a CPU-side boundary; render submission, GPU execution, display queueing, and presentation are intentionally not represented as CPU RX-to-apply latency.
 
 Renderer diagnostic modes are presentation-only policy over the section applier. They do not change native semantic evaluation, the sectioned protocol, saved visual settings, or renderer resource ownership. Emission-only GDTF Beam outputs remain physical geometry but are excluded from projected beam allocation and work.
+
+## Application interaction ownership
+
+`AppShell` owns layout and user preferences; `SceneSelection` owns transient
+stable-ID selection against the published node index. Explorer and Inspector
+consume that state, as do optional manual fixture diagnostics. The Inspector
+creates only the selected object's presentation, replacing the former full
+fixture property table. Root viewport/native resource ownership is retained.
+See [application UI](application-ui.md) for framing, picking and migration.
+
+Standard per-fixture Pan/Tilt inversion is MVR-owned (`DMXInvertPan`,
+`DMXInvertTilt`), not GDTF definition editing or a Godot visualization flag.
+Current importer interfaces do not expose it. Its future native evaluation must
+invert resolved, bit-depth-aware DMX before physical conversion. UI layout and
+transient selection never become canonical MVR/PVZ fixture data.

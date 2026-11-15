@@ -285,6 +285,8 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 }
 
 func _ready() -> void:
+	# Editor previews keep the authored skeleton; application services mount only at runtime.
+	if Engine.is_editor_hint(): return
 	_cached_beam_defaults = BeamOpticsControllerScript.BuildDefaultMasterOptics()
 	_beam_params_template_cache.clear()
 	_apply_imported_content_scale()
@@ -318,7 +320,6 @@ func _ready() -> void:
 		self,
 		_scene_registry,
 		_fixture_row_provider,
-		camera,
 		{
 			"manual_fixture_toggle": manual_fixture_toggle,
 			"fixture_debug_panel": fixture_debug_panel,
@@ -340,8 +341,8 @@ func _ready() -> void:
 			"dimmer_slider": dimmer_slider,
 			"quick_reset_button": quick_reset_button,
 		},
-		Callable(self, "_resolve_fixture_uuid_from_node"),
-		Callable(self, "_apply_fixture_controls_from_debug")
+		Callable(self, "_apply_fixture_controls_from_debug"),
+		app_shell.selection
 	)
 	_dmx_controller = DmxControllerScript.new()
 	_dmx_controller.configure(
@@ -390,6 +391,8 @@ func _ready() -> void:
 		push_warning("VisualSettingsWindow is not ready for configure(); initial visual settings not pushed.")
 	_apply_visual_settings(_visual_settings, true)
 	_refresh_day_night_environment_controller()
+	app_shell.configure(self, _user_preferences, _fixture_inspection_panel)
+	get_window().content_scale_factor = _user_preferences.ui_scale
 	call_deferred("_auto_load_last_file_from_preferences")
 
 
@@ -785,6 +788,7 @@ func _remember_loaded_file(path: String, file_type: String) -> void:
 	var normalized_file_type: String = _resolve_supported_file_type(path, file_type)
 	if normalized_file_type.is_empty():
 		return
+	if app_shell != null and app_shell._configured: app_shell.set_project_name(path)
 	_user_preferences.last_file_path = path
 	_user_preferences.last_file_type = normalized_file_type
 	_user_preferences.save_to_disk()
@@ -843,8 +847,6 @@ func _load_user_preferences() -> void:
 	UiVisibilityPolicyScript.set_advanced_controls_enabled(_user_preferences.advanced_mode)
 	if show_advanced_controls_toggle != null:
 		show_advanced_controls_toggle.button_pressed = _user_preferences.advanced_mode
-	if app_shell != null:
-		app_shell.set_side_panel_open(_user_preferences.sidebar_open)
 	_sync_session_preference_toggles()
 
 func _apply_visual_settings_preferences_to_window() -> void:
@@ -982,29 +984,14 @@ func _refresh_ui_module_visibility() -> void:
 		show_advanced_controls_toggle.button_pressed = UiVisibilityPolicyScript.is_advanced_controls_enabled()
 
 func _unhandled_input(event: InputEvent) -> void:
-	_sync_selection_state("input")
-	_sync_selected_fixture_badge()
-
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
-		_focus_loaded_scene()
-		get_viewport().set_input_as_handled()
-		return
-
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == DEBUG_TOGGLE_KEY:
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus is LineEdit or focus is TextEdit: return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == DEBUG_TOGGLE_KEY and UiVisibilityPolicyScript.is_module_visible(UiVisibilityPolicyScript.MODULE_DEBUG):
 		_debug_coords_enabled = not _debug_coords_enabled
 		ProjectSettings.set_setting("peraviz_debug_coords", _debug_coords_enabled)
-		print("[PeravizCoordDebug] event=toggle coords_debug=", _debug_coords_enabled)
 		_rebuild_debug_gizmos()
 		_update_debug_legend()
 		get_viewport().set_input_as_handled()
-		return
-
-	if _is_manual_fixture_test_enabled() and event is InputEventMouseButton:
-		var mouse_event := event as InputEventMouseButton
-		if mouse_event.pressed and mouse_event.button_index == MOUSE_BUTTON_LEFT:
-			_fixture_debug_controller.try_select_fixture_from_mouse(mouse_event.position)
-			_sync_selected_fixture_badge()
-			get_viewport().set_input_as_handled()
 
 
 func _ensure_debug_gizmo_root() -> void:
@@ -1584,6 +1571,7 @@ func _classify_gdtf_primitive_shape(primitive_type: String) -> String:
 
 func _clear_scene() -> void:
 	_scene_load_generation += 1
+	if app_shell != null and app_shell._configured: app_shell.retire_scene()
 	if _fixture_light_apply_service != null:
 		_fixture_light_apply_service.reset_scene_state()
 	_clear_fixture_inspection_panel()
@@ -1660,7 +1648,7 @@ func _sync_selection_state(reason: String) -> void:
 	_sync_selected_fixture_badge()
 
 func _refresh_fixture_debug_panel() -> void:
-	_fixture_debug_controller.refresh_fixture_debug_panel()
+	_fixture_debug_controller.set_manual_fixture_test_enabled(_read_manual_fixture_test_setting())
 
 func _is_manual_fixture_test_enabled() -> bool:
 	return manual_fixture_toggle.button_pressed
@@ -2856,10 +2844,7 @@ func _setup_fixture_inspection_panel() -> void:
 func _refresh_fixture_inspection_panel() -> void:
 	if _fixture_inspection_panel == null or not is_instance_valid(_fixture_inspection_panel):
 		return
-	var rows: Array = []
-	if _dmx_controller != null:
-		rows = _dmx_controller.get_fixture_rows()
-	_fixture_inspection_panel.refresh(rows)
+	_fixture_inspection_panel.refresh([])
 
 func _clear_fixture_inspection_panel() -> void:
 	if _fixture_inspection_panel == null or not is_instance_valid(_fixture_inspection_panel):
@@ -2872,27 +2857,7 @@ func _setup_dmx_controls() -> void:
 func _resolve_dmx_controls_host() -> Control:
 	if dmx_controls_mount != null and is_instance_valid(dmx_controls_mount):
 		return dmx_controls_mount
-	if app_shell != null and app_shell.has_method("get_modules_container"):
-		return app_shell.get_modules_container() as Control
 	return null
-
-func bridge_set_side_panel_open(is_open: bool) -> void:
-	if app_shell != null:
-		app_shell.set_side_panel_open(is_open)
-
-func bridge_set_active_section(section_name: StringName) -> void:
-	if app_shell != null:
-		app_shell.set_active_section(section_name)
-
-func bridge_register_section(section_name: StringName, section_node: CanvasItem) -> void:
-	if app_shell != null:
-		app_shell.register_section(section_name, section_node)
-
-func bridge_get_dmx_controls_host() -> Control:
-	return _resolve_dmx_controls_host()
-
-func bridge_setup_dmx_controls() -> void:
-	_setup_dmx_controls()
 
 func _setup_dmx_fixture_runtime() -> void:
 	await _dmx_controller.setup_fixture_runtime(_loader, _scene_registry, self, _fixture_row_provider)
@@ -2941,6 +2906,8 @@ func _on_dmx_status_changed(running: bool, receiving_signal: bool) -> void:
 	if _status_presenter == null:
 		return
 	_status_presenter.set_dmx_badge(running, receiving_signal)
+	var button := topbar_row.get_node_or_null("ArtNetToggle") as Button
+	if button != null: button.set_pressed_no_signal(running)
 
 func _on_dmx_start_failed(error_message: String) -> void:
 	if _status_presenter == null:
@@ -2948,7 +2915,7 @@ func _on_dmx_start_failed(error_message: String) -> void:
 	var message: String = "DMX start failed"
 	if not error_message.is_empty():
 		message = "%s (%s)" % [message, error_message]
-	_status_presenter.show_toast(message)
+	_status_presenter.show_toast(message, true)
 
 func bridge_get_fixture_light_phase_metrics() -> Dictionary:
 	if _fixture_light_apply_service == null:

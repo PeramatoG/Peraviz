@@ -4,7 +4,6 @@ class_name FixtureDebugController
 var _owner: Node3D
 var _scene_registry: SceneRegistry
 var _fixture_row_provider: FixtureRowProvider
-var _camera: Camera3D
 
 var _manual_fixture_toggle: CheckButton
 var _fixture_debug_panel: PanelContainer
@@ -27,11 +26,19 @@ var _dimmer_slider: HSlider
 var _quick_reset_button: Button
 var _shutter_trace_button: Button
 
-var _resolve_fixture_uuid_from_node_callback: Callable
 var _apply_fixture_controls_callback: Callable
 
 var _manual_fixture_test_enabled: bool = false
-var _selected_fixture_uuid: String = ""
+var _selection: SceneSelection
+var _selected_fixture_uuid: String:
+	get:
+		if _selection == null or _selection.ids.size() != 1: return ""
+		var id: String = _selection.ids[0]
+		return id if _scene_registry.has_fixture(id) else ""
+	set(value):
+		if _selection != null:
+			if value.is_empty(): _selection.clear()
+			else: _selection.select(PackedStringArray([value]))
 var _fixture_manual_values: Dictionary = {}
 var _updating_fixture_controls: bool = false
 
@@ -46,15 +53,13 @@ const MANUAL_DEFAULTS := {
 func configure(owner: Node3D,
 		scene_registry: SceneRegistry,
 		fixture_row_provider: FixtureRowProvider,
-		camera: Camera3D,
 		ui_refs: Dictionary,
-		resolve_fixture_uuid_from_node_callback: Callable,
-		apply_fixture_controls_callback: Callable) -> void:
+		apply_fixture_controls_callback: Callable,
+		selection_state: SceneSelection) -> void:
+	_selection = selection_state
 	_owner = owner
 	_scene_registry = scene_registry
 	_fixture_row_provider = fixture_row_provider
-	_camera = camera
-	_resolve_fixture_uuid_from_node_callback = resolve_fixture_uuid_from_node_callback
 	_apply_fixture_controls_callback = apply_fixture_controls_callback
 
 	_manual_fixture_toggle = ui_refs.get("manual_fixture_toggle")
@@ -161,32 +166,6 @@ func sync_selection_state(reason: String) -> void:
 		return
 	clear_selected_fixture(reason)
 
-func try_select_fixture_from_mouse(mouse_position: Vector2) -> void:
-	var world_3d: World3D = _owner.get_world_3d()
-	if world_3d == null:
-		return
-
-	var query := PhysicsRayQueryParameters3D.create(
-		_camera.project_ray_origin(mouse_position),
-		_camera.project_ray_origin(mouse_position) + _camera.project_ray_normal(mouse_position) * 1000.0
-	)
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	var result: Dictionary = world_3d.direct_space_state.intersect_ray(query)
-	if result.is_empty():
-		return
-
-	var collider: Object = result.get("collider")
-	if collider == null or not (collider is Node):
-		return
-
-	var fixture_uuid: String = ""
-	if _resolve_fixture_uuid_from_node_callback.is_valid():
-		fixture_uuid = str(_resolve_fixture_uuid_from_node_callback.call(collider as Node))
-	if fixture_uuid.is_empty():
-		return
-	_select_fixture_by_uuid(fixture_uuid, "raycast")
-
 func refresh_fixture_debug_panel() -> void:
 	_manual_fixture_toggle.button_pressed = _manual_fixture_test_enabled
 	_fixture_debug_panel.visible = _manual_fixture_test_enabled
@@ -217,13 +196,14 @@ func _on_fixture_list_item_selected(index: int) -> void:
 func _select_fixture_by_uuid(fixture_uuid: String, source: String) -> void:
 	if fixture_uuid.is_empty() or not _scene_registry.has_fixture(fixture_uuid):
 		return
+	var was_selected: bool = _selected_fixture_uuid == fixture_uuid
 	_selected_fixture_uuid = fixture_uuid
 	_ensure_fixture_manual_values(fixture_uuid)
 	var selected_index: int = _find_fixture_list_index(fixture_uuid)
 	if selected_index >= 0:
 		_fixture_list.select(selected_index)
 	print("[PeravizFixtureTest] selected uuid=", fixture_uuid, " source=", source)
-	_apply_selected_fixture_controls("select")
+	if _manual_fixture_test_enabled and was_selected: _apply_selected_fixture_controls("select")
 	refresh_fixture_debug_panel()
 
 func _resolve_selected_fixture_display_label(fixture_uuid: String) -> String:

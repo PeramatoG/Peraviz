@@ -96,6 +96,7 @@ func _on_open_monitor_pressed() -> void:
 func _apply_state() -> void:
 	if _status_value_label == null:
 		return
+	_status_value_label.modulate = Color.GREEN if _monitor_available and _running and _receiving_signal else (preload("res://scripts/ui/ui_palette.gd").AMBER if _running else Color.WHITE)
 	_open_monitor_button.disabled = not _monitor_available
 	if not _monitor_available:
 		_status_value_label.text = "Unavailable"

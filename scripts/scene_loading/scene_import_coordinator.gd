@@ -130,6 +130,8 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		budget.breadcrumb("project_completion_end")
 	if bool(import_result.get("ok", false)):
 		app._loaded_mvr_path = path
+		if app.app_shell != null and app.app_shell._configured:
+			app.app_shell.publish_scene(str(project_context.get("source_path", path)))
 		app.last_loaded_file_type = loaded_file_type
 		if app._status_presenter != null:
 			app._status_presenter.set_scene_state_loaded(int(import_result.get("node_count", 0)))
@@ -152,7 +154,8 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 	budget.breadcrumb("scene_resources_sample_begin")
 	metrics.merge(app._scene_setup_resource_metrics)
 	if is_instance_valid(app._fixture_inspection_panel):
-		metrics["inspector_row_controls"] = app._fixture_inspection_panel._row_labels.size()
+		metrics["inspector_row_controls"] = 0
+		metrics["inspector_detail_controls"] = app._fixture_inspection_panel.get_child_count()
 	if app._fixture_light_apply_service.is_dense_presentation_active():
 		var counts: Dictionary = app._fixture_light_apply_service._dense_adapter.diagnostics()
 		for key in ["physical_outputs", "final_render_rows", "allocated_member_shafts", "aggregate_shaft_resources", "unique_lens_material_rids"]:

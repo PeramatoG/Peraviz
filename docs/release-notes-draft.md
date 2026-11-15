@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Widened navigation cube bevels for easier corner selection. Moved optional FPS to the bottom-right status bar, replaced viewport action labels with matching icons, and made fullscreen hide all application controls and auxiliary windows except a small exit button. Leaving fullscreen restores the previous layout and window state.
+
 - Avoid costly deep duplication of built-in placeholder materials during first MVR import while preserving independent material state and exact presentation. Add bounded construction and frame-wait telemetry plus graphical and 10k-object regressions.
 
 - Reduced repeated scene-model preparation: inherited winding is planned before 3DS construction, exact-path albedo textures share one scene-owned decode/upload, and native packed mesh buffers use bulk writes. Added operation-level telemetry and distinct-resource regressions/benchmarks. Existing glTF/PackedScene, fixture-control and resource ownership behavior remains. See `docs/scene-model-preparation-performance.md`; production-file timing is not established.
@@ -200,3 +202,25 @@ Changes since the previous Peraviz release.
 - Added a production-integrated native GDTF gobo scalar contract with exact semantic identities, generic structured mode dependencies, ChannelSet physical ranges, and standards-based node defaults as groundwork for later visible gobo motion.
 - Moved live scene playback to native DMX subscriptions, generation-safe dirty-ID handoff, bounded latest-state coalescing, direct native runtime submission, and held-state rehydration without routing raw universe payloads through scripts.
 - Corrected ordered ArtDmx sequence validation and receiver-session lifecycle, reduced endpoint work on the receive thread, drained sockets until would-block, and made Technical Monitor payload capture fresh-session, budgeted, and subordinate to scene playback.
+
+### Professional application shell
+
+- Added resizable Scene Explorer and contextual read-only Inspector, shared UUID
+  selection, search, viewport framing and a compact application toolbar.
+- Added independent panel toggles, restoreable distraction-free mode, F11
+  nonexclusive fullscreen and migrated layout/UI-scale preferences.
+- Moved connection and diagnostic tools into optional windows; FPS defaults off
+  for new preferences. Added a shared dark theme and bundled vector icons.
+- Removed the unused startup ping script and obsolete section/DMX UI bridges.
+  MVR/PVZ ownership and the native rendering/DMX pipeline are preserved.
+- MVR document mutations and standard MVR Pan/Tilt inversion evaluation remain
+  deferred. See `application-ui.md` for controls, tradeoffs and editing handoff.
+
+- Selection now shades the actual selected geometry in bright amber with a
+  silhouette outline, preserving native materials and lens batching eligibility.
+- Added a compact, real 3D navigation cube with 26 face/edge/corner surfaces,
+  interactive compass, saved Home, drag orbit, 90-degree roll, adjacent-face
+  arrows and the three CAD projection modes. Shift+middle orbits;
+  middle pans, and double middle-click fits the scene.
+- Increased UI contrast with pure-black panels and amber/yellow/orange accents;
+  Art-Net reception is pure green, listening amber, and errors pure red.

@@ -214,6 +214,7 @@ func _init() -> void:
 	unresizable = false
 
 func _ready() -> void:
+	preload("res://scripts/ui/window_modes.gd").install_escape(self)
 	close_requested.connect(_on_close_requested)
 	_build_ui()
 	_apply_settings_to_controls()
@@ -292,7 +293,7 @@ func _build_ui() -> void:
 	layout.add_child(_tabs)
 
 	_renderer_panel = RendererSettingsPanelScript.new()
-	_renderer_panel.name = "Renderer"
+	_renderer_panel.name = "Graphics and Beams"
 	_renderer_panel.setting_changed.connect(_on_panel_setting_changed)
 	_tabs.add_child(_renderer_panel)
 
@@ -369,6 +370,7 @@ func _apply_mode_to_panels() -> void:
 	if _environment_panel != null:
 		_environment_panel.set_advanced_mode(advanced_enabled)
 	if _debug_panel != null:
+		_tabs.set_tab_hidden(_debug_panel.get_index(), not advanced_enabled)
 		_debug_panel.set_advanced_mode(advanced_enabled)
 
 
