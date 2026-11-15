@@ -11,6 +11,8 @@ var _preferences: UserPreferences
 var _viewport: SubViewport
 var _model: Node3D
 var _image: TextureRect
+var _pan_button: Button
+var _panning: bool = false
 var _menu: MenuButton
 var _arrows: Array[Button] = []
 var _previous_basis := Basis()
@@ -58,10 +60,26 @@ func configure(view_camera: Camera3D, state: SceneSelection = null, preferences:
 	_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_image)
 	var home := _icon_button("", "Home — restore the saved view", Vector2(0,0), _home)
+	home.name = "Home"
+	home.focus_mode = Control.FOCUS_NONE
 	home.icon = preload("res://assets/ui/home.svg")
 	home.expand_icon = true
-	_arrows.append(_icon_button("↶", "Roll view 90° counterclockwise", Vector2(88,0), func() -> void: camera.roll_view(PI*0.5)))
-	_arrows.append(_icon_button("↷", "Roll view 90° clockwise", Vector2(112,0), func() -> void: camera.roll_view(-PI*0.5)))
+	_navigation_icon_colors(home)
+	_pan_button = _icon_button("", "Pan — hold and drag to move the view", Vector2(112,0), func() -> void: pass)
+	_pan_button.name = "Pan"
+	_pan_button.icon = preload("res://assets/ui/pan.svg")
+	_pan_button.expand_icon = true
+	_navigation_icon_colors(_pan_button)
+	# Drag handling owns the pressed state, including release outside the widget.
+	_pan_button.button_mask = 0
+	_pan_button.toggle_mode = true
+	_pan_button.focus_mode = Control.FOCUS_NONE
+	_pan_button.mouse_default_cursor_shape = Control.CURSOR_DRAG
+	_pan_button.gui_input.connect(_pan_input)
+	visibility_changed.connect(func() -> void:
+		if not is_visible_in_tree(): _end_pan())
+	_arrows.append(_icon_button("↶", "Roll view 90° counterclockwise", Vector2(0,112), func() -> void: camera.roll_view(PI*0.5)))
+	_arrows.append(_icon_button("↷", "Roll view 90° clockwise", Vector2(112,112), func() -> void: camera.roll_view(-PI*0.5)))
 	for index in range(4):
 		_arrows.append(_icon_button(["▲","▶","▼","◀"][index], "Adjacent face", [Vector2(56,14),Vector2(112,59),Vector2(56,112),Vector2(0,59)][index], _adjacent.bind(index)))
 	_menu = MenuButton.new()
@@ -92,6 +110,11 @@ func configure(view_camera: Camera3D, state: SceneSelection = null, preferences:
 	_sync_menu()
 	_project()
 	_set_active(false)
+
+func _navigation_icon_colors(button: Button) -> void:
+	button.add_theme_color_override("icon_normal_color", Color.WHITE)
+	for state in ["hover", "pressed", "hover_pressed", "focus"]:
+		button.add_theme_color_override("icon_%s_color" % state, Palette.AMBER)
 
 func _icon_button(text: String, tooltip: String, position_value: Vector2, action: Callable) -> Button:
 	var button := Button.new()
@@ -173,7 +196,28 @@ func _nearest_direction(direction: Vector3, cardinal_only: bool = false) -> Vect
 			best = candidate
 	return best
 
+func _pan_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_panning = event.pressed
+		_pan_button.set_pressed_no_signal(_panning)
+		_pan_button.accept_event()
+
+func _end_pan() -> void:
+	_panning = false
+	if is_instance_valid(_pan_button): _pan_button.set_pressed_no_signal(false)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT: _end_pan()
+
 func _input(event: InputEvent) -> void:
+	if _panning:
+		if event is InputEventMouseMotion:
+			camera.pan_by(event.relative)
+			get_viewport().set_input_as_handled()
+		elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_end_pan()
+			get_viewport().set_input_as_handled()
+		return
 	if _pressed and event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_finish_click(event.position-global_position)
 		get_viewport().set_input_as_handled()

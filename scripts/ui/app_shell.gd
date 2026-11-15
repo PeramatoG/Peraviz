@@ -120,15 +120,16 @@ func _build_layout() -> void:
 	_toolbar.offset_right = -154
 	_area.add_child(_toolbar)
 	_toolbar.resized.connect(_update_camera_rect)
-	for entry in [["Select", "Click to select; Ctrl-click adds to selection"], ["Move", "Reserved for MVR document editing"], ["Rotate", "Reserved for MVR document editing"]]:
+	for entry in [["Select", "Select mode: on = left-click selection (Ctrl adds/removes); off = left-drag orbit, Shift+left-drag pan"], ["Move", "Reserved for MVR document editing"], ["Rotate", "Reserved for MVR document editing"]]:
 		var button := _button(_toolbar, "", entry[1], func() -> void: pass)
 		button.name = entry[0]
 		_icon(button, str(entry[0]).to_lower(), entry[1])
 		button.disabled = entry[0] != "Select"
 		if entry[0] == "Select":
+			button.focus_mode = Control.FOCUS_NONE
 			button.toggle_mode = true
 			button.button_pressed = true
-			button.pressed.connect(func() -> void: button.set_pressed_no_signal(true))
+			button.toggled.connect(_set_selection_enabled)
 	var frame_button := _button(_toolbar, "", "Frame selection (F); fit scene when empty", frame_selection)
 	frame_button.name = "Frame"
 	_icon(frame_button, "frame_selection", frame_button.tooltip_text)
@@ -427,6 +428,10 @@ func _view_action(id: int) -> void:
 			_owner.get_window().content_scale_factor = _preferences.ui_scale
 			_save()
 
+func _set_selection_enabled(enabled: bool) -> void:
+	_left_pressed = false
+	_owner.camera.set_selection_enabled(enabled)
+
 func frame_selection() -> void:
 	if selection.ids.is_empty(): _owner._focus_loaded_scene()
 	else: _owner.camera.focus_on_aabb(selection.bounds())
@@ -479,7 +484,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_: return
 		get_viewport().set_input_as_handled()
 	if _owner._scene_loading: return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and _owner.camera.selection_enabled:
 		if event.pressed:
 			_left_pressed = _area.get_global_rect().has_point(event.position)
 			_press_position = event.position

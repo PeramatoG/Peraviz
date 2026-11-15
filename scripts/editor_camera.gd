@@ -32,6 +32,7 @@ enum DragMode {
 	PAN,
 }
 
+var selection_enabled: bool = true
 var navigation_area: Control
 var scene_view_rect := Rect2()
 
@@ -82,8 +83,23 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	# A captured navigation drag must end even when release falls over a dock.
 	if event is InputEventMouseButton and not event.pressed and _is_dragging():
-		if event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+		if event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 			_handle_mouse_button(event)
+
+func set_selection_enabled(enabled: bool) -> void:
+	selection_enabled = enabled
+	_end_navigation()
+
+func _end_navigation() -> void:
+	var was_dragging := _is_dragging()
+	_left_down = false
+	_right_down = false
+	_middle_down = false
+	_drag_mode = DragMode.NONE
+	if was_dragging: _set_mouse_mode(false)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT: _end_navigation()
 
 func _unhandled_input(event: InputEvent) -> void:
 	var focus := get_viewport().gui_get_focus_owner()
@@ -122,8 +138,14 @@ func _initialize_from_transform() -> void:
 	current_pitch = target_pitch
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	# Left click belongs to ordinary selection; right drag retains orbit navigation.
-	if event.button_index == MOUSE_BUTTON_LEFT: return
+	# Selection owns left click only while its explicit toolbar mode is enabled.
+	if event.button_index == MOUSE_BUTTON_LEFT:
+		if selection_enabled and not _left_down: return
+		_left_down = event.pressed
+		_update_drag_mode(event.shift_pressed)
+		_set_mouse_mode(_is_dragging())
+		get_viewport().set_input_as_handled()
+		return
 
 	if event.button_index == MOUSE_BUTTON_RIGHT:
 		_right_down = event.pressed
@@ -153,7 +175,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		get_viewport().set_input_as_handled()
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
-	_update_drag_mode(Input.is_key_pressed(KEY_SHIFT))
+	_update_drag_mode(event.shift_pressed)
 
 	if _drag_mode == DragMode.ORBIT:
 		target_yaw -= event.relative.x * orbit_sensitivity
@@ -181,6 +203,13 @@ func _apply_zoom(steps: float) -> void:
 		target_distance = min_distance
 	else:
 		target_distance = clamp(new_distance, min_distance, max_distance)
+
+# Screen-aligned panning for the navigation handle, including poles and rolled views.
+func pan_by(relative: Vector2) -> void:
+	var height: float = scene_view_rect.size.y
+	if height <= 0.0: height = get_viewport().get_visible_rect().size.y
+	var span: float = size if projection == PROJECTION_ORTHOGONAL else 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
+	target_position += (-global_basis.x * relative.x + global_basis.y * relative.y) * span / maxf(height, 1.0)
 
 func _apply_pan(delta_x: float, delta_y: float) -> void:
 	var right: Vector3 = Vector3(cos(target_yaw), 0.0, -sin(target_yaw))
