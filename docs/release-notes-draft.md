@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added a compact drag-to-pan icon opposite Home on the navigation cube. Panning follows the screen plane in perspective, parallel, top/bottom and rolled views; releasing outside the widget, hiding tools or losing focus ends the drag.
+
 - Widened navigation cube bevels for easier corner selection. Moved optional FPS to the bottom-right status bar, replaced viewport action labels with matching icons, and made fullscreen hide all application controls and auxiliary windows except a small exit button. Leaving fullscreen restores the previous layout and window state.
 
 - Avoid costly deep duplication of built-in placeholder materials during first MVR import while preserving independent material state and exact presentation. Add bounded construction and frame-wait telemetry plus graphical and 10k-object regressions.

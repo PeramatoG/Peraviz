@@ -33,6 +33,13 @@ so they actually turn the view. On an active axial face, four arrow buttons move
 to adjacent faces; two curved arrows roll the camera by ±90°. The scene remains
 upright during normal orbit. Explicit face-roll actions can rotate its screen up.
 
+A matching 22×22 pan icon sits opposite Home at the top right. Hold its left
+mouse button and drag to translate the view; the drag continues outside the
+widget and ends on release. It follows the screen plane in perspective and
+parallel projection, including top/bottom and rolled views, without changing
+orientation, zoom or the selection pivot. Hiding the widget or losing application
+focus cancels the drag. The quarter-turn roll buttons sit at the lower corners.
+
 The small bundled Home SVG restores the default isometric fit or a saved Home.
 Set current view as Home remembers direction, roll, position, extent, distance
 and projection for the current scene/session. Publishing a scene clears it.
@@ -64,3 +71,25 @@ control. It does not migrate the main scene to a SubViewport or change its camer
 references, native renderer resources, project persistence or scene ownership.
 The main camera still projects/picks in root viewport coordinates. The tiny UI
 texture has a cost; no frame-time or GPU performance improvement is claimed.
+
+## Pan handle validation
+
+With pinned Godot 4.7.1, these focused tests pass on Linux:
+
+```bash
+work/godot-tests --headless --audio-driver Dummy --path . \
+  --script tests/gdscript/test_navigation_and_highlight.gd
+work/godot-tests --headless --audio-driver Dummy --path . \
+  --script tests/gdscript/test_application_shell.gd
+work/godot-tests --headless --audio-driver Dummy --path . \
+  --script tests/gdscript/test_import_camera_framing.gd
+DISPLAY=:17 work/godot-tests --audio-driver Dummy \
+  --rendering-method gl_compatibility --path . \
+  --script tests/gdscript/test_navigation_and_highlight.gd
+```
+
+Pan coverage dispatches actual GUI presses on the icon and motion/release outside
+it. It checks both projections, angled and pole views, camera roll, unchanged
+orientation/zoom, cessation after release, ancestor hiding and focus loss.
+Architecture, file-size and whitespace checks pass; no native runtime code is
+changed. Graphical checks use Compatibility/llvmpipe, not Windows or Forward+.

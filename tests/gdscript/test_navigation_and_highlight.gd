@@ -26,6 +26,7 @@ func _run() -> void:
 	var cube := Cube.new()
 	root.add_child(cube)
 	cube.configure(camera)
+	cube.size = Vector2(136,162)
 	camera.set_view_direction(Vector3.ONE)
 	_settle(camera)
 	cube._project()
@@ -70,6 +71,48 @@ func _run() -> void:
 	press.position = Vector2(900, 500)
 	cube._input(press)
 	test.check(not cube._pressed, "Cube drag safely releases outside its control")
+	# Use normal viewport GUI dispatch for the pan handle, then leave its bounds.
+	await process_frame
+	test.check(cube._pan_button.size == Vector2(22,22), "Pan handle matches the compact Home icon size")
+	for projection_action in [10,11]:
+		cube._menu_action(projection_action)
+		for direction in [Vector3.ONE,Vector3.UP,Vector3.DOWN]:
+			camera.set_view_direction(direction)
+			camera.target_roll = PI * 0.5
+			_settle(camera)
+			var position_before: Vector3 = camera.target_position
+			var orientation_before := Vector3(camera.target_yaw,camera.target_pitch,camera.target_roll)
+			var distance_before: float = camera.target_distance
+			var extent_before: float = camera.size
+			press.pressed = true
+			press.position = cube._pan_button.get_global_rect().get_center()
+			root.push_input(press,true)
+			test.check(cube._panning and cube._pan_button.button_pressed, "Left press on the actual pan icon begins a drag")
+			motion.position = Vector2(900,500)
+			motion.relative = Vector2(20,-12)
+			root.push_input(motion,true)
+			var displacement: Vector3 = camera.target_position-position_before
+			test.check(displacement.dot(camera.global_basis.x) < 0 and displacement.dot(camera.global_basis.y) < 0 and absf(displacement.dot(camera.global_basis.z)) < 0.00001, "Pan follows the rolled screen plane at poles and angled views in both projections")
+			test.check(Vector3(camera.target_yaw,camera.target_pitch,camera.target_roll).is_equal_approx(orientation_before) and camera.target_distance == distance_before and camera.size == extent_before, "Pan preserves orientation and zoom")
+			press.pressed = false
+			press.position = motion.position
+			root.push_input(press,true)
+			test.check(not cube._panning and not cube._pan_button.button_pressed and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Release outside the widget ends pan without capturing the mouse")
+			position_before = camera.target_position
+			root.push_input(motion,true)
+			test.check(camera.target_position == position_before, "Mouse movement after release cannot continue panning")
+	press.pressed = true
+	press.position = cube._pan_button.get_global_rect().get_center()
+	root.push_input(press,true)
+	cube.hide()
+	test.check(not cube._panning and not cube._pan_button.button_pressed, "Hiding tools or entering fullscreen cancels pan")
+	cube.show()
+	root.push_input(press,true)
+	cube._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	test.check(not cube._panning, "Losing application focus cancels pan")
+	press.pressed = false
+	root.push_input(press,true)
+	cube._menu_action(12)
 	camera._middle_down = true
 	camera._update_drag_mode(true)
 	test.check(camera._drag_mode == camera.DragMode.ORBIT, "Shift+middle drag provides CAD-style orbit")

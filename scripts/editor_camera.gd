@@ -182,6 +182,13 @@ func _apply_zoom(steps: float) -> void:
 	else:
 		target_distance = clamp(new_distance, min_distance, max_distance)
 
+# Screen-aligned panning for the navigation handle, including poles and rolled views.
+func pan_by(relative: Vector2) -> void:
+	var height: float = scene_view_rect.size.y
+	if height <= 0.0: height = get_viewport().get_visible_rect().size.y
+	var span: float = size if projection == PROJECTION_ORTHOGONAL else 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
+	target_position += (-global_basis.x * relative.x + global_basis.y * relative.y) * span / maxf(height, 1.0)
+
 func _apply_pan(delta_x: float, delta_y: float) -> void:
 	var right: Vector3 = Vector3(cos(target_yaw), 0.0, -sin(target_yaw))
 	target_position += right * delta_x
