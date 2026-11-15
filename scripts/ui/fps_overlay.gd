@@ -30,6 +30,7 @@ static func install(topbar: Control, viewport_area: Control, preferences: UserPr
 	var popup := view_menu.get_popup()
 	popup.add_check_item("Show FPS", 0)
 	popup.set_item_checked(0, preferences.show_fps)
+	preload("res://scripts/ui/frame_rate_limit.gd").install(popup, preferences)
 	popup.id_pressed.connect(func(id: int) -> void:
 		if id != 0: return
 		preferences.show_fps = not preferences.show_fps

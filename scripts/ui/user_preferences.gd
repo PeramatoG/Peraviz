@@ -38,6 +38,7 @@ const DEFAULT_MVR_XCHANGE_AUTO_UPDATE: bool = false
 var gdtf_model_detail: String = "default"
 var fixture_casing_lod: bool = true
 
+var fps_limit: int = 60
 var show_fps: bool = false
 var inspector_open: bool = true
 var explorer_width: int = 270
@@ -71,6 +72,8 @@ func load_from_disk() -> void:
 	gdtf_model_detail = str(config.get_value(SETTINGS_SECTION,"gdtf_model_detail","default"))
 	if gdtf_model_detail not in ["default","low","high"]: gdtf_model_detail = "default"
 	fixture_casing_lod = bool(config.get_value(SETTINGS_SECTION,"fixture_casing_lod",true))
+	fps_limit = int(config.get_value(SETTINGS_SECTION, "fps_limit", 60))
+	if fps_limit not in [0, 30, 60, 120]: fps_limit = 60
 	show_fps = bool(config.get_value(SETTINGS_SECTION, "show_fps", false))
 	sidebar_open = bool(config.get_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, DEFAULT_SIDEBAR_OPEN))
 	inspector_open = bool(config.get_value(SETTINGS_SECTION, "inspector_open", true))
@@ -105,6 +108,7 @@ func save_to_disk() -> void:
 	config.set_value(SETTINGS_SECTION,"gdtf_model_detail",gdtf_model_detail)
 	config.set_value(SETTINGS_SECTION,"fixture_casing_lod",fixture_casing_lod)
 	config.set_value(SETTINGS_SECTION, "show_fps", show_fps)
+	config.set_value(SETTINGS_SECTION, "fps_limit", fps_limit)
 	for key in ["inspector_open", "explorer_width", "inspector_width", "tools_hidden", "ui_scale", "show_object_uuids", "navigation_projection", "navigation_snap", "navigation_compass", "navigation_fit"]:
 		config.set_value(SETTINGS_SECTION, key, get(key))
 	config.set_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, sidebar_open)
@@ -144,6 +148,7 @@ func _apply_defaults() -> void:
 	ui_scale = 1.0
 	gdtf_model_detail = "default"
 	fixture_casing_lod = true
+	fps_limit = 60
 	show_fps = false
 	sidebar_open = DEFAULT_SIDEBAR_OPEN
 	advanced_mode = DEFAULT_ADVANCED_MODE

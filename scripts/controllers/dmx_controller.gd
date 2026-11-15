@@ -18,6 +18,10 @@ var _owner: Node
 var _get_controls_host_callback: Callable
 var _apply_dmx_controls_callback: Callable
 
+var _stopped_state_established: bool = false
+var _status_known: bool = false
+var _status_running: bool = false
+var _status_receiving: bool = false
 var _dmx_receiver = null
 var _dmx_toggle_button: Button
 var _dmx_monitor_button: Button
@@ -103,6 +107,7 @@ func get_render_diagnostic_mode() -> String:
 	return _render_diagnostic_mode
 
 func set_status_callbacks(dmx_status_changed_callback: Callable, dmx_start_failed_callback: Callable) -> void:
+	_status_known = false
 	_dmx_status_changed_callback = dmx_status_changed_callback
 	_dmx_start_failed_callback = dmx_start_failed_callback
 
@@ -213,8 +218,6 @@ func is_dmx_enabled() -> bool:
 	return _dmx_receiver.is_running()
 
 func start_dmx() -> bool:
-	if _dmx_toggle_button != null:
-		_dmx_toggle_button.button_pressed = true
 	return _set_dmx_enabled(true)
 
 func stop_dmx() -> void:
@@ -270,26 +273,20 @@ func _on_dmx_toggle_pressed() -> void:
 
 func _set_dmx_enabled(enabled: bool) -> bool:
 	if _dmx_receiver == null:
-		if _dmx_toggle_button != null:
-			_dmx_toggle_button.button_pressed = false
-		_emit_dmx_status(false, false)
+		_reset_stopped_dmx_state()
 		return false
 	if enabled:
+		_stopped_state_established = false
 		_dmx_receiver.stop()
 		var started: bool = _dmx_receiver.start("0.0.0.0", 6454)
 		if not started:
-			if _dmx_toggle_button != null:
-				_dmx_toggle_button.button_pressed = false
-				_dmx_toggle_button.text = "DMX OFF"
-				_update_dmx_toggle_color(false, false)
+			_reset_stopped_dmx_state()
 			var startup_error: String = ""
 			if _dmx_receiver.has_method("get_last_error"):
 				startup_error = str(_dmx_receiver.get_last_error())
 			if _dmx_toggle_button != null:
 				_dmx_toggle_button.tooltip_text = "DMX failed to start" if startup_error.is_empty() else "DMX failed to start: %s" % startup_error
 			_emit_dmx_start_failed(startup_error)
-			_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
-			_emit_dmx_status(false, false)
 			return false
 		if _dmx_toggle_button != null:
 			_dmx_toggle_button.button_pressed = true
@@ -302,24 +299,14 @@ func _set_dmx_enabled(enabled: bool) -> bool:
 			_production_pump_calls = 0
 			_worst_dmx_tick_usec = 0
 			_perf_previous_stats = _dmx_receiver.get_stats()
+		_update_dmx_toggle_color(true, false)
+		_refresh_dmx_monitor_window(true)
+		_refresh_dmx_quick_panel(true, false, PackedInt32Array(), -1)
 		_emit_dmx_status(true, false)
 		return true
 
 	_dmx_receiver.stop()
-	if _dmx_toggle_button != null:
-		_dmx_toggle_button.button_pressed = false
-		_dmx_toggle_button.text = "DMX OFF"
-	_update_dmx_toggle_color(false, false)
-	_refresh_dmx_monitor_window(false)
-	_last_updated_fixtures = 0
-	_last_skipped_fixtures = 0
-	_last_considered_fixtures = 0
-	_last_changed_universes = 0
-	_last_receiving_signal = false
-	_last_active_universes = PackedInt32Array()
-	_last_packet_ms = -1
-	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
-	_emit_dmx_status(false, false)
+	_reset_stopped_dmx_state()
 	return true
 
 func _on_dmx_monitor_pressed() -> void:
@@ -342,11 +329,10 @@ func _on_dmx_monitor_closed() -> void:
 		_dmx_monitor_window.hide()
 
 func process_dmx(_delta: float) -> void:
-	if _dmx_receiver == null:
-		return
-	if not _dmx_receiver.is_running():
+	if _dmx_receiver == null or not _dmx_receiver.is_running():
 		_reset_stopped_dmx_state()
 		return
+	_stopped_state_established = false
 	_production_pump_calls += 1
 
 	var delta_sec: float = _consume_dmx_delta_sec()
@@ -503,9 +489,12 @@ func _refresh_dmx_status_if_needed(now_msec: int) -> void:
 	_refresh_dmx_quick_panel(true, _last_receiving_signal, _last_active_universes, _last_packet_ms)
 
 func _reset_stopped_dmx_state() -> void:
-	if _dmx_toggle_button != null and not _dmx_toggle_button.button_pressed:
-		_update_dmx_toggle_color(false, false)
-	_refresh_dmx_monitor_window(false)
+	if _stopped_state_established: return
+	_stopped_state_established = true
+	if _dmx_toggle_button != null:
+		_dmx_toggle_button.set_pressed_no_signal(false)
+		_dmx_toggle_button.text = "DMX OFF"
+	_update_dmx_toggle_color(false, false)
 	_last_updated_fixtures = 0
 	_last_skipped_fixtures = 0
 	_last_considered_fixtures = 0
@@ -513,7 +502,9 @@ func _reset_stopped_dmx_state() -> void:
 	_last_receiving_signal = false
 	_last_active_universes = PackedInt32Array()
 	_last_packet_ms = -1
+	_refresh_dmx_monitor_window(false)
 	_refresh_dmx_quick_panel(false, false, PackedInt32Array(), -1)
+	_emit_dmx_status(false, false)
 
 func _update_dmx_toggle_color(enabled: bool, receiving_signal: bool) -> void:
 	if _dmx_toggle_button == null:
@@ -561,6 +552,10 @@ func _apply_fixture_time_tick(delta_sec: float) -> void:
 		})
 
 func _emit_dmx_status(running: bool, receiving_signal: bool) -> void:
+	if _status_known and _status_running == running and _status_receiving == receiving_signal: return
+	_status_known = true
+	_status_running = running
+	_status_receiving = receiving_signal
 	if _dmx_status_changed_callback.is_valid():
 		_dmx_status_changed_callback.call(running, receiving_signal)
 

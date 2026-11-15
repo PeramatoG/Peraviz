@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added a user-only View > FPS limit preference (30, default 60, 120 or Unlimited), applied live while preserving explicit Godot FPS options and existing V-Sync. Settled cameras now skip unchanged transform writes, stopped DMX resets and status notifications occur only when needed, and an empty continuous-gobo set skips the clock read. Held gobo/shutter playback remains independent of DMX reception; no rendering-quality or performance-gain claim is made.
+
 - Home and Pan icons now remain neutral until hovered or pressed. Select is a true toggle: disable it for left-drag orbit and Shift+left-drag pan in the scene, while retaining wheel, keyboard and existing mouse navigation. Selection mode preserves ordinary click selection. Navigation releases safely over panels and on mode changes or focus loss.
 
 - Added a compact drag-to-pan icon opposite Home on the navigation cube. Panning follows the screen plane in perspective, parallel, top/bottom and rolled views; releasing outside the widget, hiding tools or losing focus ends the drag.

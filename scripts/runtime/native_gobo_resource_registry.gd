@@ -159,6 +159,7 @@ func apply_rotation_state(beam_target_id: int, wheel_id: int, wheel_instance_ind
 	return result
 
 func advance_motion(_delta_seconds: float, target_records: Dictionary) -> void:
+	if _active_continuous_layers.is_empty(): return
 	advance_motion_at_usec(Time.get_ticks_usec(), target_records)
 
 func advance_motion_at_usec(now_usec: int, target_records: Dictionary) -> void:
