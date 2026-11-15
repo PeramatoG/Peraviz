@@ -29,11 +29,12 @@ View offers 100%, 125% and 150% UI scale, stored in UserPreferences.
 | Hide / restore tools | Tab, or toolbar icon |
 | Nonexclusive fullscreen | F11, or toolbar icon |
 | Leave fullscreen, then hidden tools; otherwise clear selection | Escape |
-| Select | Left click; Ctrl-click adds/removes |
+| Toggle Select mode | Select icon in the viewport toolbar (enabled by default) |
+| Select (mode enabled) | Left click; Ctrl-click adds/removes |
 | Frame selection, or fit scene if empty | F |
 | Fit entire scene | Shift+F; double middle-click; default cube Home |
-| Orbit | Right drag; Shift+middle drag; drag the navigation cube; arrow keys |
-| Pan | Middle drag, Shift+right drag; Shift+arrows |
+| Orbit | Left drag with Select off; right drag; Shift+middle drag; drag the navigation cube; arrow keys |
+| Pan | Shift+left drag with Select off; cube pan icon; middle drag, Shift+right drag; Shift+arrows |
 | Zoom | Wheel; Alt+arrows |
 | Front, side, top view | Keypad 1, 3, 7; navigation cube faces |
 | Reset orbit / restore Home | Keypad 5 resets orbit; cube Home restores its saved/default view |
@@ -43,9 +44,14 @@ View offers 100%, 125% and 150% UI scale, stored in UserPreferences.
 | Save Home | Cube context menu → Set current view as Home (current scene/session) |
 | Coordinate diagnostics (explicit diagnostics session) | C |
 
-Left drag no longer starts orbit: a selection click must not capture the mouse
-or change the camera. Right-drag orbit and middle-drag pan retain their existing behavior; Shift+middle
-adds CAD-style orbit. Cube clicks and drags are consumed by the widget and never
+Select is a real toggle, enabled by default. When enabled, left click selects
+without capturing the mouse or changing the camera. When disabled, left drag
+orbits and Shift+left drag pans directly in the scene; clicks preserve selection.
+Explorer selection remains available in either mode. The mode is transient and
+does not alter project data. Switching modes or losing application focus ends
+an active navigation drag. Right-drag orbit and middle-drag pan retain their
+existing behavior; Shift+middle adds CAD-style orbit. Wheel zoom, arrow-key orbit,
+Shift+arrow pan and Alt+arrow zoom remain available in both modes. Cube clicks and drags are consumed by the widget and never
 select scene objects or capture the mouse. Releases outside the widget are safe.
 The compass and WCS label refer to the existing Godot Y-up world frame; this does
 not introduce a second coordinate system. Cube Home restores an isometric

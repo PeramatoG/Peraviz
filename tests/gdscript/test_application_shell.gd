@@ -142,6 +142,64 @@ func _run() -> void:
 		root.push_input(click, true)
 	test.check(shell.selection.ids == PackedStringArray(["fixture-uuid"]), "Viewport mouse click selects fixture through normal unhandled input")
 	test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Selection clicks never capture mouse for orbit")
+	var select_button: Button = shell._toolbar.get_node("Select")
+	_click(select_button.get_global_rect().get_center())
+	test.check(not select_button.button_pressed and not app.camera.selection_enabled, "Select toggles off through real GUI input")
+	var selected_before: PackedStringArray = shell.selection.ids.duplicate()
+	for shift_pan in [false,true]:
+		var yaw_before: float = app.camera.target_yaw
+		var position_before: Vector3 = app.camera.target_position
+		var navigation_press := InputEventMouseButton.new()
+		navigation_press.button_index = MOUSE_BUTTON_LEFT
+		navigation_press.pressed = true
+		navigation_press.position = clicked_pixel
+		navigation_press.shift_pressed = shift_pan
+		root.push_input(navigation_press,true)
+		var navigation_motion := InputEventMouseMotion.new()
+		navigation_motion.position = clicked_pixel+Vector2(24,10)
+		navigation_motion.relative = Vector2(24,10)
+		navigation_motion.shift_pressed = shift_pan
+		root.push_input(navigation_motion,true)
+		if shift_pan:
+			test.check(app.camera.target_position != position_before and app.camera.target_yaw == yaw_before, "Select off permits direct Shift+left pan without orbit")
+		else:
+			test.check(app.camera.target_yaw != yaw_before, "Select off permits direct left-drag orbit")
+		navigation_press.pressed = false
+		navigation_press.position = Vector2(20,120)
+		root.push_input(navigation_press,true)
+		test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Left navigation release over a dock frees the mouse")
+		test.check(shell.selection.ids == selected_before and not shell._left_pressed, "Navigation never changes or starts a scene selection")
+	var navigation_key := InputEventKey.new()
+	navigation_key.keycode = KEY_RIGHT
+	navigation_key.pressed = true
+	var keyboard_yaw: float = app.camera.target_yaw
+	root.push_input(navigation_key,true)
+	test.check(app.camera.target_yaw != keyboard_yaw, "Arrow-key navigation remains available after clicking the Select toggle")
+	# A click in navigation mode also leaves selection intact.
+	_click(clicked_pixel)
+	test.check(shell.selection.ids == selected_before, "Select off ignores ordinary viewport clicks for picking")
+	_click(select_button.get_global_rect().get_center())
+	test.check(select_button.button_pressed and app.camera.selection_enabled, "Select toggles back on")
+	await process_frame
+	app.camera._update_camera_transform()
+	await physics_frame
+	clicked_pixel = app.camera.unproject_position(fixture.global_position)
+	shell.selection.clear()
+	_click(clicked_pixel)
+	test.check(shell.selection.ids == selected_before and not app.camera._is_dragging(), "Selection resumes after toggling on without capturing the mouse")
+	# A mode change or application focus loss cannot leave navigation captured.
+	app.camera.set_selection_enabled(false)
+	var interrupted_drag := InputEventMouseButton.new()
+	interrupted_drag.button_index = MOUSE_BUTTON_LEFT
+	interrupted_drag.pressed = true
+	app.camera._handle_mouse_button(interrupted_drag)
+	shell._set_selection_enabled(true)
+	test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Switching to Select cancels an active navigation drag")
+	app.camera.set_selection_enabled(false)
+	app.camera._handle_mouse_button(interrupted_drag)
+	app.camera._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Focus loss cancels left navigation")
+	shell._set_selection_enabled(true)
 	shell.pick(Vector2(shell._area.global_position.x + 8.0, shell._area.global_position.y + shell._area.size.y - 8.0))
 	test.check(shell.selection.ids.is_empty(), "Clicking empty viewport clears selection")
 	var orbit_press := InputEventMouseButton.new()
@@ -235,3 +293,12 @@ func _run() -> void:
 		file.store_buffer(saved)
 	else: DirAccess.remove_absolute(ProjectSettings.globalize_path(preferences_path))
 	test.finish(self)
+
+func _click(point: Vector2) -> void:
+	for pressed in [true,false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		event.position = point
+		event.global_position = point
+		root.push_input(event,true)

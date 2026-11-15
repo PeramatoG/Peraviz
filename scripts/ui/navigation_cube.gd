@@ -60,12 +60,16 @@ func configure(view_camera: Camera3D, state: SceneSelection = null, preferences:
 	_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_image)
 	var home := _icon_button("", "Home — restore the saved view", Vector2(0,0), _home)
+	home.name = "Home"
+	home.focus_mode = Control.FOCUS_NONE
 	home.icon = preload("res://assets/ui/home.svg")
 	home.expand_icon = true
+	_navigation_icon_colors(home)
 	_pan_button = _icon_button("", "Pan — hold and drag to move the view", Vector2(112,0), func() -> void: pass)
 	_pan_button.name = "Pan"
 	_pan_button.icon = preload("res://assets/ui/pan.svg")
 	_pan_button.expand_icon = true
+	_navigation_icon_colors(_pan_button)
 	# Drag handling owns the pressed state, including release outside the widget.
 	_pan_button.button_mask = 0
 	_pan_button.toggle_mode = true
@@ -106,6 +110,11 @@ func configure(view_camera: Camera3D, state: SceneSelection = null, preferences:
 	_sync_menu()
 	_project()
 	_set_active(false)
+
+func _navigation_icon_colors(button: Button) -> void:
+	button.add_theme_color_override("icon_normal_color", Color.WHITE)
+	for state in ["hover", "pressed", "hover_pressed", "focus"]:
+		button.add_theme_color_override("icon_%s_color" % state, Palette.AMBER)
 
 func _icon_button(text: String, tooltip: String, position_value: Vector2, action: Callable) -> Button:
 	var button := Button.new()

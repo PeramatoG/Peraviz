@@ -39,6 +39,7 @@ widget and ends on release. It follows the screen plane in perspective and
 parallel projection, including top/bottom and rolled views, without changing
 orientation, zoom or the selection pivot. Hiding the widget or losing application
 focus cancels the drag. The quarter-turn roll buttons sit at the lower corners.
+Home and Pan use neutral gray/white icons at rest and amber on hover or press.
 
 The small bundled Home SVG restores the default isometric fit or a saved Home.
 Set current view as Home remembers direction, roll, position, extent, distance
@@ -93,3 +94,11 @@ it. It checks both projections, angled and pole views, camera roll, unchanged
 orientation/zoom, cessation after release, ancestor hiding and focus loss.
 Architecture, file-size and whitespace checks pass; no native runtime code is
 changed. Graphical checks use Compatibility/llvmpipe, not Windows or Forward+.
+
+Select mode in the viewport toolbar can be disabled to navigate with left drag
+(orbit) or Shift+left drag (pan), without using the cube. The shell regression
+also dispatches real Select-toggle clicks, viewport clicks, mouse drags and arrow
+keys; it checks selection isolation, restoration, release over docks, mode-change
+cancellation and focus-loss cancellation. The navigation test checks neutral and
+amber icon theme states. The same three headless commands above pass for this
+follow-up; the application-shell test also passes in graphical Compatibility.

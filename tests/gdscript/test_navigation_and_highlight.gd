@@ -27,6 +27,10 @@ func _run() -> void:
 	root.add_child(cube)
 	cube.configure(camera)
 	cube.size = Vector2(136,162)
+	for icon in [cube._pan_button, cube.get_node("Home")]:
+		test.check(icon.get_theme_color("icon_normal_color") == Color.WHITE, "Home and Pan are neutral by default")
+		for state in ["hover", "pressed", "hover_pressed"]:
+			test.check(icon.get_theme_color("icon_%s_color" % state) == preload("res://scripts/ui/ui_palette.gd").AMBER, "Home and Pan highlight amber on hover or press")
 	camera.set_view_direction(Vector3.ONE)
 	_settle(camera)
 	cube._project()
