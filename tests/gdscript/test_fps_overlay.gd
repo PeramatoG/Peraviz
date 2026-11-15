@@ -39,6 +39,10 @@ func run() -> void:
 	menu.get_popup().id_pressed.emit(0)
 	loaded.load_from_disk()
 	test.check(loaded.show_fps and overlay.visible, "View toggle restores persisted visible preference")
+	viewport_area.hide()
+	overlay.text = "ancestor hidden"
+	await create_timer(0.3).timeout
+	test.check(overlay.text == "ancestor hidden", "Fullscreen-style ancestor hiding stops FPS UI writes")
 	if existed:
 		var file := FileAccess.open(Preferences.SETTINGS_FILE_PATH, FileAccess.WRITE)
 		file.store_buffer(saved)

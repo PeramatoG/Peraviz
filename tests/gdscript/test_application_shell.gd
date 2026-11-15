@@ -43,6 +43,11 @@ func _run() -> void:
 	shell.reset_layout()
 	await process_frame
 	await process_frame
+	test.check(shell._fps.is_visible_in_tree() and shell._status_bar.is_ancestor_of(shell._fps), "Enabled FPS is visible in the footer outside overlapping viewport tools")
+	test.check(shell._status_bar.get_global_rect().encloses(shell._fps.get_global_rect()), "FPS fits inside the status bar")
+	for tool in ["Select", "Move", "Rotate", "Frame", "Fit"]:
+		var button: Button = shell._toolbar.get_node(tool)
+		test.check(button.text.is_empty() and button.icon != null and not button.tooltip_text.is_empty(), "Viewport actions use icons with descriptive tooltips")
 	var original_area: float = shell._area.size.x
 	shell.toggle_side_panel()
 	await process_frame
@@ -175,10 +180,44 @@ func _run() -> void:
 	var old_size := root.size
 	var old_position := root.position
 	var old_mode := root.mode
+	shell._windows[0].show()
+	var scene_identity: int = app.proxies_root.get_instance_id()
 	shell.toggle_fullscreen()
-	test.check(shell._modes.active, "Fullscreen enters without replacing scene")
+	await process_frame
+	await process_frame
+	test.check(shell._modes.active and app.proxies_root.get_instance_id() == scene_identity, "Fullscreen enters without replacing scene")
+	for control in [shell._ui_root, shell._top_bar, shell._status_bar, shell._toolbar, shell._cube, shell._left, shell._right, shell._fps]:
+		test.check(not control.is_visible_in_tree(), "Fullscreen hides every application control")
+	test.check(shell._exit_fullscreen.is_visible_in_tree() and root.get_visible_rect().encloses(shell._exit_fullscreen.get_global_rect()), "Fullscreen leaves a reachable small exit control")
+	test.check(not shell._windows[0].visible, "Fullscreen hides auxiliary windows")
+	test.check(app.camera.navigation_area == null and app.camera.scene_view_rect == root.get_visible_rect(), "Fullscreen camera uses the complete window")
+	var tab := InputEventKey.new()
+	tab.keycode = KEY_TAB
+	tab.pressed = true
+	root.push_input(tab, true)
+	test.check(not app._user_preferences.tools_hidden and not shell._ui_root.visible, "Fullscreen shortcuts cannot reopen hidden menus")
+	var fullscreen_escape := InputEventKey.new()
+	fullscreen_escape.keycode = KEY_ESCAPE
+	fullscreen_escape.pressed = true
+	root.push_input(fullscreen_escape, true)
+	await process_frame
+	await process_frame
+	test.check(not shell._modes.active and root.size == old_size and root.position == old_position and root.mode == old_mode, "Escape restores window geometry and mode")
+	test.check(shell._windows[0].visible and shell._fps.is_visible_in_tree() and app._user_preferences.show_fps, "Exit restores auxiliary windows and the FPS preference")
+	shell._windows[0].hide()
+	shell.toggle_tools()
 	shell.toggle_fullscreen()
-	test.check(not shell._modes.active and root.size == old_size and root.position == old_position and root.mode == old_mode, "Fullscreen restores window geometry and mode")
+	await process_frame
+	for pressed in [true, false]:
+		var exit_click := InputEventMouseButton.new()
+		exit_click.button_index = MOUSE_BUTTON_LEFT
+		exit_click.pressed = pressed
+		exit_click.position = shell._exit_fullscreen.get_global_rect().get_center()
+		exit_click.global_position = exit_click.position
+		root.push_input(exit_click, true)
+	await process_frame
+	test.check(not shell._modes.active and app._user_preferences.tools_hidden and not shell._toolbar.visible, "Exit button preserves the earlier Hide Tools choice")
+	shell.toggle_tools()
 	for window in shell._windows:
 		window.popup_centered()
 		test.check(window.visible, "Production and diagnostic windows remain accessible")

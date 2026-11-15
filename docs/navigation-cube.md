@@ -11,7 +11,9 @@ The behavior was checked against Autodesk's primary AutoCAD documentation:
 
 The 136×162 logical-pixel widget is smaller than the first implementation. Its
 cube is actual 3D geometry: six large face quads, twelve beveled edge quads and
-eight corner triangles. Picking intersects the same triangles it renders.
+eight corner triangles. The widened bevel gives the edge and corner targets
+more clickable area without enlarging the widget. Picking intersects the same
+triangles it renders.
 Labels are oriented Label3D nodes, rather than text on a fixed image.
 
 Click faces for axial views, edges for two-axis views and corners for isometric

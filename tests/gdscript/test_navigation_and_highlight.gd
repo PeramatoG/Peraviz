@@ -29,6 +29,9 @@ func _run() -> void:
 	camera.set_view_direction(Vector3.ONE)
 	_settle(camera)
 	cube._project()
+	var corner_center: Vector2 = cube.patch_screen_center(Vector3.ONE)
+	for offset in [Vector2(2,0), Vector2(-2,0), Vector2(0,2), Vector2(0,-2)]:
+		test.check(cube.hit_direction(corner_center + offset).is_equal_approx(Vector3.ONE.normalized()), "Corner target accepts clicks around its center")
 	test.check(cube._viewport.own_world_3d and cube._viewport.world_3d != camera.get_world_3d(), "The real 3D cube has an isolated tiny world, never a second render of the MVR")
 	test.check(cube._model.patches.size() == 26, "All 26 selectable regions are actual beveled mesh surfaces")
 	for patch in cube._model.patches:

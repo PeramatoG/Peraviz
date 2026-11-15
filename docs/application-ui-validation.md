@@ -74,7 +74,7 @@ rendering equivalence or GPU performance. No warnings were suppressed.
 
 ![2560×1440 application](images/application-ui/ui-2560x1440.png)
 
-![Tools hidden](images/application-ui/ui-hidden.png)
+![Fullscreen with only the exit icon](images/application-ui/ui-hidden.png)
 
 The graphical command uses an isolated Xorg dummy display, since the managed
 shared desktop advertised availability but exposed no desktop JavaScript/viewer
@@ -144,3 +144,31 @@ not changed in this UI follow-up. The final authored-3DS preview and highlighted
 shutdown probe complete without those errors (`exit-authored.log` and the latest
 cube render capture). No engine diagnostics were suppressed. Windows/Forward+
 validation remains separate from this Compatibility-only finding.
+
+## Navigation targets, FPS and fullscreen polish
+
+The cube regression now checks a four-pixel-wide clickable neighborhood around
+an isometric corner. Shell regressions check FPS visibility and footer bounds,
+icon actions/tooltips, complete fullscreen UI suppression, full-window camera
+coordinates, blocked hidden-UI shortcuts, Escape and exit-button restoration,
+auxiliary-window restoration and preservation of Hide Tools and FPS preferences.
+The FPS regression also checks that hiding its ancestor stops label writes.
+
+Follow-up commands (same pinned executable and isolated preference wrappers):
+
+```bash
+work/godot --headless --audio-driver Dummy --rendering-method gl_compatibility \
+  --path . --editor --import --quit
+python3 .github/scripts/run_gdscript_tests.py \
+  --godot /workspace/Peraviz/work/godot-tests --project /workspace/Peraviz \
+  --output /workspace/Peraviz/work/ui-polish/tests --timeout 60
+DISPLAY=:17 work/godot --audio-driver Dummy --rendering-method gl_compatibility \
+  --path . --script work/ui-polish/screenshot.gd
+bash tests/check_no_large_files.sh
+bash tests/check_runtime_architecture.sh
+git diff --check
+```
+
+The four synthetic-scene captures above are refreshed for these changes. Native
+runtime code is unchanged. Windows fullscreen/window-manager behavior still
+requires the manual checklist above; these captures use Linux Compatibility.

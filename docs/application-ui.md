@@ -62,9 +62,13 @@ compass visibility and snap/fit preferences extend UserPreferences; Home is
 session-scoped and resets on scene publication. See [navigation cube](navigation-cube.md)
 for the source references, precise behavior and ownership constraints.
 Text editors and search inputs shield application/camera shortcuts. Child
-windows and popups receive Escape before the main shell. Fullscreen stores and
-restores the prior window mode, position and size, independently of panel state.
-Move and Rotate are disabled and explicitly labeled as future editing features.
+windows and popups receive Escape before the main shell. Fullscreen hides the
+entire application UI, FPS and auxiliary windows, leaving only a small exit icon
+at the top right. Escape, F11 or that icon restores the prior window mode,
+position, size, panel choices and visible tool windows. Transient menus stay
+closed. Camera navigation remains available; hidden UI shortcuts stay inactive.
+The viewport action strip uses matching outlined icons and descriptive tooltips.
+Move and Rotate remain disabled with future-editing tooltips.
 
 Names and Fixture IDs identify objects in normal use. UUIDs are hidden in the
 Inspector and explorer tooltips by default. Tools > Show object UUIDs exposes
@@ -74,8 +78,9 @@ remains supported without exposing identifiers in the ordinary interface.
 Art-Net start/stop is always in the main toolbar, beside the receiver state.
 Stopped, listening and receiving are distinct. Tools offers DMX connection
 controls, the existing technical monitor, MVR-xchange, and fixture diagnostics.
-The existing scale cube and optional FPS are in View. FPS defaults off only when
-no explicit choice was saved. Visual Settings keeps Graphics and Beams,
+The existing scale cube and optional FPS are in View. FPS appears in amber at
+the right of the bottom status bar, outside the viewport toolbar. It defaults
+off only when no explicit choice was saved. Visual Settings keeps Graphics and Beams,
 Environment, Fake Smoke, Geometry and explicit advanced diagnostics/DMX policy;
 serialized settings and Reset still use their existing project ownership.
 
@@ -225,8 +230,9 @@ and 2560×1440, with Windows DPI 100%, 125%, 150% and both monitors if available
 4. Orbit/pan/zoom, drag dividers and type F/C/Tab in search and number inputs.
    Confirm no selection click rotates the camera or UI drag moves it.
 5. Enter/leave F11 from windowed and maximized modes, with panels hidden/shown.
-   Check geometry restoration, Escape and tool/file-dialog popup precedence.
-   Open Visual Settings, DMX monitor and MVR-xchange while fullscreen.
+   Check that only the exit icon remains, including with open tool/file windows.
+   Exit using Escape, F11 and the icon; confirm windows, FPS, panel widths and
+   prior Hide Tools choices restore correctly.
 6. Start/stop Art-Net, send real packets, inspect universes and native traces;
    verify stopped/listening/receiving states, shutter/strobe, temporal playback
    and responsiveness with inspector open, hidden and fullscreen.

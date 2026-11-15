@@ -1,11 +1,11 @@
 extends Label
 
-# One small viewport label, sampled by a timer instead of a per-frame callback.
+# One small diagnostic label, sampled by a timer instead of a per-frame callback.
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text = "FPS 0"
 	add_theme_font_size_override("font_size", 12)
-	add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 0.85))
+	add_theme_color_override("font_color", preload("res://scripts/ui/ui_palette.gd").AMBER)
 	var timer := Timer.new()
 	timer.wait_time = 0.25
 	timer.timeout.connect(_sample)
@@ -13,7 +13,7 @@ func _ready() -> void:
 	timer.start()
 
 func _sample() -> void:
-	if visible:
+	if is_visible_in_tree():
 		text = "FPS %d" % Engine.get_frames_per_second()
 
 # View preference belongs to the UI, independently of project and trace settings.

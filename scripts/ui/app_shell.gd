@@ -23,6 +23,13 @@ var _left_button: Button
 var _right_button: Button
 var _tools_button: Button
 var _fullscreen_button: Button
+var _ui_root: Control
+var _top_bar: Control
+var _status_bar: PanelContainer
+var _fps: Label
+var _exit_layer: CanvasLayer
+var _exit_fullscreen: Button
+var _fullscreen_windows: Array[WeakRef] = []
 var _view: PopupMenu
 var _windows: Array[Window] = []
 var _modes = preload("res://scripts/ui/window_modes.gd").new()
@@ -37,6 +44,8 @@ func configure(owner_node: Node3D, preferences: UserPreferences, details: Fixtur
 	_preferences = preferences
 	inspector = details
 	_row = _owner.topbar_row
+	_ui_root = _owner.get_node("UIRoot")
+	_top_bar = _owner.get_node("UIRoot/RootVBox/TopBar")
 	_owner.get_node("UIRoot").theme = preload("res://scripts/ui/application_theme.tres")
 	_owner.visual_settings_window.theme = preload("res://scripts/ui/application_theme.tres")
 	_owner.visual_settings_window._advanced_mode_toggle.toggled.connect(_owner._on_show_advanced_controls_toggled)
@@ -112,15 +121,20 @@ func _build_layout() -> void:
 	_area.add_child(_toolbar)
 	_toolbar.resized.connect(_update_camera_rect)
 	for entry in [["Select", "Click to select; Ctrl-click adds to selection"], ["Move", "Reserved for MVR document editing"], ["Rotate", "Reserved for MVR document editing"]]:
-		var button := _button(_toolbar, entry[0], entry[1], func() -> void: pass)
+		var button := _button(_toolbar, "", entry[1], func() -> void: pass)
+		button.name = entry[0]
+		_icon(button, str(entry[0]).to_lower(), entry[1])
 		button.disabled = entry[0] != "Select"
 		if entry[0] == "Select":
-			button.custom_minimum_size.x = 64
 			button.toggle_mode = true
 			button.button_pressed = true
 			button.pressed.connect(func() -> void: button.set_pressed_no_signal(true))
-	_button(_toolbar, "Frame", "Frame selection (F); fit scene when empty", frame_selection)
-	_button(_toolbar, "Fit", "Fit entire scene (Shift+F / double middle-click)", _owner._focus_loaded_scene)
+	var frame_button := _button(_toolbar, "", "Frame selection (F); fit scene when empty", frame_selection)
+	frame_button.name = "Frame"
+	_icon(frame_button, "frame_selection", frame_button.tooltip_text)
+	var fit_button := _button(_toolbar, "", "Fit entire scene (Shift+F / double middle-click)", _owner._focus_loaded_scene)
+	fit_button.name = "Fit"
+	_icon(fit_button, "fit_scene", fit_button.tooltip_text)
 	_highlight = preload("res://scripts/ui/selection_highlight.gd").new()
 	add_child(_highlight)
 	_highlight.configure(selection)
@@ -136,14 +150,38 @@ func _build_layout() -> void:
 	_cube.home_requested.connect(_owner._focus_loaded_scene)
 	_cube.fit_requested.connect(_owner._focus_loaded_scene)
 	_owner.camera.fit_scene_requested.connect(_owner._focus_loaded_scene)
-	var status := PanelContainer.new()
-	_owner.get_node("UIRoot/RootVBox").add_child(status)
-	_owner.status_label.reparent(status)
+	_status_bar = PanelContainer.new()
+	_status_bar.name = "StatusBar"
+	_owner.get_node("UIRoot/RootVBox").add_child(_status_bar)
+	var status_row := HBoxContainer.new()
+	_status_bar.add_child(status_row)
+	_owner.status_label.reparent(status_row)
+	_owner.status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_owner.status_label.clip_text = true
 	_owner.status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_owner.status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_fps = _area.get_node("FpsOverlay") as Label
+	_fps.reparent(status_row)
+	_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps.custom_minimum_size.x = 74
 	_owner.camera.navigation_area = _area
 	_area.resized.connect(_update_camera_rect)
 	_area.item_rect_changed.connect(_update_camera_rect)
+	# Keep the sole presentation control outside the hidden application UI tree.
+	_exit_layer = CanvasLayer.new()
+	_exit_layer.name = "FullscreenExitLayer"
+	_exit_layer.layer = 128
+	_owner.add_child(_exit_layer)
+	_exit_fullscreen = _button(_exit_layer, "", "Exit fullscreen (Esc / F11)", toggle_fullscreen)
+	_exit_fullscreen.name = "ExitFullscreen"
+	_exit_fullscreen.theme = _ui_root.theme
+	_icon(_exit_fullscreen, "close", _exit_fullscreen.tooltip_text)
+	_exit_fullscreen.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_exit_fullscreen.offset_left = -40
+	_exit_fullscreen.offset_right = -8
+	_exit_fullscreen.offset_top = 8
+	_exit_fullscreen.offset_bottom = 40
+	_exit_layer.hide()
 
 func _build_toolbar() -> void:
 	_left_button = get_node(side_toggle_button_path)
@@ -301,6 +339,24 @@ func toggle_tools() -> void:
 func toggle_fullscreen() -> void:
 	_modes.toggle()
 	_fullscreen_button.set_pressed_no_signal(_modes.active)
+	if _modes.active:
+		_fullscreen_windows.clear()
+		# Search UI only; never traverse the imported MVR hierarchy for a layout action.
+		for node in _ui_root.find_children("*", "Window", true, false):
+			_hide_fullscreen_window(node as Window)
+		_hide_fullscreen_window(_owner._dmx_controller._dmx_monitor_window)
+	else:
+		for reference in _fullscreen_windows:
+			var window: Window = reference.get_ref()
+			if is_instance_valid(window): window.show()
+		_fullscreen_windows.clear()
+	_layout_changed()
+
+func _hide_fullscreen_window(window: Window) -> void:
+	if not is_instance_valid(window) or not window.visible: return
+	# Menus are transient interactions; restore tool/dialog windows, not open menus.
+	if not window is PopupMenu: _fullscreen_windows.append(weakref(window))
+	window.hide()
 
 func reset_layout() -> void:
 	_preferences.sidebar_open = true
@@ -314,10 +370,15 @@ func reset_layout() -> void:
 func _layout_changed() -> void:
 	if not _configured: return
 	var width: float = _owner.get_viewport().get_visible_rect().size.x
-	_left.visible = _preferences.sidebar_open and not _preferences.tools_hidden
-	_right.visible = _preferences.inspector_open and not _preferences.tools_hidden and width >= 1200
-	_toolbar.visible = not _preferences.tools_hidden
-	_cube.visible = not _preferences.tools_hidden
+	var show_tools: bool = not _preferences.tools_hidden and not _modes.active
+	_ui_root.visible = not _modes.active
+	_top_bar.visible = not _modes.active
+	_status_bar.visible = not _modes.active
+	_exit_layer.visible = _modes.active
+	_left.visible = _preferences.sidebar_open and show_tools
+	_right.visible = _preferences.inspector_open and show_tools and width >= 1200
+	_toolbar.visible = show_tools
+	_cube.visible = show_tools
 	_left_button.set_pressed_no_signal(_left.visible)
 	_right_button.set_pressed_no_signal(_right.visible)
 	_tools_button.set_pressed_no_signal(_preferences.tools_hidden)
@@ -331,6 +392,11 @@ func _restore_widths() -> void:
 
 func _update_camera_rect() -> void:
 	if _area == null: return
+	if _modes.active:
+		_owner.camera.navigation_area = null
+		_owner.camera.scene_view_rect = _owner.get_viewport().get_visible_rect()
+		return
+	_owner.camera.navigation_area = _area
 	var rect := _area.get_global_rect()
 	if _toolbar.visible:
 		var toolbar_height: float = maxf(36.0, _toolbar.size.y + 10.0)
@@ -367,6 +433,14 @@ func frame_selection() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not _configured or not event is InputEventKey or not event.pressed or event.echo: return
+	if _modes.active:
+		if event.keycode in [KEY_F11,KEY_ESCAPE]: toggle_fullscreen()
+		elif event.keycode == KEY_F and not event.ctrl_pressed and not event.alt_pressed:
+			if event.shift_pressed: _owner._focus_loaded_scene()
+			else: frame_selection()
+		elif event.keycode in [KEY_UP,KEY_DOWN,KEY_LEFT,KEY_RIGHT,KEY_KP_1,KEY_KP_3,KEY_KP_5,KEY_KP_7]: return
+		get_viewport().set_input_as_handled()
+		return
 	if event.keycode not in [KEY_TAB, KEY_F11]: return
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus is LineEdit or focus is TextEdit: return
@@ -382,7 +456,7 @@ func _input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _configured: return
+	if not _configured or _modes.active: return
 	var focus := _owner.get_viewport().gui_get_focus_owner()
 	if focus is LineEdit or focus is TextEdit: return
 	if event is InputEventKey and event.pressed and not event.echo:

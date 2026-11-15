@@ -1,6 +1,6 @@
 extends Node3D
 
-const BEVEL: float = 0.8
+const BEVEL: float = 0.68
 var view_camera: Camera3D
 var patches: Array[Dictionary] = []
 var _face_material: StandardMaterial3D
