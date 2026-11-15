@@ -42,6 +42,10 @@ var show_fps: bool = false
 var inspector_open: bool = true
 var explorer_width: int = 270
 var inspector_width: int = 320
+var navigation_projection: String = "hybrid"
+var navigation_snap: bool = true
+var navigation_compass: bool = true
+var navigation_fit: bool = false
 var show_object_uuids: bool = false
 var tools_hidden: bool = false
 var ui_scale: float = 1.0
@@ -72,6 +76,11 @@ func load_from_disk() -> void:
 	inspector_open = bool(config.get_value(SETTINGS_SECTION, "inspector_open", true))
 	explorer_width = clampi(int(config.get_value(SETTINGS_SECTION, "explorer_width", 270)), 180, 800)
 	inspector_width = clampi(int(config.get_value(SETTINGS_SECTION, "inspector_width", 320)), 240, 800)
+	navigation_projection = str(config.get_value(SETTINGS_SECTION, "navigation_projection", "hybrid"))
+	if navigation_projection not in ["hybrid", "parallel", "perspective"]: navigation_projection = "hybrid"
+	navigation_snap = bool(config.get_value(SETTINGS_SECTION, "navigation_snap", true))
+	navigation_compass = bool(config.get_value(SETTINGS_SECTION, "navigation_compass", true))
+	navigation_fit = bool(config.get_value(SETTINGS_SECTION, "navigation_fit", false))
 	show_object_uuids = bool(config.get_value(SETTINGS_SECTION, "show_object_uuids", false))
 	tools_hidden = bool(config.get_value(SETTINGS_SECTION, "tools_hidden", false))
 	ui_scale = clampf(float(config.get_value(SETTINGS_SECTION, "ui_scale", 1.0)), 1.0, 1.5)
@@ -96,7 +105,7 @@ func save_to_disk() -> void:
 	config.set_value(SETTINGS_SECTION,"gdtf_model_detail",gdtf_model_detail)
 	config.set_value(SETTINGS_SECTION,"fixture_casing_lod",fixture_casing_lod)
 	config.set_value(SETTINGS_SECTION, "show_fps", show_fps)
-	for key in ["inspector_open", "explorer_width", "inspector_width", "tools_hidden", "ui_scale", "show_object_uuids"]:
+	for key in ["inspector_open", "explorer_width", "inspector_width", "tools_hidden", "ui_scale", "show_object_uuids", "navigation_projection", "navigation_snap", "navigation_compass", "navigation_fit"]:
 		config.set_value(SETTINGS_SECTION, key, get(key))
 	config.set_value(SETTINGS_SECTION, KEY_SIDEBAR_OPEN, sidebar_open)
 	config.set_value(SETTINGS_SECTION, KEY_ADVANCED_MODE, advanced_mode)
@@ -126,6 +135,10 @@ func _apply_defaults() -> void:
 	inspector_open = true
 	explorer_width = 270
 	inspector_width = 320
+	navigation_projection = "hybrid"
+	navigation_snap = true
+	navigation_compass = true
+	navigation_fit = false
 	show_object_uuids = false
 	tools_hidden = false
 	ui_scale = 1.0

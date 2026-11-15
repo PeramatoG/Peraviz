@@ -2915,7 +2915,7 @@ func _on_dmx_start_failed(error_message: String) -> void:
 	var message: String = "DMX start failed"
 	if not error_message.is_empty():
 		message = "%s (%s)" % [message, error_message]
-	_status_presenter.show_toast(message)
+	_status_presenter.show_toast(message, true)
 
 func bridge_get_fixture_light_phase_metrics() -> Dictionary:
 	if _fixture_light_apply_service == null:

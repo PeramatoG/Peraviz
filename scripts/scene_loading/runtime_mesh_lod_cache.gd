@@ -1,5 +1,7 @@
 extends RefCounted
 
+signal meshes_changed
+
 # Cold, scene-owned presentation cache. Callers must prove geometry ownership first.
 const POLICY_VERSION := 2
 var triangle_limit: int = 32768
@@ -144,6 +146,7 @@ func set_automatic(enabled: bool, viewport: Viewport) -> void:
 	for binding: Dictionary in bindings:
 		var instance: MeshInstance3D = binding.instance.get_ref()
 		if instance != null: instance.mesh = binding.derived if enabled else binding.source
+	meshes_changed.emit()
 
 # Diagnostics must not become mesh owners. Packed-buffer inspection is on demand.
 func record(instance: MeshInstance3D, data: Dictionary, route: String, reason: String) -> void:

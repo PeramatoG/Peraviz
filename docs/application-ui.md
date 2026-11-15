@@ -8,7 +8,11 @@ the application layout. The existing controllers retain their instances and
 signals when their tools move to optional child windows. No MVR or renderer
 resource is recreated for layout changes.
 
-The shared theme is `scripts/ui/application_theme.tres`. Original bundled SVG
+The shared theme is `scripts/ui/application_theme.tres`, with pure-black panels,
+white text and amber/yellow/orange focus and selection. Confirmed Art-Net packet
+reception uses pure green; listening uses amber, stopped uses gray, and errors
+use pure red. Status labels remain explicit, independently of color.
+`ui_palette.gd` supplies the matching presentation/status constants. Original bundled SVG
 icons in `assets/ui` use the repository MIT license and need no runtime network.
 The left Scene Explorer starts at 270 logical pixels, the contextual Inspector
 at 320. Drag either divider to resize. The toolbar and View menu independently
@@ -27,16 +31,36 @@ View offers 100%, 125% and 150% UI scale, stored in UserPreferences.
 | Leave fullscreen, then hidden tools; otherwise clear selection | Escape |
 | Select | Left click; Ctrl-click adds/removes |
 | Frame selection, or fit scene if empty | F |
-| Fit entire scene | Shift+F |
-| Orbit | Right drag; arrow keys |
+| Fit entire scene | Shift+F; double middle-click; default cube Home |
+| Orbit | Right drag; Shift+middle drag; drag the navigation cube; arrow keys |
 | Pan | Middle drag, Shift+right drag; Shift+arrows |
 | Zoom | Wheel; Alt+arrows |
-| Front, side, top view | Keypad 1, 3, 7; viewport buttons |
-| Reset perspective | Keypad 5; Perspective viewport button |
+| Front, side, top view | Keypad 1, 3, 7; navigation cube faces |
+| Reset orbit / restore Home | Keypad 5 resets orbit; cube Home restores its saved/default view |
+| Projection mode | WCS / cube context menu: Parallel, Perspective, or Perspective with orthographic faces |
+| Edge/corner views | Click cube edges/corners (26 available directions) |
+| Roll / adjacent face | Arrow controls shown over an active face view |
+| Save Home | Cube context menu → Set current view as Home (current scene/session) |
 | Coordinate diagnostics (explicit diagnostics session) | C |
 
 Left drag no longer starts orbit: a selection click must not capture the mouse
-or change the camera. Right/middle navigation retains its existing behavior.
+or change the camera. Right-drag orbit and middle-drag pan retain their existing behavior; Shift+middle
+adds CAD-style orbit. Cube clicks and drags are consumed by the widget and never
+select scene objects or capture the mouse. Releases outside the widget are safe.
+The compass and WCS label refer to the existing Godot Y-up world frame; this does
+not introduce a second coordinate system. Cube Home restores an isometric
+perspective and fits the scene. Pole views are exact, with a stable camera up
+vector. Orthographic wheel zoom adjusts extent, and projection changes preserve
+the unobscured viewport center. The compact cube is a real beveled 3D model with separate ray-selectable meshes
+for its 26 surfaces. Its isolated 256×256 SubViewport contains only that model,
+3D text and compass, never the imported MVR world. It redraws on orientation or
+hover changes and rests with updates disabled; the main scene is not duplicated.
+Inactive opacity, compass letters/ring, saved Home, snap-after-drag and three
+projection modes follow the documented CAD behavior. Top/bottom compass turns
+use camera roll, since yaw at a pole cannot rotate the scene. Camera projection,
+compass visibility and snap/fit preferences extend UserPreferences; Home is
+session-scoped and resets on scene publication. See [navigation cube](navigation-cube.md)
+for the source references, precise behavior and ownership constraints.
 Text editors and search inputs shield application/camera shortcuts. Child
 windows and popups receive Escape before the main shell. Fullscreen stores and
 restores the prior window mode, position and size, independently of panel state.
@@ -67,7 +91,7 @@ layers are not emitted as nodes by the current native parser; the explorer
 preserves the hierarchy exposed by that parser, including GroupObjects.
 
 `changed` updates the explorer, the one read-only contextual inspector and a
-small projected selection box. Manual fixture diagnostics read/write the same
+bright amber geometry overlay with a yellow/orange silhouette. Manual fixture diagnostics read/write the same
 selection and only apply manual values when the user enables manual testing.
 Scene retirement clears selection before target destruction. The inspector
 handles zero, one or many objects and does not allocate a property grid for
@@ -79,7 +103,7 @@ new SubViewport. Camera framing uses its available fraction of the root viewport
 the camera translation makes the orbit target project into that rectangle's
 center. Picking and highlighting use root-viewport pixels and the same camera.
 Opaque UI covers the rest of the existing render. This intentionally avoids
-viewport textures, duplicate rendering and a native resource migration; it does
+MVR viewport textures, duplicate scene rendering and a native resource migration; it does
 not claim reduced GPU work for pixels behind panels.
 
 Fixture picking reuses existing colliders. Non-fixture trusses/SceneObjects use
@@ -87,8 +111,19 @@ on-demand cached world model AABBs, retired with the scene. These are conservati
 bounds, not exact triangle hits: empty spaces inside a complex model's box can
 select it. This is an explicit limitation for the preview. GroupObjects select
 through the explorer. Bounds for framing exclude runtime light/shaft subtrees.
-The selection highlight is a snapshot of object extent at selection time; it
-is not rebuilt from animated fixture geometry every DMX frame.
+The selection highlight shares only the selected source meshes and draws an
+unshaded amber fill plus a screen-space inverted-hull outline. It creates no
+bounding box and does not change original materials, material overlays, native
+lens admission, photometry, shadows or project settings. Separate highlight
+instances live outside imported geometry. Nonvisual RemoteTransform3D links
+follow source and ancestor motion through engine notifications, without a
+GDScript per-frame traversal. Source visibility signals keep native-hidden lenses
+hidden. This preserves the native lens admission rule forbidding visual children
+under source meshes. Overlapping group/fixture selections deduplicate sources;
+light/beam subtrees are excluded. LOD cache `meshes_changed` refreshes shared
+geometry on explicit quality changes. Deselect, source retirement and scene
+reload remove links/overlays. The extra selection-only draw passes scale with
+selected geometry; no GPU speedup is claimed.
 
 ## Preferences and runtime cost
 
@@ -103,7 +138,8 @@ resources. Scene publication creates lightweight TreeItems; only search changes
 scan those items. Binding/unbound row lookups are indexed at setup to keep
 explorer label population from adding repeated linear fixture scans. Live DMX
 updates neither reconstruct the hierarchy nor refresh inspector rows. Selection
-highlight projects eight cached bounds corners while selected. No general
+highlighting uses shared materials/meshes and engine transform notifications;
+only the isolated navigation widget requests a tiny redraw when orientation or hover changes. No general
 floating dock framework or permanent empty lower tool panel was introduced.
 
 ## Initial audit and cleanup

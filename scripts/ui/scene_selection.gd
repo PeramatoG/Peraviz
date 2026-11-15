@@ -64,7 +64,7 @@ static func object_bounds(node: Node3D) -> AABB:
 	while not pending.is_empty():
 		var child: Node = pending.pop_back()
 		# Runtime beam meshes live under lights; they are presentation, not object extent.
-		if child is Light3D: continue
+		if child is Light3D or child.has_meta(&"peraviz_selection_overlay"): continue
 		if child is MeshInstance3D and child.mesh != null:
 			result = result.merge(child.global_transform * child.get_aabb())
 		for descendant in child.get_children(): pending.append(descendant)

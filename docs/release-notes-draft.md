@@ -213,3 +213,12 @@ Changes since the previous Peraviz release.
   MVR/PVZ ownership and the native rendering/DMX pipeline are preserved.
 - MVR document mutations and standard MVR Pan/Tilt inversion evaluation remain
   deferred. See `application-ui.md` for controls, tradeoffs and editing handoff.
+
+- Selection now shades the actual selected geometry in bright amber with a
+  silhouette outline, preserving native materials and lens batching eligibility.
+- Added a compact, real 3D navigation cube with 26 face/edge/corner surfaces,
+  interactive compass, saved Home, drag orbit, 90-degree roll, adjacent-face
+  arrows and the three CAD projection modes. Shift+middle orbits;
+  middle pans, and double middle-click fits the scene.
+- Increased UI contrast with pure-black panels and amber/yellow/orange accents;
+  Art-Net reception is pure green, listening amber, and errors pure red.

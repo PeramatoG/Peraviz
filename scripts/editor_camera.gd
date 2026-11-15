@@ -1,5 +1,7 @@
 extends Camera3D
 
+signal fit_scene_requested
+
 @export var orbit_sensitivity: float = 0.01
 @export var pan_sensitivity: float = 0.01
 @export var zoom_step_factor: float = 1.1
@@ -16,6 +18,9 @@ var target_position: Vector3 = Vector3.ZERO
 var target_yaw: float = 0.0
 var target_pitch: float = -0.3
 var target_distance: float = 8.0
+
+var target_roll: float = 0.0
+var current_roll: float = 0.0
 
 var current_yaw: float = 0.0
 var current_pitch: float = -0.3
@@ -60,6 +65,7 @@ func focus_on_aabb(bounds: AABB) -> void:
 	fit_distance = maxf(fit_distance,near + radius * 1.2)
 	target_distance = clampf(fit_distance,min_distance,max_distance)
 	# Publication must start with the scene framed, including the first draw.
+	if projection == PROJECTION_ORTHOGONAL: size = 2.0 * fit_distance * tan(deg_to_rad(fov) * 0.5)
 	current_distance = target_distance
 	current_yaw = target_yaw
 	current_pitch = target_pitch
@@ -92,6 +98,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	var alpha: float = clamp(delta * smoothing_speed, 0.0, 1.0)
+	current_roll = lerp_angle(current_roll, target_roll, alpha)
 	current_yaw = lerp_angle(current_yaw, target_yaw, alpha)
 	current_pitch = lerp(current_pitch, target_pitch, alpha)
 	current_distance = lerp(current_distance, target_distance, alpha)
@@ -126,6 +133,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		return
 
 	if event.button_index == MOUSE_BUTTON_MIDDLE:
+		if event.pressed and event.double_click:
+			fit_scene_requested.emit()
+			get_viewport().set_input_as_handled()
+			return
 		_middle_down = event.pressed
 		_update_drag_mode(event.shift_pressed)
 		_set_mouse_mode(_is_dragging())
@@ -156,6 +167,9 @@ func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 		get_viewport().set_input_as_handled()
 
 func _apply_zoom(steps: float) -> void:
+	if projection == PROJECTION_ORTHOGONAL:
+		size = clampf(size * pow(zoom_step_factor, steps), 0.00001, 10000000.0)
+		return
 	var adaptive_base: float = zoom_step_factor + 0.1 * clamp(target_distance / 200.0, 0.0, 1.0)
 	var zoom_factor: float = pow(adaptive_base, steps)
 	var new_distance: float = target_distance * zoom_factor
@@ -226,24 +240,22 @@ func _handle_key_input(event: InputEventKey) -> void:
 		return
 
 	if event.keycode == KEY_KP_1:
-		target_yaw = 0.0
-		target_pitch = 0.0
+		set_view_direction(Vector3.BACK)
 		get_viewport().set_input_as_handled()
 		return
 
 	if event.keycode == KEY_KP_3:
-		target_yaw = deg_to_rad(90.0)
-		target_pitch = 0.0
+		set_view_direction(Vector3.RIGHT)
 		get_viewport().set_input_as_handled()
 		return
 
 	if event.keycode == KEY_KP_7:
-		target_yaw = 0.0
-		target_pitch = deg_to_rad(89.0)
+		set_view_direction(Vector3.UP)
 		get_viewport().set_input_as_handled()
 		return
 
 	if event.keycode == KEY_KP_5:
+		target_roll = 0.0
 		target_position = Vector3.ZERO
 		target_yaw = deg_to_rad(45.0)
 		target_pitch = deg_to_rad(30.0)
@@ -255,10 +267,10 @@ func _update_drag_mode(shift_down: bool) -> void:
 		_drag_mode = DragMode.NONE
 		return
 
-	if shift_down or _middle_down:
-		_drag_mode = DragMode.PAN
+	if _middle_down:
+		_drag_mode = DragMode.ORBIT if shift_down else DragMode.PAN
 	else:
-		_drag_mode = DragMode.ORBIT
+		_drag_mode = DragMode.PAN if shift_down else DragMode.ORBIT
 
 func _is_dragging() -> bool:
 	return _left_down or _right_down or _middle_down
@@ -276,13 +288,15 @@ func _update_camera_transform() -> void:
 	)
 
 	global_position = target_position + orbit_offset
-	look_at(target_position, Vector3.UP)
+	var camera_up := Vector3.FORWARD if absf(cos(current_pitch)) < 0.0001 else Vector3.UP
+	look_at(target_position, camera_up)
+	rotate_object_local(Vector3.BACK, current_roll)
 	# Keep one root viewport and native renderer ownership. Shift the camera so its
 	# orbit target projects into the unobscured UI rectangle; rays remain root pixels.
 	if scene_view_rect.has_area():
 		var viewport_size := get_viewport().get_visible_rect().size
 		var center_delta := scene_view_rect.get_center() - viewport_size * 0.5
-		var span: float = 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
+		var span: float = size if projection == PROJECTION_ORTHOGONAL else 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
 		var pixels: float = viewport_size.y if keep_aspect == KEEP_HEIGHT else viewport_size.x
 		global_position += (-global_basis.x * center_delta.x + global_basis.y * center_delta.y) * span / maxf(pixels, 1.0)
 
@@ -291,3 +305,28 @@ func _set_mouse_mode(active: bool) -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	else:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+# Presentation-only camera changes leave scene transforms and native resources intact.
+func set_view_direction(direction: Vector3) -> void:
+	if not direction.is_finite() or direction.length_squared() < 0.000001: return
+	direction = direction.normalized()
+	target_roll = 0.0
+	target_yaw = atan2(direction.x, direction.z) if Vector2(direction.x, direction.z).length_squared() > 0.000001 else 0.0
+	target_pitch = asin(clampf(direction.y, -1.0, 1.0))
+
+func set_projection_mode(orthographic: bool) -> void:
+	if orthographic == (projection == PROJECTION_ORTHOGONAL): return
+	if orthographic:
+		size = 2.0 * current_distance * tan(deg_to_rad(fov) * 0.5)
+		projection = PROJECTION_ORTHOGONAL
+	else:
+		target_distance = clampf(size / maxf(2.0 * tan(deg_to_rad(fov) * 0.5), 0.00001), min_distance, max_distance)
+		current_distance = target_distance
+		projection = PROJECTION_PERSPECTIVE
+
+func orbit_by(relative: Vector2) -> void:
+	target_yaw -= relative.x * orbit_sensitivity
+	target_pitch = clampf(target_pitch - relative.y * orbit_sensitivity, deg_to_rad(-89.9), deg_to_rad(89.9))
+
+func roll_view(angle: float) -> void:
+	target_roll = wrapf(target_roll + angle, -PI, PI)

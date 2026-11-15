@@ -15,6 +15,8 @@ var _right: PanelContainer
 var _outer: HSplitContainer
 var _inner: HSplitContainer
 var _area: Control
+var _cube: Control
+var _highlight: Node
 var _toolbar: HFlowContainer
 var _row: HBoxContainer
 var _left_button: Button
@@ -106,24 +108,34 @@ func _build_layout() -> void:
 	_toolbar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_toolbar.offset_left = 8
 	_toolbar.offset_top = 5
-	_toolbar.offset_right = -8
+	_toolbar.offset_right = -154
 	_area.add_child(_toolbar)
 	_toolbar.resized.connect(_update_camera_rect)
 	for entry in [["Select", "Click to select; Ctrl-click adds to selection"], ["Move", "Reserved for MVR document editing"], ["Rotate", "Reserved for MVR document editing"]]:
 		var button := _button(_toolbar, entry[0], entry[1], func() -> void: pass)
 		button.disabled = entry[0] != "Select"
 		if entry[0] == "Select":
+			button.custom_minimum_size.x = 64
 			button.toggle_mode = true
 			button.button_pressed = true
 			button.pressed.connect(func() -> void: button.set_pressed_no_signal(true))
-	for view in ["Perspective", "Top", "Front", "Side"]:
-		_button(_toolbar, view, "Set camera view", _set_view.bind(view))
 	_button(_toolbar, "Frame", "Frame selection (F); fit scene when empty", frame_selection)
-	_button(_toolbar, "Fit", "Fit entire scene (Shift+F)", _owner._focus_loaded_scene)
-	var overlay := preload("res://scripts/ui/selection_overlay.gd").new()
-	_area.add_child(overlay)
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.configure(_owner.camera, selection)
+	_button(_toolbar, "Fit", "Fit entire scene (Shift+F / double middle-click)", _owner._focus_loaded_scene)
+	_highlight = preload("res://scripts/ui/selection_highlight.gd").new()
+	add_child(_highlight)
+	_highlight.configure(selection)
+	_owner._asset_cache.derived_lods.meshes_changed.connect(_highlight.refresh_meshes)
+	_cube = preload("res://scripts/ui/navigation_cube.gd").new()
+	_area.add_child(_cube)
+	_cube.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_cube.offset_left = -146
+	_cube.offset_top = 8
+	_cube.offset_right = -10
+	_cube.offset_bottom = 170
+	_cube.configure(_owner.camera,selection,_preferences)
+	_cube.home_requested.connect(_owner._focus_loaded_scene)
+	_cube.fit_requested.connect(_owner._focus_loaded_scene)
+	_owner.camera.fit_scene_requested.connect(_owner._focus_loaded_scene)
 	var status := PanelContainer.new()
 	_owner.get_node("UIRoot/RootVBox").add_child(status)
 	_owner.status_label.reparent(status)
@@ -239,6 +251,7 @@ func _icon(button: Button, icon_name: String, tooltip: String) -> void:
 
 func publish_scene(project_path: String = "") -> void:
 	_pick_bounds.clear()
+	_cube.reset_home()
 	selection.publish(_owner._node_index)
 	explorer.publish(_owner._node_index, _owner._fixture_row_provider)
 	set_project_name(project_path if not project_path.is_empty() else _owner._loaded_mvr_path)
@@ -304,6 +317,7 @@ func _layout_changed() -> void:
 	_left.visible = _preferences.sidebar_open and not _preferences.tools_hidden
 	_right.visible = _preferences.inspector_open and not _preferences.tools_hidden and width >= 1200
 	_toolbar.visible = not _preferences.tools_hidden
+	_cube.visible = not _preferences.tools_hidden
 	_left_button.set_pressed_no_signal(_left.visible)
 	_right_button.set_pressed_no_signal(_right.visible)
 	_tools_button.set_pressed_no_signal(_preferences.tools_hidden)
@@ -347,14 +361,6 @@ func _view_action(id: int) -> void:
 			_owner.get_window().content_scale_factor = _preferences.ui_scale
 			_save()
 
-func _set_view(view: String) -> void:
-	var camera = _owner.camera
-	match view:
-		"Perspective": camera.target_yaw = PI / 4.0; camera.target_pitch = PI / 6.0
-		"Top": camera.target_yaw = 0.0; camera.target_pitch = deg_to_rad(89.0)
-		"Front": camera.target_yaw = 0.0; camera.target_pitch = 0.0
-		"Side": camera.target_yaw = PI / 2.0; camera.target_pitch = 0.0
-
 func frame_selection() -> void:
 	if selection.ids.is_empty(): _owner._focus_loaded_scene()
 	else: _owner.camera.focus_on_aabb(selection.bounds())
@@ -365,6 +371,7 @@ func _input(event: InputEvent) -> void:
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus is LineEdit or focus is TextEdit: return
 	# Let modal dialogs and child tools own their input first.
+	if _cube._menu.get_popup().visible: return
 	for child in _row.get_children():
 		if child is MenuButton and child.get_popup().visible: return
 	for window in _windows:

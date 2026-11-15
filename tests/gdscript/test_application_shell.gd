@@ -53,7 +53,7 @@ func _run() -> void:
 	await process_frame
 	test.check(not shell._right.visible, "Inspector hides independently")
 	shell.toggle_tools()
-	test.check(not shell._toolbar.visible, "Distraction-free hides viewport tools")
+	test.check(not shell._toolbar.visible and not shell._cube.visible, "Distraction-free hides viewport tools and navigation cube")
 	shell.toggle_tools()
 	test.check(not shell._left.visible and not shell._right.visible and shell._toolbar.visible, "Restore respects individually hidden panels")
 	shell.reset_layout()
@@ -73,11 +73,13 @@ func _run() -> void:
 	var receiver_button: Button = shell._row.get_node("ArtNetToggle")
 	test.check(receiver_button.button_pressed, "Toolbar reflects running receiver")
 	app._on_dmx_status_changed(true, false)
-	test.check(app._status_presenter._badge_labels["DMX"].text.contains("Listening"), "Running without packets is labeled Listening")
+	test.check(app._status_presenter._badge_labels["DMX"].text.contains("Listening") and app._status_presenter._badge_labels["DMX"].modulate == preload("res://scripts/ui/ui_palette.gd").AMBER, "Running without packets is amber Listening")
 	app._on_dmx_status_changed(true, true)
-	test.check(app._status_presenter._badge_labels["DMX"].text.contains("Receiving"), "Packet reception is explicit")
+	test.check(app._status_presenter._badge_labels["DMX"].text.contains("Receiving") and app._status_presenter._badge_labels["DMX"].modulate == Color.GREEN, "Confirmed packet reception is pure green")
 	app._dmx_controller.stop_dmx()
 	test.check(not receiver_button.button_pressed and app._status_presenter._badge_labels["DMX"].text.contains("OFF"), "Stopped Art-Net never appears connected")
+	app._status_presenter.set_scene_state_load_error("Synthetic validation error")
+	test.check(app.status_label.modulate == Color.RED and app._status_presenter._toast_label.modulate == Color.RED, "Errors use pure red independently of warnings")
 	var group := Node3D.new()
 	group.set_meta("peraviz_type", "group")
 	group.set_meta("peraviz_object_id", "group-uuid")
@@ -146,6 +148,22 @@ func _run() -> void:
 	orbit_release.position = Vector2(20, 120)
 	root.push_input(orbit_release, true)
 	test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Navigation releases safely over dock controls")
+	# Exercise normal GUI dispatch against a rendered cube surface, not a fixed image.
+	shell._cube._project()
+	var cube_pixel: Vector2 = shell._cube.global_position + shell._cube.patch_screen_center(Vector3.ONE)
+	for pressed in [true,false]:
+		var cube_click := InputEventMouseButton.new()
+		cube_click.button_index = MOUSE_BUTTON_LEFT
+		cube_click.pressed = pressed
+		cube_click.position = cube_pixel
+		cube_click.global_position = cube_pixel
+		root.push_input(cube_click,true)
+	test.check(is_equal_approx(app.camera.target_pitch,asin(1.0/sqrt(3.0))) and shell.selection.ids.is_empty(), "Real cube GUI clicks reorient the scene without selecting scene geometry")
+	shell._cube._menu_action(10)
+	var navigation_preferences := UserPreferences.new()
+	navigation_preferences.load_from_disk()
+	test.check(navigation_preferences.navigation_projection == "parallel", "Cube projection choices persist in existing user preferences")
+	shell._cube._menu_action(12)
 	var camera_distance: float = app.camera.target_distance
 	var key := InputEventKey.new()
 	key.keycode = KEY_F
