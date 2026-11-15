@@ -711,7 +711,7 @@ func _load_mvr_scene(path: String, loaded_file_type: String = "mvr", remember_lo
 
 
 func _on_save_project_selected(path: String) -> void:
-	if _loaded_mvr_path.is_empty() or not FileAccess.file_exists(_loaded_mvr_path):
+	if _loaded_mvr_path.is_empty():
 		if _status_presenter != null:
 			_status_presenter.show_toast("Load an MVR before saving a Peraviz project.")
 		return
@@ -721,9 +721,12 @@ func _on_save_project_selected(path: String) -> void:
 		_read_peraviz_version(),
 		_visual_settings,
 		_collect_dmx_project_settings(),
-		_collect_app_state("pvz")
+		_collect_app_state("pvz"),
+		app_shell.document.native,
+		app_shell.document.context
 	)
 	if bool(save_result.get("ok", false)):
+		app_shell.document.mark_saved()
 		var saved_project_path: String = str(save_result.get("project_path", path))
 		_remember_loaded_file(saved_project_path, "pvz")
 		if _status_presenter != null:

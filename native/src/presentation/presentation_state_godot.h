@@ -51,6 +51,7 @@ public:
     PackedInt32Array shutter_authority_ids(int32_t index=1) const;
     void clear();
     void invalidate_renderer();
+    bool set_fixture_inversions(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,const PackedInt32Array &triples);
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
             const PackedFloat32Array &values, bool trace);
     Dictionary consume_runtime(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, int32_t schema_generation, bool trace, bool poll_only=false);

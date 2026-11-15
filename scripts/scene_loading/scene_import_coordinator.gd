@@ -9,6 +9,12 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 		app._status_presenter.set_scene_state_loading(path)
 	app._clear_scene()
 	app._scene_loading = true
+	var import_path: String = path
+	if app.app_shell != null and app.app_shell._configured:
+		app.app_shell.document.open_scene(path, project_context)
+		if app.app_shell.document.native != null:
+			var snapshot: String = app.app_shell.document.native.canonical_path()
+			if not snapshot.is_empty(): import_path = snapshot
 	app._dmx_controller.set_auto_span_policy(str(project_context.get("dmx_settings", {}).get("auto_span_policy", "auto_safe")), false)
 	var detail: String = app._user_preferences.gdtf_model_detail if app._user_preferences != null else "default"
 	app._loader.set_gdtf_model_detail(detail)
@@ -49,7 +55,7 @@ static func load_scene(app: Node, path: String, loaded_file_type: String, rememb
 			project_settings_ms = (Time.get_ticks_usec() - settings_started) / 1000.0
 		budget.breadcrumb("project_settings_end")
 	var import_result: Dictionary = await app._scene_import_service.import_scene(
-		path,
+		import_path,
 		app._loader,
 		app._node_factory,
 		app._fixture_binding_service,

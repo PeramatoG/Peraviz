@@ -33,6 +33,7 @@ public:
     Array finish_load_mvr();
     Dictionary get_load_metrics() const;
     Array get_fixtures_patch() const;
+    void sync_document_inversions(const Array &values);
     Dictionary build_fixture_dmx_bindings(int universe_offset = -1);
     Dictionary compile_visual_runtime_scene(int universe_offset = -1) const;
     Dictionary build_fixture_dimmer_bindings(int universe_offset = -1);

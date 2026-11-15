@@ -22,7 +22,14 @@ SectionedVisualFrame PeravizVisualRuntimeCore::held_domain_replay() const {
             tilt==tilt_component_id_by_fixture_.end()?0:tilt->second,int32_t(VisualChangeTransform)});
         frame.floats.insert(frame.floats.end(),{state.pan,state.tilt});
     }
-    if (!fixtures.empty()) frame.descriptors={int32_t(VisualSectionType::GeometryTransform),int32_t(fixtures.size()),0,0,0};
+    size_t extra=0;
+    for(const auto &[universe_id,universe]:universes_)for(const auto &property:universe.properties) {
+        if(!multi_transform_fixtures_.count(property.property.fixture_id) || (property.parameter!=SemanticParameter::Pan && property.parameter!=SemanticParameter::Tilt))continue;
+        const auto state=property_state_by_property_.find(property.property.property_id);if(state==property_state_by_property_.end() || !state->second.initialized)continue;
+        frame.integers.insert(frame.integers.end(),{property.property.fixture_id,property.parameter==SemanticParameter::Pan?property.property.component_id:0,property.parameter==SemanticParameter::Tilt?property.property.component_id:0,int32_t(VisualChangeTransform)});
+        frame.floats.insert(frame.floats.end(),{state->second.pan,state->second.tilt});++extra;
+    }
+    if (!fixtures.empty() || extra) frame.descriptors={int32_t(VisualSectionType::GeometryTransform),int32_t(fixtures.size()+extra),0,0,0};
     const int32_t int_offset=int32_t(frame.integers.size()),float_offset=int32_t(frame.floats.size());
     int32_t wheel_count=0;
     std::vector<int64_t> wheels;

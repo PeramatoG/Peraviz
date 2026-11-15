@@ -31,7 +31,22 @@ Project metadata for the archive. Version 1 stores at least:
 
 ### `scene.mvr`
 
-A byte-for-byte copy of the currently loaded MVR scene file. Peraviz does not edit or rewrite the MVR content for this first project-archive foundation.
+The **current canonical MVR document**, rather than an independently reconstructed
+scene or a stale copy of the initially imported file. Standard MVR properties,
+including `DMXInvertPan` / `DMXInvertTilt`, live here.
+
+Save PVZ and File > Export MVR consume one native validated serialization cache.
+Without intervening edits, embedded `scene.mvr` and standalone export are
+byte-identical, even across ZIP timestamp boundaries. Unmodified accepted MVRs
+retain their original archive bytes. Modified MVRs retain unrelated XML bytes
+and binary resource contents; only supported field text/new children and
+necessary XML-entry ZIP metadata change. Native validation and streaming
+resource comparison occur before publication.
+
+PVZ writing stages and verifies an archive before replacing the destination.
+Failures retain the prior project and pending document edits. Reopening imports
+this embedded edited MVR. Existing version-1 PVZ archives and missing optional
+JSON metadata remain supported; the project format version is unchanged.
 
 ### `visual_settings.json`
 

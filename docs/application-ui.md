@@ -104,7 +104,7 @@ MVR graph. Internal GDTF/geometry shells are omitted from the explorer. Source
 layers are not emitted as nodes by the current native parser; the explorer
 preserves the hierarchy exposed by that parser, including GroupObjects.
 
-`changed` updates the explorer, the one read-only contextual inspector and a
+`changed` updates the explorer, the one contextual inspector (only MVR inversion is editable) and a
 bright amber geometry overlay with a yellow/orange silhouette. Manual fixture diagnostics read/write the same
 selection and only apply manual values when the user enables manual testing.
 Scene retirement clears selection before target destruction. The inspector
@@ -184,43 +184,40 @@ bridges, scene resources, GDScript/integration tests and CI workflow scripts.
 | Multiple permanent badges | Consolidated to receiver state plus bottom scene status; other values remain in status tooltip. |
 | Legacy module preference keys/visibility policy | Retained for migration and existing callers; no destructive deletion based solely on uncertain usage. |
 
-No native semantic, parser, protocol, runtime or writer code changes are part of
-this UI implementation. Import performance investigations remain out of scope.
+The shell remains presentation and interaction code. The native document and
+runtime own the editing semantics described below. Import performance
+investigations remain out of scope.
 
-## Next milestone: MVR document editing
+## MVR document editing · phase 1
 
-Connect editing commands to `AppShell.selection.ids` and the inspector's
-selection-change boundary. Add an explicit document command/undo service owned
-by the next milestone; controls must issue validated native/document operations,
-refresh affected published rows and persist through the official archive/export
-path. Do not mutate the node transform or create a parallel patch authority as
-a shortcut. Current Inspector controls intentionally expose no editing action.
+The Inspector exposes **Invert Pan** and **Invert Tilt** for validated canonical
+source fixtures. A single OFF/ON toggle per property applies to the whole
+selection; mixed values show an explicit **Mixed → ON** action. Missing/duplicated identities, malformed inversion
+metadata and unsafe document structures disable editing with a reason. Other
+Inspector fields, Move/Rotate, Patch, GDTF Mode and Transform remain read-only.
 
-Standard per-fixture Pan/Tilt inversion belongs to **MVR**, via optional boolean
-`DMXInvertPan` and `DMXInvertTilt` Fixture children. The current
-`SceneModel::FixturePatch` and Godot bridge expose neither flag; the Inspector
-reports unavailable metadata instead of inventing false values. Follow-up points:
+`AppShell.selection.ids` supplies the existing UUID selection. The scene-owned
+native document retains original XML ranges and archive resources; Godot only
+coordinates validated commands. A successful native runtime transaction precedes
+document publication. No scene reconstruction, camera reset or source-material
+replacement is needed for an inversion toggle operation.
 
-1. `native/src/mvr_scene_loader.cpp::parse_fixture_patch()` reads Fixture children;
-   add optional/known flags to `native/src/scene_model.h::FixturePatch` there.
-2. Carry the flags through the loader/compiled setup contracts, with versioned
-   codec tests and Perastage-neutral semantics. Do not edit GDTF ChannelFunctions;
-   the former GDTF `DMXInvert` attribute was removed in GDTF 1.0.
-3. Integrate at native selected-mode source evaluation in
-   `native/src/runtime/visual_runtime_plan.cpp` and
-   `native/src/runtime/visual_runtime_evaluation.cpp::read_raw_value()` /
-   `evaluate_source_program()`, before normalized/physical mapping. Audit both
-   cached/serial and parallel-prefetch callers, then the Pan/Tilt application
-   cases in `native/src/runtime/peraviz_visual_runtime.cpp`. Preserve source bit depth,
-   mode guards and qualified component ownership. Invert resolved DMX values
-   before physical evaluation; do not negate final Godot angles.
-4. Implement safe MVR writing/export, undo, reload and mixed multi-selection
-   semantics together with the editing foundation, then enable corresponding
-   inspector actions. A future Peraviz-only visualization correction must have
-   a different explicit name and must not impersonate these MVR flags.
+Edit > Undo/Redo and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z operate on MVR commands;
+text editors keep their own shortcuts. The title's `*` marks document changes
+since the last successful PVZ save. Opening another scene or closing with pending
+edits asks whether to discard them. Cancel and failed saves preserve the session.
 
-Patch/mode mutation, transforms, multi-edit commands, inversion evaluation,
-writing/export and general docking are intentionally deferred.
+Ctrl+S retains **Save PVZ**. **File > Export MVR…** independently exports the
+current document, including edits not yet saved to PVZ, and requires a new
+filename. It never silently overwrites the imported MVR. Both paths consume the
+same validated native serialization cache: without intervening edits, an export
+is byte-identical to `scene.mvr` embedded by Save PVZ. Reopening PVZ loads that
+embedded edited document, without relying on `fixture_overrides.json`.
+
+See [MVR editing foundation](mvr-document-editing.md) for preservation contracts,
+strict unsupported cases, runtime semantics, validation and the exact Patch/GDTF
+Mode/Transform handoff. Standard inversion belongs to MVR, not GDTF and not a
+visualizer-only override.
 
 ## Windows manual release checklist
 

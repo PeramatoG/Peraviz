@@ -1,4 +1,5 @@
 #pragma once
+#include "document/mvr_inversion.h"
 #include "asset_cache_metrics.h"
 
 #include <map>
@@ -113,6 +114,7 @@ struct SceneModel {
         std::string gdtf_path;
         std::string dmx_import_error; // Bounded validation failure; source archive remains intact.
         std::vector<FixturePatchAddress> addresses; // Authority when standard Addresses is present.
+        document::Inversion invert_pan, invert_tilt;
     };
 
     // Setup-only observations, outside canonical fixture and runtime semantics.

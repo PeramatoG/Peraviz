@@ -83,6 +83,11 @@ Structural setup occurs before live playback. The loader and compiler install fi
 
 The versioned compiled setup payload is encoded and decoded by the shared native `CompiledRuntimeScene` codec. The codec owns field order, version-specific strides, complete cursor validation, and deterministic rejection of truncated or trailing payloads; Godot wrappers only convert packed array containers.
 
+Setup contract 12 uses the existing reserved fixture integer as a Pan/Tilt
+inversion mask (bits 0/1). Versions 1–11 decode with no inversion; optional XML
+presence stays in the canonical document, outside the live numeric contract.
+Consumer-local mechanical mapping never mutates shared source results.
+
 Setup contract 11 adds parent-domain variable shutter timing intervals and an explicit
 additional typed-mode activation source. The decoder retains older constant-timing
 payloads and rejects truncated/invalid new timing records. Authority signatures include

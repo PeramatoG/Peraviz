@@ -62,10 +62,12 @@ PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_ca
 }
 // Preserves declaration-order range arbitration and weighted contributor arithmetic exactly.
 PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_property_value(UniverseState &universe, const CompiledPropertyProgram &property) {
+    const bool mechanical=property.parameter==SemanticParameter::Pan || property.parameter==SemanticParameter::Tilt;
     if (property.sources.size()>1 && property.range_selector) {
         EvaluationResult selected;
         for (uint32_t source:property.sources) {
-            const auto value=evaluate_cached_source(universe,source);
+            const auto value=mechanical?mechanical_value(universe,source,property.inverted):evaluate_cached_source(universe,source);
+            if(mechanical && (!value.valid || !mechanical_active(universe,source,value.raw_value)))continue;
             const auto &definition=universe.source_bindings[source]->program;
             if (!selected.valid && value.raw_value>=definition.dmx_from && value.raw_value<=definition.dmx_to) selected=value;
         }
@@ -74,8 +76,8 @@ PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_pr
     EvaluationResult result;
     double normalized=0, physical=0, weight=0;
     for (size_t i=0;i<property.sources.size();++i) {
-        const auto value=evaluate_cached_source(universe,property.sources[i]);
-        if (!value.valid) continue;
+        const auto value=mechanical?mechanical_value(universe,property.sources[i],property.inverted):evaluate_cached_source(universe,property.sources[i]);
+        if (!value.valid || (mechanical && !mechanical_active(universe,property.sources[i],value.raw_value))) continue;
         if (!result.valid) { result.raw_value=value.raw_value; result.active_program_id=value.active_program_id; result.valid=true; }
         const double contribution=property.property.contributors[i].weight;
         normalized+=double(value.normalized_value)*contribution;

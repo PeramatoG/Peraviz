@@ -30,11 +30,13 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         std::sort(installed.program.sources.begin(), installed.program.sources.end(), [](const CompiledDmxByteSource &a, const CompiledDmxByteSource &b) { return a.byte_order < b.byte_order; });
         source_programs_by_id_[program.program_id] = installed;
     }
+    std::unordered_map<int32_t,int> inversions;
     for (const CompiledFixtureInstance &fixture : scene.fixtures) {
         if (fixture.fixture_id <= 0 || fixture.universe_id < 0 || fixture.start_address < 1 || fixture.start_address > 512) {
             diagnostics_.push_back({"PVZ-RUNTIME-INVALID-PATCH", "error", "Compiled fixture has an invalid ID, universe, or patch address.", fixture.fixture_uuid});
             continue;
         }
+        inversions[fixture.fixture_id]=(fixture.invert_pan?1:0)|(fixture.invert_tilt?2:0);
         FixtureRenderParams params;
         params.luminous_flux = fixture.luminous_flux;
         params.beam_angle_default = fixture.beam_angle_default;
@@ -73,8 +75,16 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
             }
         }
         if (!valid_property || property_universe < 0) continue;
-        if (parameter == SemanticParameter::Pan) pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
-        if (parameter == SemanticParameter::Tilt) tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
+        if (parameter == SemanticParameter::Pan) {
+            auto old=pan_component_id_by_fixture_.find(property.fixture_id);
+            if(old!=pan_component_id_by_fixture_.end() && old->second!=property.component_id)multi_transform_fixtures_.insert(property.fixture_id);
+            pan_component_id_by_fixture_[property.fixture_id] = property.component_id;
+        }
+        if (parameter == SemanticParameter::Tilt) {
+            auto old=tilt_component_id_by_fixture_.find(property.fixture_id);
+            if(old!=tilt_component_id_by_fixture_.end() && old->second!=property.component_id)multi_transform_fixtures_.insert(property.fixture_id);
+            tilt_component_id_by_fixture_[property.fixture_id] = property.component_id;
+        }
         if (parameter == SemanticParameter::Zoom) render_params_by_fixture_[property.fixture_id].has_zoom = true;
         const uint32_t installed_mask = visual_mask_for_parameter(parameter);
         installed_visual_mask_by_fixture_[property.fixture_id] |= installed_mask;
@@ -83,6 +93,7 @@ void PeravizVisualRuntimeCore::install_compiled_scene(const CompiledRuntimeScene
         capabilities.has_optics = capabilities.has_optics || parameter == SemanticParameter::Zoom;
         UniverseState &universe = universes_[property_universe];
         universe.properties.push_back({property, parameter});
+        universe.properties.back().inverted=(parameter==SemanticParameter::Pan && (inversions[property.fixture_id]&1)) || (parameter==SemanticParameter::Tilt && (inversions[property.fixture_id]&2));
         for (const CompiledPropertyContributor &contributor : property.contributors) {
             const CompiledDmxSourceProgram &program = source_programs_by_id_[contributor.source_program_id].program;
             for (const CompiledDmxByteSource &source : program.sources) {

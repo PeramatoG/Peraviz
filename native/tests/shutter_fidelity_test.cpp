@@ -76,7 +76,7 @@ static bool test_dynamic_shutter_parameters() {
         probe.compile("<ChannelFunction Name=\"Open\" Attribute=\"Shutter1\"/><ChannelFunction Attribute=\"Shutter1Strobe\" DMXFrom=\""+std::to_string(from)+resolution+"\" PhysicalFrom=\"2\" PhysicalTo=\"2\"><ChannelSet DMXFrom=\""+std::to_string(from)+resolution+"\"/><ChannelSet DMXFrom=\""+std::to_string((from+to)/2)+resolution+"\"/></ChannelFunction><ChannelFunction Name=\"Closed\" Attribute=\"Shutter1\" DMXFrom=\""+std::to_string(to+1)+resolution+"\"/>",bytes,"","Shutter1",metadata);
         const auto packed=encode_compiled_runtime_scene(probe.scene);
         const auto decoded=decode_compiled_runtime_scene(packed.integers,packed.floats);
-        if (!verify(decoded.valid && decoded.scene.contract_version==11,"Variable parameter mappings survive the version 11 native setup contract")) return false;
+        if (!verify(decoded.valid && decoded.scene.contract_version==kCompiledRuntimeSceneContractVersion,"Variable parameter mappings survive the current native setup contract")) return false;
         probe.core.install_compiled_scene(decoded.scene); probe.core.set_runtime_now_seconds_for_testing(0);
         for (uint32_t raw:{from,(from+to)/2,to}) {
             const auto p=probe.raw(raw); const double local=double(raw-from)/double(to-from);

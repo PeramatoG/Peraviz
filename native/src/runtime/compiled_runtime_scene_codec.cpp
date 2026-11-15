@@ -89,7 +89,7 @@ PackedCompiledRuntimeScene encode_compiled_runtime_scene(const CompiledRuntimeSc
          static_cast<int32_t>(scene.diagnostics.size())};
     for (const auto &v : scene.fixtures)
         i.insert(i.end(),
-                 {v.fixture_id, v.universe_id, v.start_address, 0, push_float(f, v.luminous_flux), push_float(f, v.beam_angle_default)});
+                 {v.fixture_id, v.universe_id, v.start_address, scene.contract_version>=12?((v.invert_pan?1:0)|(v.invert_tilt?2:0)):0, push_float(f, v.luminous_flux), push_float(f, v.beam_angle_default)});
     for (const auto &v : scene.source_programs) {
         i.insert(i.end(), {v.program_id, static_cast<int32_t>(v.semantic), static_cast<int32_t>(v.sources.size()),
                            static_cast<int32_t>(v.dmx_from), static_cast<int32_t>(v.dmx_to), push_float(f, v.physical_from),
@@ -196,7 +196,8 @@ CompiledRuntimeSceneDecodeResult decode_compiled_runtime_scene(const std::vector
         v.fixture_id = d.read();
         v.universe_id = d.read();
         v.start_address = d.read();
-        d.read();
+        const int flags=d.read();
+        if(version>=12){if(flags&~3)d.fail("Invalid fixture inversion mask");v.invert_pan=(flags&1)!=0;v.invert_tilt=(flags&2)!=0;}
         v.luminous_flux = read_float(floats, d.read(), v.luminous_flux);
         v.beam_angle_default = read_float(floats, d.read(), v.beam_angle_default);
         result.scene.fixtures.push_back(v);

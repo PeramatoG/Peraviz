@@ -914,6 +914,7 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
             out.filter_resources.push_back(std::move(resource));
         }
         out.fixtures.push_back({fixture_id, patch.fixture_uuid, patch.gdtf_path, patch.dmx_mode, artnet_universe, patch.mvr_address>0 ? patch.mvr_address : patch.addresses.front().address, 10000.0, 25.0, 1.0, 20.0});
+        out.fixtures.back().invert_pan=patch.invert_pan.value;out.fixtures.back().invert_tilt=patch.invert_tilt.value;
         const size_t source_program_start = out.source_programs.size();
         const size_t motion_binding_start = out.gobo_motion_bindings.size();
         append_beam_profiles(out, beams_by_fixture[patch.fixture_uuid], patch, fixture_id);

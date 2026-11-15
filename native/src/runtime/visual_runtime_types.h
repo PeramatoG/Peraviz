@@ -9,7 +9,7 @@
 
 namespace peraviz::runtime {
 
-constexpr int32_t kCompiledRuntimeSceneContractVersion = 11;
+constexpr int32_t kCompiledRuntimeSceneContractVersion = 12;
 
 enum VisualChangeMask : uint32_t {
     VisualChangeNone = 0,
@@ -289,6 +289,7 @@ struct CompiledFixtureInstance {
     double beam_angle_default = 25.0;
     double spot_multiplier = 1.0;
     double beam_multiplier = 20.0;
+    bool invert_pan=false, invert_tilt=false;
 };
 
 
