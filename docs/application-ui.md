@@ -191,8 +191,8 @@ investigations remain out of scope.
 ## MVR document editing · phase 1
 
 The Inspector exposes **Invert Pan** and **Invert Tilt** for validated canonical
-source fixtures. Explicit On/Off actions apply to the whole selection; mixed
-values are labeled Mixed. Missing/duplicated identities, malformed inversion
+source fixtures. A single OFF/ON toggle per property applies to the whole
+selection; mixed values show an explicit **Mixed → ON** action. Missing/duplicated identities, malformed inversion
 metadata and unsafe document structures disable editing with a reason. Other
 Inspector fields, Move/Rotate, Patch, GDTF Mode and Transform remain read-only.
 
@@ -200,7 +200,7 @@ Inspector fields, Move/Rotate, Patch, GDTF Mode and Transform remain read-only.
 native document retains original XML ranges and archive resources; Godot only
 coordinates validated commands. A successful native runtime transaction precedes
 document publication. No scene reconstruction, camera reset or source-material
-replacement is needed for an inversion checkbox operation.
+replacement is needed for an inversion toggle operation.
 
 Edit > Undo/Redo and Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z operate on MVR commands;
 text editors keep their own shortcuts. The title's `*` marks document changes

@@ -58,11 +58,14 @@ func run() -> void:
 	camera_transform = app.camera.global_transform
 	test.check(absf(normal_pan-(-270.0+540.0*64.0/255.0)) < 0.01,"Real Art-Net drives expected Pan mapping")
 	test.check(absf(normal_tilt-(-135.0+270.0*32.0/255.0)) < 0.01,"Real Art-Net drives independent Tilt mapping")
-	app._fixture_inspection_panel._inversion_rows[0].buttons[0].pressed.emit()
+	var pan_button: Button = app._fixture_inspection_panel._inversion_rows[0].button
+	test.check(pan_button.text == "OFF" and not pan_button.button_pressed,"Inspector uses one OFF toggle for an uninverted fixture")
+	pan_button.button_pressed = true
 	await poll()
-	test.check(editor.fixture(ID_A).pan and editor.state().dirty,"Inspector action commits canonical Pan and dirtiness")
+	test.check(editor.fixture(ID_A).pan and editor.state().dirty and pan_button.text == "ON" and pan_button.button_pressed,"Inspector toggle commits canonical Pan and displays ON")
 	test.check(absf(pan.rotation_degrees.y+normal_pan)<0.01 and absf(other_pan.rotation_degrees.y-normal_pan)<0.01,"Held Pan updates without a packet; overlapping fixture is unchanged")
-	test.check(editor.apply(PackedStringArray([ID_A]),0,false),"Pan can be disabled")
+	pan_button.button_pressed = false
+	test.check(not editor.fixture(ID_A).pan and pan_button.text == "OFF","The same toggle disables Pan and displays OFF")
 	await poll()
 	test.check(absf(pan.rotation_degrees.y-normal_pan)<0.01,"Disabling Pan restores original mapping")
 	test.check(editor.apply(PackedStringArray([ID_A]),1,true),"Tilt edits independently")
@@ -71,7 +74,11 @@ func run() -> void:
 	test.check(editor.history(false) and not editor.fixture(ID_A).tilt_present,"Undo restores XML absence")
 	test.check(editor.history(true) and editor.fixture(ID_A).tilt,"Redo restores inversion")
 	app.app_shell.selection.select(PackedStringArray([ID_A,ID_B]))
-	test.check(app._fixture_inspection_panel._inversion_rows[1].label.text.contains("Mixed"),"Mixed values are explicit")
+	var tilt_button: Button = app._fixture_inspection_panel._inversion_rows[1].button
+	test.check(tilt_button.text == "Mixed → ON" and not tilt_button.button_pressed,"Mixed values offer an explicit enable-all action")
+	tilt_button.button_pressed = true
+	test.check(editor.fixture(ID_A).tilt and editor.fixture(ID_B).tilt and tilt_button.text == "ON","Mixed toggle applies ON atomically to the complete selection")
+	test.check(editor.history(false) and editor.fixture(ID_A).tilt and not editor.fixture(ID_B).tilt and tilt_button.text == "Mixed → ON","Undo restores mixed values and the toggle label")
 	test.check(editor.apply(PackedStringArray([ID_A,ID_B]),0,true),"Validated multi-fixture edit applies atomically")
 	var capture_path := OS.get_environment("PERAVIZ_EDIT_CAPTURE")
 	if not capture_path.is_empty():

@@ -96,9 +96,10 @@ routing, packet mutation, GDTF rewrite or GDScript Pan/Tilt evaluator is added.
 
 ## UI and the single serialization contract
 
-The Inspector offers Invert Pan / Invert Tilt with explicit On/Off actions.
-Multiple-selection differences are labeled Mixed, and an unsafe target disables
-the entire operation with a reason. Other fields remain read-only. Edit > Undo /
+The Inspector offers one OFF/ON toggle each for Invert Pan / Invert Tilt.
+Multiple-selection differences show **Mixed → ON**, explicitly enabling the
+complete selection on the next click; subsequent clicks toggle normally. An
+unsafe target disables the entire operation with a reason. Other fields remain read-only. Edit > Undo /
 Redo and Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z respect text-editor focus. `*` in the project
 title marks unsaved document changes. Canceling discard or failing a write keeps
 the current editing session.

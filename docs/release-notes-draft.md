@@ -1,6 +1,6 @@
 # Peraviz v0.x.x
 
-- Fixed button text clipping when hovered, pressed or disabled by keeping shared button content margins consistent across all states, including Inspector On/Off actions.
+- Fixed button text clipping when hovered, pressed or disabled by keeping shared button content margins consistent across all states, including Art-Net and Inspector controls. Pan/Tilt inversion now uses one OFF/ON toggle per property, with an explicit Mixed → ON action for mixed selections.
 
 - Added canonical MVR document editing for per-fixture DMX Pan/Tilt inversion, with atomic multi-selection commands, Undo/Redo, dirty-state protection, explicit MVR export and edited-MVR PVZ persistence. Source-preserving XML splices and validated archive copying retain unrelated scene data/resources; no-op exports retain original bytes. Native full-width, consumer-local inversion preserves shared DMX sources, held input and qualified mechanical targets without a geometry reload. Save PVZ and Export MVR share one byte-identical canonical serialization per revision. Patch, GDTF Mode and Transform editors remain deferred.
 

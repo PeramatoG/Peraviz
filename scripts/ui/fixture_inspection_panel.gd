@@ -30,18 +30,16 @@ func build_ui() -> void:
 		var label := Label.new()
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
-		var buttons: Array[Button] = []
-		for value in [true,false]:
-			var button := Button.new()
-			button.text = "On" if value else "Off"
-			button.toggle_mode = true
-			button.focus_mode = Control.FOCUS_NONE
-			row.add_child(button)
-			button.pressed.connect(func() -> void:
-				if _document != null: _document.apply(_selection.ids,axis,value)
-				_render())
-			buttons.append(button)
-		_inversion_rows.append({"label": label, "buttons": buttons})
+		var button := Button.new()
+		button.text = "OFF"
+		button.toggle_mode = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size.x = 48
+		row.add_child(button)
+		button.toggled.connect(func(value: bool) -> void:
+			if _document != null: _document.apply(_selection.ids,axis,value)
+			_render())
+		_inversion_rows.append({"label": label, "button": button})
 	_render()
 
 func configure(selection: SceneSelection, provider: FixtureRowProvider, document: RefCounted = null) -> void:
@@ -87,7 +85,7 @@ func _value(row: Dictionary, key: String) -> String:
 	var value: String = str(row.get(key, "")).strip_edges()
 	return value if not value.is_empty() and value != "-1" else "Unavailable"
 
-# Mixed selections use explicit On/Off actions, never a misleading two-state checkbox.
+# Mixed selections explicitly offer ON for the whole selection before becoming an ordinary toggle.
 func _render_inversions() -> void:
 	var ids := _selection.ids if _selection != null else PackedStringArray()
 	_inversion_box.visible = not ids.is_empty()
@@ -105,10 +103,9 @@ func _render_inversions() -> void:
 		var first: bool = bool(entries[0].get(field,false)) if not entries.is_empty() else false
 		var mixed := false
 		for entry in entries: mixed = mixed or bool(entry.get(field,false)) != first
-		row.label.text = "Invert %s: %s" % [field.capitalize(),"Unavailable" if not reason.is_empty() else "Mixed" if mixed else "On" if first else "Off"]
-		for index in range(2):
-			var button: Button = row.buttons[index]
-			var value: bool = index == 0
-			button.set_pressed_no_signal(reason.is_empty() and not mixed and first == value)
-			button.disabled = not reason.is_empty() or ids.is_empty() or (not mixed and first == value)
-			button.tooltip_text = reason if not reason.is_empty() else "Set %s inversion %s on all %d selected fixtures" % [field,"on" if value else "off",ids.size()]
+		row.label.text = "Invert %s" % field.capitalize()
+		var button: Button = row.button
+		button.set_pressed_no_signal(reason.is_empty() and not mixed and first)
+		button.disabled = not reason.is_empty() or ids.is_empty()
+		button.text = "Unavailable" if not reason.is_empty() else "Mixed → ON" if mixed else "ON" if first else "OFF"
+		button.tooltip_text = reason if not reason.is_empty() else ("Mixed values; enable %s inversion on all %d selected fixtures" % [field,ids.size()] if mixed else "Set %s inversion %s on all %d selected fixtures" % [field,"off" if first else "on",ids.size()])
