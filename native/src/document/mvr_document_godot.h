@@ -17,6 +17,8 @@ class PeravizMvrDocument : public RefCounted {
     Dictionary fixture(const String &uuid) const;
     bool prepare(const PackedStringArray &ids, int axis, bool value);
     bool prepare_history(bool redo);
+    bool prepare_patch(const String &uuid, int break_id, int universe, int address, const String &operation);
+    bool pending_patch() const;
     Array pending_values() const;
     bool commit();
     void cancel();

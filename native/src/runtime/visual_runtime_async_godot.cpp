@@ -2,6 +2,13 @@
 #include "dmx/realtime_subscription.h"
 
 namespace godot {
+// Refresh transport interests after an exclusive same-topology routing transaction.
+bool PeravizVisualRuntime::replace_routes(const peraviz::runtime::CompiledRuntimeScene &scene) {
+    if (!async_available() || !core_->replace_routes(scene)) return false;
+    interests_cache_ = core_->realtime_interest_offsets();
+    stats_cache_ = core_->stats(); sizes_cache_ = core_->state_sizes();
+    return true;
+}
 // Retires native jobs before this Godot wrapper can release borrowed scene definitions.
 PeravizVisualRuntime::~PeravizVisualRuntime() { retire_async(); }
 // Shares native lifetime only; the coordinator never owns or calls a Godot wrapper.

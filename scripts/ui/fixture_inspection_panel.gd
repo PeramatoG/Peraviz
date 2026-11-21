@@ -8,6 +8,7 @@ var _details: RichTextLabel
 var _document: RefCounted
 var _inversion_box: VBoxContainer
 var _inversion_rows: Array = []
+var _patch_panel: VBoxContainer
 
 func _ready() -> void:
 	build_ui()
@@ -22,6 +23,7 @@ func build_ui() -> void:
 	var layout := VBoxContainer.new()
 	add_child(layout)
 	layout.add_child(_details)
+
 	_inversion_box = VBoxContainer.new()
 	layout.add_child(_inversion_box)
 	for axis in range(2):
@@ -49,6 +51,11 @@ func configure(selection: SceneSelection, provider: FixtureRowProvider, document
 	if _document != null: _document.changed.connect(_render)
 	_selection.changed.connect(_render)
 	build_ui()
+	if _document != null and _patch_panel == null:
+		_patch_panel = preload("res://scripts/ui/fixture_patch_panel.gd").new()
+		_details.get_parent().add_child(_patch_panel)
+		_details.get_parent().move_child(_patch_panel, 1)
+		_patch_panel.configure(_document, _selection)
 	_render()
 
 # The import hook refreshes the selected object only. It never creates fixture rows.
@@ -74,7 +81,7 @@ func _render() -> void:
 	var text := "INSPECTOR\n\nIdentification\n%s\n%s\n" % [row.get("fixture_name", node.get_meta("peraviz_name", node.name)), kind.capitalize()]
 	if show_object_uuids: text += "UUID: %s\n" % id
 	if kind == "fixture":
-		text += "Fixture ID: %s\n\nFixture / GDTF\n%s\n\nDMX Mode\n%s\n\nPatch\nUniverse: %s\nAddress: %s\n" % [_value(row, "fixture_id"), _value(row, "fixture_type"), _value(row, "dmx_mode"), _value(row, "universe"), _value(row, "address")]
+		text += "Fixture ID: %s\n\nFixture / GDTF\n%s\n\nDMX Mode\n%s\n\nAuthored patch · edit below\nPrimary universe: %s\nPrimary address: %s\n" % [_value(row, "fixture_id"), _value(row, "fixture_type"), _value(row, "dmx_mode"), _value(row, "universe"), _value(row, "address")]
 	text += "\nTransform · local Godot coordinates\nPosition (m): %s\nRotation (°): %s\nScale: %s\n" % [node.position, node.rotation_degrees, node.scale]
 	if kind == "fixture":
 		var info: Dictionary = _document.fixture(id) if _document != null else {}

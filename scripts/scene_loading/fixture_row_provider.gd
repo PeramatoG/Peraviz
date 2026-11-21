@@ -68,8 +68,8 @@ func get_fixture_row(fixture_uuid: String) -> Dictionary:
 		"fixture_name": _resolve_runtime_cell(runtime_row, 1, _resolve_fixture_name(node_data, patch, binding, fixture_node)),
 		"fixture_id": _resolve_runtime_cell(runtime_row, 0, _resolve_fixture_id(node_data, patch, binding, fixture_node)),
 		"fixture_type": _resolve_runtime_cell(runtime_row, 2, _resolve_fixture_type(node_data, patch, binding, fixture_node)),
-		"universe": _resolve_runtime_cell(runtime_row, 5, _resolve_fixture_universe(patch, binding)),
-		"address": _resolve_runtime_cell(runtime_row, 6, _resolve_fixture_address(patch, binding)),
+		"universe": _resolve_fixture_universe(patch, {}) if not patch.get("addresses", []).is_empty() else _resolve_runtime_cell(runtime_row, 5, _resolve_fixture_universe(patch, binding)),
+		"address": _resolve_fixture_address(patch, {}) if not patch.get("addresses", []).is_empty() else _resolve_runtime_cell(runtime_row, 6, _resolve_fixture_address(patch, binding)),
 		"binding_status": _resolve_fixture_binding_status(binding, unbound, patch),
 		"binding_detail": _resolve_fixture_binding_detail(binding, unbound, patch),
 		"position": _resolve_vector3(node_data, ["pos", "position"]),
@@ -229,6 +229,7 @@ func _resolve_fixture_binding_status(binding: Dictionary, unbound: Dictionary, p
 
 func _resolve_fixture_binding_detail(binding: Dictionary, unbound: Dictionary, patch: Dictionary) -> String:
 	if not binding.is_empty():
+		if not patch.get("addresses", []).is_empty(): return "Bound to native DMX controls; canonical authored patch is shown separately."
 		var artnet_universe: String = _first_non_empty_string(binding, ["artnet_universe_id"])
 		return "Bound to Art-Net universe %s" % artnet_universe if not artnet_universe.is_empty() else "Bound to DMX controls"
 	if not unbound.is_empty():

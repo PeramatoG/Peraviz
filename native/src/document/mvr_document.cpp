@@ -301,6 +301,7 @@ bool MvrDocument::parse() {
                                    "different editor";
                 }
         }
+        index_patch(f, node);
         fixtures_[key(f.uuid)] = std::move(f);
     }
     return true;
@@ -313,6 +314,15 @@ const Fixture *MvrDocument::fixture(const std::string &uuid) const {
 // Compute byte-size changes from indexed field ranges without copying or reparsing XML.
 int64_t MvrDocument::size_delta(const Change &change) const {
     const auto &f = fixtures_.at(key(change.uuid));
+    if (change.kind == Change::Kind::Patch) {
+        const auto size = [&](const PatchState &state) {
+            int64_t n = 0;
+            for (const auto &edit : patch_edits(f, state))
+                n += int64_t(edit.text.size()) - int64_t(edit.length);
+            return n;
+        };
+        return size(change.patch_after) - size(change.patch_before);
+    }
     const auto delta = [&](const Inversion &state) -> int64_t {
         if (state == f.original[change.axis])
             return 0;
@@ -353,9 +363,18 @@ bool MvrDocument::prepare(const std::vector<std::string> &ids, int axis, bool va
         if (f->current[axis].value != value)
             pending_.push_back({f->uuid, axis, f->current[axis], next});
     }
+    return validate_pending();
+}
+// Bound staged history and serialized size before any runtime transaction.
+bool MvrDocument::validate_pending() {
     size_t retained = pending_.size();
-    for (size_t i = 0; i < cursor_; ++i)
+    for (size_t i = 0; i < cursor_; ++i) {
         retained += history_[i].size();
+        for (const auto &change : history_[i])
+            retained += change.patch_before.size() + change.patch_after.size();
+    }
+    for (const auto &change : pending_)
+        retained += change.patch_before.size() + change.patch_after.size();
     if (retained > 200000) {
         cancel();
         return fail("Undo change bound reached; save/reopen before more edits");
@@ -382,8 +401,10 @@ bool MvrDocument::prepare_history(bool redo) {
         return fail("No document command available");
     pending_ = history_[redo ? cursor_ : cursor_ - 1];
     if (!redo)
-        for (auto &change : pending_)
+        for (auto &change : pending_) {
             std::swap(change.before, change.after);
+            std::swap(change.patch_before, change.patch_after);
+        }
     pending_kind_ = redo ? 3 : 2;
     return true;
 }
@@ -403,14 +424,19 @@ bool MvrDocument::commit() {
         --cursor_;
     else
         ++cursor_;
-    for (const auto &change : pending_)
-        fixtures_.at(key(change.uuid)).current[change.axis] = change.after;
+    for (const auto &change : pending_) {
+        auto &f = fixtures_.at(key(change.uuid));
+        if (change.kind == Change::Kind::Patch)
+            f.current_patch = change.patch_after;
+        else
+            f.current[change.axis] = change.after;
+    }
     for (const auto &change : pending_)
         serialized_xml_size_ += size_delta(change);
     ++revision_;
     dirty_ = false;
     for (const auto &[id, f] : fixtures_)
-        dirty_ |= f.current != f.saved;
+        dirty_ |= f.current != f.saved || f.current_patch != f.saved_patch;
     cancel();
     return true;
 }
@@ -421,18 +447,18 @@ void MvrDocument::cancel() {
 }
 // Record a successful PVZ save point; the original snapshot remains available for exact Undo.
 void MvrDocument::mark_saved() {
-    for (auto &[id, f] : fixtures_)
+    for (auto &[id, f] : fixtures_) {
         f.saved = f.current;
+        f.saved_patch = f.current_patch;
+    }
     dirty_ = false;
 }
 // Splice only supported field text or new children; all other source bytes remain untouched.
 std::string MvrDocument::xml() const {
-    struct Patch {
-        size_t start, length;
-        std::string text;
-    };
-    std::vector<Patch> patches;
+    std::vector<XmlEdit> patches;
     for (const auto &[id, f] : fixtures_) {
+        auto edits = patch_edits(f, f.current_patch);
+        patches.insert(patches.end(), edits.begin(), edits.end());
         std::string insert;
         for (int axis = 0; axis < 2; ++axis) {
             if (f.current[axis] == f.original[axis])
@@ -448,7 +474,8 @@ std::string MvrDocument::xml() const {
         if (!insert.empty())
             patches.push_back({spans_[f.element].close, 0, insert});
     }
-    std::sort(patches.begin(), patches.end(), [](const auto &a, const auto &b) { return a.start > b.start; });
+    std::stable_sort(patches.begin(), patches.end(),
+                     [](const auto &a, const auto &b) { return a.start > b.start; });
     std::string result = original_xml_;
     for (const auto &patch : patches)
         result.replace(patch.start, patch.length, patch.text);

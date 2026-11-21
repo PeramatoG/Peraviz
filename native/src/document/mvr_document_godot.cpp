@@ -1,12 +1,33 @@
 #include "document/mvr_document_godot.h"
 #include <godot_cpp/core/class_db.hpp>
 namespace godot {
+namespace {
+// Publish bounded ordered canonical entries without exposing source XML buffers.
+Array patch_rows(const peraviz::document::PatchState &entries) {
+    Array rows;
+    for (const auto &entry : entries) {
+        Dictionary row;
+        row["break"] = entry.break_id;
+        row["universe"] = entry.universe;
+        row["address"] = entry.address;
+        row["explicit_break"] = entry.explicit_break;
+        row["text"] = String::utf8(entry.text.c_str());
+        row["dotted"] = entry.dotted;
+        rows.push_back(row);
+    }
+    return rows;
+}
+} // namespace
+
 // Expose bounded document operations; no XML or binary resource buffers cross into Godot.
 void PeravizMvrDocument::_bind_methods() {
     ClassDB::bind_method(D_METHOD("open", "path"), &PeravizMvrDocument::open);
     ClassDB::bind_method(D_METHOD("fixture", "uuid"), &PeravizMvrDocument::fixture);
     ClassDB::bind_method(D_METHOD("prepare", "ids", "axis", "value"), &PeravizMvrDocument::prepare);
     ClassDB::bind_method(D_METHOD("prepare_history", "redo"), &PeravizMvrDocument::prepare_history);
+    ClassDB::bind_method(D_METHOD("prepare_patch", "uuid", "break_id", "universe", "address", "operation"),
+                         &PeravizMvrDocument::prepare_patch);
+    ClassDB::bind_method(D_METHOD("pending_patch"), &PeravizMvrDocument::pending_patch);
     ClassDB::bind_method(D_METHOD("pending_values"), &PeravizMvrDocument::pending_values);
     ClassDB::bind_method(D_METHOD("commit"), &PeravizMvrDocument::commit);
     ClassDB::bind_method(D_METHOD("cancel"), &PeravizMvrDocument::cancel);
@@ -29,6 +50,9 @@ Dictionary PeravizMvrDocument::fixture(const String &uuid) const {
                                                         : document_.error().c_str());
     if (f) {
         result["uuid"] = String::utf8(f->uuid.c_str());
+        result["patch_editable"] = f->reason.empty() && f->patch_reason.empty();
+        result["patch_reason"] = String::utf8((f->reason.empty() ? f->patch_reason : f->reason).c_str());
+        result["addresses"] = patch_rows(f->current_patch);
         for (int axis = 0; axis < 2; ++axis) {
             const String prefix = axis ? "tilt" : "pan";
             result[prefix] = f->current[axis].value;
@@ -45,6 +69,14 @@ bool PeravizMvrDocument::prepare(const PackedStringArray &ids, int axis, bool va
         selection.emplace_back(ids[i].utf8().get_data());
     return document_.prepare(selection, axis, value);
 }
+// Stage a typed source-preserving patch command in the existing history.
+bool PeravizMvrDocument::prepare_patch(const String &uuid, int break_id, int universe, int address,
+                                       const String &operation) {
+    return document_.prepare_patch(uuid.utf8().get_data(), break_id, universe, address,
+                                   operation.utf8().get_data());
+}
+// Select the patch transaction boundary without interpreting commands in GDScript.
+bool PeravizMvrDocument::pending_patch() const { return document_.pending_patch(); }
 // Stage an existing history operation without losing its previous XML absence.
 bool PeravizMvrDocument::prepare_history(bool redo) { return document_.prepare_history(redo); }
 // Publish prospective canonical states for a synchronous native runtime transaction.
@@ -53,9 +85,14 @@ Array PeravizMvrDocument::pending_values() const {
     for (const auto &change : document_.pending()) {
         auto f = document_.fixture(change.uuid);
         auto values = f->current;
-        values[change.axis] = change.after;
+        if (change.kind == peraviz::document::Change::Kind::Inversion)
+            values[change.axis] = change.after;
         Dictionary row;
         row["fixture_uuid"] = String::utf8(f->uuid.c_str());
+        if (change.kind == peraviz::document::Change::Kind::Patch) {
+            row["addresses"] = patch_rows(change.patch_after);
+            row["patch_break"] = change.patch_break;
+        }
         for (int axis = 0; axis < 2; ++axis) {
             String p = axis ? "tilt" : "pan";
             row[p] = values[axis].value;

@@ -1,4 +1,5 @@
 #include "presentation/presentation_state_godot.h"
+#include "peraviz_loader.h"
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <chrono>
@@ -14,6 +15,7 @@ int64_t now_us() {
 }
 // Exposes setup-only physical/resource binding and a single renderer-oriented snapshot contract.
 void PeravizPresentationState::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("apply_document_patch", "runtime", "generation", "loader"), &PeravizPresentationState::apply_document_patch);
     ClassDB::bind_method(D_METHOD("set_fixture_inversions","runtime","generation","triples"),&PeravizPresentationState::set_fixture_inversions);
     ClassDB::bind_method(D_METHOD("install", "ids", "scales", "routes"), &PeravizPresentationState::install);
     ClassDB::bind_method(D_METHOD("replay_presentation_gains", "shafts", "surfaces", "surface_gain", "trace"), &PeravizPresentationState::replay_presentation_gains);

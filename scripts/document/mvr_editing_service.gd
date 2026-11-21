@@ -8,6 +8,8 @@ var _shell: Node
 var _export_dialog: FileDialog
 var _edit_menu: PopupMenu
 var _busy: bool = false
+var patch_error: String = ""
+var patch_warnings: Array = []
 var _discard_dialog: ConfirmationDialog
 var _pending_open: Callable
 var _pending_generation: int = -1
@@ -88,6 +90,30 @@ func apply(ids: PackedStringArray, axis: int, value: bool) -> bool:
 		return false
 	return _commit_pending()
 
+# Canonical rows come from the document; parser capabilities only annotate supported routing.
+func patch_fixture(id: String) -> Dictionary:
+	var result := fixture(id).duplicate(true)
+	var capabilities: Dictionary = _owner._loader.document_patch_info(id)
+	result["breaks"] = capabilities.get("breaks", [])
+	if not capabilities.get("editable", false):
+		result["patch_editable"] = false
+		result["patch_reason"] = capabilities.get("reason", "Selected GDTF mode is unavailable")
+	return result
+
+func apply_patch(id: String, break_id: int, universe: int, address: int, operation: String = "set") -> bool:
+	patch_error = ""
+	patch_warnings.clear()
+	if native == null or _busy or _owner._scene_loading: return false
+	var node: Node = _shell.selection.node_for(id)
+	if node == null or str(node.get_meta("peraviz_type", "")) != "fixture":
+		patch_error = "Select a canonical published fixture."
+		return false
+	if not native.prepare_patch(id, break_id, universe, address, operation):
+		patch_error = str(native.state().error)
+		_message(patch_error)
+		return false
+	return _commit_pending()
+
 func history(redo: bool) -> bool:
 	if native == null or _busy or _owner._scene_loading: return false
 	if not native.prepare_history(redo): return false
@@ -98,6 +124,7 @@ func _commit_pending() -> bool:
 	_busy = true
 	var values: Array = native.pending_values()
 	var runtime = _owner._dmx_controller._dmx_fixture_runtime
+	if native.pending_patch(): return _commit_patch(values, runtime)
 	var triples := PackedInt32Array()
 	if runtime != null:
 		for row in values:
@@ -117,6 +144,32 @@ func _commit_pending() -> bool:
 		runtime.apply_visual_frame(_owner._dmx_controller._dmx_receiver,_owner,_owner._fixture_light_apply_service,0.0)
 	_busy = false
 	changed.emit()
+	return committed
+
+# Install a validated same-topology native route candidate before publishing XML/history.
+func _commit_patch(values: Array, runtime) -> bool:
+	var row: Dictionary = values[0]
+	var candidate: Dictionary = _owner._loader.stage_document_patch(row.fixture_uuid, row.addresses, int(_owner._dmx_controller._dmx_universe_offset_input.value))
+	var adapter = _owner._fixture_light_apply_service._dense_adapter
+	var ok: bool = candidate.get("ok", false) and runtime != null and adapter != null
+	if ok: ok = adapter._native.apply_document_patch(runtime._native_visual_runtime, adapter._generation, _owner._loader)
+	if not ok:
+		native.cancel()
+		_owner._loader.cancel_document_patch()
+		patch_error = "MVR break %d: %s" % [int(row.patch_break), str(candidate.get("error", "Native runtime could not safely install the patch; no edit was committed."))]
+		_busy = false
+		_message(patch_error)
+		return false
+	var committed: bool = native.commit()
+	patch_error = ""
+	patch_warnings = candidate.get("warnings", [])
+	runtime._receiver_subscription_generation = -1
+	# Existing provider owns display caches; no fixture nodes or renderer targets are rebuilt.
+	_owner._fixture_row_provider.set_dmx_state(runtime._bindings, runtime._unbound)
+	runtime.apply_visual_frame(_owner._dmx_controller._dmx_receiver, _owner, _owner._fixture_light_apply_service, 0.0)
+	_busy = false
+	changed.emit()
+	if not patch_warnings.is_empty(): _message(str(patch_warnings[0]))
 	return committed
 
 func mark_saved() -> void:
