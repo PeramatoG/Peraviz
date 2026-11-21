@@ -135,6 +135,9 @@ namespace godot {
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("sync_document_inversions","values"), &PeravizLoader::sync_document_inversions);
+    ClassDB::bind_method(D_METHOD("document_patch_info", "uuid"), &PeravizLoader::document_patch_info);
+    ClassDB::bind_method(D_METHOD("stage_document_patch", "uuid", "entries", "universe_offset"), &PeravizLoader::stage_document_patch);
+    ClassDB::bind_method(D_METHOD("cancel_document_patch"), &PeravizLoader::cancel_document_patch);
     ClassDB::bind_method(D_METHOD("set_gdtf_model_detail", "detail"), &PeravizLoader::set_gdtf_model_detail);
     ClassDB::bind_method(D_METHOD("set_dmx_auto_span_policy", "policy"), &PeravizLoader::set_dmx_auto_span_policy);
     ClassDB::bind_method(D_METHOD("get_dmx_auto_span_policy"), &PeravizLoader::get_dmx_auto_span_policy);

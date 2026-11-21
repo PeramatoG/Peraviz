@@ -1,4 +1,5 @@
 #include "presentation/presentation_state_godot.h"
+#include "peraviz_loader.h"
 #include <algorithm>
 #include <chrono>
 
@@ -30,6 +31,14 @@ void PeravizPresentationState::retire_async(bool replay_domains) {
     }
     async_.reset(); async_runtime_.unref(); async_snapshot_bytes_=async_worker_bytes_=0;
     state_.invalidate_renderer(); projection_.invalidate();
+}
+// Reclaim workers and replace routing while retaining presentation resources and generation identity.
+bool PeravizPresentationState::apply_document_patch(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, PeravizLoader *loader) {
+    if (!loader || runtime.is_null() || uint64_t(generation)!=(async_?async_->binding_generation():state_.generation())) return false;
+    retire_async();
+    const bool accepted = loader->commit_document_patch(runtime);
+    if (accepted) resume_pending_ = true;
+    return accepted;
 }
 // Reclaim worker ownership at a document-command boundary without rebuilding renderer resources.
 bool PeravizPresentationState::set_fixture_inversions(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,const PackedInt32Array &triples) {

@@ -1,10 +1,10 @@
-# MVR document editing foundation · phase 1
+# MVR document editing foundation and canonical Patch editor
 
 ## Ownership and standards
 
 The scene-owned native `PeravizMvrDocument` owns an immutable disk snapshot of the
 imported archive, bounded original XML, lexical element ranges, canonical fixture
-identity, inversion values, staged commands and Undo/Redo. It is separate from
+identity, inversion values, ordered authored patch entries, staged commands and Undo/Redo. It is separate from
 `SceneModel`, Godot nodes and the live compiled runtime. The importer reads the
 same snapshot; another application's changes to the external source cannot
 silently change the editor's authority during a long import.
@@ -29,7 +29,9 @@ cache. File-open and application-close guards protect pending edits.
 
 TinyXML2 validates the XML and supplies decoded fixture identities and metadata.
 A lexical pass cross-checks element preorder and records exact source ranges.
-Commands replace only supported boolean text or insert missing canonical children.
+Commands replace supported boolean/address text, insert missing canonical children,
+or explicitly remove selected assignments. Existing Address attributes and optional
+break absence are retained.
 All unrelated XML bytes, child order, Matrix text, addresses/break order, unknown
 attributes/elements, namespace extensions, references and provider data survive.
 No runtime SceneModel-to-MVR serializer exists.
@@ -99,7 +101,7 @@ routing, packet mutation, GDTF rewrite or GDScript Pan/Tilt evaluator is added.
 The Inspector offers one OFF/ON toggle each for Invert Pan / Invert Tilt.
 Multiple-selection differences show **Mixed → ON**, explicitly enabling the
 complete selection on the next click; subsequent clicks toggle normally. An
-unsafe target disables the entire operation with a reason. Other fields remain read-only. Edit > Undo /
+unsafe target disables the entire operation with a reason. Patch has its own compact editor below; other fields remain read-only. Edit > Undo /
 Redo and Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z respect text-editor focus. `*` in the project
 title marks unsaved document changes. Canceling discard or failing a write keeps
 the current editing session.
@@ -174,30 +176,135 @@ bash tests/check_no_large_files.sh
 git diff --check
 ```
 
-Linux results: 64/64 headless GDScript regressions and 16/16 native CTests pass.
+Foundation validation (PR #139): 64/64 headless GDScript regressions and 16/16 native CTests passed.
 The full editing test also passes in real Compatibility/llvmpipe UI and with a
 forced native asynchronous presentation session. Logs/captures are under the
 untracked `work/edit`. Windows/macOS publication paths, Windows DPI, graphical
 Forward+ and the owner's large show were not validated here. No large-show
 latency or CPU/GPU improvement is claimed.
 
+## Canonical Patch editing (editor PR2)
+
+The [MVR 1.6 Addresses definition](https://gdtf-share.com/help/developers/mvr_1_6/file-format-definition/index.html#node-definition-addresses)
+permits ordered Address and Network siblings. An Address has a unique integer
+`break` (default 0), with either a positive absolute value or `Universe.Address`.
+Universes are 1-based and slots are 1–512. GDTF break n maps to MVR break n−1;
+a break identifier never means a universe offset. Noncontiguous breaks are retained.
+
+The document indexes each original entry's range, raw text, format and optional
+break presence. `Change::Kind::Patch` carries before/after ordered states in the
+same staged history as inversion. Set modifies only existing value text; insert
+appends a new explicit break to the existing container (or expands/creates one);
+remove deletes only the explicitly selected entry. Network, unknown siblings and
+attributes, other assignments, UUIDs, hierarchy, inversion and binary resources
+remain untouched. Undo restores exact old source spelling, whitespace and
+container/attribute absence. A semantic set no-op retains its original text.
+
+`mvr_document_patch.cpp` owns these native semantics; no GDScript XML writer,
+private PVZ patch JSON or occupancy authority is added. Editing is bounded to
+4,096 entries per fixture / 256 raw text bytes per entry. History counts retained
+patch entries toward its existing 200,000-change bound. Oversized/ambiguous fields
+remain preserved but unavailable for patch mutation. Legacy scalar patch fields
+are not silently promoted into canonical Addresses. Empty canonical Addresses
+are valid unpatched metadata and never fall back to legacy scalar addresses.
+
+### Inspector and validation
+
+Select one canonical fixture to edit its authored Universe/Address rows, labeled
+by MVR break with parser-derived footprint spans when known. Changes require
+**Apply**; typing, focus changes and Enter never submit or clamp a partial patch.
+**Add break…** explicitly requests insertion; removing an assignment requires a
+confirmation naming the fixture/break. Fields and commands retain text-focus
+shortcut ownership. Selection/document events synchronize rows and the dirty
+indicator without render-loop XML scans. Multiple selection reports shared/mixed
+authored states and remains read-only for patching, avoiding accidental co-patching;
+existing multi-selection Pan/Tilt toggles continue to work.
+
+The document checks identity, structure, unique breaks, 1–512 slots and a 1–32768
+universe editing bound. The loader validates the actual native Art-Net range
+(0–32767 after the configured offset), selected cached GDTF mode, required breaks,
+ordered byte routing and the currently chosen Auto Span policy. Occupancy is
+advisory: authored footprint overlaps warn and remain legal. Unknown GDTF
+footprints are reported as unknown rather than guessed. A crossing footprint is
+reported separately from its effective Auto Span continuation.
+
+### Exclusive routing transaction and supported boundary
+
+`PeravizLoader::stage_document_patch()` temporarily compiles the proposed authored
+metadata against cached selected GDTF types, restoring the live model before it
+returns. It validates the packed semantic topology with only physical byte routes
+and fixture start addresses normalized. No geometry import, source archive parse,
+GDTF rewrite or Godot resource installation occurs.
+
+The native presentation owner reclaims its async session before
+`commit_document_patch()` replaces numeric routing plans. Existing fixture,
+component, target and source identities and the presentation generation remain
+stable. Mechanical/property/color state, gobo selection/rotation, shutter
+authorities and the runtime clock survive. Held full frames from existing native
+contexts are submitted to the new plans once. The transport's compiled interests
+are refreshed at the next immediate poll, retiring stale subscriptions. Newly
+unreceived universes wait for input; no missing byte value is fabricated. Frames
+not retained by the existing subscribed transport are not promised as available.
+
+A successful runtime transaction precedes document/history publication and the
+provider refresh. Failures cancel the staged command without advancing history,
+changing XML or installing contradictory metadata. The camera, scene selection,
+geometry, lights and material identities are unchanged. Numeric plans are
+recompiled for the scene at this explicit command boundary, not on every packet;
+this is not a per-fixture compiler or a new runtime architecture.
+
+The conservative production boundary is **same installed control topology**.
+Existing required and optional break values can change; unused optional breaks
+can be explicitly inserted/removed. Missing required assignments, fully unpatched
+fixtures without an installed renderer plan, last-assignment/required-break
+removal, or an Auto Span change that adds/removes supported controls reject the
+operation with a clear reason. The native document itself preserves and tests
+valid unpatched/partially patched states and source-preserving insert/remove;
+the UI does not claim to create/retire renderer domains in this PR. Completing an
+unbound fixture requires correcting the source and reopening it. This restriction
+protects unrelated live/temporal state rather than silently performing a full
+renderer rebuild.
+
+Auto Span `off`, `auto_safe` and `auto_overlap` remain runtime policies in
+`dmx_settings.json`. The Inspector and exported MVR always show/store authored
+Address entries; inferred continuation universes are never inserted. Existing
+legacy compatibility remains separate from canonical document writing.
+
+### Persistence and regression coverage
+
+The canonical archive cache/writer is unchanged: Save PVZ embeds the current
+edited MVR as `scene.mvr`, and direct Export MVR copies exactly those bytes,
+including edits not yet saved to PVZ. Reopen reads embedded canonical patch and
+inversion together. No-op exports retain original bytes; unrelated XML and all
+binary resources remain preserved, with staged validation and source protection.
+
+Native tests cover implicit/explicit zero, absolute/dotted values, noncontiguous
+breaks, Network/extensions, unpatched containers, insert/remove, mixed inversion /
+patch history, exact Undo, unsafe rejection and full-width 8/16/24/32-bit held
+routing with independent overlapping consumers and serial/parallel evaluation.
+Godot tests exercise a moderate 32-fixture scene with real ArtDmx, no-packet
+held replay, stopped/restarted input, multi-break 16-bit coarse/fine routing,
+Inspector validation/mixed read-only state, geometry/material/camera/selection
+stability, failure rollback, PVZ and MVR reopen and byte equality. Independent
+Python ZIP/XML/SHA-256 checks retain Network, hierarchy, UUIDs and every binary
+resource. The PR2 suite passes 66/66 GDScript regressions and 17/17 native CTests, including
+the existing 10k-scene harness. Forced native async presentation is checked
+separately. The 32-fixture workflow also passes graphical Compatibility/llvmpipe.
+Windows and graphical Forward+ validation remain pending; no owner's-show timing is claimed.
+
 ## Exact next-phase handoff
 
-1. **Patch:** extend the staged typed command and source ranges for canonical
-   Addresses, keeping numbered-break identity/order. Validate all selected
-   footprints and conflicts before one native routing transaction. Replay held
-   mailbox input and preserve UUIDs, other renderer resources and the existing
-   Auto Span policy; never silently turn a runtime span into an authored patch.
-2. **GDTF Mode:** edit the per-fixture MVR GDTFSpec/GDTFMode reference, after checking
-   the embedded definition and selected mode. Keep GDTF definitions immutable.
-   Compile affected native fixture plans, preserve inversion/history, and replace
-   only geometry that the new mode actually requires. Stage failure leaves the
-   prior document/runtime binding intact.
-3. **Transform:** add a canonical Matrix command with verified MVR units/bases and
-   raw old/new source text. Recompose the affected native subtree, then publish
-   presentation transforms. A Godot-only transform setter or gizmo is not a
-   document command. Do not generalize the entire XML object graph in advance.
+1. **GDTF Mode:** extend typed commands to the per-instance canonical GDTFSpec /
+   GDTFMode reference and retain the source document as owner. Reuse the patch
+   stage/validate/commit boundary, but add explicit native renderer-domain
+   addition/retirement and per-target resource reuse before permitting topology
+   changes. Validate all required numbered breaks against the proposed mode;
+   preserve existing patch/inversion/history, held input and Auto Span policy.
+   Never replace GDTF definitions or silently create missing patch assignments.
+2. **Transform:** add a Matrix command with verified MVR units/bases and raw
+   before/after source text. Recompose the affected native subtree and publish
+   presentation transforms; a Godot-only setter is not an MVR document edit.
 
-These editors, GDTF archive mutation and interactive gizmos are not implemented
-in phase 1. The current source-preserving document, UUID index, command staging,
-history and canonical writer are the ownership boundaries to extend.
+Neither mode selection nor transform gizmos are implemented here. The native
+source ranges, typed history, canonical writer and explicit runtime transaction
+are the boundaries to extend; no second project patch model is needed.

@@ -5,6 +5,9 @@
 #include <filesystem>
 #include <map>
 #include <vector>
+namespace tinyxml2 {
+class XMLElement;
+}
 namespace peraviz::document {
 struct ElementSpan {
     size_t start = 0, content = 0, close = 0, end = 0;
@@ -12,16 +15,38 @@ struct ElementSpan {
     int parent = -1;
     bool empty = false;
 };
+struct PatchEntry {
+    int break_id = 0, universe = 0, address = 0, element = -1;
+    bool explicit_break = false, dotted = false;
+    std::string text;
+    // Compare canonical state including original source spelling and optional presence.
+    bool operator==(const PatchEntry &b) const {
+        return break_id == b.break_id && universe == b.universe && address == b.address &&
+               element == b.element && explicit_break == b.explicit_break && dotted == b.dotted &&
+               text == b.text;
+    }
+};
+using PatchState = std::vector<PatchEntry>;
+struct XmlEdit {
+    size_t start, length;
+    std::string text;
+};
 struct Fixture {
     std::string uuid, reason;
     size_t element = 0;
     std::array<int, 2> fields{{-1, -1}};
     std::array<Inversion, 2> original, current, saved;
+    int addresses_element = -1;
+    std::string patch_reason;
+    PatchState original_patch, current_patch, saved_patch;
 };
 struct Change {
     std::string uuid;
     int axis = 0;
     Inversion before, after;
+    enum class Kind { Inversion, Patch } kind = Kind::Inversion;
+    PatchState patch_before, patch_after;
+    int patch_break = -1;
 };
 class MvrDocument {
   public:
@@ -29,6 +54,10 @@ class MvrDocument {
     const Fixture *fixture(const std::string &uuid) const;
     bool prepare(const std::vector<std::string> &ids, int axis, bool value);
     bool prepare_history(bool redo);
+    bool prepare_patch(const std::string &uuid, int break_id, int universe, int address,
+                       const std::string &operation);
+    // Identify the staged command without inspecting XML from the UI.
+    bool pending_patch() const { return !pending_.empty() && pending_[0].kind == Change::Kind::Patch; }
     bool commit();
     void cancel();
     std::filesystem::path canonical_archive();
@@ -52,6 +81,9 @@ class MvrDocument {
 
   private:
     bool parse();
+    void index_patch(Fixture &fixture, const tinyxml2::XMLElement *node);
+    std::vector<XmlEdit> patch_edits(const Fixture &fixture, const PatchState &state) const;
+    bool validate_pending();
     int64_t size_delta(const Change &change) const;
     bool fail(std::string message);
     runtime_storage::RuntimeDirectoryLease lease_;

@@ -66,6 +66,22 @@ struct Probe {
     }
 };
 }
+// Retain active shutter identity, oscillator phase and timing across a held-input routing transaction.
+static bool test_shutter_repatch() {
+    Probe probe;
+    probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\" PhysicalFrom=\"2\" PhysicalTo=\"2\"/>",1);
+    std::array<uint8_t,512> frame{};frame[0]=frame[100]=128;frame[511]=255;
+    probe.core.submit_universe_frame(0,frame.data(),512);probe.core.consume_latest_visual_frame();
+    probe.core.set_runtime_now_seconds_for_testing(0.125);
+    const auto before=probe.core.held_domain_replay();
+    auto changed=probe.scene;
+    for(auto &program:changed.source_programs)for(auto &source:program.sources)if(source.address==0)source.address=100;
+    if(!probe.core.replace_routes(changed))return false;
+    probe.core.consume_latest_visual_frame();
+    const auto after=probe.core.held_domain_replay();
+    return verify(before.descriptors==after.descriptors && before.integers==after.integers && before.floats==after.floats,
+        "Active shutter phase, waveform and authority survive repatching without a packet");
+}
 // Exercises variable timing, native setup transport, and candidate-specific activation through real archive compilation.
 static bool test_dynamic_shutter_parameters() {
     Probe probe;
@@ -230,6 +246,7 @@ static bool test_shutter_cadence_and_label_sets() {
 }
 // Verifies standards defaults, supplied values, inclusive boundaries and ordered resolution through actual GDTF ZIP parsing.
 bool test_shutter_fidelity() {
+    if (!test_shutter_repatch()) return false;
     if (!test_dynamic_shutter_parameters() || !test_shutter_parent_physical() || !test_shutter_cadence_and_label_sets()) return false;
     Probe probe;
     probe.compile("<ChannelFunction Attribute=\"Shutter1Strobe\"/>");

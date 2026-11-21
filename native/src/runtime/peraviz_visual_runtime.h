@@ -59,6 +59,7 @@ public:
     std::vector<HeldUniverse> held_universes() const;
     void clear();
     void install_compiled_scene(const CompiledRuntimeScene &scene);
+    bool replace_routes(const CompiledRuntimeScene &scene);
     bool set_fixture_inversions(const std::vector<int32_t> &triples);
     void submit_universe_frame(int universe_id, const uint8_t *data, int length);
     SectionedVisualFrame consume_latest_visual_frame();

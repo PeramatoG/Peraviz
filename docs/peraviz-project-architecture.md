@@ -79,3 +79,15 @@ contents. Reopening a project imports its embedded edited MVR. `fixture_override
 remains distinct visual-only data and cannot impersonate MVR inversion flags.
 Only successful PVZ publication advances the document save point; export, camera,
 rendering and user-preference changes do not clear pending document edits.
+
+## Authored Patch commands
+
+The native document's typed patch states extend the existing inversion history.
+The loader stages parser-validated routing from those canonical entries using
+cached selected modes, then the exclusive presentation boundary installs numeric
+plans before document publication. Same-topology edits retain renderer resources,
+held DMX and temporal state; unsupported additions/retirements fail atomically.
+The SceneModel and provider remain projections, not parallel patch authorities.
+Auto Span stays a runtime policy in project DMX settings, never an MVR mutation.
+See [MVR document editing](mvr-document-editing.md) for source preservation,
+read-only mixed selections, supported insert/remove and next GDTF Mode boundaries.

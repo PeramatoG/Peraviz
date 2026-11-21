@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Added canonical MVR Patch editing for installed fixture plans: authored universe/address rows by break, explicit Apply, safe optional break insertion/removal, overlap warnings, mixed-selection read-only state and shared inversion/Patch Undo/Redo. Native cached-mode validation and exclusive same-topology rerouting preserve held DMX, renderer resources and temporal state. PVZ and MVR export retain one canonical archive writer. Unpatched/incomplete fixtures and proposals requiring renderer-domain changes are preserved but rejected for live patch mutation with a diagnostic; Auto Span remains a separate runtime policy.
+
 - Fixed button text clipping when hovered, pressed or disabled by keeping shared button content margins consistent across all states, including Art-Net and Inspector controls. Pan/Tilt inversion now uses one OFF/ON toggle per property, with an explicit Mixed → ON action for mixed selections.
 
 - Added canonical MVR document editing for per-fixture DMX Pan/Tilt inversion, with atomic multi-selection commands, Undo/Redo, dirty-state protection, explicit MVR export and edited-MVR PVZ persistence. Source-preserving XML splices and validated archive copying retain unrelated scene data/resources; no-op exports retain original bytes. Native full-width, consumer-local inversion preserves shared DMX sources, held input and qualified mechanical targets without a geometry reload. Save PVZ and Export MVR share one byte-identical canonical serialization per revision. Patch, GDTF Mode and Transform editors remain deferred.

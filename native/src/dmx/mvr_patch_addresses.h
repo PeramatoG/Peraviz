@@ -37,6 +37,6 @@ inline void read_mvr_patch_addresses(tinyxml2::XMLElement *fixture, SceneModel::
         patch.addresses.push_back(entry);
         if (entry.mvr_break==0) { patch.mvr_universe=entry.universe; patch.mvr_address=entry.address; }
     }
-    if (patch.addresses.empty()) fail();
+    // Empty canonical Addresses is an authored unpatched fixture, never legacy scalar fallback.
 }
 }
