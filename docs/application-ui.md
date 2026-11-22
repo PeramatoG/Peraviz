@@ -251,11 +251,11 @@ See validation evidence for the commands actually executed.
 
 ## Authored MVR Patch editor
 
-For one canonical fixture, the Inspector displays one labeled row per authored
-MVR break with 1-based Universe/Address and a reliable GDTF footprint span when
-available. Apply submits complete validated values; typing or Enter does not.
-Add break… explicitly inserts a unique assignment; removal requires confirmation
-and rejects required/unsafe removals. Multiple selection reports shared/mixed
+For one canonical fixture, **Patch** displays the footprint and 1-based
+Universe/Address fields, with extra rows only for existing additional assignments.
+Technical break identifiers and add/remove controls are hidden. Enter submits
+the edited field after validation; leaving it without Enter restores the saved
+value. Invalid or failed submissions also restore the saved value. Multiple selection reports shared/mixed
 patches as read-only while Pan/Tilt multi-selection remains editable.
 
 These rows show the document, independent of Auto Span and legacy runtime table

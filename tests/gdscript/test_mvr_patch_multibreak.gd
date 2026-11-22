@@ -35,7 +35,7 @@ func run() -> void:
 	runtime.apply_visual_frame(app._dmx_controller._dmx_receiver,app,app._fixture_light_apply_service,0)
 	var original := -270.0+540.0*16512.0/65535.0
 	var moved := 270.0-540.0*32832.0/65535.0
-	test.check(app._fixture_inspection_panel._patch_panel._rows.get_child_count()==4,"Inspector retains each authored break row in original order")
+	test.check(app._fixture_inspection_panel._patch_panel._rows.get_child_count()==3,"Inspector retains each authored break row in original order")
 	test.check(editor.apply(PackedStringArray([ID_A]),0,true),"Invert Pan in shared history")
 	test.check(editor.apply_patch(ID_A,0,1,21),"Change primary Dimmer break without touching other assignments")
 	test.check(editor.apply_patch(ID_A,1,3,101),"Change secondary Pan break with noncontiguous coarse/fine bytes")

@@ -3,6 +3,8 @@ extends "res://tests/gdscript/test_mvr_document_editing.gd"
 var packet_sequence: int = 0
 
 func run() -> void:
+	root.mode = Window.MODE_WINDOWED
+	root.size = Vector2i(1366, 768)
 	existed = FileAccess.file_exists(prefs_path)
 	saved = FileAccess.get_file_as_bytes(prefs_path) if existed else PackedByteArray()
 	var config := ConfigFile.new()
@@ -25,14 +27,44 @@ func run() -> void:
 	var editor: RefCounted = app.app_shell.document
 	app.app_shell.selection.select(PackedStringArray([ID_A]))
 	var panel = app._fixture_inspection_panel._patch_panel
-	test.check(panel != null and panel._rows.get_child_count() == 2, "Single fixture exposes one canonical row and explicit Add")
+	test.check(panel != null and panel._rows.get_child_count() == 1, "Single fixture exposes just its existing patch row")
 	var inputs: Array = panel._rows.get_child(0).find_children("*", "LineEdit", true, false)
 	test.check(inputs.size() == 2 and inputs[0].text == "1" and inputs[1].text == "1", "Inspector displays authored 1-based universe/address")
+	inputs[1].grab_focus()
+	inputs[1].text = "223"
+	inputs[0].grab_focus()
+	await process_frame
+	test.check(inputs[1].text == "1" and editor.fixture(ID_A).addresses[0].address == 1 and not editor.state().dirty, "Leaving an unconfirmed field restores its canonical value without a command")
+	inputs[1].grab_focus()
 	inputs[1].text = "513"
-	var apply: Button = panel._rows.get_child(0).find_children("*", "Button", true, false)[0]
-	apply.pressed.emit()
-	test.check(not editor.state().dirty and panel._message.text.contains("complete integers"), "Partial/invalid input cannot submit or clamp a command")
-	inputs[1].text = "1"
+	var enter := InputEventKey.new()
+	enter.keycode = KEY_ENTER
+	enter.pressed = true
+	root.push_input(enter, true)
+	test.check(not editor.state().dirty and inputs[1].text == "1" and panel._message.text.contains("whole number"), "Enter rejects invalid text and restores the saved address")
+	inputs[0].grab_focus()
+	inputs[0].text = "2"
+	root.push_input(enter, true)
+	test.check(editor.fixture(ID_A).addresses[0].universe == 2 and editor.state().dirty, "Enter alone commits a valid Universe through the document/runtime transaction")
+	test.check(editor.history(false) and not editor.state().dirty, "Undo of Enter submission restores the original patch")
+	inputs = panel._rows.get_child(0).find_children("*", "LineEdit", true, false)
+	inputs[1].grab_focus()
+	inputs[1].text = "101"
+	root.push_input(enter, true)
+	test.check(editor.fixture(ID_A).addresses[0].address == 101 and editor.fixture(ID_A).addresses[0].universe == 1, "Address Enter changes only the submitted field")
+	test.check(editor.history(false) and not editor.state().dirty, "Address Undo retains original XML semantics")
+	inputs = panel._rows.get_child(0).find_children("*", "LineEdit", true, false)
+	inputs[0].grab_focus()
+	inputs[0].text = "7"
+	inputs[0].release_focus()
+	test.check(inputs[0].text == "1" and editor.fixture(ID_A).addresses[0].universe == 1, "Unconfirmed Universe is discarded on focus loss")
+	inputs[1].grab_focus()
+	inputs[1].text = "223"
+	var escape := InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	root.push_input(escape, true)
+	test.check(inputs[1].text == "1" and not editor.state().dirty and app.app_shell.selection.ids == PackedStringArray([ID_A]), "Escape discards the draft without clearing fixture selection")
 	var scene_identity: int = app.proxies_root.get_instance_id()
 	var generation: int = app._dmx_controller._dmx_fixture_runtime._runtime_generation
 	var camera_transform: Transform3D = app.camera.global_transform
@@ -78,7 +110,7 @@ func run() -> void:
 	test.check(app.proxies_root.get_instance_id() == scene_identity and app._dmx_controller._dmx_fixture_runtime._runtime_generation == generation and source_materials() == resources and app.camera.global_transform == camera_transform, "Patch edits preserve geometry/materials, generation and camera")
 	test.check(app.app_shell.selection.ids == PackedStringArray([ID_A]), "Selection survives patch commands")
 	app.app_shell.selection.select(PackedStringArray([ID_A, ID_B]))
-	test.check(panel._rows.get_child_count() == 0 and panel._message.text.contains("read-only"), "Multi-fixture patch is read-only without collapsing distinct addresses")
+	test.check(panel._rows.get_child_count() == 0 and panel._message.text.contains("Select one fixture"), "Multi-fixture patch is read-only without collapsing distinct addresses")
 	app.app_shell.selection.select(PackedStringArray([ID_A]))
 	var exported := source + "-unsaved.mvr"
 	test.check(editor.export_mvr(exported), "Export canonical patch before PVZ save")

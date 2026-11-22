@@ -210,15 +210,17 @@ are valid unpatched metadata and never fall back to legacy scalar addresses.
 
 ### Inspector and validation
 
-Select one canonical fixture to edit its authored Universe/Address rows, labeled
-by MVR break with parser-derived footprint spans when known. Changes require
-**Apply**; typing, focus changes and Enter never submit or clamp a partial patch.
-**Add break…** explicitly requests insertion; removing an assignment requires a
-confirmation naming the fixture/break. Fields and commands retain text-focus
-shortcut ownership. Selection/document events synchronize rows and the dirty
-indicator without render-loop XML scans. Multiple selection reports shared/mixed
-authored states and remains read-only for patching, avoiding accidental co-patching;
-existing multi-selection Pan/Tilt toggles continue to work.
+Select one canonical fixture to edit its existing Universe/Address rows under
+**Patch**, with a footprint span when known. Technical break identities stay
+internal; multiple assignments appear as additional rows. Each field commits
+only on **Enter**, through the same validated native document/runtime command.
+Leaving a field without Enter restores its saved value; invalid or failed
+submissions also restore it and show an error. Other fields' unconfirmed drafts
+never enter the command. Add/remove assignment controls are not exposed in the
+ordinary Inspector; the native typed command capabilities remain available for
+future explicit technical workflows. Multiple selection stays read-only for
+patching, while Pan/Tilt multi-selection remains editable. Text fields retain
+their normal focus/shortcut ownership.
 
 The document checks identity, structure, unique breaks, 1–512 slots and a 1–32768
 universe editing bound. The loader validates the actual native Art-Net range
