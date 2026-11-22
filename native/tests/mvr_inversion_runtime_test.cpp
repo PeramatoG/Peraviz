@@ -116,10 +116,113 @@ CompiledRuntimeScene scene(int count, bool descending) {
     result.color_targets.push_back(color);
     return result;
 }
+// Repatch ordered full-width sources without changing overlapping consumers or presentation identity.
+bool patch_routes() {
+    for (int count = 1; count <= 4; ++count)
+        for (bool parallel : {false, true}) {
+            auto compiled = scene(count, false);
+            compiled.properties.clear();
+            compiled.color_targets.clear();
+            compiled.source_programs.resize(1);
+            auto second = compiled.source_programs[0];
+            second.program_id = 2;
+            compiled.source_programs.push_back(second);
+            for (int fixture = 1; fixture <= 2; ++fixture) {
+                CompiledComponentProperty p;
+                p.property_id = fixture;
+                p.fixture_id = fixture;
+                p.component_id = fixture * 100 + 1;
+                p.semantic = CompiledSemantic::Pan;
+                p.contributors.push_back({fixture, 1});
+                compiled.properties.push_back(p);
+            }
+            PeravizVisualRuntimeCore core;
+            core.install_compiled_scene(compiled);
+            Executor executor;
+            executor.parallel = parallel;
+            core.set_native_executor(&executor);
+            const uint32_t maximum = uint32_t((uint64_t(1) << (count * 8)) - 1), old_raw = maximum / 4,
+                           new_raw = maximum - maximum / 4;
+            auto frames = input(count, old_raw);
+            for (int i = 0; i < count; ++i)
+                frames[i % 2][110 + i * 3] = uint8_t(new_raw >> (8 * (count - 1 - i)));
+            send(core, frames);
+            const auto generation = core.schema().schema_generation;
+            auto changed = compiled;
+            for (auto &source : changed.source_programs[0].sources)
+                source.address += 100;
+            if (!check(core.replace_routes(changed), "Full-width same-topology repatch commits"))
+                return false;
+            core.set_native_executor(&executor);
+            auto values = axes(core.consume_latest_visual_frame());
+            const float expected = float(270.0 - 540.0 * double(new_raw) / maximum);
+            if (!check(values.count(101) && std::abs(values[101] - expected) < 0.002 &&
+                           core.schema().schema_generation == generation,
+                       "Repatch replays held coarse/fine bytes with inversion and stable generation"))
+                return false;
+            frames = input(count, maximum);
+            for (int i = 0; i < count; ++i)
+                frames[i % 2][110 + i * 3] = uint8_t(new_raw >> (8 * (count - 1 - i)));
+            values = axes(send(core, frames));
+            if (!check(!values.count(101) && values.count(201) && std::abs(values[201] - 270) < 0.002,
+                       "Only unchanged overlapping fixture consumes old-address changes"))
+                return false;
+            auto invalid = changed;
+            invalid.source_programs.pop_back();
+            if (!check(!core.replace_routes(invalid), "Topology-changing repatch rejects atomically"))
+                return false;
+        }
+    return true;
+}
+// Keep wheel state and its borrowed ordered-layer cache coherent across routing-plan replacement.
+bool patch_wheel() {
+    auto compiled = scene(1, false);
+    CompiledWheelPalette palette;
+    palette.fixture_id = 1;
+    palette.wheel_renderer_id = 901;
+    CompiledWheelPaletteSlot open;
+    open.slot_index = 1;
+    auto red = open;
+    red.slot_index = 2;
+    red.identity = false;
+    red.linear_green = red.linear_blue = 0;
+    red.srgb_green = red.srgb_blue = 0;
+    palette.slots = {open, red};
+    compiled.wheel_palettes.push_back(palette);
+    CompiledWheelTargetBinding binding;
+    binding.binding_id = 902;
+    binding.fixture_id = 1;
+    binding.beam_render_target_id = 501;
+    binding.wheel_renderer_id = 901;
+    binding.source_program_id = 1;
+    binding.channel_sets = {{0, 127, 1}, {128, 255, 2}};
+    compiled.wheel_bindings.push_back(binding);
+    PeravizVisualRuntimeCore core;
+    core.install_compiled_scene(compiled);
+    auto frames = input(1, 200);
+    frames[0][110] = 200;
+    send(core, frames);
+    const auto before = core.held_domain_replay();
+    compiled.source_programs[0].sources[0].address = 110;
+    if (!core.replace_routes(compiled))
+        return false;
+    core.consume_latest_visual_frame();
+    const auto after = core.held_domain_replay();
+    if (!check(before.descriptors == after.descriptors && before.integers == after.integers &&
+                   before.floats == after.floats,
+               "Wheel selection and ordered layer cache survive held routing replacement"))
+        return false;
+    frames[0][110] = 0;
+    send(core, frames);
+    const auto changed = core.held_domain_replay();
+    return check(changed.integers != after.integers, "Repatched wheel remains responsive to its new source");
+}
 } // namespace
 // Verify every supported bit depth, byte routing, held replay, target identity and serial/parallel cache
 // ownership.
 bool test_mvr_inversion_runtime() {
+    if (!patch_routes() || !patch_wheel())
+        return false;
     auto legacy = scene(1, false);
     legacy.contract_version = 11;
     const auto old_payload = encode_compiled_runtime_scene(legacy);

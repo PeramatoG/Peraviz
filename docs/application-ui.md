@@ -194,7 +194,7 @@ The Inspector exposes **Invert Pan** and **Invert Tilt** for validated canonical
 source fixtures. A single OFF/ON toggle per property applies to the whole
 selection; mixed values show an explicit **Mixed → ON** action. Missing/duplicated identities, malformed inversion
 metadata and unsafe document structures disable editing with a reason. Other
-Inspector fields, Move/Rotate, Patch, GDTF Mode and Transform remain read-only.
+Inspector fields, Move/Rotate, GDTF Mode and Transform remain read-only.
 
 `AppShell.selection.ids` supplies the existing UUID selection. The scene-owned
 native document retains original XML ranges and archive resources; Godot only
@@ -248,3 +248,18 @@ and 2560×1440, with Windows DPI 100%, 125%, 150% and both monitors if available
 Linux headless assertions do not establish Windows DPI, window-manager behavior,
 real network discovery/hardware reception, GPU equivalence or large-MVR timings.
 See validation evidence for the commands actually executed.
+
+## Authored MVR Patch editor
+
+For one canonical fixture, **Patch** displays the footprint and 1-based
+Universe/Address fields, with extra rows only for existing additional assignments.
+Technical break identifiers and add/remove controls are hidden. Enter submits
+the edited field after validation; leaving it without Enter restores the saved
+value. Invalid or failed submissions also restore the saved value. Multiple selection reports shared/mixed
+patches as read-only while Pan/Tilt multi-selection remains editable.
+
+These rows show the document, independent of Auto Span and legacy runtime table
+projections. Warnings distinguish intentional overlaps and inferred continuations
+from invalid/unsupported patches. The native transaction preserves installed
+control topology; unbound/incomplete fixtures and topology-changing proposals
+are unavailable/rejected with a reason. See [the editing contract](mvr-document-editing.md#canonical-patch-editing-editor-pr2).

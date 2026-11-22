@@ -87,3 +87,14 @@ Readers should tolerate missing optional JSON files, including older archives wi
 DMX metadata may include `auto_span_policy`: `off`, `auto_safe` (default when absent),
 or `auto_overlap`. Invalid identifiers recover to `auto_safe` with a diagnostic.
 Only the preference is saved; derived occupancy/routing and held DMX are runtime data.
+
+### Canonical DMX Patch edits
+
+Edited ordered Address entries, their MVR break identities and Pan/Tilt inversion
+are stored together in the canonical `scene.mvr`. There is no JSON patch override.
+Save PVZ and direct Export MVR use the same current canonical serialization, so
+the embedded and exported MVR bytes match without intervening edits. Reopening
+PVZ imports that embedded edited document. DMX Auto Span settings retain their
+existing JSON policy ownership; inferred runtime continuations are not authored
+Address entries. Existing optional project metadata and visual-only overrides
+remain separate and preserved.

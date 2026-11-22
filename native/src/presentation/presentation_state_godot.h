@@ -13,6 +13,7 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 
 namespace godot {
+class PeravizLoader;
 class PeravizPresentationState : public RefCounted {
     GDCLASS(PeravizPresentationState, RefCounted)
 protected:
@@ -51,6 +52,7 @@ public:
     PackedInt32Array shutter_authority_ids(int32_t index=1) const;
     void clear();
     void invalidate_renderer();
+    bool apply_document_patch(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, PeravizLoader *loader);
     bool set_fixture_inversions(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,const PackedInt32Array &triples);
     Dictionary compose(int64_t generation, const PackedInt32Array &descriptors, const PackedInt32Array &integers,
             const PackedFloat32Array &values, bool trace);

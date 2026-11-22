@@ -14,6 +14,8 @@
 
 namespace godot {
 
+class PeravizVisualRuntime;
+
 class PeravizLoader : public Object {
     GDCLASS(PeravizLoader, Object)
 
@@ -34,6 +36,10 @@ public:
     Dictionary get_load_metrics() const;
     Array get_fixtures_patch() const;
     void sync_document_inversions(const Array &values);
+    Dictionary document_patch_info(const String &uuid);
+    Dictionary stage_document_patch(const String &uuid, const Array &entries, int universe_offset);
+    bool commit_document_patch(const Ref<PeravizVisualRuntime> &runtime);
+    void cancel_document_patch();
     Dictionary build_fixture_dmx_bindings(int universe_offset = -1);
     Dictionary compile_visual_runtime_scene(int universe_offset = -1) const;
     Dictionary build_fixture_dimmer_bindings(int universe_offset = -1);
@@ -50,6 +56,8 @@ private:
     peraviz::SceneSetupProgress load_progress_;
     std::future<peraviz::SceneSetupPreparation> preparation_;
     std::optional<peraviz::SceneSetupPreparation> prepared_;
+    struct StagedPatch { std::string uuid; peraviz::SceneModel::FixturePatch patch; peraviz::runtime::CompiledRuntimeScene compiled; int offset; peraviz::gdtf_runtime::AutoSpanPolicy policy; };
+    std::optional<StagedPatch> staged_patch_;
     peraviz::SceneModel last_scene_model_;
     mutable Dictionary load_metrics_;
 };

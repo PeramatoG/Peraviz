@@ -265,7 +265,18 @@ bool test_native_continuous_gobo_rotation_section() {
     if (reversed.descriptors.empty() || std::abs(reversed.floats[GoboRotationAuthoritativePhaseDegrees] - 180.0f) > 0.01f ||
         std::abs(reversed.floats[GoboRotationAngularVelocityDegreesPerSecond] + 90.0f) > 0.01f) return false;
     runtime.submit_universe_frame(10, dmx.data(), 512);
-    return runtime.consume_latest_visual_frame().descriptors.empty();
+    if (!runtime.consume_latest_visual_frame().descriptors.empty()) return false;
+    // A routing-only transaction retains the running oscillator and its clock, including held input.
+    scene.source_programs[0].sources[0].address = 100;
+    if (!runtime.replace_routes(scene)) return false;
+    runtime.set_runtime_now_seconds_for_testing(13.0);
+    runtime.consume_latest_visual_frame();
+    runtime.set_runtime_now_seconds_for_testing(14.0);
+    dmx[100] = 255;
+    runtime.submit_universe_frame(10, dmx.data(), 512);
+    const auto repatched = runtime.consume_latest_visual_frame();
+    return !repatched.descriptors.empty() && std::abs(repatched.floats[GoboRotationAuthoritativePhaseDegrees]) < 0.01f &&
+        std::abs(repatched.floats[GoboRotationAngularVelocityDegreesPerSecond] - 90.0f) < 0.01f;
 }
 
 // Verifies simultaneous Pos and PosRotate contributions are independent of hashed binding-ID ordering.
