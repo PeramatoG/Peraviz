@@ -1,6 +1,9 @@
 extends Camera3D
 
 signal fit_scene_requested
+signal selection_clicked(position: Vector2, additive: bool)
+
+const CLICK_DRAG_THRESHOLD: float = 5.0
 
 @export var orbit_sensitivity: float = 0.01
 @export var pan_sensitivity: float = 0.01
@@ -44,6 +47,8 @@ var selection_enabled: bool = true
 var navigation_area: Control
 var scene_view_rect := Rect2()
 
+var _pending_left_click: bool = false
+var _left_press_position := Vector2.ZERO
 var _left_down: bool = false
 var _right_down: bool = false
 var _middle_down: bool = false
@@ -89,10 +94,22 @@ func _ready() -> void:
 	_set_mouse_mode(false)
 
 func _input(event: InputEvent) -> void:
-	# A captured navigation drag must end even when release falls over a dock.
-	if event is InputEventMouseButton and not event.pressed and _is_dragging():
-		if event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
-			_handle_mouse_button(event)
+	# Track the gesture before GUI dispatch so motion can cross into a dock.
+	if event is InputEventMouseMotion and _pending_left_click:
+		if (event.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			_pending_left_click = false
+		elif event.position.distance_to(_left_press_position) > CLICK_DRAG_THRESHOLD:
+			_pending_left_click = false
+			_left_down = true
+			_set_mouse_mode(true)
+			_handle_mouse_motion(event)
+	elif event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			_pending_left_click = false
+		# A captured navigation drag must end even when release falls over a dock.
+		if not event.pressed and _is_dragging():
+			if event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+				_handle_mouse_button(event)
 
 func set_selection_enabled(enabled: bool) -> void:
 	selection_enabled = enabled
@@ -100,6 +117,7 @@ func set_selection_enabled(enabled: bool) -> void:
 
 func _end_navigation() -> void:
 	var was_dragging := _is_dragging()
+	_pending_left_click = false
 	_left_down = false
 	_right_down = false
 	_middle_down = false
@@ -146,9 +164,19 @@ func _initialize_from_transform() -> void:
 	current_pitch = target_pitch
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	# Selection owns left click only while its explicit toolbar mode is enabled.
 	if event.button_index == MOUSE_BUTTON_LEFT:
-		if selection_enabled and not _left_down: return
+		if event.pressed and selection_enabled and navigation_area != null and not _is_dragging():
+			_pending_left_click = true
+			_left_press_position = event.position
+			get_viewport().set_input_as_handled()
+			return
+		if not event.pressed and not _left_down:
+			if _pending_left_click:
+				_pending_left_click = false
+				if navigation_area != null and navigation_area.get_global_rect().has_point(event.position) and event.position.distance_to(_left_press_position) <= CLICK_DRAG_THRESHOLD:
+					selection_clicked.emit(event.position, event.ctrl_pressed)
+				get_viewport().set_input_as_handled()
+			return
 		_left_down = event.pressed
 		_update_drag_mode(event.shift_pressed)
 		_set_mouse_mode(_is_dragging())
@@ -156,6 +184,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		return
 
 	if event.button_index == MOUSE_BUTTON_RIGHT:
+		_pending_left_click = false
 		_right_down = event.pressed
 		_update_drag_mode(event.shift_pressed)
 		_set_mouse_mode(_is_dragging())
@@ -167,6 +196,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			fit_scene_requested.emit()
 			get_viewport().set_input_as_handled()
 			return
+		_pending_left_click = false
 		_middle_down = event.pressed
 		_update_drag_mode(event.shift_pressed)
 		_set_mouse_mode(_is_dragging())

@@ -33,8 +33,8 @@ View offers 100%, 125% and 150% UI scale, stored in UserPreferences.
 | Select (mode enabled) | Left click; Ctrl-click adds/removes |
 | Frame selection, or fit scene if empty | F |
 | Fit entire scene | Shift+F; double middle-click; default cube Home |
-| Orbit | Left drag with Select off; right drag; Shift+middle drag; drag the navigation cube; arrow keys |
-| Pan | Shift+left drag with Select off; cube pan icon; middle drag, Shift+right drag; Shift+arrows |
+| Orbit | Left drag; right drag; Shift+middle drag; drag the navigation cube; arrow keys |
+| Pan | Shift+left drag; cube pan icon; middle drag, Shift+right drag; Shift+arrows |
 | Zoom | Wheel; Alt+arrows |
 | Front, side, top view | Keypad 1, 3, 7; navigation cube faces |
 | Reset orbit / restore Home | Keypad 5 resets orbit; cube Home restores its saved/default view |

@@ -95,10 +95,8 @@ orientation/zoom, cessation after release, ancestor hiding and focus loss.
 Architecture, file-size and whitespace checks pass; no native runtime code is
 changed. Graphical checks use Compatibility/llvmpipe, not Windows or Forward+.
 
-Select mode in the viewport toolbar can be disabled to navigate with left drag
-(orbit) or Shift+left drag (pan), without using the cube. The shell regression
-also dispatches real Select-toggle clicks, viewport clicks, mouse drags and arrow
-keys; it checks selection isolation, restoration, release over docks, mode-change
-cancellation and focus-loss cancellation. The navigation test checks neutral and
-amber icon theme states. The same three headless commands above pass for this
-follow-up; the application-shell test also passes in graphical Compatibility.
+Left drag orbits the viewport and Shift+left drag pans it in either Select
+mode. With Select enabled, a click within the five-pixel movement threshold
+picks scene geometry. The shell regression dispatches toolbar clicks, viewport
+clicks, mouse drags and arrow keys. It covers both Select modes, release over
+docks, mode changes and focus loss.
