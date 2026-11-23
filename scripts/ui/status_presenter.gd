@@ -26,13 +26,18 @@ var _has_dmx_state: bool = false
 
 func configure(owner: Node,
 		status_label: Label,
+		toast_label: Label,
 		topbar_row: HBoxContainer,
 		load_button: Button,
 		show_advanced_controls_toggle: CheckButton) -> void:
 	_status_label = status_label
+	_toast_label = toast_label
 	_topbar_row = topbar_row
 	_ensure_badges(load_button, show_advanced_controls_toggle)
-	_ensure_toast(owner)
+	_toast_timer = Timer.new()
+	_toast_timer.one_shot = true
+	_toast_timer.timeout.connect(_on_toast_timeout)
+	owner.add_child(_toast_timer)
 	set_scene_state_idle()
 	set_dmx_badge(false, false)
 	set_mvr_xchange_badge(false, 0)
@@ -110,6 +115,7 @@ func show_toast(message: String, is_error: bool = false) -> void:
 		return
 	_toast_label.modulate = Palette.ERROR if is_error else Palette.AMBER
 	_toast_label.text = message
+	_toast_label.tooltip_text = message
 	_toast_label.visible = true
 	if _toast_timer != null:
 		_toast_timer.start(TOAST_DURATION_SEC)
@@ -141,14 +147,7 @@ func _ensure_badges(load_button: Button, show_advanced_controls_toggle: CheckBut
 	var top_spacer: Control = _topbar_row.get_node_or_null("TopSpacer") as Control
 	if top_spacer != null:
 		_topbar_row.move_child(top_spacer, _topbar_row.get_child_count() - 1)
-	if _status_label != null:
-		_topbar_row.move_child(_status_label, _topbar_row.get_child_count() - 1)
-
-	if _status_label != null:
-		_topbar_row.add_child(_badge_row)
-		_topbar_row.move_child(_badge_row, _status_label.get_index())
-	else:
-		_topbar_row.add_child(_badge_row)
+	_topbar_row.add_child(_badge_row)
 
 	_create_badge("DMX")
 
@@ -181,36 +180,6 @@ func _set_badge(name: String, value: String) -> void:
 	_badge_values[name] = value
 	var badge: Label = _badge_labels[name]
 	badge.text = "%s: %s" % [name, value]
-
-func _ensure_toast(owner: Node) -> void:
-	if owner == null:
-		return
-	var root_control: Control = owner.get_node_or_null("UIRoot") as Control
-	if root_control == null:
-		return
-	_toast_label = Label.new()
-	_toast_label.name = "ToastLabel"
-	_toast_label.visible = false
-	_toast_label.z_index = 99
-	_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_toast_label.anchor_left = 1.0
-	_toast_label.anchor_top = 0.0
-	_toast_label.anchor_right = 1.0
-	_toast_label.anchor_bottom = 0.0
-	_toast_label.offset_left = -360.0
-	_toast_label.offset_right = -16.0
-	_toast_label.offset_top = 44.0
-	_toast_label.offset_bottom = 74.0
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_toast_label.modulate = Palette.AMBER
-	_toast_label.add_theme_font_size_override("font_size", 12)
-	root_control.add_child(_toast_label)
-
-	_toast_timer = Timer.new()
-	_toast_timer.one_shot = true
-	_toast_timer.timeout.connect(_on_toast_timeout)
-	owner.add_child(_toast_timer)
 
 func _on_toast_timeout() -> void:
 	if _toast_label != null:

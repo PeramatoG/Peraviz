@@ -2,7 +2,7 @@
 extends Node3D
 
 @onready var proxies_root: Node3D = $Proxies
-@onready var status_label: Label = $UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow/StatusLabel
+@onready var status_label: Label = $UIRoot/RootVBox/StatusBar/StatusRow/StatusLabel
 @onready var picker: FileDialog = $UIRoot/FileDialog
 @onready var camera: Camera3D = $Camera3D
 @onready var world_environment: WorldEnvironment = $WorldEnvironment
@@ -356,7 +356,10 @@ func _ready() -> void:
 		Callable(self, "_on_dmx_start_failed")
 	)
 	_status_presenter = StatusPresenterScript.new()
-	_status_presenter.configure(self, status_label, topbar_row, load_button, show_advanced_controls_toggle)
+	_status_presenter.configure(
+		self, status_label, $UIRoot/RootVBox/StatusBar/StatusRow/Notifications/ToastLabel,
+		topbar_row, load_button, show_advanced_controls_toggle
+	)
 	picker.access = FileDialog.ACCESS_FILESYSTEM
 	picker.filters = PackedStringArray(["*.mvr, *.pvz ; MVR or Peraviz Project", "*.mvr ; MVR", "*.pvz ; Peraviz Project"])
 	_debug_coords_enabled = bool(ProjectSettings.get_setting("peraviz_debug_coords", false))
@@ -365,7 +368,7 @@ func _ready() -> void:
 	_fixture_debug_controller.set_manual_fixture_test_enabled(manual_fixture_test_enabled)
 	_load_user_preferences()
 	preload("res://scripts/ui/geometry_quality_controls.gd").install(visual_settings_window._tabs,_user_preferences,_asset_cache.derived_lods,get_viewport())
-	preload("res://scripts/ui/fps_overlay.gd").install(topbar_row, $UIRoot/RootVBox/ContentRow/MainViewportArea, _user_preferences)
+	preload("res://scripts/ui/fps_overlay.gd").install(topbar_row, $UIRoot/RootVBox/StatusBar/StatusRow/Diagnostics, _user_preferences)
 	_refresh_ui_module_visibility()
 	_asset_cache.configure_debug_logging(_debug_asset_cache_enabled, 100)
 	_ensure_debug_gizmo_root()

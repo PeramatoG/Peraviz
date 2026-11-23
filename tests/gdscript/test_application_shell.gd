@@ -62,6 +62,12 @@ func _run() -> void:
 	shell.toggle_tools()
 	test.check(not shell._left.visible and not shell._right.visible and shell._toolbar.visible, "Restore respects individually hidden panels")
 	shell.reset_layout()
+	var presenter: StatusPresenter = app._status_presenter
+	var toast := presenter._toast_label
+	var long_warning := "Long patch warning. ".repeat(100)
+	presenter.show_toast(long_warning)
+	presenter._toast_timer.stop()
+	test.check(toast.modulate == preload("res://scripts/ui/ui_palette.gd").AMBER and toast.tooltip_text == long_warning, "Warnings stay amber and overflow retains the full message")
 	for resolution in [Vector2i(1366, 768), Vector2i(1920, 1080), Vector2i(2560, 1440)]:
 		for scale in [1.0, 1.25, 1.5]:
 			root.size = resolution
@@ -70,6 +76,24 @@ func _run() -> void:
 			await process_frame
 			test.check(shell._area.size.x >= 280, "Viewport retains practical minimum across desktop sizes and UI scales")
 			test.check(shell._row.get_global_rect().end.x <= root.get_visible_rect().end.x + 1, "Essential toolbar fits at all tested desktop sizes and UI scales")
+			var footer_rect := shell._status_bar.get_global_rect()
+			var toast_rect := toast.get_global_rect()
+			test.check(
+				footer_rect.encloses(toast_rect) and toast.horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER
+					and absf(toast_rect.get_center().x - footer_rect.get_center().x) <= 1.0,
+				"Notifications stay centered within the footer across desktop sizes and UI scales"
+			)
+			test.check(
+				not toast_rect.intersects(app.status_label.get_global_rect()) and not toast_rect.intersects(shell._fps.get_global_rect()),
+				"A long notification keeps clear of scene status and FPS"
+			)
+	shell._fps.hide()
+	await process_frame
+	await process_frame
+	test.check(absf(toast.get_global_rect().get_center().x - shell._status_bar.get_global_rect().get_center().x) <= 1.0, "Hiding FPS preserves the notification center")
+	shell._fps.show()
+	presenter._toast_timer.timeout.emit()
+	test.check(not toast.visible, "The notification hides on timeout")
 	root.content_scale_factor = 1.0
 	root.size = Vector2i(1366, 768)
 	await process_frame

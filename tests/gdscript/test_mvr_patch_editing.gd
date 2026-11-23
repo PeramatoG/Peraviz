@@ -101,6 +101,8 @@ func run() -> void:
 	test.check(editor.history(true) and editor.history(true), "Redo inversion and patch in one shared history")
 	await poll()
 	test.check(editor.apply_patch(ID_A,0,1,1) and not editor.patch_warnings.is_empty(), "Intentional overlaps remain valid and report a warning")
+	var overlap_warning := "Overlaps another authored fixture footprint."
+	test.check(editor.patch_warnings.has(overlap_warning) and app._status_presenter._toast_label.text == overlap_warning, "A single-break overlap shows concise text in the Inspector warning data and footer notification")
 	test.check(editor.history(false), "Undo overlap returns the edited patch without relocating neighbors")
 	test.check(editor.apply_patch(ID_A,7,3,201,"insert"), "Explicit unused noncontiguous break insertion is safe")
 	test.check(editor.apply_patch(ID_A,7,0,0,"remove"), "Explicit removal retains required runtime routing")

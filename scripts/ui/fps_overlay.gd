@@ -3,7 +3,10 @@ extends Label
 # One small diagnostic label, sampled by a timer instead of a per-frame callback.
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	text = "FPS 0"
+	clip_text = true
 	add_theme_font_size_override("font_size", 12)
 	add_theme_color_override("font_color", preload("res://scripts/ui/ui_palette.gd").AMBER)
 	var timer := Timer.new()
@@ -17,11 +20,10 @@ func _sample() -> void:
 		text = "FPS %d" % Engine.get_frames_per_second()
 
 # View preference belongs to the UI, independently of project and trace settings.
-static func install(topbar: Control, viewport_area: Control, preferences: UserPreferences) -> Label:
+static func install(topbar: Control, footer_host: Control, preferences: UserPreferences) -> Label:
 	var overlay = load("res://scripts/ui/fps_overlay.gd").new()
 	overlay.name = "FpsOverlay"
-	viewport_area.add_child(overlay)
-	overlay.position = Vector2(12.0, 8.0)
+	footer_host.add_child(overlay)
 	overlay.visible = preferences.show_fps
 	var view_menu := MenuButton.new()
 	view_menu.name = "ViewMenu"
