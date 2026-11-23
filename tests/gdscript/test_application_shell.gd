@@ -167,32 +167,35 @@ func _run() -> void:
 	test.check(shell.selection.ids == PackedStringArray(["fixture-uuid"]), "Viewport mouse click selects fixture through normal unhandled input")
 	test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Selection clicks never capture mouse for orbit")
 	var select_button: Button = shell._toolbar.get_node("Select")
-	_click(select_button.get_global_rect().get_center())
-	test.check(not select_button.button_pressed and not app.camera.selection_enabled, "Select toggles off through real GUI input")
 	var selected_before: PackedStringArray = shell.selection.ids.duplicate()
-	for shift_pan in [false,true]:
-		var yaw_before: float = app.camera.target_yaw
-		var position_before: Vector3 = app.camera.target_position
-		var navigation_press := InputEventMouseButton.new()
-		navigation_press.button_index = MOUSE_BUTTON_LEFT
-		navigation_press.pressed = true
-		navigation_press.position = clicked_pixel
-		navigation_press.shift_pressed = shift_pan
-		root.push_input(navigation_press,true)
-		var navigation_motion := InputEventMouseMotion.new()
-		navigation_motion.position = clicked_pixel+Vector2(24,10)
-		navigation_motion.relative = Vector2(24,10)
-		navigation_motion.shift_pressed = shift_pan
-		root.push_input(navigation_motion,true)
-		if shift_pan:
-			test.check(app.camera.target_position != position_before and app.camera.target_yaw == yaw_before, "Select off permits direct Shift+left pan without orbit")
-		else:
-			test.check(app.camera.target_yaw != yaw_before, "Select off permits direct left-drag orbit")
-		navigation_press.pressed = false
-		navigation_press.position = Vector2(20,120)
-		root.push_input(navigation_press,true)
-		test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Left navigation release over a dock frees the mouse")
-		test.check(shell.selection.ids == selected_before and not shell._left_pressed, "Navigation never changes or starts a scene selection")
+	for select_enabled in [true, false]:
+		if not select_enabled:
+			_click(select_button.get_global_rect().get_center())
+			test.check(not select_button.button_pressed and not app.camera.selection_enabled, "Select toggles off through real GUI input")
+		for shift_pan in [false,true]:
+			var yaw_before: float = app.camera.target_yaw
+			var position_before: Vector3 = app.camera.target_position
+			var navigation_press := InputEventMouseButton.new()
+			navigation_press.button_index = MOUSE_BUTTON_LEFT
+			navigation_press.pressed = true
+			navigation_press.position = clicked_pixel
+			navigation_press.shift_pressed = shift_pan
+			root.push_input(navigation_press,true)
+			var navigation_motion := InputEventMouseMotion.new()
+			navigation_motion.position = clicked_pixel+Vector2(24,10)
+			navigation_motion.relative = Vector2(24,10)
+			navigation_motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+			navigation_motion.shift_pressed = shift_pan
+			root.push_input(navigation_motion,true)
+			if shift_pan:
+				test.check(app.camera.target_position != position_before and app.camera.target_yaw == yaw_before, "Shift+left drag pans in either selection mode")
+			else:
+				test.check(app.camera.target_yaw != yaw_before, "Left drag orbits in either selection mode")
+			navigation_press.pressed = false
+			navigation_press.position = Vector2(20,120) if shift_pan else clicked_pixel
+			root.push_input(navigation_press,true)
+			test.check(not app.camera._is_dragging() and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "Releasing over the press point or a dock frees the mouse")
+			test.check(shell.selection.ids == selected_before and not app.camera._pending_left_click, "Navigation never changes or starts a scene selection")
 	var navigation_key := InputEventKey.new()
 	navigation_key.keycode = KEY_RIGHT
 	navigation_key.pressed = true
