@@ -154,20 +154,8 @@ func _build_layout() -> void:
 	_cube.home_requested.connect(_owner._focus_loaded_scene)
 	_cube.fit_requested.connect(_owner._focus_loaded_scene)
 	_owner.camera.fit_scene_requested.connect(_owner._focus_loaded_scene)
-	_status_bar = PanelContainer.new()
-	_status_bar.name = "StatusBar"
-	_owner.get_node("UIRoot/RootVBox").add_child(_status_bar)
-	var status_row := HBoxContainer.new()
-	_status_bar.add_child(status_row)
-	_owner.status_label.reparent(status_row)
-	_owner.status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_owner.status_label.clip_text = true
-	_owner.status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_owner.status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_fps = _area.get_node("FpsOverlay") as Label
-	_fps.reparent(status_row)
-	_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_fps.custom_minimum_size.x = 74
+	_status_bar = _owner.get_node("UIRoot/RootVBox/StatusBar")
+	_fps = _status_bar.get_node("StatusRow/Diagnostics/FpsOverlay")
 	_owner.camera.navigation_area = _area
 	_area.resized.connect(_update_camera_rect)
 	_area.item_rect_changed.connect(_update_camera_rect)

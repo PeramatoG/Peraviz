@@ -158,11 +158,6 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="StatusLabel" type="Label" parent="UIRoot/RootVBox/TopBar/TopBarMargin/TopBarRow" unique_id=496411274]
-layout_mode = 2
-text = "Select a .mvr file"
-horizontal_alignment = 2
-
 [node name="ContentRow" type="HBoxContainer" parent="UIRoot/RootVBox"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -332,6 +327,41 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="StatusBar" type="PanelContainer" parent="UIRoot/RootVBox"]
+layout_mode = 2
+
+[node name="StatusRow" type="HBoxContainer" parent="UIRoot/RootVBox/StatusBar"]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="UIRoot/RootVBox/StatusBar/StatusRow" unique_id=496411274]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Select a .mvr file"
+vertical_alignment = 1
+text_overrun_behavior = 3
+clip_text = true
+
+[node name="Notifications" type="MarginContainer" parent="UIRoot/RootVBox/StatusBar/StatusRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 2.0
+mouse_filter = 2
+
+[node name="ToastLabel" type="Label" parent="UIRoot/RootVBox/StatusBar/StatusRow/Notifications"]
+visible = false
+layout_mode = 2
+mouse_filter = 1
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+vertical_alignment = 1
+text_overrun_behavior = 3
+clip_text = true
+
+[node name="Diagnostics" type="MarginContainer" parent="UIRoot/RootVBox/StatusBar/StatusRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 2
 
 [node name="VisualSettingsWindow" type="Window" parent="UIRoot" unique_id=362544277]

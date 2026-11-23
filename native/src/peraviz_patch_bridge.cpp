@@ -152,8 +152,8 @@ Dictionary PeravizLoader::stage_document_patch(const String &uuid, const Array &
             continue;
         if (int64_t(entry.address) + width->second - 1 > 512)
             warnings.push_back(String("Break ") + String::num_int64(entry.mvr_break) +
-                               ": authored footprint crosses slot 512; effective routing follows Auto Span " +
-                               String::utf8(auto_span_policy_.c_str()));
+                               ": footprint crosses slot 512 (Auto Span: " +
+                               String::utf8(auto_span_policy_.c_str()) + ").");
         bool overlap = false, unknown = false;
         for (const auto &other : last_scene_model_.fixture_patches)
             if (other.fixture_uuid != id) {
@@ -170,13 +170,15 @@ Dictionary PeravizLoader::stage_document_patch(const String &uuid, const Array &
                                int64_t(address.address) < int64_t(entry.address) + width->second;
                 }
             }
-        if (overlap)
-            warnings.push_back(
-                String("Break ") + String::num_int64(entry.mvr_break) +
-                ": overlaps another authored fixture footprint; intentional co-patching is allowed");
+        if (overlap) {
+            const String message("Overlaps another authored fixture footprint.");
+            warnings.push_back(proposed.addresses.size() == 1
+                                   ? message
+                                   : String("Break ") + String::num_int64(entry.mvr_break) + ": " + message);
+        }
         if (unknown)
             warnings.push_back(
-                String("Occupancy is unknown for fixtures with unsupported/missing GDTF data"));
+                String("DMX occupancy unknown for fixtures without supported GDTF data."));
     }
     staged_patch_ = StagedPatch{id, proposed, std::move(candidate), universe_offset, routing.policy};
     out["ok"] = true;
