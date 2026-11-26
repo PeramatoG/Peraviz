@@ -83,7 +83,7 @@ The helper uses `dumpbin` and fails if it sees the forbidden third-party DLLs ab
 
 ## Configure Godot Windows export
 
-`export_presets.cfg` is not committed because Godot export presets commonly contain local export paths. Configure the Windows Desktop preset in Godot with these resource settings:
+`export_presets.cfg` is now versioned with a reproducible Windows Desktop preset, with no local machine paths or signing credentials. Configure it in Godot with these resource settings:
 
 1. Open **Project > Export**.
 2. Select or create a **Windows Desktop** preset.
@@ -114,3 +114,15 @@ The log should not contain:
 - `Identifier "PeravizLoader" not declared`
 
 If those messages appear, first confirm that `bin/peraviz_native.dll` exists inside the export and that `dumpbin /DEPENDENTS` does not list forbidden third-party DLLs.
+
+## Experimental Windows GitHub Actions installer
+
+The `.github/workflows/package-windows.yml` workflow compiles the x64 Release GDExtension on Windows, checks native DLL dependencies, downloads the pinned Godot 4.7.1 runtime and export templates, imports Godot assets, and exports the versioned `Windows Desktop` preset. It verifies that the export includes the application EXE, PCK, console executable, and `bin/peraviz_native.dll`, then performs a headless startup smoke check.
+
+Successful runs upload two test artifacts, not GitHub Releases: `Peraviz-portable-<version>-windows-x64.zip` and `Peraviz-Setup-<version>-windows-x64.exe`. The installer uses Inno Setup, installs per-user without requesting elevation, and provides an optional desktop shortcut. The version is taken from `VERSION`.
+
+After merge, trigger it with **Actions > Windows package (experimental) > Run workflow**. The workflow also runs on its own PR. Download the artifacts from the successful run.
+
+The headless test is not proof that the renderer works: test launch, an ordinary MVR/GDTF import, DMX Art-Net, save/open, shortcuts, and uninstallation on a Windows PC. The installer is unsigned and may trigger SmartScreen warnings; do not suppress security protections. Public releases should add code signing and protect credentials using GitHub Actions secrets.
+
+The preset intentionally uses the default Godot branding at first. When reviewed graphics are ready, add the Godot app icon, Windows ICO, installer branding, and optional splash screen. Linux and macOS will each need platform native builds and export verification; macOS public releases need code-signing and notarization.
