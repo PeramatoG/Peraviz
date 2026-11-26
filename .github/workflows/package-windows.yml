@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 90
     env:
       GODOT_VERSION: '4.7.1'
-      VCPKG_ROOT: ${{ github.workspace }}\.tools\vcpkg
+      PERAVIZ_VCPKG_ROOT: ${{ github.workspace }}\.tools\vcpkg
       VCPKG_DOWNLOADS: ${{ github.workspace }}\.cache\downloads
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\.cache\binary,readwrite
     steps:
@@ -35,16 +35,16 @@ jobs:
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+          git clone https://github.com/microsoft/vcpkg.git "$env:PERAVIZ_VCPKG_ROOT"
           if ($LASTEXITCODE -ne 0) { throw 'vcpkg clone failed' }
-          git -C "$env:VCPKG_ROOT" checkout --detach 9d7f79f56ae1a9b4704d6a7fb8237e347a974133
+          git -C "$env:PERAVIZ_VCPKG_ROOT" checkout --detach 9d7f79f56ae1a9b4704d6a7fb8237e347a974133
           if ($LASTEXITCODE -ne 0) { throw 'vcpkg revision failed' }
-          & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          & "$env:PERAVIZ_VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
       - name: Compile Release GDExtension
         shell: pwsh
         run: |
-          cmake -S native -B native/out/packaging -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF
+          cmake -S native -B native/out/packaging -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:PERAVIZ_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
           cmake --build native/out/packaging --target peraviz_native peraviz_native_check_dependencies --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'Native compilation or dependency audit failed' }
