@@ -5,6 +5,10 @@ on:
     branches: [main]
 permissions:
   contents: read
+
+concurrency:
+  group: peraviz-windows-package-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-2022
