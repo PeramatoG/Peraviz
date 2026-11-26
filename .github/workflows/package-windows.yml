@@ -60,8 +60,11 @@ jobs:
           $editorZip = Join-Path $env:RUNNER_TEMP 'editor.zip'
           Invoke-WebRequest "$url/$($prefix)_win64.exe.zip" -OutFile $editorZip
           Expand-Archive $editorZip -DestinationPath $directory
-          $godot = Join-Path $directory "$($prefix)_win64.exe"
-          if (-not (Test-Path $godot)) { throw 'Godot executable missing' }
+          $godotGui = Join-Path $directory "$($prefix)_win64.exe"
+          $godot = Join-Path $directory "$($prefix)_win64_console.exe"
+          if (-not (Test-Path $godotGui)) { throw 'Godot editor executable missing' }
+          if (-not (Test-Path $godot)) { throw 'Godot console executable missing' }
+          # Windows CI must invoke Godot's console wrapper for reliable output and exit codes.
           "GODOT_BIN=$godot" >> $env:GITHUB_ENV
           $templatesZip = Join-Path $env:RUNNER_TEMP 'templates.zip'
           $expanded = Join-Path $env:RUNNER_TEMP 'template-extract'
@@ -76,20 +79,47 @@ jobs:
       - name: Export and smoke-test
         shell: pwsh
         run: |
-          & $env:GODOT_BIN --headless --path . --import
-          if ($LASTEXITCODE -ne 0) { throw 'Asset import failed' }
-          New-Item -ItemType Directory -Force -Path dist/Peraviz | Out-Null
-          & $env:GODOT_BIN --headless --path . --export-release 'Windows Desktop' 'dist/Peraviz/Peraviz.exe'
-          if ($LASTEXITCODE -ne 0) { throw 'Export failed' }
+          New-Item -ItemType Directory -Force -Path 'dist/Peraviz', 'out/packaging-logs' | Out-Null
+          $importLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-import.log'
+          $exportLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-export.log'
+          $smokeLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-smoke.log'
+
+          # Use the Windows console wrapper so Godot errors and exit codes are visible in CI.
+          & $env:GODOT_BIN --headless --verbose --path . --import --log-file $importLog
+          $importExit = $LASTEXITCODE
+          if (Test-Path $importLog) { Get-Content $importLog -Tail 100 }
+          if ($importExit -ne 0) { throw "Asset import failed (exit $importExit); inspect godot-import.log" }
+
+          & $env:GODOT_BIN --headless --verbose --path . --export-release 'Windows Desktop' 'dist/Peraviz/Peraviz.exe' --log-file $exportLog
+          $exportExit = $LASTEXITCODE
+          if (Test-Path $exportLog) { Get-Content $exportLog -Tail 100 }
+          if ($exportExit -ne 0) { throw "Godot export failed (exit $exportExit); inspect godot-export.log" }
+
           foreach ($file in @('Peraviz.exe','Peraviz.pck','Peraviz.console.exe','bin/peraviz_native.dll')) {
-            if (-not (Test-Path (Join-Path dist/Peraviz $file))) { throw "Export missing $file" }
+            if (-not (Test-Path (Join-Path 'dist/Peraviz' $file))) { throw "Export missing $file" }
           }
           Copy-Item LICENSE.txt dist/Peraviz/LICENSE.txt
-          $log = Join-Path $env:RUNNER_TEMP 'peraviz-smoke.log'
-          & .\dist\Peraviz\Peraviz.console.exe --headless --quit-after 5 --log-file $log
-          if ($LASTEXITCODE -ne 0) { throw 'Smoke test exited with error' }
-          $result = Get-Content $log -Raw
-          if ($result -match 'SCRIPT ERROR|GDExtension dynamic library not found|Unable to load GDExtension|Identifier "PeravizLoader" not declared') { throw 'Startup error in packaged application' }
+
+          & '.\dist\Peraviz\Peraviz.console.exe' --headless --quit-after 5 --log-file $smokeLog
+          $smokeExit = $LASTEXITCODE
+          if (Test-Path $smokeLog) { Get-Content $smokeLog -Tail 100 }
+          if ($smokeExit -ne 0) { throw "Exported startup failed (exit $smokeExit)" }
+          if (-not (Test-Path $smokeLog)) { throw 'No startup log produced' }
+          $result = Get-Content $smokeLog -Raw
+          if ($result -match 'SCRIPT ERROR|GDExtension dynamic library not found|Unable to load GDExtension|Identifier "PeravizLoader" not declared') {
+            throw 'Startup error in exported application'
+          }
+
+      - name: Preserve Godot diagnostics even when packaging fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Peraviz-Windows-diagnostics-${{ github.run_number }}
+          path: |
+            out/packaging-logs/*.log
+            .godot/editor/editor_log.txt
+          if-no-files-found: warn
+          retention-days: 7
       - name: Package installer and portable archive
         shell: pwsh
         run: |
