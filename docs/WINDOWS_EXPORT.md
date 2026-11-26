@@ -21,7 +21,7 @@ Peraviz/
         peraviz_native.dll
 ```
 
-Do not duplicate `peraviz_native.dll` in the export root. If Godot places the DLL next to the executable instead of under `bin/`, the export preset is missing an explicit resource include filter for `bin/*.dll`.
+Do not duplicate `peraviz_native.dll` in the export root. The Windows packaging workflow checks Godot's export output and, when necessary, stages the verified Release DLL as a filesystem sidecar at `bin/peraviz_native.dll`. It verifies its SHA-256 hash against the compiled DLL; forcing the DLL into the PCK with an include filter is not an adequate substitute.
 
 ## Build the native extension for Windows export
 
@@ -88,14 +88,9 @@ The helper uses `dumpbin` and fails if it sees the forbidden third-party DLLs ab
 1. Open **Project > Export**.
 2. Select or create a **Windows Desktop** preset.
 3. In **Resources**, use an export mode that includes project resources, such as **Export all resources in the project**.
-4. Add these include filters so Godot preserves the GDExtension file and native DLL path:
-
-   ```text
-   *.gdextension, bin/*.dll
-   ```
-
-5. Export the project.
-6. Confirm the exported folder contains `bin/peraviz_native.dll` and does not contain an extra root-level copy of `peraviz_native.dll`.
+4. Keep `VERSION` in the include filter so the standalone startup splash can display the same version used by the installer. Godot manages GDExtension resources based on their `.gdextension` declarations; do not force `bin/*.dll` into the PCK.
+5. Export the project. When exporting manually, stage the verified compiled Release DLL in the exported `bin/` directory if it was not emitted by the exporter.
+6. Confirm the exported folder contains `bin/peraviz_native.dll`, and neither a root-level duplicate nor a temporary `~peraviz_native.dll`.
 
 The repository keeps `bin/.gitkeep` so a clean clone has the expected `bin/` directory. The compiled DLL and local debug artifacts remain ignored and are produced by the native build.
 
@@ -125,4 +120,8 @@ After merge, trigger it with **Actions > Windows package (experimental) > Run wo
 
 The headless test is not proof that the renderer works: test launch, an ordinary MVR/GDTF import, DMX Art-Net, save/open, shortcuts, and uninstallation on a Windows PC. The installer is unsigned and may trigger SmartScreen warnings; do not suppress security protections. Public releases should add code signing and protect credentials using GitHub Actions secrets.
 
-The preset intentionally uses the default Godot branding at first. When reviewed graphics are ready, add the Godot app icon, Windows ICO, installer branding, and optional splash screen. Linux and macOS will each need platform native builds and export verification; macOS public releases need code-signing and notarization.
+The preset now embeds Peraviz's golden Windows ICO. The project starts with `startup_splash.tscn`, a separate compact transparent, borderless window matching Perastage's startup proportions: a 180 x 180 px framed brand image, version at the top, and a static `Loading Peraviz...` label below. The version text uses `res://VERSION`, included in the Windows PCK, with a fallback for source-only builds. Godot's built-in full-window boot image is disabled. After the existing `test.tscn` Viewer is ready, the startup scene restores normal native window decorations, disables transparency and always-on-top, then maximizes the Viewer. Loading progress telemetry is intentionally deferred. Linux and macOS will each need platform native builds and export verification; macOS public releases need code-signing and notarization.
+
+### Windows visual validation
+
+On an actual Windows machine, run `Peraviz.exe` from the portable distribution and verify the initial card is small, centered, rounded and frameless, with `Peraviz <VERSION>` above the 180 px original artwork and `Loading Peraviz...` below. Check that the splash closes when the Viewer is available, the Viewer fills a normal maximized decorated window with the original control layout, focus and resizing work, and the taskbar icon stays correct. Repeat with a saved `.pvz` startup preference and at high-DPI scaling. A headless CI test cannot establish these visual properties.
