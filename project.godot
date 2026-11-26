@@ -22,8 +22,10 @@ boot_splash/show_image=false
 [display]
 
 window/size/mode=0
-window/size/viewport_width=222
-window/size/viewport_height=268
+window/size/viewport_width=1366
+window/size/viewport_height=768
+window/size/window_width_override=222
+window/size/window_height_override=268
 window/size/initial_position_type=1
 window/size/borderless=true
 window/size/always_on_top=true
