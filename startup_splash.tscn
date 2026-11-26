@@ -1,0 +1,68 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/startup_splash.gd" id="1_startup"]
+[ext_resource type="Texture2D" path="res://assets/peraviz_brand_art.png" id="2_brand"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_splash"]
+bg_color = Color(0.055, 0.055, 0.065, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.17, 0.17, 0.19, 0.9)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+anti_aliasing = true
+
+[node name="StartupSplash" type="Control"]
+custom_minimum_size = Vector2(222, 268)
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_startup")
+
+[node name="Background" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_splash")
+
+[node name="VersionLabel" type="Label" parent="."]
+offset_left = 8.0
+offset_top = 9.0
+offset_right = 214.0
+offset_bottom = 29.0
+theme_override_font_sizes/font_size = 13
+text = "Peraviz"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BrandImage" type="TextureRect" parent="."]
+offset_left = 21.0
+offset_top = 37.0
+offset_right = 201.0
+offset_bottom = 217.0
+mouse_filter = 2
+texture = ExtResource("2_brand")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StatusLabel" type="Label" parent="."]
+offset_left = 8.0
+offset_top = 232.0
+offset_right = 214.0
+offset_bottom = 253.0
+theme_override_font_sizes/font_size = 12
+text = "Loading Peraviz..."
+horizontal_alignment = 1
+vertical_alignment = 1
