@@ -44,7 +44,7 @@ jobs:
       - name: Compile Release GDExtension
         shell: pwsh
         run: |
-          cmake -S native -B native/out/packaging -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:PERAVIZ_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF
+          cmake -S native -B native/out/packaging -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:PERAVIZ_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
           cmake --build native/out/packaging --target peraviz_native peraviz_native_check_dependencies --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'Native compilation or dependency audit failed' }
