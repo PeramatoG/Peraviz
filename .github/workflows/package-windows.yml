@@ -138,6 +138,9 @@ jobs:
           if ($result -match 'SCRIPT ERROR|GDExtension dynamic library not found|Unable to load GDExtension|Identifier "PeravizLoader" not declared') {
             throw 'Startup error in exported application'
           }
+          if ($result -notmatch '\[PeravizStartup\] Viewer ready') {
+            throw 'Exported application never completed the splash-to-Viewer handoff'
+          }
 
       - name: Preserve Godot diagnostics even when packaging fails
         if: always()
