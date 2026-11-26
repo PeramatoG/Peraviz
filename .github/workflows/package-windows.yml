@@ -85,6 +85,10 @@ jobs:
           $smokeLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-smoke.log'
 
           # Use the Windows console wrapper so Godot errors and exit codes are visible in CI.
+          # CMake's Windows linker can leave a ~peraviz_native.dll backup behind.
+          # Never ship the backup; only the verified Release library belongs in the package.
+          Get-ChildItem -LiteralPath 'bin' -File -Filter '~*.dll' -ErrorAction SilentlyContinue | Remove-Item -Force
+
           & $env:GODOT_BIN --headless --verbose --path . --import --log-file $importLog
           $importExit = $LASTEXITCODE
           if (Test-Path $importLog) { Get-Content $importLog -Tail 100 }
@@ -95,9 +99,30 @@ jobs:
           if (Test-Path $exportLog) { Get-Content $exportLog -Tail 100 }
           if ($exportExit -ne 0) { throw "Godot export failed (exit $exportExit); inspect godot-export.log" }
 
-          foreach ($file in @('Peraviz.exe','Peraviz.pck','Peraviz.console.exe','bin/peraviz_native.dll')) {
+          # Inspect the actual Godot output before staging anything.
+          Write-Host 'Windows export contents:'
+          Get-ChildItem -LiteralPath 'dist/Peraviz' -Recurse -File | ForEach-Object {
+            Write-Host ("  " + $_.FullName.Substring((Resolve-Path 'dist/Peraviz').Path.Length + 1))
+          }
+          foreach ($file in @('Peraviz.exe','Peraviz.pck','Peraviz.console.exe')) {
             if (-not (Test-Path (Join-Path 'dist/Peraviz' $file))) { throw "Export missing $file" }
           }
+
+          # Platform-specific packaging fallback: stage the exact compiled Release
+          # DLL as a filesystem sidecar at its res://bin path, if the exporter
+          # has not already placed it there. The GDExtension declaration is unchanged.
+          $nativeSource = (Resolve-Path 'bin/peraviz_native.dll').Path
+          $nativeDestination = 'dist/Peraviz/bin/peraviz_native.dll'
+          if (-not (Test-Path $nativeDestination)) {
+            New-Item -ItemType Directory -Force -Path 'dist/Peraviz/bin' | Out-Null
+            Copy-Item -LiteralPath $nativeSource -Destination $nativeDestination
+            Write-Host 'Staged native DLL sidecar for Windows distribution.'
+          }
+          if (-not (Test-Path $nativeDestination)) { throw 'Native DLL was not staged' }
+          $originalHash = (Get-FileHash -LiteralPath $nativeSource -Algorithm SHA256).Hash
+          $exportHash = (Get-FileHash -LiteralPath $nativeDestination -Algorithm SHA256).Hash
+          if ($originalHash -ne $exportHash) { throw 'Native DLL in distribution does not match the compiled Release DLL' }
+          if (Test-Path 'dist/Peraviz/bin/~peraviz_native.dll') { throw 'Temporary native DLL backup leaked into distribution' }
           Copy-Item LICENSE.txt dist/Peraviz/LICENSE.txt
 
           & '.\dist\Peraviz\Peraviz.console.exe' --headless --quit-after 5 --log-file $smokeLog
