@@ -5,6 +5,9 @@
 #ifndef SourceDir
   #define SourceDir "dist\Peraviz"
 #endif
+#ifndef IconFile
+  #define IconFile "..\\..\\assets\\peraviz.ico"
+#endif
 #ifndef OutputDir
   #define OutputDir "dist"
 #endif
@@ -30,6 +33,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
+SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\Peraviz.exe
 
 [Languages]
