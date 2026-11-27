@@ -13,23 +13,28 @@ config_version=5
 config/name="Peraviz"
 run/main_scene="res://startup_splash.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
-boot_splash/bg_color=Color(0, 0, 0, 0)
-boot_splash/show_image=false
-boot_splash/image="res://assets/peraviz_splash.png"
 config/icon="res://assets/peraviz_icon_512.png"
 config/windows_native_icon="res://assets/peraviz.ico"
+boot_splash/image="res://assets/peraviz_splash.png"
+boot_splash/bg_color=Color(0.055, 0.055, 0.065, 1)
+boot_splash/show_image=false
 
 [display]
 
+window/size/mode=0
 window/size/viewport_width=1366
 window/size/viewport_height=768
-window/size/resizable=false
-window/size/borderless=true
-window/size/always_on_top=true
-window/size/transparent=true
 window/size/window_width_override=222
 window/size/window_height_override=268
-window/per_pixel_transparency/allowed=true
+window/size/initial_position_type=1
+window/size/borderless=true
+window/size/always_on_top=true
+window/size/resizable=false
+window/size/transparent=false
+window/per_pixel_transparency/allowed=false
+
+[editor]
+
 
 [peraviz]
 
@@ -42,9 +47,19 @@ jolt_physics_3d/limits/max_bodies=65536
 
 [rendering]
 
-lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
-viewport/transparent_background=true
+renderer/rendering_method="forward_plus"
+rendering_device/driver.windows="vulkan"
+viewport/transparent_background=false
 anti_aliasing/quality/screen_space_aa=2
+anti_aliasing/quality/msaa_3d=0
+anti_aliasing/quality/use_taa=false
+anti_aliasing/quality/use_debanding=false
+scaling_3d/scale=1.0
+scaling_3d/mode=0
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/16_bits=true
+
 
 [shader_globals]
 
