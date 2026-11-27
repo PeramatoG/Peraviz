@@ -396,7 +396,7 @@ func _ready() -> void:
 	_refresh_day_night_environment_controller()
 	app_shell.configure(self, _user_preferences, _fixture_inspection_panel)
 	get_window().content_scale_factor = _user_preferences.ui_scale
-	call_deferred("_auto_load_last_file_from_preferences")
+	call_deferred("_open_startup_file")
 
 
 func _apply_imported_content_scale() -> void:
@@ -799,6 +799,20 @@ func _remember_loaded_file(path: String, file_type: String) -> void:
 	_user_preferences.last_file_type = normalized_file_type
 	_user_preferences.save_to_disk()
 	_sync_session_preference_toggles()
+
+# Explorer and CLI use the same project-open pipeline as the file picker.
+func _open_startup_file() -> void:
+	var request: Dictionary = preload("res://scripts/runtime/application_arguments.gd").startup_project_request(OS.get_cmdline_user_args())
+	if not bool(request.get("requested", false)):
+		_auto_load_last_file_from_preferences()
+		return
+	var path: String = str(request.get("path", ""))
+	if path.is_empty() or not FileAccess.file_exists(path):
+		if _status_presenter != null:
+			_status_presenter.show_toast("Unable to open the requested Peraviz project: %s" % path)
+		push_warning("[PeravizStartup] Requested PVZ is missing or invalid.")
+		return
+	await _open_project(path)
 
 func _auto_load_last_file_from_preferences() -> void:
 	if _user_preferences == null or not _user_preferences.auto_load_last_file:

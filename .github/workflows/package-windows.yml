@@ -128,6 +128,10 @@ jobs:
           if ($originalHash -ne $exportHash) { throw 'Native DLL in distribution does not match the compiled Release DLL' }
           if (Test-Path 'dist/Peraviz/bin/~peraviz_native.dll') { throw 'Temporary native DLL backup leaked into distribution' }
           Copy-Item LICENSE.txt dist/Peraviz/LICENSE.txt
+          # File-type icons must be real files accessible to Explorer, not PCK resources.
+          New-Item -ItemType Directory -Force -Path 'dist/Peraviz/resources' | Out-Null
+          Copy-Item -LiteralPath 'assets/icons/project/peraviz_project.ico' -Destination 'dist/Peraviz/resources/peraviz_project.ico'
+          if (-not (Test-Path 'dist/Peraviz/resources/peraviz_project.ico')) { throw 'Project icon missing from distribution' }
 
           & '.\dist\Peraviz\Peraviz.console.exe' --headless --quit-after 5 --log-file $smokeLog
           $smokeExit = $LASTEXITCODE
@@ -152,15 +156,22 @@ jobs:
             .godot/editor/editor_log.txt
           if-no-files-found: warn
           retention-days: 7
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          # Match Perastage: use Chocolatey's ISCC shim rather than assuming
+          # a particular installation directory or executable version resource.
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          Get-Command ISCC.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 | Format-List Source
       - name: Package installer and portable archive
         shell: pwsh
         run: |
           Compress-Archive -Path dist/Peraviz -DestinationPath "dist/Peraviz-portable-$env:APP_VERSION-windows-x64.zip"
-          $iscc = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
-          if (-not (Test-Path $iscc)) {
-            choco install innosetup -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup unavailable' }
-          }
+          $iscc = (Get-Command ISCC.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          Write-Host "Using Inno Setup compiler: $iscc"
+          # ISCC itself validates WizardStyle=modern dynamic (requires 6.6+)
+          # and prints the actual compiler version. Do not gate on PE metadata.
           $sourceDir = (Resolve-Path dist/Peraviz).Path
           $outputDir = (Resolve-Path dist).Path
           & $iscc "/DAppVersion=$env:APP_VERSION" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" packaging/windows/peraviz.iss
