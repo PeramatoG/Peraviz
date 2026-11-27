@@ -1,29 +1,41 @@
+# Godot generated cache
+.godot/
+*.translation
+
+# Godot resource metadata
+# IMPORTANT: .uid and .import sidecar files must be tracked in Git.
+
 # Visual Studio local files
 /.vs/
 
 # Native build output
 /native/out/
+/native/build/
 /native/CMakeUserPresets.json
 
-# Godot generated cache
-.godot/
+# Build, packaging and dependency caches
+/out/
+/dist/
+/.cache/
+/.tools/
+
+# Local runtime binaries and debug files
+/bin/*.dll
+/bin/*.ilk
+/bin/~*.TMP
+!/bin/.gitkeep
+*.pdb
 
 # Example / local show files
 *.mvr
 *.pvz
 
-# Local runtime binaries and debug files
-/bin/*.dll
-/bin/*.ilk
-/bin/*.pdb
-/bin/~*.TMP
-!/bin/.gitkeep
-*.pdb
-
-# Godot local editor metadata
-/godot/editor/project_metadata.cfg
-/native/build
-
-# Python caches
+# Python generated files and caches
 __pycache__/
 *.py[cod]
+.pytest_cache/
+
+# Operating system generated files
+.DS_Store
+Thumbs.db
+Desktop.ini

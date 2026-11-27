@@ -32,7 +32,14 @@ These rules apply to the entire repository. Direct task instructions take preced
 - Keep explicit source ownership in build files. Do not introduce broad recursive registration without a documented reason.
 - Add a concise English comment above each new or substantially changed C++ function definition.
 - Write comments, developer documentation, and commit-facing notes in English. Do not wrap imports in `try`/`catch` blocks.
-- Keep generated, cache, and build artifacts out of source control.
+- Keep generated caches, temporary files, and build artifacts out of source control.
+- Always track Godot-generated `.uid` and resource `.import` sidecar files in Git. These are persistent resource metadata, not disposable cache files.
+- Preserve existing resource UIDs. When moving or deleting a resource, also move or delete its corresponding metadata files.
+- Never add `.uid` or resource `.import` files to `.gitignore`.
+- After adding or modifying resources, run a headless Godot import using the project's pinned Godot version, when available.
+- Include newly generated resource metadata in the same commit as its associated resource.
+- A clean checkout followed by a Godot import should not introduce untracked or modified resource metadata.
+- If Godot is unavailable, explicitly report that resource metadata generation and validation could not be performed.
 - Update `docs/release-notes-draft.md` for meaningful user-facing or internal changes and keep it release-ready.
 
 ## Validation
