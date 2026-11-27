@@ -62,7 +62,7 @@ func _process(_delta: float) -> void:
 			_show_error("Unable to start Peraviz.", "Unable to load %s" % VIEWER_SCENE)
 
 
-# Instantiates the existing Viewer before revealing the normal maximized window.
+# Restores a normal window, mounts the Viewer and maximizes after its initialization.
 func _open_viewer(packed_scene: PackedScene = null) -> void:
 	if _launching:
 		return
@@ -79,20 +79,60 @@ func _open_viewer(packed_scene: PackedScene = null) -> void:
 		return
 	# Hide the card before resizing; no enlarged splash should be drawn.
 	hide()
-	if DisplayServer.get_name() != "headless" and not Engine.is_embedded_in_editor():
-		var window: Window = get_window()
-		get_viewport().transparent_bg = false
-		window.transparent = false
+	var native_window := DisplayServer.get_name() != "headless" and not Engine.is_embedded_in_editor()
+	var window: Window = get_window()
+	var normal_rect := Rect2i()
+	if native_window:
+		window.mode = Window.MODE_WINDOWED
+		window.unresizable = false
 		window.borderless = false
 		window.always_on_top = false
-		window.unresizable = false
-		window.mode = Window.MODE_WINDOWED
-		window.size = MAIN_WINDOW_SIZE
-		window.mode = Window.MODE_MAXIMIZED
+		window.transparent = false
+		get_viewport().transparent_bg = false
+		normal_rect = _normal_window_rect(DisplayServer.screen_get_usable_rect(window.current_screen))
+		_apply_normal_rect(window, normal_rect)
 	get_tree().root.add_child(viewer)
 	get_tree().current_scene = viewer
+	if native_window:
+		# Viewer _ready() builds its layout and applies UI scaling. Let those
+		# changes and native resize messages settle before requesting maximize.
+		await get_tree().process_frame
+		_apply_normal_rect(window, normal_rect)
+		await get_tree().process_frame
+		window.mode = Window.MODE_MAXIMIZED
+		await get_tree().process_frame
+		await get_tree().process_frame
+		# Window.mode alone is not proof that the OS actually enlarged it.
+		# If maximization failed, leave a usable decorated window instead.
+		if not _is_usable_window_size(DisplayServer.window_get_size(), normal_rect.size):
+			window.mode = Window.MODE_WINDOWED
+			await get_tree().process_frame
+			_apply_normal_rect(window, normal_rect)
+			await get_tree().process_frame
+			if not _is_usable_window_size(DisplayServer.window_get_size(), normal_rect.size):
+				push_warning("[PeravizStartup] Native window resize did not reach the requested size.")
+		print("[PeravizStartup] Main window mode=%s size=%s" % [window.mode, DisplayServer.window_get_size()])
 	print("[PeravizStartup] Viewer ready; renderer=%s driver=%s" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name()])
 	queue_free()
+
+
+# Fit the normal restore size on the splash's monitor, with space for decorations.
+static func _normal_window_rect(work_area: Rect2i) -> Rect2i:
+	if work_area.size.x <= 0 or work_area.size.y <= 0:
+		return Rect2i(Vector2i.ZERO, MAIN_WINDOW_SIZE)
+	var available := Vector2i(maxi(1, work_area.size.x - 64), maxi(1, work_area.size.y - 96))
+	var target := MAIN_WINDOW_SIZE.min(available)
+	return Rect2i(work_area.position + (work_area.size - target) / 2, target)
+
+
+static func _apply_normal_rect(window: Window, normal_rect: Rect2i) -> void:
+	window.size = normal_rect.size
+	window.position = normal_rect.position
+
+
+static func _is_usable_window_size(actual: Vector2i, target: Vector2i) -> bool:
+	# Allow small native/DPI rounding differences, but not the compact splash.
+	return actual.x >= target.x - 16 and actual.y >= target.y - 16
 
 
 # Reads the same VERSION file as the native build and Windows installer.
