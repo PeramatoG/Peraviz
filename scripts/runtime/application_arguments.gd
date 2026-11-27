@@ -3,6 +3,17 @@ extends RefCounted
 # Canonical application boundary: Godot options precede --; Peraviz options follow it.
 const Policy = preload("res://scripts/runtime/render_diagnostic_policy.gd")
 const PERF_TRACE: String = "--peraviz-perf-trace"
+const OPEN_PROJECT: String = "--open-project"
+
+# An explicit request wins over the remembered session, even if malformed.
+static func startup_project_request(arguments: PackedStringArray) -> Dictionary:
+	var index: int = arguments.find(OPEN_PROJECT)
+	if index < 0:
+		return {"requested": false, "path": ""}
+	var path: String = arguments[index + 1] if index + 1 < arguments.size() else ""
+	if path.begins_with("--") or path.get_extension().to_lower() != "pvz":
+		path = ""
+	return {"requested": true, "path": path}
 
 static func has_flag(flag: String) -> bool:
 	return OS.get_cmdline_user_args().has(flag)

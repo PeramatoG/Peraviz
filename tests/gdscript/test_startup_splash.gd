@@ -20,6 +20,16 @@ func _run() -> void:
 		ProjectSettings.get_setting("display/window/size/viewport_width") == 1366,
 		"The normal Viewer reference viewport is retained"
 	)
+	var arguments = preload("res://scripts/runtime/application_arguments.gd")
+	var no_request: Dictionary = arguments.startup_project_request(PackedStringArray(["--peraviz-perf-trace"]))
+	test.check(not no_request.requested, "Normal startup retains remembered-project behavior")
+	var project_path: String = "C:/Shows/Proyecto de prueba.PVZ"
+	var requested: Dictionary = arguments.startup_project_request(PackedStringArray(["--open-project", project_path]))
+	test.check(requested.requested and requested.path == project_path, "Explicit PVZ path preserves spaces and accepts uppercase extension")
+	var missing: Dictionary = arguments.startup_project_request(PackedStringArray(["--open-project"]))
+	test.check(missing.requested and missing.path.is_empty(), "Missing path must not fall back to last project")
+	var wrong: Dictionary = arguments.startup_project_request(PackedStringArray(["--open-project", "scene.mvr"]))
+	test.check(wrong.requested and wrong.path.is_empty(), "Project association does not claim MVR")
 	var resource: PackedScene = load("res://startup_splash.tscn") as PackedScene
 	test.check(resource != null, "The startup splash scene is loadable")
 	if resource == null:
