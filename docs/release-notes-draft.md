@@ -1,5 +1,7 @@
 # Peraviz v0.x.x
 
+- Documented the proposed optional NDI receive integration, preliminary third-party license inventory and legal/distribution prerequisites. No NDI support, proprietary runtime or effective license change is included.
+
 - Added a compact Perastage-style Peraviz startup screen, with the golden framed artwork at 180 px, rounded frameless presentation, app name and canonical version, and a static loading label. The boot splash no longer takes over a maximized window; the existing Viewer scene loads separately and restores a normal maximized decorated window. Scene import progress integration and graphical Windows validation remain future work.
 
 - Added an experimental Windows x64 GitHub Actions package pipeline: pinned Godot 4.7.1 Windows export, C++ Release GDExtension build and dependency checks, headless startup smoke test, portable ZIP, and per-user Inno Setup installer. Windows GUI/GPU and installer operation still require manual validation; packages are unsigned.

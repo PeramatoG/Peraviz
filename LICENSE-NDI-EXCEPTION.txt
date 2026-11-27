@@ -1,0 +1,36 @@
+PROPOSED NDI LINKING EXCEPTION — NOT YET EFFECTIVE
+Version 1.0 (draft for copyright-holder and legal review)
+
+This proposed additional permission is not part of Peraviz's effective
+license until the authorized copyright holders expressly adopt it and
+remove this draft notice. LICENSE.txt remains unchanged.
+
+Proposed operative text:
+
+As an additional permission under section 7 of the GNU General Public
+License, version 3 (GPLv3), the copyright holders of Peraviz grant
+permission to link covered Peraviz code to the unmodified, officially
+distributed NDI Standard SDK runtime libraries, and to convey the resulting
+combination, notwithstanding GPLv3 requirements that would otherwise
+require those particular libraries to be licensed under GPLv3 or their
+source code to be provided.
+
+This permission applies only to portions of Peraviz whose copyright
+holders have granted it, and only to the official NDI Standard SDK runtime
+libraries and their authorized runtime dependencies to the extent required
+for that combination. It does not extend to unrelated proprietary modules,
+the NDI Advanced SDK, or third-party GPL code without the necessary
+additional permission.
+
+All other applicable requirements of GPLv3 remain in effect, including
+providing the Corresponding Source of Peraviz, its adapter code and
+GPL-covered components. This permission does not grant rights in any NDI
+software or trademarks, or authorize additional restrictions on the
+GPL-covered portions of Peraviz. Any conveyance of the NDI libraries must
+be independently authorized by their respective copyright holders.
+
+If you modify a covered file, you may extend this additional permission
+to your modifications, but you are not obligated to do so. You may remove
+this permission as provided by GPLv3 section 7.
+
+End of proposed operative text.
