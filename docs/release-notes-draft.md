@@ -1,6 +1,6 @@
 # Peraviz v0.x.x
 
-- Documented the proposed optional NDI receive integration, preliminary third-party license inventory and legal/distribution prerequisites. No NDI support, proprietary runtime or effective license change is included.
+- Prepared optional NDI reception licensing and packaging documentation, including a linking exception available for explicit rights-holder adoption, a non-operative EULA template and release prerequisites. Restored the full MIT notice for original UI icons. Windows core packages now stage the repository license notices and reject known NDI payloads. No NDI runtime, functionality or blanket license change is included.
 
 - Added a compact Perastage-style Peraviz startup screen, with the golden framed artwork at 180 px, rounded frameless presentation, app name and canonical version, and a static loading label. The boot splash no longer takes over a maximized window; the existing Viewer scene loads separately and restores a normal maximized decorated window. Scene import progress integration and graphical Windows validation remain future work.
 

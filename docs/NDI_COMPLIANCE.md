@@ -1,7 +1,7 @@
 # NDI compliance and release gate
 
 **Status: proposed architecture; SDK use and NDI-bearing distribution are not
-approved by this document.** Reviewed 2026-11-27. The core remains GPLv3.
+approved by this document.** Reviewed 2026-11-27; implementation preparation updated 2026-11-28. The core remains GPLv3.
 This is an engineering compliance record, not a legal opinion or an NDI
 agreement. The project owner must review and accept any actual SDK agreement.
 
@@ -34,11 +34,11 @@ Baseline main commit: 3c51e6648ad0fcccb1959459c5b3554361527804. The GitHub commi
 contained 507 commits from 2026-05-18 onward, all associated with PeramatoG;
 no other account was identified in that listing. This is author metadata, not
 proof of ownership or an assignment of copyright. LICENSE.txt and README.md
-identify GPLv3; no existing NDI exception was found. No GitHub release was
+identify GPLv3; no NDI exception existed at the baseline. The prepared exception is now available for explicit adoption, but no blanket grant is asserted. No GitHub release was
 listed, but the repository is public and has a fork; prior GPL grants remain valid.
 
 The native manifest names libzip, tinyxml2 and mdns, and CMake uses godot-cpp.
-The repository also includes separate UI icon and shader notices. The
+The repository also includes separate UI icon and shader notices. The original MIT designation of the UI icons is retained, with its full license text restored. The
 [preliminary inventory](../THIRD_PARTY_NOTICES.md) records known evidence and gaps.
 Before adopting the exception, audit imported code (especially shared Perastage
 code), generated/copied code, all contributor/co-author provenance and applicable
@@ -64,10 +64,21 @@ installer, conditional on appropriate terms and attribution. It also identifies
 MIT headers eligible for open-source distribution. Neither statement by itself
 establishes GPL compatibility or permits unrestricted SDK redistribution.
 
+## Adopt the prepared exception before integration
+
+The text in [LICENSE-NDI-EXCEPTION.txt](../LICENSE-NDI-EXCEPTION.txt) is ready for rights-holder review and adoption. It is not a blanket relicensing. Once ownership is verified, record the owner approval and place the following notice in the relevant source files, preserving their existing copyright and GPL notices:
+
+    Additional permission under GNU GPL version 3, section 7:
+    see LICENSE-NDI-EXCEPTION.txt at the repository root.
+
+Record the covered paths, approval commit and any excluded third-party code. For new files, obtain express grant from contributors who own or can license the relevant rights. A copyright-holder may decline or remove the permission as allowed by GPLv3. No requirement for acceptance of NDI terms applies to contributions to the GPL-only core.
+
+This adoption can occur before any SDK is introduced. It does not grant rights to NDI software or resolve its downstream contract. The future integration PR must verify coverage of every relevant GPL component; do not rely on the presence of the exception file alone.
+
 ## Required release gates (all initially open)
 
 - [ ] Rights audit signed off and linking exception expressly adopted by authorized
-  copyright holders; effective notice, README and contribution policy aligned.
+  copyright holders; applicable source-file notices, scope and approval record verified.
 - [ ] Written NDI response / agreement confirms intended use and resolves the
   downstream restrictions and release/version questions above; owner accepts it.
 - [ ] Selected SDK and runtime agreements reviewed; final user-facing terms approved
@@ -99,3 +110,7 @@ bundling and user acceptance; downstream scope of 3(d)/3(i) for GPL code and for
 receive-only compatibility and 2(b) update duties; codec rights; permitted files,
 notices, and any registration or separate written agreement. No request has been
 sent and no response has been obtained by this PR.
+
+## Prepared packaging inputs
+
+The [NDI packaging contract](../packaging/ndi/README.md) defines the future app-local payload, license text and release evidence. The [EULA template](../packaging/ndi/NDI-EULA.template.txt) is a drafting checklist, not an agreement for acceptance. Use the exact approved end-user terms and the vendor-supplied `Processing.NDI.Lib.Licenses.txt` (or its documented successor) for the selected SDK. Never show or ship the template as a binding EULA. The public SDK developer agreement alone is not a substitute for the approved end-user terms.

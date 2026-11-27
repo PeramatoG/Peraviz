@@ -114,6 +114,8 @@ If those messages appear, first confirm that `bin/peraviz_native.dll` exists ins
 
 The `.github/workflows/package-windows.yml` workflow compiles the x64 Release GDExtension on Windows, checks native DLL dependencies, downloads the pinned Godot 4.7.1 runtime and export templates, imports Godot assets, and exports the versioned `Windows Desktop` preset. It verifies that the export includes the application EXE, PCK, console executable, and `bin/peraviz_native.dll`, then performs a headless startup smoke check.
 
+The workflow stages the GPL text, prepared NDI exception (only effective where expressly granted), third-party inventory, and local UI icon and shader licenses at their repository-relative paths. Manual exports should stage the same files. This is a preliminary notice bundle; public releases still require the exact dependency notices and corresponding source. The current artifacts are core-only and reject an app-local NDI payload and known NDI runtime filenames before packaging. See [NDI packaging contract](../packaging/ndi/README.md) for future optional installer inputs.
+
 Successful runs upload two test artifacts, not GitHub Releases: `Peraviz-portable-<version>-windows-x64.zip` and `Peraviz-Setup-<version>-windows-x64.exe`. The installer uses Inno Setup, installs per-user without requesting elevation, and provides an optional desktop shortcut. The version is taken from `VERSION`.
 
 After merge, trigger it with **Actions > Windows package (experimental) > Run workflow**. The workflow also runs on its own PR. Download the artifacts from the successful run.

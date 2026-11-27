@@ -1,0 +1,24 @@
+NDI OPTIONAL COMPONENT — END-USER TERMS PREPARATION
+NOT AN AGREEMENT. DO NOT DISPLAY, ACCEPT OR REDISTRIBUTE AS AN EULA.
+
+This template reserves the future NDI-EULA.txt input. Replace it with the
+complete approved user-facing terms for the exact NDI Standard SDK runtime
+before enabling packaging. Do not simply rename this file.
+
+Required review of final terms:
+- Identity of the licensor, approved purpose, runtime version and term revision.
+- Scope limited to the optional proprietary component as expressly confirmed
+  by NDI; no restriction on GPL-covered code, independent GPL builds or forks.
+- Applicable SDK section 3(d) downstream conditions: restrictions on alteration,
+  reverse engineering/protocols, technical limitations and proprietary notices;
+  warranty and liability disclaimers for NDI and its licensors; export controls,
+  required copyright notice and third-party developer obligations.
+- Clarification of downstream developer obligations and legal enforceability
+  (including mandatory local law) before finalizing the scope.
+- Exact trademark, copyright and third-party notices from the chosen SDK.
+- Separate affirmative acceptance; refusal must leave the core install usable.
+- Agreement identity/hash and version for local consent and upgrade handling.
+
+The SDK developer agreement is distinct from end-user terms. Do not assume
+acceptance by the end user satisfies the distributor's own obligations.
+See docs/NDI_COMPLIANCE.md and packaging/ndi/README.md.

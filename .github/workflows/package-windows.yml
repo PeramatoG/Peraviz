@@ -127,7 +127,13 @@ jobs:
           $exportHash = (Get-FileHash -LiteralPath $nativeDestination -Algorithm SHA256).Hash
           if ($originalHash -ne $exportHash) { throw 'Native DLL in distribution does not match the compiled Release DLL' }
           if (Test-Path 'dist/Peraviz/bin/~peraviz_native.dll') { throw 'Temporary native DLL backup leaked into distribution' }
-          Copy-Item LICENSE.txt dist/Peraviz/LICENSE.txt
+          # Stage repository license notices as actual files for the installer and ZIP.
+          foreach ($notice in @('LICENSE.txt','LICENSE-NDI-EXCEPTION.txt','THIRD_PARTY_NOTICES.md','assets/ui/LICENSE.txt','scripts/shaders/custom_footprint.LICENSE.txt')) {
+            $target = Join-Path 'dist/Peraviz' $notice
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+            Copy-Item -LiteralPath $notice -Destination $target -ErrorAction Stop
+            if ((Get-FileHash -LiteralPath $notice).Hash -ne (Get-FileHash -LiteralPath $target).Hash) { throw "License notice mismatch: $notice" }
+          }
           # File-type icons must be real files accessible to Explorer, not PCK resources.
           New-Item -ItemType Directory -Force -Path 'dist/Peraviz/resources' | Out-Null
           Copy-Item -LiteralPath 'assets/icons/project/peraviz_project.ico' -Destination 'dist/Peraviz/resources/peraviz_project.ico'
@@ -167,6 +173,10 @@ jobs:
       - name: Package installer and portable archive
         shell: pwsh
         run: |
+          # This workflow is core-only until the NDI release gates are satisfied.
+          if (Test-Path 'dist/Peraviz/components/ndi') { throw 'Unexpected NDI payload in core export' }
+          $ndiFiles = Get-ChildItem -LiteralPath 'dist/Peraviz' -Recurse -File | Where-Object { $_.Name -match '^(Processing\.NDI\.|libndi(?:\.|$)|NDI[-_].*\.(?:dll|exe|so|dylib)$)' }
+          if ($ndiFiles) { throw 'Unexpected NDI runtime file in core export' }
           Compress-Archive -Path dist/Peraviz -DestinationPath "dist/Peraviz-portable-$env:APP_VERSION-windows-x64.zip"
           $iscc = (Get-Command ISCC.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
           Write-Host "Using Inno Setup compiler: $iscc"

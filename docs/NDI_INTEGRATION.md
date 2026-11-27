@@ -35,6 +35,10 @@ Current Inno Setup script: [peraviz.iss](../packaging/windows/peraviz.iss).
 It has a GPL LicenseFile and a recursive SourceDir file rule. That rule would
 copy an NDI payload unconditionally; future packaging must explicitly exclude
 it from the core copy and stage it only under the approved optional component.
+The current Windows CI packages remain core-only, copy the prepared license
+notices, and reject an app-local NDI payload or known NDI runtime filenames.
+This is a preliminary filesystem guard, not a full dependency/PCK audit.
+See [packaging inputs](../packaging/ndi/README.md).
 Existing portable ZIP export must remain core-only unless a separately reviewed
 NDI-bearing distribution implements the same legal and consent requirements.
 
@@ -48,7 +52,9 @@ Proposed app-local layout (names illustrative; derive exact files from approved 
       THIRD_PARTY_NOTICES.md
       components/ndi/
         <approved runtime files>
-        <approved end-user terms and notices>
+        NDI-EULA.txt
+        Processing.NDI.Lib.Licenses.txt
+        <other approved notices/files>
 
 No NDI binaries or SDK are committed to Git. A controlled packaging job may stage
 only approved redistributable files after compliance gates pass. Windows/Linux/
