@@ -156,17 +156,22 @@ jobs:
             .godot/editor/editor_log.txt
           if-no-files-found: warn
           retention-days: 7
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          # Match Perastage: use Chocolatey's ISCC shim rather than assuming
+          # a particular installation directory or executable version resource.
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          Get-Command ISCC.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 | Format-List Source
       - name: Package installer and portable archive
         shell: pwsh
         run: |
           Compress-Archive -Path dist/Peraviz -DestinationPath "dist/Peraviz-portable-$env:APP_VERSION-windows-x64.zip"
-          $iscc = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
-          # Native dark/dynamic wizard styles require Inno Setup >= 6.6.
-          if (-not (Test-Path $iscc) -or [version](Get-Item $iscc).VersionInfo.FileVersionRaw -lt [version]'6.6.0.0') {
-            choco upgrade innosetup --version=6.7.1 -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup upgrade failed' }
-          }
-          if (-not (Test-Path $iscc) -or [version](Get-Item $iscc).VersionInfo.FileVersionRaw -lt [version]'6.6.0.0') { throw 'Inno Setup 6.6 or newer required' }
+          $iscc = (Get-Command ISCC.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          Write-Host "Using Inno Setup compiler: $iscc"
+          # ISCC itself validates WizardStyle=modern dynamic (requires 6.6+)
+          # and prints the actual compiler version. Do not gate on PE metadata.
           $sourceDir = (Resolve-Path dist/Peraviz).Path
           $outputDir = (Resolve-Path dist).Path
           & $iscc "/DAppVersion=$env:APP_VERSION" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" packaging/windows/peraviz.iss
