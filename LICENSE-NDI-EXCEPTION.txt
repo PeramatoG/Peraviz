@@ -1,0 +1,38 @@
+Peraviz NDI linking exception
+Version 1.0 — additional permission under GNU GPL version 3, section 7
+
+Application of this permission
+
+The operative text below is available for adoption by the copyright holders.
+It applies only to covered source files whose copyright holders have expressly
+granted this permission and identified it in those files (or in a notice
+applicable to those files). The presence of this file alone does not change the
+license of existing code or grant permission on behalf of other rights holders.
+
+Operative text
+
+As an additional permission under section 7 of the GNU General Public
+License, version 3 (GPLv3), the copyright holders granting this permission
+authorize you to link or combine the covered Peraviz code with the unmodified,
+officially distributed NDI Standard SDK runtime libraries, including by dynamic
+loading, and to convey the resulting combination without licensing those
+particular libraries under GPLv3 or providing their source code, to the extent
+those requirements would otherwise apply to the combination.
+
+This permission extends only to the official NDI Standard SDK runtime and
+its authorized runtime dependencies required for the combination. It does not
+extend to unrelated proprietary modules, the NDI Advanced SDK or third-party
+GPL-covered code for which the relevant holders have not granted permission.
+
+All other applicable requirements of GPLv3 remain in effect, including
+providing the Corresponding Source of the GPL-covered Peraviz code, adapter
+code and associated build and installation scripts. This permission grants no
+rights in NDI software or trademarks and does not authorize imposing additional
+restrictions on the GPL-covered code. You must obtain any necessary permission
+to use or convey NDI components independently from their copyright holders.
+
+If you modify a covered file, you may extend this additional permission to
+your modifications, but you are not obligated to do so. You may remove this
+permission as provided by GPLv3 section 7.
+
+End of operative text.

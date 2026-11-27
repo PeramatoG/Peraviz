@@ -50,4 +50,6 @@ Contributor rules are in [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTI
 
 Peraviz is licensed under the [GNU General Public License v3.0](LICENSE.txt).
 
+Optional official NDI video reception is planned, not implemented. See the [prepared linking exception](LICENSE-NDI-EXCEPTION.txt) (applies only where expressly granted by the rights holders), [compliance requirements](docs/NDI_COMPLIANCE.md), [integration design](docs/NDI_INTEGRATION.md) and [preliminary third-party notices](THIRD_PARTY_NOTICES.md).
+
 - [Application UI and shortcuts](docs/application-ui.md): layout, selection, diagnostic tools and the MVR editing handoff.

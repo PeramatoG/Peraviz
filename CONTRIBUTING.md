@@ -21,6 +21,12 @@ Before changing runtime behavior, read:
 - Explain user-visible changes first, then internal changes.
 - Mention any tests that could not run and why.
 
+## Licensing and planned NDI support
+
+Contributions remain under the project's GPLv3 terms unless an authorized separate notice applies. The [prepared NDI linking exception](LICENSE-NDI-EXCEPTION.txt) applies only where expressly granted by the relevant copyright holders. For code intended to be covered, contributors who have the necessary rights may grant the permission explicitly in the PR and include the source-file notice described in [NDI compliance](docs/NDI_COMPLIANCE.md). Maintainers record that grant and its scope. A pull request alone does not transfer copyright or grant an exception. Preserve existing third-party notices and do not add an exception to code you are not authorized to license. GPL-only contributions and builds remain permitted under GPLv3.
+
+Do not submit proprietary NDI SDK binaries, confidential sample code or private documentation to the repository, CI artifacts or external tools. Only expressly redistributable files may be considered after the [NDI compliance gates](docs/NDI_COMPLIANCE.md) are satisfied. Record source provenance and license for imported code, including shared Perastage code.
+
 ## Runtime boundaries
 
 When contributing code, preserve these boundaries:
