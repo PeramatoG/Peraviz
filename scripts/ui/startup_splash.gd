@@ -12,14 +12,15 @@ const FALLBACK_VERSION: String = "0.1.0"
 
 var _frames_visible: int = 0
 var _launching: bool = false
+var _startup_failed: bool = false
 
 
 # Shows a native-looking startup card before constructing the main Viewer.
 func _ready() -> void:
 	_version_label.text = "Peraviz %s" % _read_version()
 	_status_label.text = "Loading Peraviz..."
-	# Never manipulate the editor's own window or create transparent windows
-	# in headless smoke tests. The regular viewer remains testable by path.
+	# Never manipulate the editor's own window or the headless display.
+	# The regular viewer remains testable by path.
 	if DisplayServer.get_name() == "headless" or Engine.is_embedded_in_editor():
 		set_process(false)
 		_open_viewer.call_deferred()
@@ -30,8 +31,10 @@ func _ready() -> void:
 	window.borderless = true
 	window.unresizable = true
 	window.always_on_top = true
-	window.transparent = true
-	get_viewport().transparent_bg = true
+	# Borderless is independent of transparency. Keep the native swapchain opaque
+	# from process startup; enabling per-pixel transparency causes sky leakage.
+	window.transparent = false
+	get_viewport().transparent_bg = false
 	var screen: Rect2i = DisplayServer.screen_get_usable_rect(window.current_screen)
 	if screen.size.x >= SPLASH_SIZE.x and screen.size.y >= SPLASH_SIZE.y:
 		window.position = screen.position + (screen.size - SPLASH_SIZE) / 2
@@ -74,8 +77,8 @@ func _open_viewer(packed_scene: PackedScene = null) -> void:
 	if viewer == null:
 		_show_error("Unable to start Peraviz.", "Viewer scene could not be instantiated.")
 		return
-	get_tree().root.add_child(viewer)
-	get_tree().current_scene = viewer
+	# Hide the card before resizing; no enlarged splash should be drawn.
+	hide()
 	if DisplayServer.get_name() != "headless" and not Engine.is_embedded_in_editor():
 		var window: Window = get_window()
 		get_viewport().transparent_bg = false
@@ -86,7 +89,9 @@ func _open_viewer(packed_scene: PackedScene = null) -> void:
 		window.mode = Window.MODE_WINDOWED
 		window.size = MAIN_WINDOW_SIZE
 		window.mode = Window.MODE_MAXIMIZED
-	print("[PeravizStartup] Viewer ready")
+	get_tree().root.add_child(viewer)
+	get_tree().current_scene = viewer
+	print("[PeravizStartup] Viewer ready; renderer=%s driver=%s" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name()])
 	queue_free()
 
 
@@ -103,5 +108,13 @@ func _read_version() -> String:
 func _show_error(message: String, detail: String) -> void:
 	_launching = true
 	set_process(false)
-	_status_label.text = message
+	_startup_failed = true
+	_status_label.text = message + "\nEsc to exit"
 	push_error("[PeravizStartup] " + detail)
+
+
+# A borderless startup failure must still offer a way to close the application.
+func _unhandled_key_input(event: InputEvent) -> void:
+	if _startup_failed and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		get_tree().quit(1)
