@@ -35,3 +35,27 @@ Windows manual checklist (Godot 4.7.1, matching export templates):
 - Verify no stretched splash or unexpected always-on-top state remains.
 
 Real Windows graphics validation is pending; no Godot upgrade is included.
+
+## Main window sizing follow-up
+
+After the opacity fix the owner observed the Viewer remaining at the splash
+size. The editor's embedded game host owns its dimensions and cannot be
+resized by the project. Keep Viewer-sized default overrides for editor runs;
+only export templates start at 222 x 268. A standalone editor run still
+shrinks to the splash size from its startup script; the initial dark boot
+frame may be larger. Embedded and headless runs keep their existing native
+window-operation bypass.
+
+For native runs restore normal flags and a monitor-fitted windowed rectangle,
+mount the Viewer, then reapply the normal size and maximize on subsequent
+frames. Check the actual native client dimensions; if still too small,
+restore a usable windowed rectangle once rather than forcing fullscreen.
+The startup log reports the resulting mode and client size. No change to
+transparency settings or the independent F11 presentation mode.
+
+Manual validation: test an exported Windows build and a non-embedded editor
+run; check the compact splash, decorated maximized main window and the normal
+restore size. Test the editor's embedded run separately (host-controlled size).
+Test a smaller monitor, a secondary monitor and non-default DPI. Headless
+checks cover configuration, rectangle calculation and splash-size detection,
+not native window-manager behavior.
