@@ -50,4 +50,23 @@ func _run() -> void:
 				"The logo preserves Perastage's 180 px presentation size"
 			)
 		splash.free()
+	# Exercise the managed path on the real Viewer without a native compositor.
+	var viewer: Node = load("res://test.tscn").instantiate()
+	viewer.startup_managed = true
+	var original_process_mode := viewer.process_mode
+	viewer.process_mode = Node.PROCESS_MODE_DISABLED
+	root.add_child(viewer)
+	test.check(not viewer.startup_initialized and not viewer._startup_file_scheduled, "Managed Viewer does not initialize or open files on mount")
+	var stages: Array[String] = []
+	await viewer.initialize_for_startup(func(stage: String) -> void: stages.append(stage))
+	test.check(viewer.startup_initialized, "Managed Viewer initialization completes")
+	test.check(stages == ["Preparing controls...", "Preparing interface...", "Preparing renderers...", "Applying visual settings...", "Finishing interface..."], "Managed initialization runs ordered phases")
+	test.check(not viewer._startup_file_scheduled, "Startup file remains held until splash releases it")
+	viewer._user_preferences.auto_load_last_file = false
+	viewer.process_mode = original_process_mode
+	viewer.release_startup_file()
+	viewer.release_startup_file()
+	test.check(viewer._startup_file_scheduled, "Startup file is scheduled by explicit handoff")
+	await process_frame
+	viewer.free()
 	test.finish(self)
