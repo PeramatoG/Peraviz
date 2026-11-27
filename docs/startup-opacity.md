@@ -59,3 +59,22 @@ restore size. Test the editor's embedded run separately (host-controlled size).
 Test a smaller monitor, a secondary monitor and non-default DPI. Headless
 checks cover configuration, rectangle calculation and splash-size detection,
 not native window-manager behavior.
+
+## Native handoff and startup timing
+
+Keep the compact opaque card visible while the Viewer is instantiated,
+mounted and initialized. Managed startup yields between phases; direct and
+headless scene loads retain synchronous setup. The previous native sizing and
+opacity fixes are retained. Explicit PVZ and remembered-file requests are
+released once after normal-window draw feedback (or a bounded timeout).
+No extra process or global transparency is used.
+
+Use the `[PeravizStartup]` log lines to compare initial dimensions, resource
+readiness, instantiation, mount, initialization phases and compact/normal
+draw waits. These are wall-clock observations, not GPU profiling. Engine boot
+before splash `_ready()`, child `_ready()` calls, shader compilation and
+individual expensive operations may still block. Headless tests verify phase
+ordering and the file-release gate, not native presentation. Test cold/warm
+installed Windows launches with and without a remembered project; confirm
+the compact card remains visible until handoff, native UI responds and the
+normal Viewer is usable. Do not alter Vulkan or opacity to mask startup latency.

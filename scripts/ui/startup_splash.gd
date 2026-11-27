@@ -13,10 +13,14 @@ const FALLBACK_VERSION: String = "0.1.0"
 var _frames_visible: int = 0
 var _launching: bool = false
 var _startup_failed: bool = false
+var _startup_started: int = 0
+var _draw_count: int = 0
+const DRAW_WAIT_MS: int = 1500
 
 
 # Shows a native-looking startup card before constructing the main Viewer.
 func _ready() -> void:
+	_startup_started = Time.get_ticks_msec()
 	_version_label.text = "Peraviz %s" % _read_version()
 	_status_label.text = "Loading Peraviz..."
 	# Never manipulate the editor's own window or the headless display.
@@ -26,6 +30,13 @@ func _ready() -> void:
 		_open_viewer.call_deferred()
 		return
 	var window: Window = get_window()
+	print("[PeravizStartup] Initial window size=%s mode=%s effective override=%sx%s" % [
+		DisplayServer.window_get_size(), window.mode,
+		ProjectSettings.get_setting_with_override("display/window/size/window_width_override"),
+		ProjectSettings.get_setting_with_override("display/window/size/window_height_override")])
+	RenderingServer.frame_post_draw.connect(_on_frame_drawn)
+	z_index = 4095
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	window.mode = Window.MODE_WINDOWED
 	window.size = SPLASH_SIZE
 	window.borderless = true
@@ -51,6 +62,8 @@ func _process(_delta: float) -> void:
 	_frames_visible += 1
 	if _frames_visible < 2:
 		return
+	if _draw_count == 0 and Time.get_ticks_msec() - _startup_started < DRAW_WAIT_MS:
+		return
 	match ResourceLoader.load_threaded_get_status(VIEWER_SCENE):
 		ResourceLoader.THREAD_LOAD_LOADED:
 			var packed_scene: PackedScene = ResourceLoader.load_threaded_get(VIEWER_SCENE) as PackedScene
@@ -62,7 +75,21 @@ func _process(_delta: float) -> void:
 			_show_error("Unable to start Peraviz.", "Unable to load %s" % VIEWER_SCENE)
 
 
-# Restores a normal window, mounts the Viewer and maximizes after its initialization.
+func _on_frame_drawn() -> void:
+	_draw_count += 1
+
+# Bounded wait, including when the window is minimized or occluded.
+func _wait_for_draw() -> bool:
+	var previous: int = _draw_count
+	var deadline: int = Time.get_ticks_msec() + DRAW_WAIT_MS
+	while _draw_count == previous and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	return _draw_count != previous
+
+func _set_stage(message: String) -> void:
+	_status_label.text = message
+
+# Keep the compact card visible while the Viewer initializes.
 func _open_viewer(packed_scene: PackedScene = null) -> void:
 	if _launching:
 		return
@@ -73,16 +100,47 @@ func _open_viewer(packed_scene: PackedScene = null) -> void:
 	if packed_scene == null:
 		_show_error("Unable to start Peraviz.", "Viewer scene is unavailable.")
 		return
+	var native_window := DisplayServer.get_name() != "headless" and not Engine.is_embedded_in_editor()
+	if native_window:
+		print("[PeravizStartup] Resources ready: %d ms" % (Time.get_ticks_msec() - _startup_started))
+		_set_stage("Creating viewer...")
+		await _wait_for_draw()
+	var started: int = Time.get_ticks_msec()
 	var viewer: Node = packed_scene.instantiate()
 	if viewer == null:
 		_show_error("Unable to start Peraviz.", "Viewer scene could not be instantiated.")
 		return
-	# Hide the card before resizing; no enlarged splash should be drawn.
-	hide()
-	var native_window := DisplayServer.get_name() != "headless" and not Engine.is_embedded_in_editor()
+	print("[PeravizStartup] Viewer instantiate: %d ms" % (Time.get_ticks_msec() - started))
+	var original_process_mode := viewer.process_mode
+	if native_window:
+		viewer.set("startup_managed", true)
+		viewer.process_mode = Node.PROCESS_MODE_DISABLED
 	var window: Window = get_window()
 	var normal_rect := Rect2i()
+	started = Time.get_ticks_msec()
+	get_tree().root.add_child(viewer)
+	get_tree().current_scene = viewer
+	print("[PeravizStartup] Viewer mount: %d ms" % (Time.get_ticks_msec() - started))
 	if native_window:
+		# Keep the card above its new sibling for drawing and GUI order.
+		get_tree().root.move_child(self, -1)
+		_set_stage("Preparing viewer...")
+		await _wait_for_draw()
+		await viewer.call("initialize_for_startup", Callable(self, "_set_stage"))
+		if not bool(viewer.get("startup_initialized")):
+			viewer.queue_free()
+			get_tree().current_scene = self
+			_show_error("Unable to start Peraviz.", "Viewer initialization did not complete.")
+			return
+		_set_stage("Starting viewer...")
+		started = Time.get_ticks_msec()
+		var compact_drawn: bool = await _wait_for_draw()
+		if not compact_drawn:
+			push_warning("[PeravizStartup] No draw observed before handoff.")
+		print("[PeravizStartup] Compact frame wait: %d ms" % (Time.get_ticks_msec() - started))
+		# Retire the card only now; preserve previous opacity and sizing fixes.
+		hide()
+		viewer.call("apply_startup_ui_scale")
 		window.mode = Window.MODE_WINDOWED
 		window.unresizable = false
 		window.borderless = false
@@ -91,11 +149,7 @@ func _open_viewer(packed_scene: PackedScene = null) -> void:
 		get_viewport().transparent_bg = false
 		normal_rect = _normal_window_rect(DisplayServer.screen_get_usable_rect(window.current_screen))
 		_apply_normal_rect(window, normal_rect)
-	get_tree().root.add_child(viewer)
-	get_tree().current_scene = viewer
-	if native_window:
-		# Viewer _ready() builds its layout and applies UI scaling. Let those
-		# changes and native resize messages settle before requesting maximize.
+		# Let native resize and layout messages settle before maximizing.
 		await get_tree().process_frame
 		_apply_normal_rect(window, normal_rect)
 		await get_tree().process_frame
@@ -112,7 +166,17 @@ func _open_viewer(packed_scene: PackedScene = null) -> void:
 			if not _is_usable_window_size(DisplayServer.window_get_size(), normal_rect.size):
 				push_warning("[PeravizStartup] Native window resize did not reach the requested size.")
 		print("[PeravizStartup] Main window mode=%s size=%s" % [window.mode, DisplayServer.window_get_size()])
-	print("[PeravizStartup] Viewer ready; renderer=%s driver=%s" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name()])
+		started = Time.get_ticks_msec()
+		var normal_drawn: bool = await _wait_for_draw()
+		if not normal_drawn:
+			push_warning("[PeravizStartup] No normal-window draw observed; releasing startup after bounded wait.")
+		print("[PeravizStartup] Normal frame wait: %d ms" % (Time.get_ticks_msec() - started))
+		viewer.process_mode = original_process_mode
+	else:
+		hide()
+	print("[PeravizStartup] Viewer ready; renderer=%s driver=%s elapsed_ms=%d" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_current_rendering_driver_name(), Time.get_ticks_msec() - _startup_started])
+	if native_window:
+		viewer.call("release_startup_file")
 	queue_free()
 
 

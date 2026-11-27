@@ -284,9 +284,32 @@ const ENVIRONMENT_QUALITY_PRESETS := {
 	},
 }
 
+# The splash owns native startup sequencing. Direct loads remain synchronous.
+var startup_managed: bool = false
+var startup_initialized: bool = false
+var _startup_file_scheduled: bool = false
+var _startup_stage_started: int = 0
+
 func _ready() -> void:
-	# Editor previews keep the authored skeleton; application services mount only at runtime.
-	if Engine.is_editor_hint(): return
+	if Engine.is_editor_hint() or startup_managed: return
+	_initialize_runtime(Callable())
+
+func initialize_for_startup(progress: Callable) -> void:
+	if not startup_managed or startup_initialized:
+		return
+	await _initialize_runtime(progress)
+
+func _startup_checkpoint(progress: Callable, completed: String, next: String) -> void:
+	print("[PeravizStartup] Stage %s: %d ms" % [completed, Time.get_ticks_msec() - _startup_stage_started])
+	if progress.is_valid():
+		progress.call(next)
+	# Yield to the main loop; all SceneTree work stays on its owner thread.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_startup_stage_started = Time.get_ticks_msec()
+
+func _initialize_runtime(progress: Callable) -> void:
+	_startup_stage_started = Time.get_ticks_msec()
 	_cached_beam_defaults = BeamOpticsControllerScript.BuildDefaultMasterOptics()
 	_beam_params_template_cache.clear()
 	_apply_imported_content_scale()
@@ -344,6 +367,8 @@ func _ready() -> void:
 		Callable(self, "_apply_fixture_controls_from_debug"),
 		app_shell.selection
 	)
+	if startup_managed:
+		await _startup_checkpoint(progress, "scene services", "Preparing controls...")
 	_dmx_controller = DmxControllerScript.new()
 	_dmx_controller.configure(
 		self,
@@ -367,6 +392,8 @@ func _ready() -> void:
 	var manual_fixture_test_enabled: bool = _read_manual_fixture_test_setting()
 	_fixture_debug_controller.set_manual_fixture_test_enabled(manual_fixture_test_enabled)
 	_load_user_preferences()
+	if startup_managed:
+		await _startup_checkpoint(progress, "controls and preferences", "Preparing interface...")
 	preload("res://scripts/ui/geometry_quality_controls.gd").install(visual_settings_window._tabs,_user_preferences,_asset_cache.derived_lods,get_viewport())
 	preload("res://scripts/ui/fps_overlay.gd").install(topbar_row, $UIRoot/RootVBox/StatusBar/StatusRow/Diagnostics, _user_preferences)
 	_refresh_ui_module_visibility()
@@ -378,12 +405,16 @@ func _ready() -> void:
 	_refresh_fixture_debug_panel()
 	_setup_dmx_controls()
 	_setup_mvr_xchange_panel()
+	if startup_managed:
+		await _startup_checkpoint(progress, "interface services", "Preparing renderers...")
 	_fixture_light_apply_service = FixtureLightApplyServiceScript.new()
 	_setup_dmx_fixture_runtime()
 	_apply_environment_quality_preset()
 	_capture_visual_environment_baseline()
 	_load_visual_settings_from_project()
 	_initialize_beam_renderers()
+	if startup_managed:
+		await _startup_checkpoint(progress, "renderer setup", "Applying visual settings...")
 	_fixture_gobo_projector = FixtureGoboProjectorScript.new()
 	if visual_settings_window != null and visual_settings_window.has_method("configure"):
 		visual_settings_window.call("configure", _visual_settings)
@@ -394,8 +425,24 @@ func _ready() -> void:
 		push_warning("VisualSettingsWindow is not ready for configure(); initial visual settings not pushed.")
 	_apply_visual_settings(_visual_settings, true)
 	_refresh_day_night_environment_controller()
+	if startup_managed:
+		await _startup_checkpoint(progress, "visual settings", "Finishing interface...")
 	app_shell.configure(self, _user_preferences, _fixture_inspection_panel)
+	startup_initialized = true
+	if startup_managed:
+		print("[PeravizStartup] Stage application shell: %d ms" % (Time.get_ticks_msec() - _startup_stage_started))
+	else:
+		apply_startup_ui_scale()
+		release_startup_file()
+
+func apply_startup_ui_scale() -> void:
 	get_window().content_scale_factor = _user_preferences.ui_scale
+
+# Explicit and remembered files are released once, after native handoff.
+func release_startup_file() -> void:
+	if not startup_initialized or _startup_file_scheduled:
+		return
+	_startup_file_scheduled = true
 	call_deferred("_open_startup_file")
 
 
@@ -1004,6 +1051,7 @@ func _refresh_ui_module_visibility() -> void:
 		show_advanced_controls_toggle.button_pressed = UiVisibilityPolicyScript.is_advanced_controls_enabled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not startup_initialized: return
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus is LineEdit or focus is TextEdit: return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == DEBUG_TOGGLE_KEY and UiVisibilityPolicyScript.is_module_visible(UiVisibilityPolicyScript.MODULE_DEBUG):
@@ -2891,7 +2939,7 @@ func _refresh_dmx_fixture_bindings(budget: SceneLoadBudget = null) -> bool:
 	return _fixture_light_apply_service.is_dense_presentation_active()
 
 func _process(delta: float) -> void:
-	if _scene_loading or _scene_load_failed: return
+	if not startup_initialized or _scene_loading or _scene_load_failed: return
 	if _native_target_registry != null:
 		_native_target_registry.advance_gobo_motion(delta)
 	if _dmx_controller != null:
