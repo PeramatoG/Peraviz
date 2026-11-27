@@ -1,0 +1,176 @@
+name: Windows package (experimental)
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+
+concurrency:
+  group: peraviz-windows-package-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      GODOT_VERSION: '4.7.1'
+      PERAVIZ_VCPKG_ROOT: ${{ github.workspace }}\.tools\vcpkg
+      VCPKG_DOWNLOADS: ${{ github.workspace }}\.cache\downloads
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\.cache\binary,readwrite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Get version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path '.tools','.cache/binary','.cache/downloads' | Out-Null
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/binary
+            .cache/downloads
+          key: win-release-v1-${{ hashFiles('native/vcpkg.json') }}
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:PERAVIZ_VCPKG_ROOT"
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg clone failed' }
+          git -C "$env:PERAVIZ_VCPKG_ROOT" checkout --detach 9d7f79f56ae1a9b4704d6a7fb8237e347a974133
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg revision failed' }
+          & "$env:PERAVIZ_VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+      - name: Compile Release GDExtension
+        shell: pwsh
+        run: |
+          cmake -S native -B native/out/packaging -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=$env:PERAVIZ_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+          cmake --build native/out/packaging --target peraviz_native peraviz_native_check_dependencies --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Native compilation or dependency audit failed' }
+          if (-not (Test-Path bin/peraviz_native.dll)) { throw 'Native DLL missing' }
+      - name: Download Godot and export templates
+        shell: pwsh
+        run: |
+          $v = $env:GODOT_VERSION
+          $url = "https://github.com/godotengine/godot-builds/releases/download/$v-stable"
+          $prefix = "Godot_v$v-stable"
+          $directory = Join-Path $env:RUNNER_TEMP 'godot'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $editorZip = Join-Path $env:RUNNER_TEMP 'editor.zip'
+          Invoke-WebRequest "$url/$($prefix)_win64.exe.zip" -OutFile $editorZip
+          Expand-Archive $editorZip -DestinationPath $directory
+          $godotGui = Join-Path $directory "$($prefix)_win64.exe"
+          $godot = Join-Path $directory "$($prefix)_win64_console.exe"
+          if (-not (Test-Path $godotGui)) { throw 'Godot editor executable missing' }
+          if (-not (Test-Path $godot)) { throw 'Godot console executable missing' }
+          # Windows CI must invoke Godot's console wrapper for reliable output and exit codes.
+          "GODOT_BIN=$godot" >> $env:GITHUB_ENV
+          $templatesZip = Join-Path $env:RUNNER_TEMP 'templates.zip'
+          $expanded = Join-Path $env:RUNNER_TEMP 'template-extract'
+          Invoke-WebRequest "$url/$($prefix)_export_templates.tpz" -OutFile $templatesZip
+          Expand-Archive $templatesZip -DestinationPath $expanded
+          $source = Join-Path $expanded 'templates'
+          $dest = Join-Path $env:APPDATA "Godot/export_templates/$v.stable"
+          if (-not (Test-Path $source)) { throw 'Templates archive layout mismatch' }
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item (Join-Path $source '*') $dest -Recurse
+          if (-not (Test-Path (Join-Path $dest 'windows_release_x86_64.exe'))) { throw 'Release template missing' }
+      - name: Export and smoke-test
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/Peraviz', 'out/packaging-logs' | Out-Null
+          $importLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-import.log'
+          $exportLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-export.log'
+          $smokeLog = Join-Path (Resolve-Path 'out/packaging-logs').Path 'godot-smoke.log'
+
+          # Use the Windows console wrapper so Godot errors and exit codes are visible in CI.
+          # CMake's Windows linker can leave a ~peraviz_native.dll backup behind.
+          # Never ship the backup; only the verified Release library belongs in the package.
+          Get-ChildItem -LiteralPath 'bin' -File -Filter '~*.dll' -ErrorAction SilentlyContinue | Remove-Item -Force
+
+          & $env:GODOT_BIN --headless --verbose --path . --import --log-file $importLog
+          $importExit = $LASTEXITCODE
+          if (Test-Path $importLog) { Get-Content $importLog -Tail 100 }
+          if ($importExit -ne 0) { throw "Asset import failed (exit $importExit); inspect godot-import.log" }
+
+          & $env:GODOT_BIN --headless --verbose --path . --export-release 'Windows Desktop' 'dist/Peraviz/Peraviz.exe' --log-file $exportLog
+          $exportExit = $LASTEXITCODE
+          if (Test-Path $exportLog) { Get-Content $exportLog -Tail 100 }
+          if ($exportExit -ne 0) { throw "Godot export failed (exit $exportExit); inspect godot-export.log" }
+
+          # Inspect the actual Godot output before staging anything.
+          Write-Host 'Windows export contents:'
+          Get-ChildItem -LiteralPath 'dist/Peraviz' -Recurse -File | ForEach-Object {
+            Write-Host ("  " + $_.FullName.Substring((Resolve-Path 'dist/Peraviz').Path.Length + 1))
+          }
+          foreach ($file in @('Peraviz.exe','Peraviz.pck','Peraviz.console.exe')) {
+            if (-not (Test-Path (Join-Path 'dist/Peraviz' $file))) { throw "Export missing $file" }
+          }
+
+          # Platform-specific packaging fallback: stage the exact compiled Release
+          # DLL as a filesystem sidecar at its res://bin path, if the exporter
+          # has not already placed it there. The GDExtension declaration is unchanged.
+          $nativeSource = (Resolve-Path 'bin/peraviz_native.dll').Path
+          $nativeDestination = 'dist/Peraviz/bin/peraviz_native.dll'
+          if (-not (Test-Path $nativeDestination)) {
+            New-Item -ItemType Directory -Force -Path 'dist/Peraviz/bin' | Out-Null
+            Copy-Item -LiteralPath $nativeSource -Destination $nativeDestination
+            Write-Host 'Staged native DLL sidecar for Windows distribution.'
+          }
+          if (-not (Test-Path $nativeDestination)) { throw 'Native DLL was not staged' }
+          $originalHash = (Get-FileHash -LiteralPath $nativeSource -Algorithm SHA256).Hash
+          $exportHash = (Get-FileHash -LiteralPath $nativeDestination -Algorithm SHA256).Hash
+          if ($originalHash -ne $exportHash) { throw 'Native DLL in distribution does not match the compiled Release DLL' }
+          if (Test-Path 'dist/Peraviz/bin/~peraviz_native.dll') { throw 'Temporary native DLL backup leaked into distribution' }
+          Copy-Item LICENSE.txt dist/Peraviz/LICENSE.txt
+
+          & '.\dist\Peraviz\Peraviz.console.exe' --headless --quit-after 5 --log-file $smokeLog
+          $smokeExit = $LASTEXITCODE
+          if (Test-Path $smokeLog) { Get-Content $smokeLog -Tail 100 }
+          if ($smokeExit -ne 0) { throw "Exported startup failed (exit $smokeExit)" }
+          if (-not (Test-Path $smokeLog)) { throw 'No startup log produced' }
+          $result = Get-Content $smokeLog -Raw
+          if ($result -match 'SCRIPT ERROR|GDExtension dynamic library not found|Unable to load GDExtension|Identifier "PeravizLoader" not declared') {
+            throw 'Startup error in exported application'
+          }
+          if ($result -notmatch '\[PeravizStartup\] Viewer ready') {
+            throw 'Exported application never completed the splash-to-Viewer handoff'
+          }
+
+      - name: Preserve Godot diagnostics even when packaging fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Peraviz-Windows-diagnostics-${{ github.run_number }}
+          path: |
+            out/packaging-logs/*.log
+            .godot/editor/editor_log.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Package installer and portable archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/Peraviz -DestinationPath "dist/Peraviz-portable-$env:APP_VERSION-windows-x64.zip"
+          $iscc = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup unavailable' }
+          }
+          $sourceDir = (Resolve-Path dist/Peraviz).Path
+          $outputDir = (Resolve-Path dist).Path
+          & $iscc "/DAppVersion=$env:APP_VERSION" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir" packaging/windows/peraviz.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          if (-not (Test-Path "dist/Peraviz-Setup-$env:APP_VERSION-windows-x64.exe")) { throw 'Installer missing' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Peraviz-Windows-x64-${{ github.run_number }}
+          path: |
+            dist/Peraviz-portable-*-windows-x64.zip
+            dist/Peraviz-Setup-*-windows-x64.exe
+          if-no-files-found: error
+          retention-days: 14

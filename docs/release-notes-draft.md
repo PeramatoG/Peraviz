@@ -1,5 +1,9 @@
 # Peraviz v0.x.x
 
+- Added a compact Perastage-style Peraviz startup screen, with the golden framed artwork at 180 px, rounded frameless presentation, app name and canonical version, and a static loading label. The boot splash no longer takes over a maximized window; the existing Viewer scene loads separately and restores a normal maximized decorated window. Scene import progress integration and graphical Windows validation remain future work.
+
+- Added an experimental Windows x64 GitHub Actions package pipeline: pinned Godot 4.7.1 Windows export, C++ Release GDExtension build and dependency checks, headless startup smoke test, portable ZIP, and per-user Inno Setup installer. Windows GUI/GPU and installer operation still require manual validation; packages are unsigned.
+
 - Centered notifications in the bottom status bar and shortened DMX patch warnings.
 
 - Added canonical MVR Patch editing for installed fixture plans: compact Universe/Address rows for existing assignments, Enter-only confirmation and discarded unconfirmed drafts, overlap warnings, mixed-selection read-only state and shared inversion/Patch Undo/Redo. Native cached-mode validation and exclusive same-topology rerouting preserve held DMX, renderer resources and temporal state. PVZ and MVR export retain one canonical archive writer. Unpatched/incomplete fixtures and proposals requiring renderer-domain changes are preserved but rejected for live patch mutation with a diagnostic; Auto Span remains a separate runtime policy.
