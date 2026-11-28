@@ -8,7 +8,7 @@
 
 - Centered notifications in the bottom status bar and shortened DMX patch warnings.
 
-- Added native GDTF mode catalogs and candidate preparation for canonical MVR fixtures. The parser uses exact authored mode names and derives per-break footprints from the same byte routing used for compilation. The Inspector's mode display remains read-only.
+- Added an Inspector GDTF Mode selector for canonical MVR fixtures. Apply rebinds the live DMX runtime, reuses compatible geometry and supports alternative roots. Exact mode names, routed footprints and patch diagnostics come from the referenced GDTF. Mode changes join shared Undo/Redo and persist through PVZ Save and MVR Export.
 
 - Added canonical MVR Patch editing for installed fixture plans: compact Universe/Address rows for existing assignments, Enter-only confirmation and discarded unconfirmed drafts, overlap warnings, mixed-selection read-only state and shared inversion/Patch Undo/Redo. Native cached-mode validation and exclusive same-topology rerouting preserve held DMX, renderer resources and temporal state. PVZ and MVR export retain one canonical archive writer. Unpatched/incomplete fixtures and proposals requiring renderer-domain changes are preserved but rejected for live patch mutation with a diagnostic; Auto Span remains a separate runtime policy.
 

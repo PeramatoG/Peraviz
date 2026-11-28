@@ -29,7 +29,23 @@ func clear(adapter: RefCounted) -> void:
 	rows.clear()
 	membership = PackedInt32Array()
 
-func install(adapter: RefCounted, descriptors: Array) -> bool:
+# Move aggregate resources whose physical members all belong to untouched fixtures.
+func take_unchanged_aggregates(outputs: Array, reusable: Dictionary) -> Dictionary:
+	var retained: Dictionary = {}
+	for row in rows:
+		if row.presentation_class != AGGREGATED: continue
+		var ids := PackedInt32Array()
+		var keep := true
+		for index in row.members:
+			var id: int = outputs[index].canonical_id
+			ids.append(id)
+			keep = keep and reusable.has(id)
+		if keep:
+			retained[ids] = row.output
+			_aggregates.erase(row.output)
+	return retained
+
+func install(adapter: RefCounted, descriptors: Array, retained: Dictionary = {}) -> bool:
 	clear(adapter)
 	membership.resize(adapter._outputs.size())
 	membership.fill(-1)
@@ -57,7 +73,13 @@ func install(adapter: RefCounted, descriptors: Array) -> bool:
 		if not reason.is_empty() or members.size() < 3:
 			_reject(reason if not reason.is_empty() else "member_count")
 			continue
-		var output: RefCounted = adapter._create_aggregate_output(descriptor, int(members[0]))
+		var output: RefCounted = retained.get(descriptor["physical_ids"])
+		if output != null:
+			retained.erase(descriptor["physical_ids"])
+			output.index = int(members[0])
+			for handle in output.lights: handle.output_index = output.index
+		else:
+			output = adapter._create_aggregate_output(descriptor, int(members[0]))
 		if output == null:
 			_reject("aggregate_resource_creation")
 			continue
@@ -83,6 +105,13 @@ func install(adapter: RefCounted, descriptors: Array) -> bool:
 		row.output = output
 		membership[output.index] = rows.size()
 		rows.append(row)
+	for output in retained.values():
+		for handle in output.lights:
+			adapter._disconnect_handle(handle)
+			if is_instance_valid(handle.light):
+				if adapter._renderer != null: adapter._renderer.cleanup_beam(handle.light)
+				handle.light.free()
+	retained.clear()
 	var classes := PackedInt32Array()
 	for row in rows: classes.append(row.presentation_class)
 	return adapter._native.install_render_rows(membership, classes)

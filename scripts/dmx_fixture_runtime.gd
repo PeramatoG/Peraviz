@@ -225,6 +225,38 @@ func rebuild(universe_offset: int, rebuild_reason: String = "explicit", budget: 
 
 	return _build_summary(universe_offset)
 
+# Refresh setup projections and subscribe the running receiver once to the installed native plan.
+func refresh_after_mode_edit(payload: Dictionary, uuid: String, target_summary: Dictionary) -> void:
+	_runtime_generation += 1
+	_receiver_subscription_generation = -1
+	_last_rebuild_reason = "fixture mode edit"
+	_register_compiled_runtime_setup_metadata(payload)
+	_native_setup_summary["target_registry"] = target_summary
+	_register_native_renderer_manifest(payload.renderer_manifest)
+	_native_bindings_count = int(payload.property_count)
+	_sectioned_visual_frame_applier.install_schema(_native_visual_runtime.get_visual_frame_schema())
+	var result: Dictionary = _native_scene_loader.build_fixture_dmx_bindings(_runtime_universe_offset)
+	_bindings = result.get("bindings", [])
+	_unbound = result.get("unbound", [])
+	_fixture_patch_lookup = _build_fixture_patch_lookup()
+	_fixture_capability_state_cache.erase(uuid)
+	_native_channel_values.erase(uuid)
+	_native_render_ready_values.erase(uuid)
+	_static_gobo_controls_by_fixture.erase(uuid)
+	_live_visual_gobo_controls_by_fixture.erase(uuid)
+	_live_gobo_diagnostics_by_fixture.erase(uuid)
+	_fixture_apply_plans.erase(uuid)
+	_fixture_output_buffers.erase(uuid)
+	_fixture_time_tick_flags.erase(uuid)
+	for binding: Dictionary in _bindings:
+		if binding.fixture_uuid != uuid: continue
+		_fixture_apply_plans[uuid] = _build_fixture_apply_plan(binding)
+		_fixture_output_buffers[uuid] = _build_fixture_output_buffer(binding)
+		_static_gobo_controls_by_fixture[uuid] = _build_static_gobo_controls(binding)
+		_live_visual_gobo_controls_by_fixture[uuid] = _build_cached_live_gobo_controls(_static_gobo_controls_by_fixture[uuid])
+		break
+	if _fixture_row_provider != null: _fixture_row_provider.set_dmx_state(_bindings, _unbound)
+
 func _initialize_native_visual_runtime() -> void:
 	_native_visual_runtime_available = ClassDB.class_exists("PeravizVisualRuntime")
 	if not _native_visual_runtime_available:

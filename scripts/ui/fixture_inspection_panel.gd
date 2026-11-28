@@ -9,6 +9,7 @@ var _document: RefCounted
 var _inversion_box: VBoxContainer
 var _inversion_rows: Array = []
 var _patch_panel: VBoxContainer
+var _mode_field: VBoxContainer
 
 func _ready() -> void:
 	build_ui()
@@ -56,6 +57,10 @@ func configure(selection: SceneSelection, provider: FixtureRowProvider, document
 		_details.get_parent().add_child(_patch_panel)
 		_details.get_parent().move_child(_patch_panel, 1)
 		_patch_panel.configure(_document, _selection)
+		_mode_field = preload("res://scripts/ui/fixture_mode_field.gd").new()
+		_details.get_parent().add_child(_mode_field)
+		_details.get_parent().move_child(_mode_field, 1)
+		_mode_field.configure(_document)
 	_render()
 
 # The import hook refreshes the selected object only. It never creates fixture rows.
@@ -68,6 +73,7 @@ func finish_visible_refresh(budget: SceneLoadBudget) -> bool:
 func _render() -> void:
 	if _details == null: return
 	_render_inversions()
+	if _mode_field != null: _mode_field.show_fixture("")
 	_details.text = "INSPECTOR\n\nSelect an object in the scene or explorer.\n\nSelect canonical fixtures to edit MVR inversion. Other properties remain read-only."
 	if _selection == null or _selection.ids.is_empty(): return
 	if _selection.ids.size() > 1:
@@ -81,7 +87,8 @@ func _render() -> void:
 	var text := "INSPECTOR\n\nIdentification\n%s\n%s\n" % [row.get("fixture_name", node.get_meta("peraviz_name", node.name)), kind.capitalize()]
 	if show_object_uuids: text += "UUID: %s\n" % id
 	if kind == "fixture":
-		text += "Fixture ID: %s\n\nFixture / GDTF\n%s\n\nDMX Mode\n%s\n\nAuthored patch · edit below\nPrimary universe: %s\nPrimary address: %s\n" % [_value(row, "fixture_id"), _value(row, "fixture_type"), _value(row, "dmx_mode"), _value(row, "universe"), _value(row, "address")]
+		if _mode_field != null: _mode_field.show_fixture(id)
+		text += "Fixture ID: %s\n\nFixture / GDTF\n%s\n\nAuthored patch · edit below\nPrimary universe: %s\nPrimary address: %s\n" % [_value(row, "fixture_id"), _value(row, "fixture_type"), _value(row, "universe"), _value(row, "address")]
 	text += "\nTransform · local Godot coordinates\nPosition (m): %s\nRotation (°): %s\nScale: %s\n" % [node.position, node.rotation_degrees, node.scale]
 	if kind == "fixture":
 		var info: Dictionary = _document.fixture(id) if _document != null else {}

@@ -103,4 +103,4 @@ The native document's staged GDTF mode operation writes the standard
 `GDTFMode` value into the canonical MVR archive. Its serialization uses the
 same archive path available to PVZ Save and standalone Export MVR. The
 GDTFSpec, GDTF resource bytes, and authored Addresses remain source data.
-The application does not publish live mode edits yet.
+Reopening PVZ compiles the selected mode from the embedded MVR and referenced GDTF.

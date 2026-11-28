@@ -33,6 +33,9 @@ var _render_emitter_groups: Array = []
 var _aggregate_candidates: Dictionary = {}
 var _control_group_fallbacks: Dictionary = {}
 var _render_group_diagnostics: Dictionary = {}
+var installed_manifest: Array = []
+var _reusable_outputs: Dictionary = {}
+var _reused_output_keys: Dictionary = {}
 
 func configure(dependencies: Dictionary) -> void:
 	_node_index = dependencies.get("node_index", {})
@@ -42,13 +45,14 @@ func configure(dependencies: Dictionary) -> void:
 	clear_scene_state()
 
 func clear_scene_state() -> void:
+	installed_manifest = []
 	clear_renderer_targets()
 	_gobo_resources.reset_scene_state()
 
 func clear() -> void:
 	clear_scene_state()
 
-func clear_renderer_targets() -> void:
+func clear_renderer_targets(keep_physical: bool = false) -> void:
 	_pan_targets.clear()
 	_tilt_targets.clear()
 	_dimmer_targets.clear()
@@ -66,22 +70,23 @@ func clear_renderer_targets() -> void:
 	_shaft_record_index_dirty = true
 	shaft_registry_calls = 0
 	shaft_registry_scans = 0
-	for targets in _lens_material_cache.values():
-		for entry in targets:
-			var mesh: MeshInstance3D = entry.mesh
-			if not is_instance_valid(mesh): continue
-			if entry.surface == -1:
-				if mesh.material_override == entry.material: mesh.material_override = entry.source_material
-			elif mesh.get_surface_override_material(entry.surface) == entry.material:
-				mesh.set_surface_override_material(entry.surface, entry.original_override)
-	_lens_material_cache.clear()
+	if not keep_physical:
+		for targets in _lens_material_cache.values():
+			for entry in targets:
+				var mesh: MeshInstance3D = entry.mesh
+				if not is_instance_valid(mesh): continue
+				if entry.surface == -1:
+					if mesh.material_override == entry.material: mesh.material_override = entry.source_material
+				elif mesh.get_surface_override_material(entry.surface) == entry.material:
+					mesh.set_surface_override_material(entry.surface, entry.original_override)
+		_lens_material_cache.clear()
 	_render_emitter_groups.clear()
 	_aggregate_candidates.clear()
 	_control_group_fallbacks.clear()
 	_render_group_diagnostics.clear()
 	_summary = _new_summary()
 	_renderer_generation += 1
-	_gobo_resources.clear_renderer_targets()
+	if not keep_physical: _gobo_resources.clear_renderer_targets()
 
 func install_gobo_assets(asset_rows: Array) -> void:
 	_gobo_resources.install_or_update_assets(asset_rows)
@@ -111,8 +116,11 @@ func advance_gobo_motion(delta_seconds: float) -> void:
 func get_gobo_counters() -> Dictionary:
 	return _gobo_resources.counters()
 
-func install_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null) -> void:
-	clear_renderer_targets()
+func install_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null, keep_physical: bool = false) -> void:
+	_reusable_outputs = _beam_output_records_by_geometry_key.duplicate() if keep_physical else {}
+	_reused_output_keys.clear()
+	clear_renderer_targets(keep_physical)
+	installed_manifest = renderer_manifest
 	_indexed_setup = OS.get_environment("PERAVIZ_SETUP_REFERENCE_INDEXES") != "1"
 	_build_geometry_target_map(renderer_manifest)
 	_index_emitter_ancestors()
@@ -144,9 +152,68 @@ func install_manifest(renderer_manifest: Array, budget: SceneLoadBudget = null) 
 					_register_renderer_target(target_item)
 			continue
 		_register_legacy_manifest_row(row)
-	_gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
-	_log_summary_once()
-	_log_output_fanout_once()
+	if not keep_physical: _gobo_resources.rehydrate_renderer_state(_beam_output_records_by_id)
+	_reusable_outputs.clear()
+	_reused_output_keys.clear()
+	if not keep_physical:
+		_log_summary_once()
+		_log_output_fanout_once()
+
+# Break old control-group sharing only on the edited fixture before it gains independent routes.
+func restore_individual_lenses(uuid: String) -> void:
+	for key: String in _lens_material_cache:
+		if not key.begins_with(uuid + "/"): continue
+		for entry: Dictionary in _lens_material_cache[key]:
+			var mesh: MeshInstance3D = entry.mesh
+			if not is_instance_valid(mesh): continue
+			var material: BaseMaterial3D = entry.get("individual_material", entry.material)
+			entry.material = material
+			if entry.surface == -1: mesh.material_override = material
+			else: mesh.set_surface_override_material(entry.surface, material)
+
+# Reset only the edited fixture before replaying the new interpretation of its held input.
+func reset_fixture_mode_effects(uuid: String, old_outputs: Array, reuse_geometry: bool) -> void:
+	for record: Dictionary in old_outputs:
+		_gobo_resources.retire_mode_target(record, reuse_geometry)
+	if not reuse_geometry: return
+	for key: String in _geometry_targets_by_key:
+		if not key.begins_with(uuid + "/"): continue
+		var target: Node3D = _geometry_targets_by_key[key]
+		if target.has_meta("peraviz_mode_base_transform"):
+			target.transform = target.get_meta("peraviz_mode_base_transform")
+	for key: String in _beam_output_records_by_geometry_key:
+		if not key.begins_with(uuid + "/"): continue
+		var record: Dictionary = _beam_output_records_by_geometry_key[key]
+		_apply_initial_optics_profile(record.emitter_anchors, record.beam_optical_profile)
+		for object: Light3D in record.emitter_anchors:
+			if is_instance_valid(object):
+				var params: Dictionary = object.get_meta("peraviz_beam_last_params", {})
+				params["gobo_rotation_deg"] = 0.0
+				object.set_meta("peraviz_beam_last_params", params)
+				object.light_color = Color.WHITE
+				object.light_energy = 0.0
+		for entry: Dictionary in record.lens_material_targets:
+			entry.material.emission = Color.WHITE
+			entry.material.emission_energy_multiplier = 0.0
+
+func install_mode_gobo_assets(rows: Array) -> void:
+	_gobo_resources.install_or_update_assets(rows)
+
+# Detach retired geometry's cache entries before its replacement is resolved.
+func take_fixture_lens_cache(uuid: String) -> Dictionary:
+	var retained: Dictionary = {}
+	for key: String in _lens_material_cache.keys():
+		if key.begins_with(uuid + "/"):
+			retained[key] = _lens_material_cache[key]
+			_lens_material_cache.erase(key)
+	return retained
+
+# Validate fixture-local targets before installing a new dense layout.
+func mode_target_failure(uuid: String) -> String:
+	for target in _target_resolution_failures.values():
+		if target.get("fixture_uuid", "") == uuid:
+			return str(target.get("reason", "Renderer target is unavailable."))
+	return ""
 
 func _log_output_fanout_once() -> void:
 	var fanouts: Array[int] = []
@@ -461,6 +528,7 @@ func _register_axis_target(targets: Dictionary, manifest_row: Dictionary, target
 	if target == null:
 		_register_target_failure(manifest_row, target_id, role, "No imported geometry node has canonical geometry key %s" % geometry_key)
 		return
+	if not target.has_meta("peraviz_mode_base_transform"): target.set_meta("peraviz_mode_base_transform", target.transform)
 	targets[target_id] = target
 	_increment_counter("%s_resolved" % role)
 
@@ -496,6 +564,14 @@ func _resolve_beam_output_record(fixture_uuid: String, emitter_node: Node3D, fal
 		_increment_counter("emitter_nodes_missing_beam_profile")
 		profile = _default_profile_for_geometry_key(geometry_key)
 	var beam_render_target_id: int = int(profile.get("beam_render_target_id", fallback_target_id))
+	var previous: Dictionary = _reusable_outputs.get(geometry_key, {})
+	if previous.get("emitter_node") == emitter_node and previous.get("beam_render_target_id") == beam_render_target_id:
+		var reused := previous.duplicate()
+		reused["presentation_control_group"] = int(profile.get("presentation_control_group", 0))
+		_beam_output_records_by_geometry_key[geometry_key] = reused
+		_beam_output_records_by_id[beam_render_target_id] = reused
+		_reused_output_keys[geometry_key] = true
+		return reused
 	var emitter_anchors: Array = _call_array("collect_emitter_lights", [geometry_key, [emitter_node]])
 	if _aggregate_candidates.has(beam_render_target_id):
 		for light in emitter_anchors: _call_variant("prepare_deferred_shaft", [light, profile])
@@ -621,7 +697,7 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 		var profile: Dictionary = manifest_row.get("beam_optical_profile", {})
 		if not profile.is_empty():
 			existing["beam_optical_profile"] = profile
-			_apply_initial_optics_profile(existing.get("emitter_anchors", []), profile)
+			if not _reused_output_keys.has(geometry_key): _apply_initial_optics_profile(existing.get("emitter_anchors", []), profile)
 			_optics_targets[target_id] = existing
 			_shaft_record_index_dirty = true
 		return
@@ -630,7 +706,7 @@ func _register_optics_target(manifest_row: Dictionary, target_id: int, fixture_u
 		return
 	var optical_profile: Dictionary = manifest_row.get("beam_optical_profile", {})
 	record["beam_optical_profile"] = optical_profile
-	_apply_initial_optics_profile(record.get("emitter_anchors", []), optical_profile)
+	if not _reused_output_keys.has(geometry_key): _apply_initial_optics_profile(record.get("emitter_anchors", []), optical_profile)
 	_optics_targets[target_id] = record
 	_shaft_record_index_dirty = true
 	_increment_counter("optics_resolved")
@@ -790,7 +866,7 @@ func _prepare_mesh_lens_material_targets(mesh_instance: MeshInstance3D, output_t
 		if prepared == null: continue
 		if whole_override: mesh_instance.material_override = prepared
 		else: mesh_instance.set_surface_override_material(index, prepared)
-		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "source_material": material, "original_override": original_override, "geometry_key": owner_key, "beam_optical_profile": _profile_for_geometry_key(owner_key)})
+		output_targets.append({"mesh": mesh_instance, "surface": surface_index, "material": prepared, "individual_material": prepared, "source_material": material, "original_override": original_override, "geometry_key": owner_key, "beam_optical_profile": _profile_for_geometry_key(owner_key)})
 
 func _prepare_lens_emissive_material(material: Material) -> BaseMaterial3D:
 	# Unknown shader/pass behavior keeps its authored appearance and exact fallback.

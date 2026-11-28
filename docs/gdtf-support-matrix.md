@@ -200,6 +200,9 @@ Each entry exposes its exact name, description, root geometry and per-break
 footprint when every physical source can be resolved. Footprints reflect the
 highest routed byte offset, including GeometryReference offsets, and omit
 virtual channels. Duplicate names and unresolved geometry or routing receive
-diagnostics. Native candidate preparation can retain supported controls when
-other attributes are unavailable and reports that partial coverage. A live
-mode-switching renderer transaction remains pending.
+diagnostics. Mode editing retains supported controls when other attributes are unavailable
+and reports that partial coverage. It supports live control topology changes
+with shared geometry and alternative authored roots when their renderer targets
+can be resolved. Modes with unresolved sources or no installable runtime are
+unavailable for switching. Existing optical, virtual-channel and GeometryReference
+limits continue to apply.

@@ -73,6 +73,8 @@ class OutputHandle:
 	var materials: Array[MaterialHandle] = []
 
 var _native_beams_dirty: bool = true
+var _retained_aggregates: Dictionary = {}
+var _retained_groups: Dictionary = {}
 var _native: Object
 var _generation: int = -1
 var _outputs: Array[OutputHandle] = []
@@ -151,8 +153,42 @@ func clear() -> void:
 	_service = null
 	_renderer = null
 
-func install(loader: Node, service: RefCounted, registry: RefCounted, budget: SceneLoadBudget = null) -> bool:
-	clear()
+# Replace route indices while retaining compatible physical handles and unaffected aggregate shafts.
+func rebind_mode(loader: Node, service: RefCounted, registry: RefCounted, uuid: String) -> bool:
+	var reusable: Dictionary = {}
+	for output in _outputs:
+		if _binding_records[output.index].get("fixture_uuid", "") != uuid:
+			reusable[output.canonical_id] = output
+	_retained_aggregates = _render_bindings.take_unchanged_aggregates(_outputs, reusable)
+	_retained_groups.clear()
+	for index in range(_groups.size()):
+		var group: ControlGroup = _groups[index]
+		if group == null or group.members[0] != index: continue
+		var ids := PackedInt32Array()
+		var keep := true
+		for member in group.members:
+			var id: int = _outputs[member].canonical_id
+			ids.append(id)
+			keep = keep and reusable.has(id)
+		if keep:
+			_retained_groups[ids] = group
+		else:
+			for member in group.members:
+				for light in _outputs[member].lights:
+					if _renderer != null and _renderer.has_method("unbind_control_group"):
+						_renderer.unbind_control_group(light.beam)
+	for output in _outputs:
+		for handle in output.lights: _disconnect_handle(handle)
+	_groups.clear()
+	_outputs.clear()
+	_lights_by_id.clear()
+	_route_signatures.clear()
+	_binding_records = []
+	_payload = {}
+	return await install(loader, service, registry, null, reusable, true)
+
+func install(loader: Node, service: RefCounted, registry: RefCounted, budget: SceneLoadBudget = null, reusable: Dictionary = {}, rebind: bool = false) -> bool:
+	if not rebind: clear()
 	if not ClassDB.class_exists("PeravizPresentationState"):
 		return false
 	_loader = loader
@@ -169,7 +205,7 @@ func install(loader: Node, service: RefCounted, registry: RefCounted, budget: Sc
 	_renderer_shader_seen = _renderer.renderer_shader_parameter_writes if _renderer != null else 0
 	_renderer_debug_seen = _renderer.renderer_debug_visibility_writes if _renderer != null else 0
 	_renderer_dynamic_seen = _renderer.renderer_dynamic_parameter_writes if _renderer != null else 0
-	_native = ClassDB.instantiate("PeravizPresentationState")
+	if not rebind: _native = ClassDB.instantiate("PeravizPresentationState")
 	var bindings: Dictionary = registry.get_dense_presentation_bindings()
 	_binding_records = bindings["outputs"]
 	_render_descriptors = bindings.get("render_groups", [])
@@ -185,8 +221,22 @@ func install(loader: Node, service: RefCounted, registry: RefCounted, budget: Sc
 	for signature in _route_signatures:
 		signature[0].sort()
 		signature[2].sort()
+	_surface_counts = SurfacePolicy.Counters.new()
 	for record in bindings["outputs"]:
 		if budget != null and not await budget.checkpoint(): return false
+		var previous: OutputHandle = reusable.get(int(record["beam_render_target_id"]))
+		if previous != null:
+			previous.index = _outputs.size()
+			_outputs.append(previous)
+			if service._has_projected_beam(record.get("beam_optical_profile", {})):
+				_surface_counts.projected_outputs += 1
+			for handle in previous.lights:
+				handle.output_index = previous.index
+				handle.visibility_callback = Callable(self, "_restore_spot_visibility").bind(handle)
+				handle.light.visibility_changed.connect(handle.visibility_callback)
+				handle.light.tree_entered.connect(handle.visibility_callback)
+				_lights_by_id[handle.light.get_instance_id()] = handle
+			continue
 		var output := OutputHandle.new()
 		output.index = _outputs.size()
 		output.canonical_id = int(record["beam_render_target_id"])
@@ -237,12 +287,13 @@ func install(loader: Node, service: RefCounted, registry: RefCounted, budget: Sc
 	if budget != null:
 		if not await budget.checkpoint(true): return false
 		budget.phase = "aggregate_resources"
-	if not _install_render_bindings(): return false
+	if not _install_render_bindings(rebind): return false
 	if budget != null:
 		if not await budget.checkpoint(true): return false
 		budget.phase = "final_runtime_install"
 	_sync_presentation_policy()
 	if _mode != "full": _suppress_presentation_handles()
+	if rebind: return _generation >= 0
 	var summary: Dictionary = {"physical_outputs": _outputs.size(), "control_groups": _totals["presentation_control_groups"],
 		"grouped_outputs": _totals["grouped_physical_outputs"], "individual_outputs": _totals["individual_physical_outputs"],
 		"largest_control_group": _totals["largest_group"]}
@@ -768,6 +819,20 @@ func _install_groups() -> void:
 	var control_groups: int = 0
 	for members in candidates.values():
 		if members.size() < 2: continue
+		var ids := PackedInt32Array()
+		for index in members: ids.append(_outputs[index].canonical_id)
+		var previous: ControlGroup = _retained_groups.get(ids)
+		if previous != null:
+			previous.members = members
+			for index in members:
+				representatives[index] = int(members[0])
+				_groups[index] = previous
+			grouped += members.size()
+			largest = maxi(largest, members.size())
+			control_groups += 1
+			if previous.material != null: shared_beams += 1
+			if previous.lens_copies > 0: shared_lenses += 1
+			continue
 		var beams: Array = []
 		var safe: bool = true
 		var deferred_description := PackedInt64Array()
@@ -821,6 +886,7 @@ func _install_groups() -> void:
 		control_groups += 1
 		if material != null: shared_beams += 1
 		if group.lens_copies > 0: shared_lenses += 1
+	_retained_groups.clear()
 	if not _native.install_groups(representatives):
 		# A rejected actual binding must leave a fully independent renderer path.
 		_retire_groups()
@@ -855,12 +921,13 @@ func _apply_control_material(group: ControlGroup, v: PackedFloat32Array, b: int)
 		_totals["beam_instance_writes_avoided"] += group.members.size() - 1
 
 # Setup once per renderer generation; lenses retain independent native physical routes.
-func _install_render_bindings() -> bool:
+func _install_render_bindings(rebind: bool = false) -> bool:
 	_record_event(&"render_group_binding_installs")
 	_invalidate_native_beams()
 	var binding_start: int = Time.get_ticks_usec() if _trace else 0
 	AggregateShaftResources.prepare(self)
-	if not _render_bindings.install(self, _render_descriptors): return false
+	if not _render_bindings.install(self, _render_descriptors, _retained_aggregates): return false
+	_retained_aggregates.clear()
 	AggregateShaftResources.reconcile(self)
 	if _render_isolation == "no-volumetric-shafts":
 		for row in _render_bindings.rows:
@@ -870,11 +937,11 @@ func _install_render_bindings() -> bool:
 	if _trace: _totals["shaft_resource_binding_us"] = int(_totals.get("shaft_resource_binding_us", 0)) + Time.get_ticks_usec() - binding_start
 	if not _footprints.install(self): return false
 	_native.set_footprints_enabled(_mode == "full" and _render_isolation != "no-custom-footprints")
-	return _install_lens_bindings()
+	return _install_lens_bindings(rebind)
 
 # Lens-only policy changes preserve existing shaft/gobo initialization and group resources.
-func _install_lens_bindings() -> bool:
-	_lens_batches.install(self)
+func _install_lens_bindings(rebind: bool = false) -> bool:
+	_lens_batches.install(self, rebind)
 	var rids: Array = []
 	var owners := PackedInt32Array()
 	var scales := PackedFloat32Array()
