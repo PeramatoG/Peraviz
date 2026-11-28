@@ -52,6 +52,10 @@ Dictionary PeravizMvrDocument::fixture(const String &uuid) const {
         result["uuid"] = String::utf8(f->uuid.c_str());
         result["patch_editable"] = f->reason.empty() && f->patch_reason.empty();
         result["patch_reason"] = String::utf8((f->reason.empty() ? f->patch_reason : f->reason).c_str());
+        result["gdtf_spec"] = String::utf8(f->gdtf_spec.c_str());
+        result["dmx_mode"] = String::utf8(f->current_mode.name.c_str());
+        result["dmx_mode_present"] = f->current_mode.present;
+        result["mode_reason"] = String::utf8((f->reason.empty() ? f->mode_reason : f->reason).c_str());
         result["addresses"] = patch_rows(f->current_patch);
         for (int axis = 0; axis < 2; ++axis) {
             const String prefix = axis ? "tilt" : "pan";

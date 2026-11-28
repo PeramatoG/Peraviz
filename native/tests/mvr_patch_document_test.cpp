@@ -100,6 +100,59 @@ int main() {
                    "Canonical edited archive reopens with patch and inversion"))
             return 1;
     }
+    for (const std::string original_mode : {"<GDTFMode x:tag='keep'>B&#97;sic</GDTFMode>", ""}) {
+        const auto input = root / ("mode-" + std::to_string(n++) + ".mvr");
+        if (!source(input, "<GDTFSpec>fixture.gdtf</GDTFSpec>" + original_mode +
+                           "<Addresses><Address break='0'>2.1</Address></Addresses>")) return 1;
+        MvrDocument doc;
+        if (!check(doc.open(input), "Canonical mode fixture opens")) return 1;
+        const auto initial = doc.xml();
+        const auto validate = [](const Fixture &fixture, const std::string &name) -> std::string {
+            return fixture.gdtf_spec == "fixture.gdtf" && name == "Extended & <Wide>"
+                       ? "" : "No exact source GDTF mode";
+        };
+        if (!check(!doc.prepare_mode(id, "extended", validate) && !doc.can_undo() && !doc.dirty() &&
+                       doc.xml() == initial, "Unknown mode is rejected before history or XML changes")) return 1;
+        if (!check(doc.prepare({id}, 0, true) && doc.commit() &&
+                       doc.prepare_patch(id, 0, 3, 101, "set") && doc.commit() &&
+                       doc.prepare_mode(id, "Extended & <Wide>", validate) && doc.commit(),
+                   "Mode shares inversion and patch history")) return 1;
+        const auto edited_xml = doc.xml();
+        const std::string opening = original_mode.empty() ? "<GDTFMode>" : "<GDTFMode x:tag='keep'>";
+        if (!check(edited_xml.find(opening + "Extended &amp; &lt;Wide&gt;</GDTFMode>") != std::string::npos &&
+                       edited_xml.find("<GDTFSpec>fixture.gdtf</GDTFSpec>") != std::string::npos &&
+                       edited_xml.find("<Matrix>unchanged matrix</Matrix>") != std::string::npos,
+                   "Mode XML preserves siblings and source attribute bytes")) return 1;
+        for (int i = 0; i < 3; ++i)
+            if (!check(doc.prepare_history(false) && doc.commit(), "Undo mode/patch/inversion")) return 1;
+        if (!check(doc.xml() == initial && !doc.dirty(), "Undo restores exact mode spelling or absence")) return 1;
+        for (int i = 0; i < 3; ++i)
+            if (!check(doc.prepare_history(true) && doc.commit(), "Redo inversion/patch/mode")) return 1;
+        doc.mark_saved();
+        if (!check(doc.xml() == edited_xml && doc.prepare_mode(id, "Extended & <Wide>", {}) && doc.commit() &&
+                       !doc.dirty() && doc.prepare_history(false) && doc.pending_mode() && doc.commit(),
+                   "Same mode does not advance history or mark the save point dirty")) return 1;
+        if (!doc.prepare_history(true) || !doc.commit()) return 1;
+        const auto exported = root / ("mode-export-" + std::to_string(n) + ".mvr");
+        MvrDocument reopened;
+        if (!check(doc.export_mvr(exported) && bytes(exported) == bytes(doc.canonical_archive()) &&
+                       reopened.open(exported) && reopened.xml() == edited_xml &&
+                       reopened.fixture(id)->current_mode.name == "Extended & <Wide>",
+                   "Canonical mode archive is shared with standalone export and reopens")) return 1;
+        peraviz::archive::ZipArchive archive;
+        if (!check(archive.open_read(exported) && archive.read_text_file("geometry-é.bin") == "identical binary bytes",
+                   "Mode output preserves unrelated binary resources")) return 1;
+    }
+    for (const std::string bad_mode : {
+             "<GDTFMode>Basic</GDTFMode><GDTFMode>Extended</GDTFMode>",
+             "<GDTFMode>Basic<!-- source comment --></GDTFMode>",
+             "<GDTFMode>Basic</GDTFMode><gdtfmode>Third</gdtfmode>"}) {
+        const auto input = root / ("bad-mode-" + std::to_string(n++) + ".mvr");
+        if (!source(input, "<GDTFSpec>fixture.gdtf</GDTFSpec>" + bad_mode)) return 1;
+        MvrDocument doc;
+        if (!check(doc.open(input) && !doc.prepare_mode(id, "Extended", {}) && !doc.can_undo(),
+                   "Ambiguous mode XML remains unavailable for editing")) return 1;
+    }
     for (const auto &container : {std::string(), std::string("<Addresses/>"),
                                   std::string("<Addresses><Network>192.0.2.2</Network></Addresses>")}) {
         auto path = root / ("unpatched" + std::to_string(n++) + ".mvr");

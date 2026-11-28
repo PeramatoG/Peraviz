@@ -302,10 +302,91 @@ bool MvrDocument::parse() {
                 }
         }
         index_patch(f, node);
+        index_mode(f, node);
         fixtures_[key(f.uuid)] = std::move(f);
     }
     return true;
 }
+// Index the canonical direct children and reject ambiguous or mixed-content declarations.
+void MvrDocument::index_mode(Fixture &f, const tinyxml2::XMLElement *node) {
+    auto *child = node->FirstChildElement();
+    for (size_t i = f.element + 1; i < spans_.size() && spans_[i].start < spans_[f.element].end; ++i) {
+        const auto &span = spans_[i];
+        if (span.parent != int(f.element)) continue;
+        const auto *element = child;
+        child = child->NextSiblingElement();
+        const auto name = key(span.name);
+        if (name != "gdtfmode" && name != "gdtfspec") continue;
+        const bool mode = name == "gdtfmode";
+        int &index = mode ? f.mode_element : f.spec_element;
+        if (index >= 0 || span.name != (mode ? "GDTFMode" : "GDTFSpec")) {
+            f.mode_reason = "Duplicate or noncanonical GDTFSpec/GDTFMode child";
+            continue;
+        }
+        index = int(i);
+        const std::string value = element->GetText() ? element->GetText() : "";
+        if (mode) f.original_mode = f.current_mode = f.saved_mode = {value, true};
+        else f.gdtf_spec = value;
+        if (element->Attribute("xmlns") || (mode && span.empty) ||
+            original_xml_.find('<', span.content) < span.close) {
+            f.mode_reason = "GDTFSpec/GDTFMode uses a self-closing value, namespace or mixed XML content";
+        }
+    }
+    for (auto *attribute = node->FirstAttribute(); attribute; attribute = attribute->Next()) {
+        const auto name = key(attribute->Name());
+        if (name == "gdtfmode" || name == "gdtfspec")
+            f.mode_reason = "Ambiguous attribute representation of GDTFSpec/GDTFMode";
+    }
+    if (f.gdtf_spec.empty() && f.mode_reason.empty())
+        f.mode_reason = "Fixture has no canonical GDTFSpec";
+}
+
+// Escape only replacement text and insert a missing mode immediately after its source GDTFSpec.
+std::vector<XmlEdit> MvrDocument::mode_edits(const Fixture &f, const ModeValue &state) const {
+    if (state == f.original_mode || !state.present) return {};
+    std::string escaped;
+    for (char c : state.name) {
+        switch (c) {
+            case '&': escaped += "&amp;"; break;
+            case '<': escaped += "&lt;"; break;
+            case '>': escaped += "&gt;"; break;
+            case '\r': escaped += "&#13;"; break;
+            default: escaped += c; break;
+        }
+    }
+    if (f.mode_element >= 0) {
+        const auto &span = spans_[f.mode_element];
+        return {{span.content, span.close - span.content, std::move(escaped)}};
+    }
+    return {{spans_[f.spec_element].end, 0, "<GDTFMode>" + escaped + "</GDTFMode>"}};
+}
+
+// Validate the exact proposed GDTF mode before staging a source-preserving instance edit.
+bool MvrDocument::prepare_mode(const std::string &uuid, const std::string &name, const ModeValidator &validate) {
+    cancel();
+    error_.clear();
+    const auto *f = fixture(uuid);
+    if (!ready() || !f) return fail("Selection does not identify a canonical source Fixture");
+    if (!f->reason.empty()) return fail(f->reason);
+    if (!f->mode_reason.empty()) return fail(f->mode_reason);
+    if (name.empty() || name.size() > 4096 || !utf8_xml(name))
+        return fail("Proposed GDTF mode name is empty or cannot be represented safely in XML");
+    if (f->current_mode == ModeValue{name, true}) {
+        pending_kind_ = 1;
+        return true;
+    }
+    if (!validate) return fail("GDTF mode validation is unavailable");
+    const auto diagnostic = validate(*f, name);
+    if (!diagnostic.empty()) return fail(diagnostic);
+    Change change;
+    change.uuid = f->uuid;
+    change.kind = Change::Kind::Mode;
+    change.mode_before = f->current_mode;
+    change.mode_after = {name, true};
+    pending_.push_back(std::move(change));
+    return validate_pending();
+}
+
 // Resolve only canonical indexed identities, never names or generated paths.
 const Fixture *MvrDocument::fixture(const std::string &uuid) const {
     auto i = fixtures_.find(key(uuid));
@@ -314,6 +395,15 @@ const Fixture *MvrDocument::fixture(const std::string &uuid) const {
 // Compute byte-size changes from indexed field ranges without copying or reparsing XML.
 int64_t MvrDocument::size_delta(const Change &change) const {
     const auto &f = fixtures_.at(key(change.uuid));
+    if (change.kind == Change::Kind::Mode) {
+        const auto delta = [&](const ModeValue &value) {
+            int64_t size = 0;
+            for (const auto &edit : mode_edits(f, value))
+                size += int64_t(edit.text.size()) - int64_t(edit.length);
+            return size;
+        };
+        return delta(change.mode_after) - delta(change.mode_before);
+    }
     if (change.kind == Change::Kind::Patch) {
         const auto size = [&](const PatchState &state) {
             int64_t n = 0;
@@ -404,6 +494,7 @@ bool MvrDocument::prepare_history(bool redo) {
         for (auto &change : pending_) {
             std::swap(change.before, change.after);
             std::swap(change.patch_before, change.patch_after);
+            std::swap(change.mode_before, change.mode_after);
         }
     pending_kind_ = redo ? 3 : 2;
     return true;
@@ -428,6 +519,8 @@ bool MvrDocument::commit() {
         auto &f = fixtures_.at(key(change.uuid));
         if (change.kind == Change::Kind::Patch)
             f.current_patch = change.patch_after;
+        else if (change.kind == Change::Kind::Mode)
+            f.current_mode = change.mode_after;
         else
             f.current[change.axis] = change.after;
     }
@@ -436,7 +529,7 @@ bool MvrDocument::commit() {
     ++revision_;
     dirty_ = false;
     for (const auto &[id, f] : fixtures_)
-        dirty_ |= f.current != f.saved || f.current_patch != f.saved_patch;
+        dirty_ |= f.current != f.saved || f.current_patch != f.saved_patch || f.current_mode != f.saved_mode;
     cancel();
     return true;
 }
@@ -450,6 +543,7 @@ void MvrDocument::mark_saved() {
     for (auto &[id, f] : fixtures_) {
         f.saved = f.current;
         f.saved_patch = f.current_patch;
+        f.saved_mode = f.current_mode;
     }
     dirty_ = false;
 }
@@ -473,9 +567,12 @@ std::string MvrDocument::xml() const {
         }
         if (!insert.empty())
             patches.push_back({spans_[f.element].close, 0, insert});
+        // A mode inserted at the same source boundary belongs immediately after GDTFSpec.
+        edits = mode_edits(f, f.current_mode);
+        patches.insert(patches.end(), edits.begin(), edits.end());
     }
     std::stable_sort(patches.begin(), patches.end(),
-                     [](const auto &a, const auto &b) { return a.start > b.start; });
+                     [](const auto &a, const auto &b) { return a.start == b.start ? a.length > b.length : a.start > b.start; });
     std::string result = original_xml_;
     for (const auto &patch : patches)
         result.replace(patch.start, patch.length, patch.text);
