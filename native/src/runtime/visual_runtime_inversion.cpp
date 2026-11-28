@@ -37,8 +37,9 @@ bool PeravizVisualRuntimeCore::mechanical_active(UniverseState &universe, uint32
     const int32_t master = universe.plan.source(source).master;
     if (master < 0 || size_t(master) >= universe.source_bindings.size())
         return false;
-    const auto raw = evaluate_cached_source(universe, master).raw_value;
-    return raw >= condition.from && raw <= condition.to &&
+    const auto value = evaluate_cached_source(universe, master);
+    const auto raw = value.raw_value;
+    return value.valid && raw >= condition.from && raw <= condition.to &&
            (condition.target_kind != Kind::ChannelFunction ||
             mechanical_active(universe, master, raw, depth + 1));
 }

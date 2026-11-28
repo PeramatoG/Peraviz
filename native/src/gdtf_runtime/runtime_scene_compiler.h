@@ -6,6 +6,10 @@
 
 namespace peraviz::gdtf_runtime {
 
+runtime::CompiledRuntimeScene compile_runtime_scene(const std::vector<SceneModel::FixturePatch> &patches,
+    const std::vector<SceneNode> &nodes, int universe_offset,
+    const RuntimeRoutingOptions &routing, FixtureTypeCache *cache);
+
 runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset,
     const RuntimeRoutingOptions &routing = {}, FixtureTypeCache *cache = nullptr);
 

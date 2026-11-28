@@ -90,4 +90,25 @@ held DMX and temporal state; unsupported additions/retirements fail atomically.
 The SceneModel and provider remain projections, not parallel patch authorities.
 Auto Span stays a runtime policy in project DMX settings, never an MVR mutation.
 See [MVR document editing](mvr-document-editing.md) for source preservation,
-read-only mixed selections, supported insert/remove and next GDTF Mode boundaries.
+mixed selections and supported insert/remove operations.
+
+### Native fixture mode transaction
+
+The loader caches the mode catalog for the leased GDTF revision. Apply stages
+the canonical command, validates authored addresses, compiles the prospective
+runtime and builds a renderer manifest. Existing geometry is the default.
+Changing a root prepares a fixture-local subtree with the shared model cache.
+
+The presentation boundary reclaims the worker before changing dense bindings.
+Compatible physical outputs, lens resources and unaffected group resources are
+reused. Dense indices are regenerated from canonical target IDs. The new core
+inherits the runtime epoch and compatible unrelated temporal state, then
+evaluates actual held universe frames. The changed fixture releases prior
+authority and resets obsolete effects. A rejected installation restores the
+previous target bindings and held presentation values. Publication commits
+the MVR command and updates the SceneModel projection through the native loader.
+The patch-only transaction still handles address changes.
+
+A future Transform editor can use the canonical UUID and document history to
+stage its Matrix command. Its presentation transaction should resolve the
+existing fixture root by UUID and apply the transform there.

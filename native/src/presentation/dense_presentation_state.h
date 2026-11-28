@@ -53,6 +53,9 @@ public:
     bool install_groups(const std::vector<int32_t> &representatives);
     void clear();
     void invalidate_renderer();
+    std::unordered_map<int32_t, OutputState> capture_outputs() const;
+    void restore_outputs(const std::unordered_map<int32_t, OutputState> &snapshot,
+                         const std::vector<int32_t> &excluded);
     // Returns the current process-unique scene binding token.
     uint64_t generation() const { return generation_; }
     bool update(uint64_t generation, uint32_t index, int32_t section, uint32_t mask, const float *values);

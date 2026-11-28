@@ -33,7 +33,15 @@ func _reject_material(material: Material, baseline_options: Dictionary) -> void:
 			_material_options[key] = int(_material_options.get(key,0))+1
 			break
 
-func clear(native: RefCounted) -> void:
+# Key an existing batch by its ordered physical mesh instances.
+static func _batch_key(entries: Array) -> PackedInt64Array:
+	var ids := PackedInt64Array()
+	for entry: Dictionary in entries:
+		if not is_instance_valid(entry.mesh): return PackedInt64Array()
+		ids.append(entry.mesh.get_instance_id())
+	return ids
+
+func clear(native: RefCounted, retained: Dictionary = {}, preserve: bool = false) -> void:
 	if native != null: native.clear_lenses()
 	_native = null
 	for batch in batches:
@@ -43,8 +51,12 @@ func clear(native: RefCounted) -> void:
 			if mesh.visibility_changed.is_connected(entry.callback): mesh.visibility_changed.disconnect(entry.callback)
 			mesh.layers = entry.layers
 		if is_instance_valid(batch.node):
-			batch.node.free()
-			retired += 1
+			var key := _batch_key(batch.entries) if preserve else PackedInt64Array()
+			if key.is_empty():
+				batch.node.free()
+				retired += 1
+			else:
+				retained[key] = batch.node
 	batches.clear()
 	members.clear()
 	_optical_exclusions.clear()
@@ -90,9 +102,10 @@ static func _policy(adapter: RefCounted, settings: Dictionary) -> String:
 	return "eligible"
 
 # Setup-only physical-to-instance mapping; no live dictionaries or semantic computations.
-func install(adapter: RefCounted) -> void:
+func install(adapter: RefCounted, preserve: bool = false) -> void:
 	var start: int = Time.get_ticks_usec() if adapter._trace else 0
-	clear(adapter._native)
+	var retained: Dictionary = {}
+	clear(adapter._native, retained, preserve)
 	_admission_trace = adapter._trace
 	setup_us = 0
 	source_outputs = 0
@@ -101,7 +114,9 @@ func install(adapter: RefCounted) -> void:
 	_native = adapter._native
 	var settings: Dictionary = adapter._loader.get("_visual_settings")
 	_policy_reason = _policy(adapter,settings)
-	if _policy_reason != "eligible": return
+	if _policy_reason != "eligible":
+		_retire_unused(retained)
+		return
 	var prototype := StandardMaterial3D.new()
 	prototype.cull_mode = BaseMaterial3D.CULL_DISABLED
 	prototype.emission_enabled = true
@@ -184,20 +199,26 @@ func install(adapter: RefCounted) -> void:
 			if entries.size() < MIN_BATCH:
 				_reject("batch_below_minimum",entries.size())
 				continue
-			var multimesh := MultiMesh.new()
-			multimesh.transform_format = MultiMesh.TRANSFORM_3D
-			multimesh.use_custom_data = true
-			multimesh.mesh = entries[0].mesh.mesh
-			multimesh.instance_count = entries.size()
-			var node := MultiMeshInstance3D.new()
-			created += 1
-			node.name = "PeravizInstancedApertures"
-			node.multimesh = multimesh
-			if shared_material == null:
-				shared_material = ShaderMaterial.new()
-				shared_material.shader = LENS_SHADER
-			node.material_override = shared_material
-			entries[0].ancestor.add_child(node)
+			var key := _batch_key(entries)
+			var node: MultiMeshInstance3D = retained.get(key)
+			if node == null:
+				node = MultiMeshInstance3D.new()
+				created += 1
+				node.name = "PeravizInstancedApertures"
+				var mesh := MultiMesh.new()
+				mesh.transform_format = MultiMesh.TRANSFORM_3D
+				mesh.use_custom_data = true
+				mesh.mesh = entries[0].mesh.mesh
+				mesh.instance_count = entries.size()
+				node.multimesh = mesh
+				if shared_material == null:
+					shared_material = ShaderMaterial.new()
+					shared_material.shader = LENS_SHADER
+				node.material_override = shared_material
+				entries[0].ancestor.add_child(node)
+			else:
+				retained.erase(key)
+			var multimesh := node.multimesh
 			var ids := PackedInt32Array()
 			var gains := PackedFloat32Array()
 			var buffer := PackedFloat32Array()
@@ -220,6 +241,7 @@ func install(adapter: RefCounted) -> void:
 			buffers.append(buffer)
 			scales.append(gains)
 			batches.append({"node": node, "entries": entries})
+	_retire_unused(retained)
 	if not _native.install_lenses(adapter._generation, rids, owners, buffers, scales):
 		clear(adapter._native)
 		_admission_trace = adapter._trace
@@ -231,6 +253,11 @@ func install(adapter: RefCounted) -> void:
 			_native.set_lens_visible(batch_index, slot, mesh.is_visible_in_tree())
 
 	setup_us = Time.get_ticks_usec() - start if adapter._trace else 0
+
+func _retire_unused(retained: Dictionary) -> void:
+	for node: MultiMeshInstance3D in retained.values():
+		node.free()
+		retired += 1
 
 # Existing individual gobo animation must not rebuild unrelated GPU resources.
 # Only admitted members or an actual exclusion transition need the cold transaction.

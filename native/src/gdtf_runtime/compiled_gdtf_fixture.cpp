@@ -15,6 +15,7 @@
 #include <limits>
 #include <cmath>
 #include <sstream>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -44,7 +45,11 @@ bool read_number(const std::string &name, size_t &offset, int32_t &value) {
     if (start == offset) {
         return false;
     }
-    value = std::stoi(name.substr(start, offset - start));
+    for (size_t index = start; index < offset; ++index) {
+        const int32_t digit = name[index] - '0';
+        if (value > (std::numeric_limits<int32_t>::max() - digit) / 10) return false;
+        value = value * 10 + digit;
+    }
     return true;
 }
 
@@ -139,17 +144,21 @@ bool parse_dmx_value(const std::string &raw, size_t source_count, uint32_t &out)
     return parse_and_convert_gdtf_dmx_value(raw, static_cast<uint8_t>(std::clamp<size_t>(source_count, 1, 4)), out);
 }
 
-// Finds the selected DMX mode element by name.
-tinyxml2::XMLElement *find_mode(tinyxml2::XMLElement *root, const std::string &dmx_mode_name) {
-    const std::string trimmed_name = dmx::trim_ascii(dmx_mode_name);
-    for (tinyxml2::XMLElement *mode : dmx::collect_elements_by_name(root, "dmxmode")) {
-        if (dmx::trim_ascii(read_attr(mode, "Name", "name")) == trimmed_name) return mode;
-    }
-    const std::string expected = dmx::lower_ascii(trimmed_name);
-    for (tinyxml2::XMLElement *mode : dmx::collect_elements_by_name(root, "dmxmode")) {
-        if (dmx::lower_ascii(dmx::trim_ascii(read_attr(mode, "Name", "name"))) == expected) return mode;
-    }
-    return nullptr;
+// Read authored mode attributes without changing their spelling or whitespace.
+std::string mode_attribute(tinyxml2::XMLElement *element, const char *standard, const char *legacy) {
+    const char *value = element->Attribute(standard);
+    if (!value) value = element->Attribute(legacy);
+    return value ? value : "";
+}
+
+// Scope mode lookup to the fixture type's direct collection, in authored order.
+std::vector<tinyxml2::XMLElement *> mode_elements(tinyxml2::XMLElement *root) {
+    const auto fixture_types = dmx::collect_direct_children_by_name(root, "fixturetype");
+    if (fixture_types.size() > 1) return {};
+    auto *owner = fixture_types.empty() ? root : fixture_types.front();
+    const auto collections = dmx::collect_direct_children_by_name(owner, "dmxmodes");
+    if (collections.size() != 1) return {};
+    return dmx::collect_direct_children_by_name(collections.front(), "dmxmode");
 }
 
 // Collects all DMXChannel descendants scoped to the selected DMXMode while ignoring nested modes.
@@ -483,37 +492,25 @@ AttributeIdentity normalize_attribute_identity(int32_t id, const std::string &at
     return identity;
 }
 
-// Compiles one selected GDTF DMX mode into a parser-owned fixture type model.
-CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, const std::string &dmx_mode_name) {
+namespace {
+// Compile a mode from a parsed description so enumeration can share archive and XML work.
+CompiledGdtfFixtureType compile_mode(const std::string &gdtf_path, tinyxml2::XMLElement *root,
+                                    tinyxml2::XMLElement *selected_mode,
+                                    const dmx::GoboWheelCatalog &gobo_catalog) {
     CompiledGdtfFixtureType fixture;
     fixture.fixture_type_name = gdtf_path;
-    fixture.dmx_mode_name = dmx_mode_name;
-    const std::string xml_content = dmx::read_gdtf_description_xml(gdtf_path);
-    if (xml_content.empty()) {
-        fixture.diagnostics.push_back({"PVZ-GDTF-XML-MISSING", "warning", "GDTF description.xml not found.", gdtf_path});
-        return fixture;
-    }
+    fixture.dmx_mode_name = mode_attribute(selected_mode, "Name", "name");
     fixture.gdtf_files_opened = 1;
-    tinyxml2::XMLDocument doc;
-    if (doc.Parse(xml_content.c_str()) != tinyxml2::XML_SUCCESS || doc.RootElement() == nullptr) {
-        fixture.diagnostics.push_back({"PVZ-GDTF-XML-PARSE", "warning", "GDTF description.xml could not be parsed.", gdtf_path});
-        return fixture;
-    }
-    tinyxml2::XMLElement *selected_mode = find_mode(doc.RootElement(), dmx_mode_name);
-    if (!selected_mode) {
-        fixture.diagnostics.push_back({"PVZ-GDTF-MODE-MISSING", "warning", "Selected DMX mode was not found in the parsed GDTF.", dmx_mode_name});
-        return fixture;
-    }
     fixture.selected_modes_found = 1;
+    const auto &dmx_mode_name = fixture.dmx_mode_name;
     const auto patch_issue = validate_channel_addresses(selected_mode);
     if (!patch_issue.empty()) {
         fixture.dmx_patch_supported = false;
         fixture.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",patch_issue,dmx_mode_name});
         return fixture;
     }
-    parse_physical_color_resources(doc.RootElement(), fixture);
-    parse_wheels(doc.RootElement(), fixture);
-    const dmx::GoboWheelCatalog gobo_catalog = dmx::build_gobo_wheel_catalog(gdtf_path, doc.RootElement());
+    parse_physical_color_resources(root, fixture);
+    parse_wheels(root, fixture);
     fixture.asset_cache_lease = gobo_catalog.cache_lease;
     for (ParsedWheel &wheel : fixture.wheels) {
         auto wheel_it = gobo_catalog.wheels.find(dmx::lower_ascii(wheel.name));
@@ -750,12 +747,12 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
     for (const ChannelProgram &program : fixture.channel_programs) activation_graph.push_back({program.id, program.id, program.dmx_from, program.dmx_to, program.mode_master});
     std::string graph_diagnostic;
     if (!validate_mode_master_graph(activation_graph, graph_diagnostic)) fixture.diagnostics.push_back({graph_diagnostic.substr(0, graph_diagnostic.find(':')), "error", "ModeMaster dependency graph is unresolved or cyclic.", graph_diagnostic});
-    const auto route_issue=expand_instance_dmx_routes(fixture,doc.RootElement(),selected_mode);
+    const auto route_issue=expand_instance_dmx_routes(fixture,root,selected_mode);
     if (!route_issue.empty()) {
         fixture.dmx_patch_supported=false;
         fixture.diagnostics.push_back({"PVZ-GDTF-DMX-PATCH-UNSUPPORTED","error",route_issue,dmx_mode_name});
     }
-    parse_attribute_metadata(doc.RootElement(), fixture);
+    parse_attribute_metadata(root, fixture);
     if (fixture.dmxchannel_records_found == 0) {
         fixture.diagnostics.push_back({"PVZ-GDTF-DMXCHANNELS-MISSING", "error", "Selected DMX mode contains no DMXChannel records after scoped parser traversal.", dmx_mode_name});
     }
@@ -763,6 +760,144 @@ CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, 
         fixture.diagnostics.push_back({"PVZ-GDTF-DPT-PROGRAMS-MISSING", "error", "Selected DMX mode produced no compiled Dimmer/Pan/Tilt/Zoom ChannelFunction programs.", dmx_mode_name});
     }
     return fixture;
+}
+
+} // namespace
+
+// Compile only an exact, unique authored mode from the requested archive.
+CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path, const std::string &dmx_mode_name) {
+    CompiledGdtfFixtureType unavailable;
+    unavailable.fixture_type_name = gdtf_path;
+    unavailable.dmx_mode_name = dmx_mode_name;
+    const auto xml = dmx::read_gdtf_description_xml(gdtf_path);
+    if (xml.empty()) {
+        unavailable.diagnostics.push_back({"PVZ-GDTF-XML-MISSING", "warning", "GDTF description.xml not found.", gdtf_path});
+        return unavailable;
+    }
+    unavailable.gdtf_files_opened = 1;
+    tinyxml2::XMLDocument doc;
+    if (doc.Parse(xml.data(), xml.size()) != tinyxml2::XML_SUCCESS || !doc.RootElement()) {
+        unavailable.diagnostics.push_back({"PVZ-GDTF-XML-PARSE", "warning", "GDTF description.xml could not be parsed.", gdtf_path});
+        return unavailable;
+    }
+    tinyxml2::XMLElement *selected = nullptr;
+    tinyxml2::XMLElement *legacy_match = nullptr;
+    int legacy_count = 0;
+    const auto *root = doc.RootElement();
+    const bool legacy_unscoped = dmx::lower_ascii(root->Name()) == "gdtf" &&
+        dmx::collect_direct_children_by_name(doc.RootElement(), "fixturetype").empty();
+    const auto folded = dmx::lower_ascii(dmx::trim_ascii(dmx_mode_name));
+    for (auto *mode : mode_elements(doc.RootElement())) {
+        const auto authored = mode_attribute(mode, "Name", "name");
+        if (legacy_unscoped && !folded.empty() && dmx::lower_ascii(dmx::trim_ascii(authored)) == folded) {
+            legacy_match = mode;
+            ++legacy_count;
+        }
+        if (dmx_mode_name.empty() || authored != dmx_mode_name) continue;
+        if (selected) {
+            unavailable.diagnostics.push_back({"PVZ-GDTF-MODE-AMBIGUOUS", "error", "Selected DMX mode name is duplicated.", dmx_mode_name});
+            return unavailable;
+        }
+        selected = mode;
+    }
+    // Historical parser-only descriptions lack FixtureType. Retain their unique aliases.
+    if (!selected && legacy_count == 1) selected = legacy_match;
+    if (!selected) {
+        unavailable.diagnostics.push_back({"PVZ-GDTF-MODE-MISSING", "warning", "Selected DMX mode was not found in the parsed GDTF.", dmx_mode_name});
+        return unavailable;
+    }
+    const auto gobo = dmx::build_gobo_wheel_catalog(gdtf_path, doc.RootElement());
+    auto type = compile_mode(gdtf_path, doc.RootElement(), selected, gobo);
+    type.legacy_mode_alias = legacy_count == 1;
+    return type;
+}
+
+// Enumerate from one description and report only footprints established by physical routing.
+GdtfModeCatalog read_gdtf_mode_catalog(const std::string &gdtf_path) {
+    GdtfModeCatalog catalog;
+    if (gdtf_path.empty()) {
+        catalog.diagnostic = "Referenced GDTF archive could not be resolved.";
+        return catalog;
+    }
+    const auto xml = dmx::read_gdtf_description_xml(gdtf_path);
+    if (xml.empty()) {
+        catalog.diagnostic = "GDTF description.xml is missing or unreadable.";
+        return catalog;
+    }
+    tinyxml2::XMLDocument doc;
+    if (doc.Parse(xml.data(), xml.size()) != tinyxml2::XML_SUCCESS || !doc.RootElement()) {
+        catalog.diagnostic = "GDTF description.xml is malformed.";
+        return catalog;
+    }
+    auto *root = doc.RootElement();
+    const auto fixture_types = dmx::collect_direct_children_by_name(root, "fixturetype");
+    if (fixture_types.size() == 1)
+        catalog.fixture_name = mode_attribute(fixture_types.front(), "Name", "name");
+    const auto elements = mode_elements(root);
+    if (elements.empty()) {
+        catalog.diagnostic = "GDTF has no unambiguous DMX mode collection.";
+        return catalog;
+    }
+    std::map<std::string, int> occurrences;
+    for (auto *mode : elements) ++occurrences[mode_attribute(mode, "Name", "name")];
+    // Catalog compilation needs wheel declarations for semantics. Media paths are resolved only on install.
+    const dmx::GoboWheelCatalog no_media;
+    auto *fixture_type = fixture_types.size() == 1 ? fixture_types.front() : root;
+    const auto geometry_collections = dmx::collect_direct_children_by_name(fixture_type, "geometries");
+    std::map<std::string, int> root_counts;
+    if (geometry_collections.size() == 1) {
+        for (auto *node = geometry_collections.front()->FirstChildElement(); node; node = node->NextSiblingElement())
+            ++root_counts[mode_attribute(node, "Name", "name")];
+    }
+    for (auto *mode : elements) {
+        auto &row = catalog.modes.emplace_back();
+        row.name = mode_attribute(mode, "Name", "name");
+        row.description = mode_attribute(mode, "Description", "description");
+        row.geometry = mode_attribute(mode, "Geometry", "geometry");
+        if (row.name.empty() || occurrences[row.name] != 1) {
+            row.diagnostic = row.name.empty() ? "DMXMode is missing its Name." : "DMXMode Name is duplicated.";
+            continue;
+        }
+        if (count_mode_dmxchannels_containers(mode) != 1) {
+            row.diagnostic = "DMXMode must contain one DMXChannels collection.";
+            continue;
+        }
+        const auto type = compile_mode(gdtf_path, root, mode, no_media);
+        const auto channels = collect_mode_dmx_channels(mode);
+        const auto physical_count = std::count_if(channels.begin(), channels.end(), [](auto *channel) {
+            const auto offset = read_attr(channel, "Offset", "offset");
+            return !offset.empty() && offset != "None";
+        });
+        std::set<std::string> routed;
+        for (const auto &program : type.channel_programs) {
+            routed.insert(program.dmx_channel_name);
+            for (const int offset : program.dmx_offsets_1_based)
+                row.break_footprints[program.dmx_break] = std::max(row.break_footprints[program.dmx_break], offset);
+        }
+        row.footprint_known = type.dmx_patch_supported && routed.size() == size_t(physical_count) &&
+                              count_mode_dmxchannels_containers(mode) == 1;
+        if (!row.footprint_known) row.break_footprints.clear();
+        if (row.geometry.empty() || root_counts[row.geometry] != 1) {
+            row.diagnostic = "DMXMode needs a unique top-level root geometry.";
+            continue;
+        }
+        if (physical_count == 0) {
+            row.diagnostic = "Mode has no physical DMX channels. Static and virtual-only mode switching is unavailable.";
+            continue;
+        }
+        const auto error = std::find_if(type.diagnostics.begin(), type.diagnostics.end(),
+            [](const auto &item) { return item.severity == "error"; });
+        if (error != type.diagnostics.end()) {
+            row.diagnostic = error->message;
+            continue;
+        }
+        if (!row.footprint_known) {
+            row.diagnostic = "One or more physical DMX channels could not be resolved.";
+            continue;
+        }
+        row.semantic_supported = true;
+    }
+    return catalog;
 }
 
 // Builds a small fixture model that proves repeated GDTF wheel families remain independent.

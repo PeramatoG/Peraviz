@@ -83,6 +83,17 @@ func install_or_update_assets(asset_rows: Array) -> void:
 				_counters["missing_media_warnings"] += 1
 		_assets[asset_id] = row
 
+# Numerical target IDs can reappear in a new mode with different optical authority.
+func retire_mode_target(record: Dictionary, clear_presentation: bool) -> void:
+	var id: int = record.beam_render_target_id
+	_selections_by_target.erase(id)
+	for key: String in _rotation_states.keys():
+		if key.begins_with(str(id) + ":"):
+			_rotation_states.erase(key)
+			_active_continuous_layers.erase(key)
+	if clear_presentation and record.emitter_anchors.any(func(light: Light3D) -> bool: return is_instance_valid(light) and light.has_meta("peraviz_gobo_texture")):
+		_apply_resource_to_target(record, {})
+
 func install_assets(asset_rows: Array) -> void:
 	install_or_update_assets(asset_rows)
 

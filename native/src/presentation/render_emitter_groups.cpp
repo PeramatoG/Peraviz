@@ -66,7 +66,8 @@ bool compatible(const runtime::CompiledRuntimeScene &scene, const runtime::Compi
 }
 }
 // Resolves every Beam relative to its nearest shared mechanical boundary from actual SceneModel ancestry.
-std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene, const SceneModel &model, bool indexed) {
+static std::vector<EmitterSpatialDescriptor> describe_emitters(const runtime::CompiledRuntimeScene &scene,
+        const std::vector<SceneNode> &nodes, bool indexed) {
     std::optional<SetupIndex> index;
     if (indexed) index.emplace(scene);
     std::unordered_map<int32_t, std::set<std::string>> mechanical_paths;
@@ -74,8 +75,8 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
         if (p.semantic == runtime::CompiledSemantic::Pan || p.semantic == runtime::CompiledSemantic::Tilt)
             mechanical_paths[p.fixture_id].insert(p.geometry_name);
     std::unordered_map<std::string,const SceneNode*> by_id, by_key;
-    by_id.reserve(model.nodes.size()); by_key.reserve(model.nodes.size());
-    for (const auto &node : model.nodes) { if (!node.node_id.empty()) by_id[node.node_id]=&node; if (!node.gdtf_geometry_key.empty()) by_key[node.gdtf_geometry_key]=&node; }
+    by_id.reserve(nodes.size()); by_key.reserve(nodes.size());
+    for (const auto &node : nodes) { if (!node.node_id.empty()) by_id[node.node_id]=&node; if (!node.gdtf_geometry_key.empty()) by_key[node.gdtf_geometry_key]=&node; }
     auto shutter_index=shutter_authorities(scene);
     std::vector<EmitterSpatialDescriptor> out;
     for (const auto &beam : scene.beam_profiles) {
@@ -122,8 +123,8 @@ std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const 
 }
 // Classifies compact co-directional sources once; separated cells and ambiguous geometry stay individual.
 std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
-        const SceneModel &model, const std::vector<PresentationControlGroup> &controls, bool indexed) {
-    auto descriptors=compile_emitter_spatial_descriptors(scene,model,indexed);
+        const std::vector<SceneNode> &nodes, const std::vector<PresentationControlGroup> &controls, bool indexed) {
+    auto descriptors=describe_emitters(scene, nodes, indexed);
     std::unordered_map<int32_t,int32_t> control_by_id;
     for (const auto &c:controls) for (int32_t id:c.physical_ids) control_by_id[id]=c.id;
     std::vector<std::vector<int32_t>> zooms;
@@ -215,5 +216,16 @@ std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::Com
         }
     }
     return out;
+}
+// Expose spatial diagnostics for the normal imported scene.
+std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene,
+        const SceneModel &model, bool indexed) {
+    return describe_emitters(scene, model.nodes, indexed);
+}
+
+// Compile imported render groups from immutable geometry records.
+std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
+        const SceneModel &model, const std::vector<PresentationControlGroup> &controls, bool indexed) {
+    return compile_render_emitter_groups(scene, model.nodes, controls, indexed);
 }
 } // namespace peraviz::presentation

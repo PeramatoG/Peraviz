@@ -22,6 +22,7 @@ var _render_isolation: String = RenderDiagnosticPolicyScript.isolation_from_argu
 var _diagnostic_open_surface_lights: bool = SurfacePolicy.open_lights_from_arguments(OS.get_cmdline_user_args())
 
 var _dense_adapter: RefCounted
+var _resetting_mode_effects: bool = false
 var _dense_required: bool = false
 var _dense_install_error_reported: bool = false
 
@@ -133,7 +134,7 @@ func is_dense_presentation_active() -> bool:
 
 # Rebinds resources only at explicit presentation/control boundaries.
 func rebind_dense_light(light: SpotLight3D) -> void:
-	if _dense_adapter != null: _dense_adapter.rebind_light(light)
+	if _dense_adapter != null: _dense_adapter.rebind_light(light, not _resetting_mode_effects)
 
 func refresh_dense_renderer() -> void:
 	if _dense_adapter != null: _dense_adapter.refresh_renderer()

@@ -18,10 +18,14 @@ const char *auto_span_policy_id(AutoSpanPolicy policy) {
 }
 // Reuses immutable selected-mode parser data across occupancy, compilation and policy-only reinstalls.
 const CompiledGdtfFixtureType &cached_fixture_type(const SceneModel::FixturePatch &patch,FixtureTypeCache &cache) {
-    const auto key=patch.gdtf_path+"\n"+dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
-    auto found=cache.find(key);
-    if (found==cache.end()) found=cache.emplace(key,compile_gdtf_fixture_type(patch.gdtf_path,patch.dmx_mode)).first;
-    return found->second;
+    const auto key = patch.gdtf_path + '\n' + patch.dmx_mode;
+    auto found = cache.find(key);
+    if (found != cache.end()) return found->second;
+    const auto alias = patch.gdtf_path + '\0' + dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
+    found = cache.find(alias);
+    if (found != cache.end()) return found->second;
+    auto type = compile_gdtf_fixture_type(patch.gdtf_path, patch.dmx_mode);
+    return cache.emplace(type.legacy_mode_alias ? alias : key, std::move(type)).first->second;
 }
 namespace {
 struct Slot {
@@ -45,7 +49,7 @@ std::string describe(const Candidate &candidate,const std::vector<std::pair<Slot
 }
 }
 // Resolves all authored occupancy and all candidate proposals before making order-independent admission decisions.
-AutoSpanPlan plan_auto_span(const SceneModel &scene,int universe_offset,const RuntimeRoutingOptions &options,
+AutoSpanPlan plan_auto_span(const std::vector<SceneModel::FixturePatch> &patches,int universe_offset,const RuntimeRoutingOptions &options,
                            FixtureTypeCache &cache,AutoSpanEligibility eligible) {
     AutoSpanPlan out;
     std::map<Slot,std::set<std::string>> authored,proposed;
@@ -59,7 +63,7 @@ AutoSpanPlan plan_auto_span(const SceneModel &scene,int universe_offset,const Ru
         if (out.diagnostics.size()<256) out.diagnostics.push_back({code,warning?"warning":"info",message,subject});
         else ++omitted_details;
     };
-    for (const auto &patch:scene.fixture_patches) {
+    for (const auto &patch:patches) {
         auto &decision=out.fixtures[patch.fixture_uuid];
         if (patch.gdtf_path.empty() || patch.dmx_mode.empty() || !patch.dmx_import_error.empty()) {
             globally_unknown=true; continue;

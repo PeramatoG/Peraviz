@@ -280,31 +280,20 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
         }
     }
 
-    std::string root_geometry_name;
-    bool selected_mode_found = request.gdtf_mode.empty();
-    if (tinyxml2::XMLElement *dmx_modes = fixture_type->FirstChildElement("DMXModes")) {
-        for (tinyxml2::XMLElement *mode = dmx_modes->FirstChildElement("DMXMode"); mode;
-             mode = mode->NextSiblingElement("DMXMode")) {
-            const char *mode_name = mode->Attribute("Name");
-            if (!mode_name) {
-                mode_name = mode->Attribute("name");
-            }
-            if (!request.gdtf_mode.empty() && mode_name && request.gdtf_mode != mode_name) {
-                continue;
-            }
-            selected_mode_found = true;
-            const char *geometry = mode->Attribute("Geometry");
-            if (!geometry) {
-                geometry = mode->Attribute("geometry");
-            }
-            if (geometry) {
-                root_geometry_name = geometry;
-                break;
-            }
+    const tinyxml2::XMLElement *selected_mode = nullptr;
+    if (auto *modes = fixture_type->FirstChildElement("DMXModes")) {
+        for (auto *mode = modes->FirstChildElement("DMXMode"); mode; mode = mode->NextSiblingElement("DMXMode")) {
+            const char *name = mode->Attribute("Name");
+            if (!name) name = mode->Attribute("name");
+            if (request.gdtf_mode.empty() || !name || request.gdtf_mode != name) continue;
+            if (selected_mode) { result.error = "ambiguous_selected_dmx_mode"; return result; }
+            selected_mode = mode;
         }
     }
-
-    if (!selected_mode_found) { result.error = "missing_selected_dmx_mode"; return result; }
+    if (!selected_mode) { result.error = "missing_selected_dmx_mode"; return result; }
+    const char *root_geometry_name = selected_mode->Attribute("Geometry");
+    if (!root_geometry_name) root_geometry_name = selected_mode->Attribute("geometry");
+    if (!root_geometry_name || !*root_geometry_name) { result.error = "missing_gdtf_root_geometry"; return result; }
 
     tinyxml2::XMLElement *geometries = fixture_type->FirstChildElement("Geometries");
     if (!geometries) {
@@ -324,14 +313,10 @@ GdtfGeometryBuildResult build_fixture_geometry_nodes(const GdtfBuildRequest &req
     tinyxml2::XMLElement *root_geometry = nullptr;
     for (tinyxml2::XMLElement *geometry = geometries->FirstChildElement(); geometry;
          geometry = geometry->NextSiblingElement()) {
-        if (root_geometry_name.empty()) {
-            root_geometry = geometry;
-            break;
-        }
         const std::string geometry_name = safe_name(geometry, "geometry");
         if (geometry_name == root_geometry_name) {
+            if (root_geometry) { result.error = "ambiguous_gdtf_root_geometry"; return result; }
             root_geometry = geometry;
-            break;
         }
     }
 

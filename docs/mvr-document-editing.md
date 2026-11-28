@@ -294,19 +294,51 @@ the existing 10k-scene harness. Forced native async presentation is checked
 separately. The 32-fixture workflow also passes graphical Compatibility/llvmpipe.
 Windows and graphical Forward+ validation remain pending; no owner's-show timing is claimed.
 
-## Exact next-phase handoff
+## GDTF mode editing
 
-1. **GDTF Mode:** extend typed commands to the per-instance canonical GDTFSpec /
-   GDTFMode reference and retain the source document as owner. Reuse the patch
-   stage/validate/commit boundary, but add explicit native renderer-domain
-   addition/retirement and per-target resource reuse before permitting topology
-   changes. Validate all required numbered breaks against the proposed mode;
-   preserve existing patch/inversion/history, held input and Auto Span policy.
-   Never replace GDTF definitions or silently create missing patch assignments.
-2. **Transform:** add a Matrix command with verified MVR units/bases and raw
-   before/after source text. Recompose the affected native subtree and publish
-   presentation transforms; a Godot-only setter is not an MVR document edit.
+For a single canonical fixture, the Inspector reads exact GDTF mode names and
+footprints from the resolved GDTF archive. Applying a choice stages the native
+mode command and compiles the proposed mode with the fixture's existing
+addresses, Pan/Tilt inversions and Auto Span policy. Overlaps are reported under
+the existing routing policy. Assign required authored breaks before selecting a
+mode that needs them.
 
-Neither mode selection nor transform gizmos are implemented here. The native
-source ranges, typed history, canonical writer and explicit runtime transaction
-are the boundaries to extend; no second project patch model is needed.
+The same transaction serves Apply, Undo and Redo. It validates geometry
+identities and a prospective native plan before synchronizing the presentation
+worker. For a compatible root the existing fixture and physical geometry remain
+in place. An alternative root stages a generated subtree through the existing
+mesh and texture cache. Successful installation updates renderer associations,
+fixture inspection and subscriptions before replaying held DMX against the new
+programs. Compatible same-root shutter and gobo motion functions retain phase
+when their physical authority, resolved routes and function mappings match.
+Other functions are reevaluated from the received input. The document retains
+exact original XML spelling and presence in its shared history. Its canonical
+archive backs both PVZ Save and MVR Export.
+
+Modes with no installable native controls, unresolved geometry or required
+missing breaks remain unavailable. The editor also requires a recoverable
+installed starting mode for live Undo. Fixtures with absent or invalid authored
+modes retain their source data and require repair before using the selector.
+Peraviz reports unsupported attributes separately from source validation.
+
+A future Transform command can reuse the document history and canonical UUID,
+then publish Matrix-derived transforms on the existing fixture root.
+
+### Mode edit timing
+
+A Linux Debug build with Godot 4.7.1 and Compatibility headless ran six
+Apply/Undo cycles per transition on synthetic two-emitter fixtures with
+shared model resources. Values are medians measured in milliseconds.
+
+| Scene fixtures | Transition | Native preparation | Installation and replay |
+| ---: | --- | ---: | ---: |
+| 96 | Same root | 25.3 | 48.9 |
+| 96 | Alternate root | 33.4 | 59.1 |
+| 512 | Same root | 158.0 | 336.0 |
+| 512 | Alternate root | 189.2 | 347.6 |
+
+Same-root edits created and retired zero generated geometry records. The
+alternate root created two records and retired seven. Both transitions reused
+two imported meshes and two source materials. Fixture root and unaffected model
+identities remained stable. The explicit command recompiles native semantics
+and rebuilds renderer associations, so setup cost grows with scene size.

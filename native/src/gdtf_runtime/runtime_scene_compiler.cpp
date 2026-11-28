@@ -198,8 +198,8 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const std::vector<
 }
 
 // Builds a cache key for parser-owned fixture type compilation.
-std::string fixture_type_cache_key(const SceneModel::FixturePatch &patch) {
-    return patch.gdtf_path + "\n" + dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
+std::string fixture_type_cache_key(const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &type) {
+    return patch.gdtf_path + "\n" + type.dmx_mode_name;
 }
 
 // Adds parser setup counters from a unique fixture type into the runtime setup report.
@@ -841,9 +841,11 @@ void finalize_fixture_activations(runtime::CompiledRuntimeScene &scene,
 } // namespace
 
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
-runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset, const RuntimeRoutingOptions &routing, FixtureTypeCache *cache) {
+runtime::CompiledRuntimeScene compile_runtime_scene(const std::vector<SceneModel::FixturePatch> &patches,
+        const std::vector<SceneNode> &nodes, int universe_offset, const RuntimeRoutingOptions &routing,
+        FixtureTypeCache *cache) {
     runtime::CompiledRuntimeScene out;
-    out.mvr_fixture_patches = static_cast<int32_t>(scene.fixture_patches.size());
+    out.mvr_fixture_patches = static_cast<int32_t>(patches.size());
     int32_t next_program_id = 1;
     std::unordered_set<int32_t> generated_ids;
     FixtureTypeCache local_cache;
@@ -855,19 +857,19 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         }
         return !type.channel_programs.empty();
     };
-    const auto plan=plan_auto_span(scene,universe_offset,routing,fixture_type_cache,eligible);
+    const auto plan=plan_auto_span(patches,universe_offset,routing,fixture_type_cache,eligible);
     out.diagnostics=plan.diagnostics;
     out.routing_replay_sources=plan.replay_sources;
     std::unordered_set<int32_t> unavailable;
     std::unordered_set<std::string> counted_types;
     std::unordered_map<std::string, std::vector<const SceneNode *>> beams_by_fixture;
-    for (const auto &node : scene.nodes) if (node.is_beam) {
+    for (const auto &node : nodes) if (node.is_beam) {
         const auto separator = node.gdtf_geometry_key.find('/');
         if (separator != std::string::npos) beams_by_fixture[node.gdtf_geometry_key.substr(0, separator)].push_back(&node);
     }
     using PhysicalResources = PhysicalResourceTemplates;
     std::unordered_map<std::string, PhysicalResources> physical_resources;
-    for (const SceneModel::FixturePatch &patch : scene.fixture_patches) {
+    for (const SceneModel::FixturePatch &patch : patches) {
         if (!patch.dmx_import_error.empty()) {
             out.diagnostics.push_back({"PVZ-MVR-DMX-PATCH-UNSUPPORTED","error",patch.dmx_import_error,patch.fixture_uuid});
             continue;
@@ -879,13 +881,13 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const int base_universe=patch.mvr_universe>0 ? patch.mvr_universe : patch.addresses.front().universe;
         const int32_t fixture_id = stable_id(patch.fixture_uuid, "fixture");
         check_generated_id(generated_ids, out, fixture_id, patch.fixture_uuid);
-        const std::string cache_key = fixture_type_cache_key(patch);
         const auto &fixture_type=cached_fixture_type(patch,fixture_type_cache);
+        const std::string cache_key = fixture_type_cache_key(patch, fixture_type);
         if (counted_types.insert(cache_key).second) add_fixture_type_counters(out,fixture_type);
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
-        if (!fixture_type.dmx_patch_supported) continue;
+        if (!fixture_type.dmx_patch_supported || fixture_type.selected_modes_found != 1) continue;
         const auto &decision=plan.fixtures.at(patch.fixture_uuid);
         const bool auto_span=decision.span;
         auto address_issue=decision.error;
@@ -969,6 +971,12 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         check_generated_id(generated_ids, out, target.color_target_id, std::to_string(target.fixture_id));
     }
     return out;
+}
+
+// Route normal import through the same immutable inputs used by mode editing.
+runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset,
+        const RuntimeRoutingOptions &routing, FixtureTypeCache *cache) {
+    return compile_runtime_scene(scene.fixture_patches, scene.nodes, universe_offset, routing, cache);
 }
 
 } // namespace peraviz::gdtf_runtime

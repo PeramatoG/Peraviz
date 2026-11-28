@@ -3,6 +3,7 @@
 #include "runtime_storage.h"
 #include <array>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <vector>
 namespace tinyxml2 {
@@ -31,11 +32,21 @@ struct XmlEdit {
     size_t start, length;
     std::string text;
 };
+struct ModeValue {
+    std::string name;
+    bool present = false;
+    // Compare the authored value and optional source presence.
+    bool operator==(const ModeValue &other) const { return name == other.name && present == other.present; }
+    bool operator!=(const ModeValue &other) const { return !(*this == other); }
+};
 struct Fixture {
     std::string uuid, reason;
     size_t element = 0;
     std::array<int, 2> fields{{-1, -1}};
     std::array<Inversion, 2> original, current, saved;
+    int mode_element = -1, spec_element = -1;
+    ModeValue original_mode, current_mode, saved_mode;
+    std::string gdtf_spec, mode_reason;
     int addresses_element = -1;
     std::string patch_reason;
     PatchState original_patch, current_patch, saved_patch;
@@ -44,9 +55,10 @@ struct Change {
     std::string uuid;
     int axis = 0;
     Inversion before, after;
-    enum class Kind { Inversion, Patch } kind = Kind::Inversion;
+    enum class Kind { Inversion, Patch, Mode } kind = Kind::Inversion;
     PatchState patch_before, patch_after;
     int patch_break = -1;
+    ModeValue mode_before, mode_after;
 };
 class MvrDocument {
   public:
@@ -58,6 +70,10 @@ class MvrDocument {
                        const std::string &operation);
     // Identify the staged command without inspecting XML from the UI.
     bool pending_patch() const { return !pending_.empty() && pending_[0].kind == Change::Kind::Patch; }
+    using ModeValidator = std::function<std::string(const Fixture &, const std::string &)>;
+    bool prepare_mode(const std::string &uuid, const std::string &name, const ModeValidator &validate);
+    // Select the runtime transaction for the staged canonical mode command.
+    bool pending_mode() const { return !pending_.empty() && pending_[0].kind == Change::Kind::Mode; }
     bool commit();
     void cancel();
     std::filesystem::path canonical_archive();
@@ -65,6 +81,8 @@ class MvrDocument {
     void mark_saved();
     // Read cached save-point state without scanning XML or fixtures from the UI.
     bool dirty() const { return dirty_; }
+    // Invalidate a staged renderer candidate when a different document edit is published.
+    uint64_t revision() const { return revision_; }
     // Read bounded command availability.
     bool can_undo() const { return cursor_ > 0; }
     // Read bounded redo availability.
@@ -77,10 +95,14 @@ class MvrDocument {
     // Check whether a supported canonical source is installed.
     bool ready() const { return !original_xml_.empty(); }
     // Borrow the protected imported source identity.
+    const std::filesystem::path &import_snapshot() const { return snapshot_; }
+    // Borrow the original source identity.
     const std::filesystem::path &original_path() const { return source_; }
 
   private:
     bool parse();
+    void index_mode(Fixture &fixture, const tinyxml2::XMLElement *node);
+    std::vector<XmlEdit> mode_edits(const Fixture &fixture, const ModeValue &state) const;
     void index_patch(Fixture &fixture, const tinyxml2::XMLElement *node);
     std::vector<XmlEdit> patch_edits(const Fixture &fixture, const PatchState &state) const;
     bool validate_pending();

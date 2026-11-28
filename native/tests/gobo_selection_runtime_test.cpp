@@ -266,6 +266,23 @@ bool test_native_continuous_gobo_rotation_section() {
         std::abs(reversed.floats[GoboRotationAngularVelocityDegreesPerSecond] + 90.0f) > 0.01f) return false;
     runtime.submit_universe_frame(10, dmx.data(), 512);
     if (!runtime.consume_latest_visual_frame().descriptors.empty()) return false;
+    auto next_mode = scene;
+    next_mode.source_programs[0].program_id = 123;
+    next_mode.gobo_motion_bindings[0].source_program_id = 123;
+    next_mode.gobo_motion_bindings[0].binding_id = 456;
+    PeravizVisualRuntimeCore mode_runtime;
+    mode_runtime.install_compiled_scene(next_mode);
+    mode_runtime.inherit_mode_input(runtime, 1, next_mode, true);
+    const auto replayed = mode_runtime.consume_latest_visual_frame();
+    if (replayed.descriptors.empty() ||
+        std::abs(replayed.floats[GoboRotationAuthoritativePhaseDegrees] - 180.0f) > 0.01f ||
+        std::abs(replayed.floats[GoboRotationAngularVelocityDegreesPerSecond] + 90.0f) > 0.01f) return false;
+    PeravizVisualRuntimeCore alternate_geometry;
+    alternate_geometry.install_compiled_scene(next_mode);
+    alternate_geometry.inherit_mode_input(runtime, 1, next_mode, false);
+    const auto restarted = alternate_geometry.consume_latest_visual_frame();
+    if (restarted.descriptors.empty() ||
+        std::abs(restarted.floats[GoboRotationAuthoritativePhaseDegrees]) > 0.01f) return false;
     // A routing-only transaction retains the running oscillator and its clock, including held input.
     scene.source_programs[0].sources[0].address = 100;
     if (!runtime.replace_routes(scene)) return false;

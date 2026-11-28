@@ -194,7 +194,7 @@ The Inspector exposes **Invert Pan** and **Invert Tilt** for validated canonical
 source fixtures. A single OFF/ON toggle per property applies to the whole
 selection; mixed values show an explicit **Mixed → ON** action. Missing/duplicated identities, malformed inversion
 metadata and unsafe document structures disable editing with a reason. Other
-Inspector fields, Move/Rotate, GDTF Mode and Transform remain read-only.
+Inspector identity and Transform information remain read-only.
 
 `AppShell.selection.ids` supplies the existing UUID selection. The scene-owned
 native document retains original XML ranges and archive resources; Godot only
@@ -263,3 +263,16 @@ projections. Warnings distinguish intentional overlaps and inferred continuation
 from invalid/unsupported patches. The native transaction preserves installed
 control topology; unbound/incomplete fixtures and topology-changing proposals
 are unavailable/rejected with a reason. See [the editing contract](mvr-document-editing.md#canonical-patch-editing-editor-pr2).
+
+## GDTF DMX Mode
+
+Select one canonical fixture and choose a mode from **DMX Mode**. The selector
+shows exact names in source order. Item tooltips include the authored description
+and routed DMX footprint when available. The preview shows required MVR breaks.
+**Apply** validates the proposed mode against the existing patch and updates
+the live fixture. **Cancel** restores the current selection. Choosing another
+fixture abandons an unconfirmed choice.
+
+A failed Apply restores the displayed mode and reports the blocker. A successful
+Apply refreshes Patch and the document's dirty, Undo and Redo states. Multiple
+selection and fixtures without a recoverable current native mode stay read-only.

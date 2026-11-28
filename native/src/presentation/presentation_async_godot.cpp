@@ -1,5 +1,6 @@
 #include "presentation/presentation_state_godot.h"
 #include "peraviz_loader.h"
+#include "document/mvr_document_godot.h"
 #include <algorithm>
 #include <chrono>
 
@@ -31,6 +32,38 @@ void PeravizPresentationState::retire_async(bool replay_domains) {
     }
     async_.reset(); async_runtime_.unref(); async_snapshot_bytes_=async_worker_bytes_=0;
     state_.invalidate_renderer(); projection_.invalidate();
+}
+// Stop the worker before changing renderer targets or detaching fixture resources.
+void PeravizPresentationState::pause_for_mode_edit() {
+    retire_async(false);
+    mode_outputs_ = state_.capture_outputs();
+}
+
+// Carry unaffected physical values into new indices, or recover every output on rollback.
+void PeravizPresentationState::restore_mode_physical(const PackedInt32Array &excluded) {
+    std::vector<int32_t> ids;
+    if (!excluded.is_empty()) ids.assign(excluded.ptr(), excluded.ptr() + excluded.size());
+    state_.restore_outputs(mode_outputs_, ids);
+    mode_outputs_.clear();
+}
+
+// Rehydrate independent temporal domains in the selected renderer layout.
+void PeravizPresentationState::resume_mode_layout(const Ref<PeravizVisualRuntime> &runtime) {
+    if (runtime.is_null() || !runtime->async_available()) return;
+    deferred_domains_ = runtime->native_core().held_domain_replay();
+    ingest_shutters(deferred_domains_);
+    synchronous_mode_replay_ = true;
+    resume_pending_ = true;
+}
+
+// Publish only with a validated renderer generation and an exclusive native runtime.
+bool PeravizPresentationState::apply_document_mode(const Ref<PeravizVisualRuntime> &runtime,
+        int64_t generation, PeravizLoader *loader, const Ref<PeravizMvrDocument> &document) {
+    if (!loader || runtime.is_null() || async_ || uint64_t(generation) != state_.generation())
+        return false;
+    if (!loader->commit_document_mode(document, runtime)) return false;
+    resume_mode_layout(runtime);
+    return true;
 }
 // Reclaim workers and replace routing while retaining presentation resources and generation identity.
 bool PeravizPresentationState::apply_document_patch(const Ref<PeravizVisualRuntime> &runtime, int64_t generation, PeravizLoader *loader) {

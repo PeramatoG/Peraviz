@@ -12,6 +12,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -57,6 +58,13 @@ public:
     SectionedVisualFrame held_domain_replay() const;
     struct HeldUniverse { int id=0; std::vector<uint8_t> values; };
     std::vector<HeldUniverse> held_universes() const;
+    void inherit_mode_input(const PeravizVisualRuntimeCore &old, int edited_fixture,
+                            const CompiledRuntimeScene &scene, bool same_geometry = false);
+    // Inspect the staged scene before publishing any renderer resources.
+    bool has_fixture_controls(int fixture_id) const {
+        const auto found = installed_visual_mask_by_fixture_.find(fixture_id);
+        return found != installed_visual_mask_by_fixture_.end() && found->second != 0;
+    }
     void clear();
     void install_compiled_scene(const CompiledRuntimeScene &scene);
     bool replace_routes(const CompiledRuntimeScene &scene);
@@ -171,7 +179,7 @@ private:
     struct InputInterest {
         int key=0, address=0;
         const std::vector<uint8_t> *frame=nullptr;
-        uint8_t previous=0;
+        int previous=-1;
     };
     struct UniverseState {
         std::vector<InputInterest> input_interests;
@@ -244,7 +252,7 @@ private:
     static SemanticParameter semantic_parameter_for_compiled(CompiledSemantic semantic);
     static bool is_color_semantic(CompiledSemantic semantic);
     static uint32_t max_raw_value_for_source_count(size_t source_count);
-    static uint32_t read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings = nullptr);
+    static std::optional<uint32_t> read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings = nullptr);
     static EvaluationResult evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings = nullptr);
     void install_source_mappings(const CompiledRuntimeScene &scene);
     void compile_evaluation_plans();
@@ -255,7 +263,7 @@ private:
     EvaluationResult evaluate_property_value(UniverseState &universe, const CompiledPropertyProgram &property);
     bool mechanical_active(UniverseState &universe,uint32_t source,uint32_t own_raw,size_t depth=0);
     EvaluationResult mechanical_value(UniverseState &universe,uint32_t source,bool inverted);
-    void fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context);
+    bool fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context);
     bool evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context,size_t dependency=0);
     static uint32_t visual_mask_for_parameter(SemanticParameter parameter);
     static void apply_semantic_value(ComponentState &state, SemanticParameter parameter, float value);
@@ -285,6 +293,7 @@ private:
     size_t mapping_definitions_ = 0, fixture_mode_definitions_ = 0;
     std::unordered_map<int64_t, GoboSelectionState> gobo_selection_state_by_layer_;
     std::unordered_map<int64_t, GoboRotationState> gobo_rotation_state_by_layer_;
+    std::unordered_set<int64_t> mode_gobo_motion_replay_;
     std::unordered_set<int64_t> diagnosed_ambiguous_gobo_selection_layers_;
     std::unordered_set<int64_t> diagnosed_ambiguous_gobo_pos_layers_;
     std::unordered_set<int64_t> diagnosed_ambiguous_gobo_posrotate_layers_;

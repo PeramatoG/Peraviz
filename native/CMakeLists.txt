@@ -168,6 +168,8 @@ if(PERAVIZ_ENABLE_DMX)
         src/runtime/wheel_runtime_core.cpp
         src/runtime/gobo_motion_evaluator.cpp
         src/runtime/visual_runtime_shutter.cpp
+        src/peraviz_mode_bridge.cpp
+        src/gdtf_runtime/fixture_mode_preparation.cpp
         src/gdtf_runtime/compiled_gdtf_fixture.cpp
         src/gdtf_runtime/gobo_motion_contract.cpp
         src/gdtf_runtime/mode_master.cpp
@@ -415,8 +417,10 @@ if(BUILD_TESTING)
     add_executable(peraviz_native_visual_runtime_tests
         tests/control_group_compiler_test.cpp
         src/presentation/control_groups.cpp
+        src/presentation/render_emitter_groups.cpp
         src/presentation/wheel_presentation_eligibility.cpp
         tests/automatic_auto_span_test.cpp
+        src/gdtf_runtime/fixture_mode_preparation.cpp
         tests/auto_span_test.cpp
         tests/visual_runtime_core_test.cpp
         tests/mvr_inversion_runtime_test.cpp
@@ -500,6 +504,7 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME peraviz_native_visual_runtime_tests COMMAND peraviz_native_visual_runtime_tests)
     add_test(NAME peraviz_native_auto_span_tests COMMAND peraviz_native_visual_runtime_tests --auto-span)
+    add_test(NAME peraviz_native_fixture_mode_tests COMMAND peraviz_native_visual_runtime_tests --fixture-mode)
     add_test(NAME peraviz_native_automatic_auto_span_tests COMMAND peraviz_native_visual_runtime_tests --automatic-auto-span)
 
 

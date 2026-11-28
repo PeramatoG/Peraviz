@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 
 #include <cstdint>
 #include <string>
@@ -172,6 +173,7 @@ struct RuntimeDiagnostic {
 
 struct CompiledGdtfFixtureType {
     bool dmx_patch_supported = true;
+    bool legacy_mode_alias = false;
     std::string fixture_type_name;
     std::string dmx_mode_name;
     int32_t semantic_contract_version = 2;
@@ -197,6 +199,19 @@ struct CompiledGdtfFixtureType {
     std::vector<RuntimeDiagnostic> diagnostics;
     runtime_storage::RuntimeDirectoryLease asset_cache_lease;
 };
+
+// Catalog metadata is independent of the MVR instance patch and presentation availability.
+struct GdtfModeInfo {
+    std::string name, description, geometry, diagnostic;
+    std::map<int, int> break_footprints; // One-based GDTF break -> highest resolved byte offset.
+    bool footprint_known = false;
+    bool semantic_supported = false;
+};
+struct GdtfModeCatalog {
+    std::string fixture_name, diagnostic;
+    std::vector<GdtfModeInfo> modes;
+};
+GdtfModeCatalog read_gdtf_mode_catalog(const std::string &gdtf_path);
 
 AttributeIdentity normalize_attribute_identity(int32_t id, const std::string &attribute_name);
 CompiledGdtfFixtureType compile_gdtf_fixture_type(const std::string &gdtf_path,

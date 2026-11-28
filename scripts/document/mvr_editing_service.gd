@@ -8,6 +8,8 @@ var _shell: Node
 var _export_dialog: FileDialog
 var _edit_menu: PopupMenu
 var _busy: bool = false
+var mode_error: String = ""
+var mode_warnings: Array = []
 var patch_error: String = ""
 var patch_warnings: Array = []
 var _discard_dialog: ConfirmationDialog
@@ -88,7 +90,7 @@ func apply(ids: PackedStringArray, axis: int, value: bool) -> bool:
 	if not native.prepare(ids,axis,value):
 		_message(str(native.state().error))
 		return false
-	return _commit_pending()
+	return await _commit_pending()
 
 # Canonical rows come from the document; parser capabilities only annotate supported routing.
 func patch_fixture(id: String) -> Dictionary:
@@ -112,16 +114,61 @@ func apply_patch(id: String, break_id: int, universe: int, address: int, operati
 		patch_error = str(native.state().error)
 		_message(patch_error)
 		return false
-	return _commit_pending()
+	return await _commit_pending()
+
+func mode_fixture(id: String) -> Dictionary:
+	var result := fixture(id)
+	var catalog: Dictionary = _owner._loader.document_mode_catalog(id)
+	result.merge(catalog)
+	if not catalog.get("current_available", false) and result.get("mode_reason", "").is_empty():
+		var reason: String = catalog.get("diagnostic", "")
+		result["mode_reason"] = reason if not reason.is_empty() else "The current mode is unavailable and cannot be restored by Undo."
+	return result
+
+func mode_has_potential_overlap(id: String, mode: String) -> bool:
+	return _owner._loader.document_mode_has_potential_overlap(id, mode)
+
+func apply_mode(id: String, mode: String) -> bool:
+	if native == null or _busy or _owner._scene_loading: return false
+	var node: Node = _shell.selection.node_for(id)
+	if node == null or str(node.get_meta("peraviz_type", "")) != "fixture": return false
+	_busy = true
+	return await _commit_mode(id, mode)
+
+func _commit_mode(id: String, mode: String) -> bool:
+	mode_error = ""
+	mode_warnings.clear()
+	var started := Time.get_ticks_usec()
+	var stage: Dictionary = _owner._loader.stage_document_mode(native, id, mode, int(_owner._dmx_controller._dmx_universe_offset_input.value))
+	_owner._scene_setup_resource_metrics["mode_prepare_ms"] = (Time.get_ticks_usec() - started) / 1000.0
+	if stage.get("unchanged", false):
+		_busy = false
+		return true
+	if stage.get("ok", false):
+		mode_error = await preload("res://scripts/document/fixture_mode_transaction.gd").install(_owner, native, stage)
+	else:
+		mode_error = str(stage.get("error", "The mode is unavailable."))
+	if not mode_error.is_empty():
+		_owner._loader.cancel_document_mode()
+		native.cancel()
+		_busy = false
+		_message(mode_error)
+		return false
+	mode_warnings = stage.get("warnings", [])
+	_busy = false
+	changed.emit()
+	if not mode_warnings.is_empty(): _message(str(mode_warnings[0]))
+	return true
 
 func history(redo: bool) -> bool:
 	if native == null or _busy or _owner._scene_loading: return false
 	if not native.prepare_history(redo): return false
-	return _commit_pending()
+	return await _commit_pending()
 
 # The staged native document command is published only after the exclusive runtime boundary succeeds.
 func _commit_pending() -> bool:
 	_busy = true
+	if native.pending_mode(): return await _commit_mode("", "")
 	var values: Array = native.pending_values()
 	var runtime = _owner._dmx_controller._dmx_fixture_runtime
 	if native.pending_patch(): return _commit_patch(values, runtime)

@@ -131,7 +131,10 @@ void test_split_scalar() {
     scene.properties.push_back({4,1,5,3,CompiledSemantic::Dimmer,{{2,1}}});
     PeravizVisualRuntimeCore core; core.install_compiled_scene(scene);
     std::array<uint8_t,512> first{},second{}; first[511]=0x12; second[0]=0x34;
-    core.submit_universe_frame(1,second.data(),512); core.submit_universe_frame(0,first.data(),512);
+    core.submit_universe_frame(0,first.data(),512);
+    require(core.consume_latest_visual_frame().descriptors.empty(),
+            "The missing fine universe must not supply synthetic DMX input");
+    core.submit_universe_frame(1,second.data(),512);
     const auto frame=core.consume_latest_visual_frame(); expect_color(colors(frame),3,1,0,0,4660.0f/65535);
     bool intensity=false;
     for (size_t d=0;d<frame.descriptors.size();d+=5) if (frame.descriptors[d]==int(VisualSectionType::EmitterIntensity)) {

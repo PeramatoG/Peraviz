@@ -41,4 +41,6 @@ struct RenderEmitterGroup {
 std::vector<EmitterSpatialDescriptor> compile_emitter_spatial_descriptors(const runtime::CompiledRuntimeScene &scene, const SceneModel &model, bool indexed = true);
 std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
         const SceneModel &model, const std::vector<PresentationControlGroup> &controls, bool indexed = true);
+std::vector<RenderEmitterGroup> compile_render_emitter_groups(const runtime::CompiledRuntimeScene &scene,
+        const std::vector<SceneNode> &nodes, const std::vector<PresentationControlGroup> &controls, bool indexed);
 } // namespace peraviz::presentation

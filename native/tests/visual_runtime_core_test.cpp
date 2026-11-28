@@ -1290,9 +1290,11 @@ bool test_parallel_presentation();
 // Runs the full native semantic and presentation-compiler regression suite.
 bool test_auto_span();
 bool test_automatic_auto_span();
+bool test_fixture_mode_preparation();
 
 // Runs native runtime regressions, with a focused Auto Span reproduction/integration entry point.
 int main(int argc, char **argv) {
+    if (argc > 1 && std::string(argv[1]) == "--fixture-mode") return test_fixture_mode_preparation() ? 0 : 1;
     if (argc>1 && std::string(argv[1])=="--automatic-auto-span") return test_automatic_auto_span()?0:1;
     if (argc>1 && std::string(argv[1])=="--auto-span") return test_auto_span()?0:1;
     if (!test_mvr_inversion_runtime()) return 1;
