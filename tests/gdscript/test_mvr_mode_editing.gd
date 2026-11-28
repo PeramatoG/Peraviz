@@ -45,6 +45,11 @@ func run() -> void:
 	test.check(field._apply.visible and not editor.state().dirty, "Browsing changes neither runtime nor canonical document")
 	field._cancel.pressed.emit()
 	test.check(field._choice.selected == 0 and not editor.state().can_undo, "Cancel restores the authored selection")
+	field._choice.select(1)
+	field._choice.item_selected.emit(1)
+	app.app_shell.selection.select(PackedStringArray([ID_B]))
+	app.app_shell.selection.select(PackedStringArray([ID_A]))
+	test.check(field._choice.selected == 0 and not field._apply.visible, "Selection changes discard a pending mode")
 	field._choice.select(3)
 	field._choice.item_selected.emit(3)
 	test.check(field._apply.disabled and field._hint.text.contains("MVR break 1"), "Missing break is visible before Apply")
@@ -110,6 +115,20 @@ func run() -> void:
 	for iteration in range(3):
 		test.check(await editor.history(false) and await editor.history(true), "Repeated mode Undo/Redo keeps the current fixture topology")
 	test.check(await editor.history(false), "Restore source mode before interleaving document commands")
+	test.check(editor.apply_patch(ID_A, 1, 2, 1, "insert"), "Assign the additional authored break explicitly")
+	test.check(app._dmx_controller.start_dmx(), "Restart Art-Net for a multi-break mode change")
+	await send_dmx()
+	test.check(await editor.apply_mode(ID_A, "Needs break"), "Install a mode that requires two authored DMX breaks")
+	test.check(is_zero_approx(axis(ID_A, true).rotation_degrees.y), "A newly subscribed universe has no fabricated Pan input")
+	var second_universe := PackedByteArray()
+	second_universe.resize(512)
+	second_universe[0] = 0x80
+	second_universe[2] = 0x80
+	await send_universe(1, second_universe)
+	test.check(absf(axis(ID_A, true).rotation_degrees.y - (-270.0 + 540.0 * 32896.0 / 65535.0)) < 0.01,
+		"A real ArtDmx packet reaches the new break and drives 16-bit Pan")
+	test.check(await editor.history(false) and editor.history(false), "Undo the mode and explicit break assignment in order")
+	app._dmx_controller.stop_dmx()
 	test.check(editor.apply(PackedStringArray([ID_A]), 0, true), "Stage Pan inversion in the shared history")
 	test.check(editor.apply_patch(ID_A, 0, 1, 18), "Stage explicit patch in the shared history")
 	test.check(await editor.apply_mode(ID_A, "Pixels & Pan"), "Stage mode after inversion and patch")
@@ -154,8 +173,6 @@ func physical_models() -> PackedInt64Array:
 	return ids
 
 func send_dmx() -> void:
-	app._dmx_controller.process_dmx(0.016)
-	var packet := PackedByteArray([65,114,116,45,78,101,116,0,0,80,0,14,1,0,0,0,2,0])
 	var data := PackedByteArray()
 	data.resize(512)
 	data[0] = 255
@@ -164,6 +181,11 @@ func send_dmx() -> void:
 	data[3] = 0x12
 	data[5] = 0x34
 	data[7] = 192
+	await send_universe(0, data)
+
+func send_universe(universe: int, data: PackedByteArray) -> void:
+	app._dmx_controller.process_dmx(0.016)
+	var packet := PackedByteArray([65,114,116,45,78,101,116,0,0,80,0,14,1,0,universe,0,2,0])
 	packet.append_array(data)
 	test.check(udp.put_packet(packet) == OK, "Send one real ArtDmx universe")
 	await create_timer(0.05).timeout

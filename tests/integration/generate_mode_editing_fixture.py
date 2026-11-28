@@ -55,7 +55,8 @@ def create(path, count=4):
                     channel("1", "Dimmer", "Head"), channel("8", "Dimmer", "Head2"),
                     channel("2", "ColorAdd_R", "Head"), channel("3", "ColorAdd_R", "Head2"))
                 modes += mode("Alternative", "Alternate", channel("1", "Dimmer", "AltBeam"))
-                modes += mode("Needs break", "Base", channel("1", "Dimmer", "Head", number=2))
+                modes += mode("Needs break", "Base", channel("1", "Dimmer", "Head"),
+                    channel("1,3", "Pan", "Pan", -270, 270, number=2))
                 modes += mode("Duplicate", "Base", channel("1", "Dimmer", "Head")) * 2
                 data = xml.replace("</DMXModes>", modes + "</DMXModes>").encode()
             target.writestr(entry, data)
