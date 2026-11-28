@@ -309,8 +309,11 @@ worker. For a compatible root the existing fixture and physical geometry remain
 in place. An alternative root stages a generated subtree through the existing
 mesh and texture cache. Successful installation updates renderer associations,
 fixture inspection and subscriptions before replaying held DMX against the new
-programs. The document retains exact original XML spelling and presence in its
-shared history. Its canonical archive backs both PVZ Save and MVR Export.
+programs. Compatible same-root shutter and gobo motion functions retain phase
+when their physical authority, resolved routes and function mappings match.
+Other functions are reevaluated from the received input. The document retains
+exact original XML spelling and presence in its shared history. Its canonical
+archive backs both PVZ Save and MVR Export.
 
 Modes with no installable native controls, unresolved geometry or required
 missing breaks remain unavailable. The editor also requires a recoverable

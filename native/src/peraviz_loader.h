@@ -43,6 +43,7 @@ public:
     Array get_fixtures_patch() const;
     void sync_document_inversions(const Array &values);
     Dictionary document_mode_catalog(const String &uuid);
+    bool document_mode_has_potential_overlap(const String &uuid, const String &mode);
     Dictionary preview_document_mode(const String &uuid, const String &mode, int universe_offset);
     Dictionary stage_document_mode(const Ref<PeravizMvrDocument> &document, const String &uuid,
                                    const String &name, int universe_offset);

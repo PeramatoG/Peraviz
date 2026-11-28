@@ -95,6 +95,8 @@ func _describe(index: int) -> void:
 		var last: int = patch.address + entry.footprint - 1
 		if last > 512:
 			_hint.text += "\nBreak %d crosses the universe boundary. Auto Span policy applies." % number
+	if _document.mode_has_potential_overlap(_uuid, target.name):
+		_hint.text += "\nPotential overlap with another fixture's authored DMX patch."
 
 func _confirm() -> void:
 	var index := _choice.selected

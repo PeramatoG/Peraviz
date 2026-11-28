@@ -59,7 +59,7 @@ public:
     struct HeldUniverse { int id=0; std::vector<uint8_t> values; };
     std::vector<HeldUniverse> held_universes() const;
     void inherit_mode_input(const PeravizVisualRuntimeCore &old, int edited_fixture,
-                            const CompiledRuntimeScene &scene);
+                            const CompiledRuntimeScene &scene, bool same_geometry = false);
     // Inspect the staged scene before publishing any renderer resources.
     bool has_fixture_controls(int fixture_id) const {
         const auto found = installed_visual_mask_by_fixture_.find(fixture_id);
@@ -293,6 +293,7 @@ private:
     size_t mapping_definitions_ = 0, fixture_mode_definitions_ = 0;
     std::unordered_map<int64_t, GoboSelectionState> gobo_selection_state_by_layer_;
     std::unordered_map<int64_t, GoboRotationState> gobo_rotation_state_by_layer_;
+    std::unordered_set<int64_t> mode_gobo_motion_replay_;
     std::unordered_set<int64_t> diagnosed_ambiguous_gobo_selection_layers_;
     std::unordered_set<int64_t> diagnosed_ambiguous_gobo_pos_layers_;
     std::unordered_set<int64_t> diagnosed_ambiguous_gobo_posrotate_layers_;

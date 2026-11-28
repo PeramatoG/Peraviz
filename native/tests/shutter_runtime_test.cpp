@@ -105,6 +105,17 @@ bool test_shutter_runtime() {
                "Mode replacement preserves unrelated shutter clock and phase across source-ID changes")) return false;
     if (!check(parameters(mode_replacement.consume_latest_visual_frame()).revision == 0,
                "Held input replay does not restart an unrelated shutter function")) return false;
+    PeravizVisualRuntimeCore same_root;
+    same_root.install_compiled_scene(recompiled);
+    same_root.inherit_mode_input(core, 1, recompiled, true);
+    carried = parameters(same_root.held_domain_replay());
+    if (!check(carried.wave == state.wave && close(carried.phase, state.phase),
+               "An unchanged shutter function retains its phase on the edited geometry")) return false;
+    PeravizVisualRuntimeCore alternate_root;
+    alternate_root.install_compiled_scene(recompiled);
+    alternate_root.inherit_mode_input(core, 1, recompiled, false);
+    if (!check(close(parameters(alternate_root.consume_latest_visual_frame()).phase, 0),
+               "Replacing the geometry does not transfer a shutter phase by numeric ID")) return false;
     core.set_runtime_now_seconds_for_testing(2); secondary[100]=120; core.submit_universe_frame(2,secondary.data(),512);
     frame=core.consume_latest_visual_frame(); ingest(playback,frame); state=parameters(frame);
     playback.tick(2.25);

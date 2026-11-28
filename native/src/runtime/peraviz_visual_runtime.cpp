@@ -65,6 +65,7 @@ void PeravizVisualRuntimeCore::clear() {
     mapping_definitions_ = fixture_mode_definitions_ = 0;
     gobo_selection_state_by_layer_.clear();
     gobo_rotation_state_by_layer_.clear();
+    mode_gobo_motion_replay_.clear();
     diagnosed_ambiguous_gobo_selection_layers_.clear();
     diagnosed_ambiguous_gobo_pos_layers_.clear();
     diagnosed_ambiguous_gobo_posrotate_layers_.clear();
@@ -259,12 +260,15 @@ void PeravizVisualRuntimeCore::consume_latest_visual_frame(SectionedVisualFrame 
             state.pos_rotate_binding_id = rotate_active ? rotate_binding->binding_id : 0;
             if (pos_active) state.pos_degrees = pos_value.physical_value;
             if (rotate_active) state.pos_rotate_dps = rotate_value.physical_value;
-            if (!changed) continue;
-            state.phase_degrees = next_phase;
-            state.angular_velocity_dps = next_velocity;
-            state.reference_seconds = motion_now;
-            state.mode = next_mode;
-            state.initialized = true;
+            const bool replay = !mode_gobo_motion_replay_.empty() && mode_gobo_motion_replay_.erase(layer_key) != 0;
+            if (!changed && !replay) continue;
+            if (changed) {
+                state.phase_degrees = next_phase;
+                state.angular_velocity_dps = next_velocity;
+                state.reference_seconds = motion_now;
+                state.mode = next_mode;
+                state.initialized = true;
+            }
             ++state.revision;
             if (active_pos_count > 1) ++stats_.ambiguous_gobo_pos_layers;
             if (active_rotate_count > 1) ++stats_.ambiguous_gobo_posrotate_layers;

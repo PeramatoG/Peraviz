@@ -26,6 +26,27 @@ int64_t first_slot(const SceneModel::FixturePatchAddress &address) {
 }
 } // namespace
 
+bool mode_footprint_overlaps(const SceneModel &scene, const SceneModel::FixturePatch &fixture,
+                             const GdtfModeInfo &mode, FixtureTypeCache &cache) {
+    for (const auto &other : scene.fixture_patches) {
+        if (other.fixture_uuid == fixture.fixture_uuid || other.gdtf_path.empty() || other.dmx_mode.empty()) continue;
+        for (const auto &program : cached_fixture_type(other, cache).channel_programs) {
+            const auto other_address = source_patch(other, program.dmx_break);
+            if (other_address.universe < 1 || other_address.address < 1) continue;
+            for (const auto &[number, footprint] : mode.break_footprints) {
+                const auto address = source_patch(fixture, number);
+                if (address.universe < 1 || address.address < 1) continue;
+                const auto start = first_slot(address);
+                for (const int offset : program.dmx_offsets_1_based) {
+                    const auto slot = first_slot(other_address) + offset - 1;
+                    if (slot >= start && slot < start + footprint) return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 // Prepare fixture-local geometry and real runtime programs while the installed scene stays untouched.
 FixtureModePreparation prepare_fixture_mode(
     const SceneModel &scene, const std::string &uuid, const std::string &name,
@@ -144,24 +165,8 @@ FixtureModePreparation prepare_fixture_mode(
         out.warnings.push_back("No compiled visualization for " + attribute + ".");
     if (overflow) out.warnings.push_back("The new footprint crosses slot 512 under the current Auto Span policy.");
 
-    bool overlaps = false;
-    for (const auto &other : scene.fixture_patches) {
-        if (other.fixture_uuid == uuid || other.gdtf_path.empty() || other.dmx_mode.empty()) continue;
-        const auto &other_type = cached_fixture_type(other, cache);
-        for (const auto &program : other_type.channel_programs) {
-            const auto other_address = source_patch(other, program.dmx_break);
-            if (other_address.universe < 1 || other_address.address < 1) continue;
-            for (const auto &[number, footprint] : target->break_footprints) {
-                const auto start = first_slot(source_patch(*fixture, number));
-                for (const int offset : program.dmx_offsets_1_based) {
-                    const auto slot = first_slot(other_address) + offset - 1;
-                    overlaps |= slot >= start && slot < start + footprint;
-                }
-            }
-        }
-        if (overlaps) break;
-    }
-    if (overlaps) out.warnings.push_back("Potential overlap with another fixture's authored DMX patch.");
+    if (mode_footprint_overlaps(scene, *fixture, *target, cache))
+        out.warnings.push_back("Potential overlap with another fixture's authored DMX patch.");
 
     const bool indexed = SceneSetupOptions::read().indexed_classification;
     out.controls = presentation::analyze_control_groups(out.compiled, indexed);

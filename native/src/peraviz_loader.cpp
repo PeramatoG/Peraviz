@@ -140,6 +140,8 @@ void PeravizLoader::_bind_methods() {
                          &PeravizLoader::stage_document_mode);
     ClassDB::bind_method(D_METHOD("cancel_document_mode"), &PeravizLoader::cancel_document_mode);
     ClassDB::bind_method(D_METHOD("document_mode_catalog", "uuid"), &PeravizLoader::document_mode_catalog);
+    ClassDB::bind_method(D_METHOD("document_mode_has_potential_overlap", "uuid", "mode"),
+                         &PeravizLoader::document_mode_has_potential_overlap);
     ClassDB::bind_method(D_METHOD("preview_document_mode", "uuid", "mode", "universe_offset"),
                          &PeravizLoader::preview_document_mode);
     ClassDB::bind_method(D_METHOD("document_patch_info", "uuid"), &PeravizLoader::document_patch_info);

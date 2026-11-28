@@ -62,6 +62,18 @@ Dictionary PeravizLoader::document_mode_catalog(const String &uuid) {
     return result;
 }
 
+bool PeravizLoader::document_mode_has_potential_overlap(const String &uuid, const String &mode) {
+    const auto *patch = fixture_patch(last_scene_model_, uuid.utf8().get_data());
+    if (!patch || !prepared_ || preparation_.valid()) return false;
+    const auto &catalog = mode_catalog(patch->gdtf_path);
+    const std::string name = mode.utf8().get_data();
+    const auto target = std::find_if(catalog.modes.begin(), catalog.modes.end(), [&](const auto &entry) {
+        return entry.name == name && entry.footprint_known;
+    });
+    return target != catalog.modes.end() && peraviz::gdtf_runtime::mode_footprint_overlaps(
+        last_scene_model_, *patch, *target, *prepared_->fixture_types);
+}
+
 // Preview native semantic and geometry feasibility without publishing a document or renderer change.
 Dictionary PeravizLoader::preview_document_mode(const String &uuid, const String &mode, int universe_offset) {
     Dictionary result;
@@ -206,7 +218,8 @@ bool PeravizLoader::commit_document_mode(const Ref<PeravizMvrDocument> &document
     const auto &id = candidate.patch.fixture_uuid;
     if (document->document_.revision() != stage.document_revision ||
         command.uuid != id || command.mode_after.name != candidate.patch.dmx_mode) return false;
-    if (!runtime->replace_mode_plan(stage.runtime_plan, candidate.compiled, stage.fixture_id, stage.payload))
+    if (!runtime->replace_mode_plan(stage.runtime_plan, candidate.compiled, stage.fixture_id,
+                                    candidate.reuse_geometry, stage.payload))
         return false;
     document->document_.commit();
     for (auto &patch : last_scene_model_.fixture_patches)

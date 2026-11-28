@@ -4,10 +4,11 @@
 namespace godot {
 // Swap a validated independent plan while the main thread exclusively owns the installed core.
 bool PeravizVisualRuntime::replace_mode_plan(std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> next,
-        const peraviz::runtime::CompiledRuntimeScene &scene, int32_t fixture_id, const Dictionary &payload) {
+        const peraviz::runtime::CompiledRuntimeScene &scene, int32_t fixture_id, bool same_geometry,
+        const Dictionary &payload) {
     if (!next || !async_available()) return false;
     next->set_performance_trace_enabled(performance_trace_enabled_);
-    next->inherit_mode_input(*core_, fixture_id, scene);
+    next->inherit_mode_input(*core_, fixture_id, scene, same_geometry);
     core_ = std::move(next);
     shutter_metadata_ = payload.get("shutter_trace_metadata", Array());
     schema_cache_ = core_->schema();

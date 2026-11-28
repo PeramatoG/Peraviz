@@ -23,4 +23,7 @@ FixtureModePreparation prepare_fixture_mode(
     const GdtfModeCatalog &catalog, GdtfModelDetail detail, int universe_offset,
     const RuntimeRoutingOptions &routing, FixtureTypeCache &cache);
 
+bool mode_footprint_overlaps(const SceneModel &scene, const SceneModel::FixturePatch &fixture,
+                             const GdtfModeInfo &mode, FixtureTypeCache &cache);
+
 } // namespace peraviz::gdtf_runtime

@@ -43,6 +43,8 @@ func run() -> void:
 	field._choice.select(1)
 	field._choice.item_selected.emit(1)
 	test.check(field._apply.visible and not editor.state().dirty, "Browsing changes neither runtime nor canonical document")
+	test.check(field._hint.text.contains("Potential overlap") and not field._apply.disabled,
+		"Inspector reports co-patching before Apply and permits it")
 	field._cancel.pressed.emit()
 	test.check(field._choice.selected == 0 and not editor.state().can_undo, "Cancel restores the authored selection")
 	field._choice.select(1)

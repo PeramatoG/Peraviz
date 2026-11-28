@@ -125,6 +125,9 @@ func mode_fixture(id: String) -> Dictionary:
 		result["mode_reason"] = reason if not reason.is_empty() else "The current mode is unavailable and cannot be restored by Undo."
 	return result
 
+func mode_has_potential_overlap(id: String, mode: String) -> bool:
+	return _owner._loader.document_mode_has_potential_overlap(id, mode)
+
 func apply_mode(id: String, mode: String) -> bool:
 	if native == null or _busy or _owner._scene_loading: return false
 	var node: Node = _shell.selection.node_for(id)
