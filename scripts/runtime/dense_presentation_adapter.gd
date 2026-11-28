@@ -154,10 +154,10 @@ func clear() -> void:
 	_renderer = null
 
 # Replace route indices while retaining compatible physical handles and unaffected aggregate shafts.
-func rebind_mode(loader: Node, service: RefCounted, registry: RefCounted, uuid: String) -> bool:
+func rebind_mode(loader: Node, service: RefCounted, registry: RefCounted, replaced_outputs: Dictionary) -> bool:
 	var reusable: Dictionary = {}
 	for output in _outputs:
-		if _binding_records[output.index].get("fixture_uuid", "") != uuid:
+		if not replaced_outputs.has(output.canonical_id):
 			reusable[output.canonical_id] = output
 	_retained_aggregates = _render_bindings.take_unchanged_aggregates(_outputs, reusable)
 	_retained_groups.clear()

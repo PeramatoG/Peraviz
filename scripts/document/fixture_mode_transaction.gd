@@ -54,8 +54,11 @@ static func install(owner: Node, document: RefCounted, candidate: Dictionary) ->
 		break
 
 	var previous_outputs: Array = []
+	var previous_output_ids: Dictionary = {}
 	for record: Dictionary in registry._beam_output_records_by_id.values():
-		if record.fixture_uuid == uuid: previous_outputs.append(record)
+		if record.fixture_uuid == uuid:
+			previous_outputs.append(record)
+			previous_output_ids[record.beam_render_target_id] = true
 	var previous_roots: Array[Node] = []
 	var previous_positions: Dictionary = {}
 	var new_roots: Array[Node] = []
@@ -78,20 +81,23 @@ static func install(owner: Node, document: RefCounted, candidate: Dictionary) ->
 		_clear_fixture_caches(owner, uuid)
 
 	await registry.install_manifest(candidate.payload.renderer_manifest, null, true)
+	var candidate_outputs: Array = []
+	var candidate_output_ids: Dictionary = {}
+	for record: Dictionary in registry._beam_output_records_by_id.values():
+		if record.fixture_uuid == uuid:
+			candidate_outputs.append(record)
+			candidate_output_ids[record.beam_render_target_id] = true
 	var error := registry.mode_target_failure(uuid)
 	var adapter_changed := false
 	if error.is_empty():
 		if candidate.reuse_geometry: registry.restore_individual_lenses(uuid)
 		adapter_changed = true
-		if not await adapter.rebind_mode(owner, service, registry, uuid):
+		if not await adapter.rebind_mode(owner, service, registry, previous_output_ids):
 			error = "The native renderer rejected the candidate binding layout."
 		elif not adapter._native.apply_document_mode(runtime._native_visual_runtime, adapter._generation, owner._loader, document):
 			error = "The staged document and native runtime could not be published together."
 	if not error.is_empty():
-		var rollback_outputs: Array = []
 		if not new_roots.is_empty():
-			for record: Dictionary in registry._beam_output_records_by_id.values():
-				if record.fixture_uuid == uuid: rollback_outputs.append(record)
 			for node in new_roots: root.remove_child(node)
 			for node in previous_roots:
 				root.add_child(node)
@@ -103,19 +109,17 @@ static func install(owner: Node, document: RefCounted, candidate: Dictionary) ->
 			_clear_fixture_caches(owner, uuid)
 		await registry.install_manifest(previous_manifest, null, true)
 		if adapter_changed:
-			await adapter.rebind_mode(owner, service, registry, uuid)
+			await adapter.rebind_mode(owner, service, registry, candidate_output_ids)
 		adapter._native.restore_mode_physical(PackedInt32Array())
 		adapter._native.resume_mode_layout(runtime._native_visual_runtime)
-		for record: Dictionary in rollback_outputs: _retire_lights(owner, record)
+		if not new_roots.is_empty():
+			for record: Dictionary in candidate_outputs: _retire_lights(owner, record)
 		for node in new_roots: node.free()
 		if not new_roots.is_empty(): _prune_geometry_bindings(owner)
 		runtime.apply_visual_frame(owner._dmx_controller._dmx_receiver, owner, service, 0.0)
 		return error
 
-	var edited_outputs := PackedInt32Array()
-	for record: Dictionary in registry._beam_output_records_by_id.values():
-		if record.fixture_uuid == uuid: edited_outputs.append(record.beam_render_target_id)
-	adapter._native.restore_mode_physical(edited_outputs)
+	adapter._native.restore_mode_physical(PackedInt32Array(candidate_output_ids.keys()))
 	service._resetting_mode_effects = true
 	registry.reset_fixture_mode_effects(uuid, previous_outputs, candidate.reuse_geometry)
 	service._resetting_mode_effects = false
