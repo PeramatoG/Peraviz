@@ -332,12 +332,13 @@ shared model resources. Values are medians measured in milliseconds.
 
 | Scene fixtures | Transition | Native preparation | Installation and replay |
 | ---: | --- | ---: | ---: |
-| 96 | Same root | 26.5 | 58.0 |
-| 96 | Alternate root | 27.2 | 56.9 |
-| 512 | Same root | 170.1 | 319.5 |
-| 512 | Alternate root | 186.3 | 353.2 |
+| 96 | Same root | 25.3 | 48.9 |
+| 96 | Alternate root | 33.4 | 59.1 |
+| 512 | Same root | 158.0 | 336.0 |
+| 512 | Alternate root | 189.2 | 347.6 |
 
-Same-root edits created zero generated fixture geometry nodes. The alternate
-root created two records in the edited subtree. Fixture root and unaffected model
+Same-root edits created and retired zero generated geometry records. The
+alternate root created two records and retired seven. Both transitions reused
+two imported meshes and two source materials. Fixture root and unaffected model
 identities remained stable. The explicit command recompiles native semantics
 and rebuilds renderer associations, so setup cost grows with scene size.

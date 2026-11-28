@@ -66,6 +66,7 @@ func run() -> void:
 	udp.connect_to_host("127.0.0.1", 6454)
 	await send_dmx()
 	var initial_meshes := physical_models()
+	test.check(not initial_meshes.is_empty(), "The edited fixture has physical mesh and material resources to preserve")
 	if OS.get_environment("PERAVIZ_NATIVE_EVALUATION") == "parallel":
 		test.check(app._fixture_light_apply_service._dense_adapter._native.get_sizes().get("native_async_active", false),
 			"Mode switch starts with a live asynchronous presentation worker")
@@ -164,12 +165,17 @@ func physical_models() -> PackedInt64Array:
 	var ids := PackedInt64Array()
 	for node: Node3D in app._node_index.values():
 		if not node.has_meta("peraviz_model_visual"): continue
+		if not str(node.get_meta("peraviz_gdtf_geometry_key", "")).begins_with(ID_A + "/"): continue
 		var visual: Node3D = node.get_meta("peraviz_model_visual")
-		if visual is MeshInstance3D and visual.mesh != null:
-			ids.append(visual.get_instance_id())
-			ids.append(visual.mesh.get_instance_id())
-			for surface in range(visual.mesh.get_surface_count()):
-				var material: Material = visual.get_active_material(surface)
+		var meshes := visual.find_children("*", "MeshInstance3D", true, false)
+		if visual is MeshInstance3D: meshes.append(visual)
+		for mesh: MeshInstance3D in meshes:
+			if mesh.mesh == null: continue
+			ids.append(mesh.get_instance_id())
+			ids.append(mesh.mesh.get_instance_id())
+			for surface in range(mesh.mesh.get_surface_count()):
+				# The runtime may split group-specific emissive overrides for independently controlled emitters.
+				var material: Material = mesh.mesh.surface_get_material(surface)
 				ids.append(material.get_instance_id() if material != null else 0)
 	ids.sort()
 	return ids
