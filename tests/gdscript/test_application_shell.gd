@@ -131,7 +131,10 @@ func _run() -> void:
 	test.check(shell.explorer._items["fixture-uuid"].get_parent() == shell.explorer._items["group-uuid"], "Explorer preserves imported hierarchy")
 	shell.selection.select(PackedStringArray(["fixture-uuid"]))
 	test.check(shell.explorer._items["fixture-uuid"].is_selected(0), "Application selection synchronizes explorer")
-	test.check(shell.inspector._details.text.contains("DMX Mode") and shell.inspector._details.text.contains("Unavailable in this preview"), "Inspector supports missing/unbound fixtures and never invents inversion")
+	test.check(shell.inspector._mode_field.visible and shell.inspector._mode_field._choice.disabled
+		and not shell.inspector._mode_field._hint.text.is_empty()
+		and shell.inspector._details.text.contains("Unavailable in this preview"),
+		"Inspector diagnoses unavailable modes and never invents inversion")
 	test.check(not shell.inspector._details.text.contains("UUID:") and not shell.explorer._items["fixture-uuid"].get_tooltip_text(0).contains("fixture-uuid"), "Normal identification hides internal UUIDs")
 	shell.inspector.show_object_uuids = true
 	shell.inspector.refresh([])
@@ -144,7 +147,7 @@ func _run() -> void:
 	shell.explorer.tree.deselect_all()
 	shell.explorer._items["group-uuid"].select(0)
 	shell.explorer._picked(shell.explorer._items["group-uuid"], 0, true)
-	test.check(shell.selection.ids == PackedStringArray(["group-uuid"]) and not shell.inspector._details.text.contains("DMX Mode"), "Explorer selects different object types with applicable inspector properties")
+	test.check(shell.selection.ids == PackedStringArray(["group-uuid"]) and not shell.inspector._mode_field.visible, "Explorer selects different object types with applicable inspector properties")
 	shell.selection.select(PackedStringArray(["fixture-uuid", "group-uuid"]))
 	test.check(shell.inspector._details.text.contains("2 objects selected"), "Multiple selection has a read-only inspector state")
 	shell.selection.clear()
