@@ -10,6 +10,9 @@ static func install(owner: Node, document: RefCounted, candidate: Dictionary) ->
 	var root: Node3D = owner._scene_registry.get_fixture(uuid)
 	if root == null or runtime == null or adapter == null or not adapter.is_installed():
 		return "The installed fixture presentation is unavailable."
+	var current_failure := registry.mode_target_failure(uuid)
+	if not current_failure.is_empty():
+		return "The current renderer targets cannot be restored by Undo. " + current_failure
 	var started := Time.get_ticks_usec()
 	var index: Dictionary = owner._node_index
 	var previous_manifest := registry.installed_manifest

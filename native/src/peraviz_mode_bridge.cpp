@@ -141,11 +141,21 @@ Dictionary PeravizLoader::stage_document_mode(const Ref<PeravizMvrDocument> &doc
 
     peraviz::gdtf_runtime::RuntimeRoutingOptions routing;
     routing.policy = peraviz::gdtf_runtime::parse_auto_span_policy(auto_span_policy_);
-    const auto &installed = prepared_->compiled;
+    std::optional<peraviz::runtime::CompiledRuntimeScene> current_routes;
+    if (offset != prepared_->universe_offset || routing.policy != prepared_->auto_span_policy)
+        current_routes = peraviz::gdtf_runtime::compile_runtime_scene(last_scene_model_, offset,
+                                                                     routing, prepared_->fixture_types.get());
+    const auto &installed = current_routes ? *current_routes : prepared_->compiled;
     if (std::none_of(installed.fixtures.begin(), installed.fixtures.end(), [&](const auto &row) {
             return row.fixture_uuid == id;
         }))
         return reject("The current fixture has no installed native mode. Undo would be unavailable.");
+    for (const auto &diagnostic : installed.diagnostics) {
+        const bool current_fixture = diagnostic.subject == id || diagnostic.subject.rfind(id + " ", 0) == 0;
+        if (current_fixture && (diagnostic.severity == "error" ||
+                                diagnostic.code == "PVZ-DMX-STRICT-OMITTED-SUMMARY"))
+            return reject("The current native mode cannot be restored by Undo: " + diagnostic.message);
+    }
     auto candidate = peraviz::gdtf_runtime::prepare_fixture_mode(last_scene_model_, id, target, catalog,
         model_detail_, offset, routing, *prepared_->fixture_types);
     if (!candidate.error.empty()) return reject(candidate.error);
