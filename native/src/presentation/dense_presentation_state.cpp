@@ -84,6 +84,29 @@ void DensePresentationState::invalidate_renderer() {
     }
     if (trace_enabled_) high_water_ = std::max(high_water_, dirty_.size());
 }
+// Capture state by physical identity before editing renderer routes.
+std::unordered_map<int32_t, OutputState> DensePresentationState::capture_outputs() const {
+    std::unordered_map<int32_t, OutputState> snapshot;
+    snapshot.reserve(bindings_.size());
+    for (size_t i = 0; i < bindings_.size(); ++i) snapshot.emplace(bindings_[i].canonical_id, states_[i]);
+    return snapshot;
+}
+
+// Recover held physical values across dense index changes and force coherent renderer publication.
+void DensePresentationState::restore_outputs(const std::unordered_map<int32_t, OutputState> &snapshot,
+                                              const std::vector<int32_t> &excluded) {
+    const std::unordered_set<int32_t> skipped(excluded.begin(), excluded.end());
+    for (size_t i = 0; i < bindings_.size(); ++i) {
+        const auto id = bindings_[i].canonical_id;
+        const auto prior = snapshot.find(id);
+        if (prior != snapshot.end() && !skipped.count(id)) {
+            const auto mask = states_[i].mask;
+            states_[i] = prior->second;
+            states_[i].mask = mask;
+        }
+    }
+    invalidate_renderer();
+}
 // Updates one independently addressable physical output with latest-state-wins semantics.
 bool DensePresentationState::update(uint64_t generation, uint32_t index, int32_t section, uint32_t mask, const float *v) {
     if (generation != generation_ || index >= states_.size() || v == nullptr ||

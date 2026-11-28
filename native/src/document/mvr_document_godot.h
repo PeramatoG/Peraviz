@@ -7,6 +7,7 @@
 namespace godot {
 class PeravizMvrDocument : public RefCounted {
     GDCLASS(PeravizMvrDocument, RefCounted)
+    friend class PeravizLoader;
     peraviz::document::MvrDocument document_;
 
   protected:
@@ -18,6 +19,7 @@ class PeravizMvrDocument : public RefCounted {
     bool prepare(const PackedStringArray &ids, int axis, bool value);
     bool prepare_history(bool redo);
     bool prepare_patch(const String &uuid, int break_id, int universe, int address, const String &operation);
+    bool pending_mode() const;
     bool pending_patch() const;
     Array pending_values() const;
     bool commit();

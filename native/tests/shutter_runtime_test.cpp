@@ -91,6 +91,20 @@ bool test_shutter_runtime() {
     secondary[100]=119; core.submit_universe_frame(2,secondary.data(),512); frame=core.consume_latest_visual_frame();
     state=parameters(frame); ingest(playback,frame);
     if (!check(close(state.frequency,10) && close(state.phase,0.25),"Frequency edit integrates old phase instead of resetting")) return false;
+    auto recompiled = decoded.scene;
+    for (auto &source : recompiled.source_programs) source.program_id += 100;
+    for (auto &property : recompiled.properties)
+        for (auto &contributor : property.contributors) contributor.source_program_id += 100;
+    for (auto &binding : recompiled.shutter_bindings) binding.source_program_id += 100;
+    PeravizVisualRuntimeCore mode_replacement;
+    mode_replacement.install_compiled_scene(recompiled);
+    mode_replacement.inherit_mode_input(core, 2, recompiled);
+    auto carried = parameters(mode_replacement.held_domain_replay());
+    if (!check(carried.wave == state.wave && close(carried.phase, state.phase)
+               && close(carried.reference, state.reference) && close(mode_replacement.runtime_now_seconds(), 0.125),
+               "Mode replacement preserves unrelated shutter clock and phase across source-ID changes")) return false;
+    if (!check(parameters(mode_replacement.consume_latest_visual_frame()).revision == 0,
+               "Held input replay does not restart an unrelated shutter function")) return false;
     core.set_runtime_now_seconds_for_testing(2); secondary[100]=120; core.submit_universe_frame(2,secondary.data(),512);
     frame=core.consume_latest_visual_frame(); ingest(playback,frame); state=parameters(frame);
     playback.tick(2.25);

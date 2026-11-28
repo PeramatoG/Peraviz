@@ -49,7 +49,7 @@ std::string describe(const Candidate &candidate,const std::vector<std::pair<Slot
 }
 }
 // Resolves all authored occupancy and all candidate proposals before making order-independent admission decisions.
-AutoSpanPlan plan_auto_span(const SceneModel &scene,int universe_offset,const RuntimeRoutingOptions &options,
+AutoSpanPlan plan_auto_span(const std::vector<SceneModel::FixturePatch> &patches,int universe_offset,const RuntimeRoutingOptions &options,
                            FixtureTypeCache &cache,AutoSpanEligibility eligible) {
     AutoSpanPlan out;
     std::map<Slot,std::set<std::string>> authored,proposed;
@@ -63,7 +63,7 @@ AutoSpanPlan plan_auto_span(const SceneModel &scene,int universe_offset,const Ru
         if (out.diagnostics.size()<256) out.diagnostics.push_back({code,warning?"warning":"info",message,subject});
         else ++omitted_details;
     };
-    for (const auto &patch:scene.fixture_patches) {
+    for (const auto &patch:patches) {
         auto &decision=out.fixtures[patch.fixture_uuid];
         if (patch.gdtf_path.empty() || patch.dmx_mode.empty() || !patch.dmx_import_error.empty()) {
             globally_unknown=true; continue;

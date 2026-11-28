@@ -1,5 +1,7 @@
 #include "runtime/peraviz_visual_runtime.h"
 #include <algorithm>
+#include <tuple>
+#include <map>
 
 namespace peraviz::runtime {
 // Captures complete held raw inputs at an exclusive control boundary for bounded native handoff.
@@ -9,6 +11,79 @@ std::vector<PeravizVisualRuntimeCore::HeldUniverse> PeravizVisualRuntimeCore::he
     std::sort(frames.begin(),frames.end(),[](const auto &a,const auto &b) { return a.id<b.id; });
     return frames;
 }
+// Retain clocks and still-owned temporal state, then nominate actual held frames for evaluation.
+void PeravizVisualRuntimeCore::inherit_mode_input(const PeravizVisualRuntimeCore &old, int edited_fixture,
+                                                   const CompiledRuntimeScene &scene) {
+    runtime_epoch_ = old.runtime_epoch_;
+    test_runtime_now_seconds_ = old.test_runtime_now_seconds_;
+    std::unordered_set<int32_t> beam_ids;
+    for (const auto &beam : scene.beam_profiles)
+        if (beam.fixture_id != edited_fixture) beam_ids.insert(beam.render_target_id);
+    for (const auto &[key, value] : old.gobo_selection_state_by_layer_)
+        if (beam_ids.count(int32_t(uint64_t(key) >> 32))) gobo_selection_state_by_layer_.emplace(key, value);
+    for (const auto &[key, value] : old.gobo_rotation_state_by_layer_)
+        if (beam_ids.count(int32_t(uint64_t(key) >> 32))) gobo_rotation_state_by_layer_.emplace(key, value);
+    // Shutter program numbers are setup-local. Preserve phase by matching the source function,
+    // split-mode range and waveform within the same stable physical authority.
+    using ByteRoute = std::vector<std::tuple<int32_t, int32_t, int32_t>>;
+    using ShutterSignature = std::tuple<ByteRoute, ByteRoute, uint32_t, uint32_t, uint32_t, uint32_t, int32_t>;
+    const auto shutter_functions = [](const PeravizVisualRuntimeCore &core) {
+        std::unordered_map<int32_t, std::map<ShutterSignature, int32_t>> result;
+        const auto route = [&](int32_t id) {
+            ByteRoute bytes;
+            const auto source = core.source_programs_by_id_.find(id);
+            if (source != core.source_programs_by_id_.end())
+                for (const auto &byte : source->second.program.sources)
+                    bytes.emplace_back(byte.universe_id, byte.address, byte.byte_order);
+            return bytes;
+        };
+        for (const auto &[universe_id, universe] : core.universes_)
+            for (const auto &[authority, indices] : universe.shutter_layers)
+                for (const auto index : indices) {
+                    const auto &binding = universe.shutters[index].binding;
+                    auto &functions = result[int32_t(authority)];
+                    const ShutterSignature signature = {route(binding.source_program_id),
+                        route(binding.mode_source_program_id), binding.dmx_from, binding.dmx_to,
+                        binding.mode_from, binding.mode_to, int32_t(binding.wave)};
+                    const auto inserted = functions.emplace(signature, binding.activation_function_id ?
+                        binding.activation_function_id : binding.source_program_id);
+                    if (!inserted.second) inserted.first->second = 0;
+                }
+        return result;
+    };
+    const auto old_functions = shutter_functions(old);
+    const auto new_functions = shutter_functions(*this);
+    std::unordered_set<int32_t> restored;
+    for (const auto &[key, state] : shutter_states_) {
+        if (state.fixture_id == edited_fixture || !restored.insert(state.authority).second) continue;
+        const auto prior = old.shutter_states_.find(key);
+        if (prior == old.shutter_states_.end() || prior->second.fixture_id != state.fixture_id) continue;
+        auto &authority = shutter_authorities_.at(state.authority);
+        const auto &previous = old.shutter_authorities_.at(prior->second.authority);
+        if (authority.targets != previous.targets) continue;
+        const auto old_map = old_functions.find(prior->second.authority);
+        const auto new_map = new_functions.find(state.authority);
+        if (old_map == old_functions.end() || new_map == new_functions.end() ||
+            old_map->second.size() != new_map->second.size() ||
+            !std::equal(old_map->second.begin(), old_map->second.end(), new_map->second.begin(),
+                [](const auto &a, const auto &b) { return a.first == b.first; })) continue;
+        auto parameters = previous.parameters;
+        if (parameters.function_id) {
+            const auto signature = std::find_if(old_map->second.begin(), old_map->second.end(),
+                [&](const auto &entry) { return entry.second == parameters.function_id; });
+            if (signature == old_map->second.end()) continue;
+            const auto match = new_map->second.find(signature->first);
+            if (match == new_map->second.end() || !match->second) continue;
+            parameters.function_id = match->second;
+        }
+        authority.seed = previous.seed;
+        authority.parameters = parameters;
+        authority.diagnosed = previous.diagnosed;
+    }
+    for (const auto &frame : old.held_universes())
+        if (!frame.values.empty()) submit_universe_frame(frame.id, frame.values.data(), int(frame.values.size()));
+}
+
 // Rehydrates held mechanical domains after a renderer-only retirement, without resetting physical semantics.
 SectionedVisualFrame PeravizVisualRuntimeCore::held_domain_replay() const {
     SectionedVisualFrame frame; frame.schema_generation=schema_.schema_generation;

@@ -1,5 +1,6 @@
 #include "presentation/presentation_state_godot.h"
 #include "peraviz_loader.h"
+#include "document/mvr_document_godot.h"
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <chrono>
@@ -15,6 +16,11 @@ int64_t now_us() {
 }
 // Exposes setup-only physical/resource binding and a single renderer-oriented snapshot contract.
 void PeravizPresentationState::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("resume_mode_layout", "runtime"), &PeravizPresentationState::resume_mode_layout);
+    ClassDB::bind_method(D_METHOD("restore_mode_physical", "excluded"), &PeravizPresentationState::restore_mode_physical);
+    ClassDB::bind_method(D_METHOD("pause_for_mode_edit"), &PeravizPresentationState::pause_for_mode_edit);
+    ClassDB::bind_method(D_METHOD("apply_document_mode", "runtime", "generation", "loader", "document"),
+                         &PeravizPresentationState::apply_document_mode);
     ClassDB::bind_method(D_METHOD("apply_document_patch", "runtime", "generation", "loader"), &PeravizPresentationState::apply_document_patch);
     ClassDB::bind_method(D_METHOD("set_fixture_inversions","runtime","generation","triples"),&PeravizPresentationState::set_fixture_inversions);
     ClassDB::bind_method(D_METHOD("install", "ids", "scales", "routes"), &PeravizPresentationState::install);
@@ -207,10 +213,12 @@ Dictionary PeravizPresentationState::consume_runtime(const Ref<PeravizVisualRunt
     if (!runtime->async_available()) { result["valid"]=false; return result; }
     if (poll_only && !resume_pending_ && deferred_domains_.descriptors.empty()) { result["valid"]=true; result["pending"]=true; return result; }
     resume_pending_=false;
+    const bool synchronous = synchronous_mode_replay_;
+    synchronous_mode_replay_ = false;
     peraviz::presentation::AsyncEvaluationOptions options;
     options.trace=trace;
     options.force=async_forced_; if (options.force) options.workers=2;
-    if (!async_disabled_ && runtime->async_available() && AsyncPresentationPipeline::eligible(runtime->native_core(),options)) {
+    if (!synchronous && !async_disabled_ && runtime->async_available() && AsyncPresentationPipeline::eligible(runtime->native_core(),options)) {
         begin_snapshot(trace);
         displayed_physical_.resize(state_.bindings().size());
         for (size_t i=0;i<displayed_physical_.size();++i) displayed_physical_[i]=state_.render_values(uint32_t(i));

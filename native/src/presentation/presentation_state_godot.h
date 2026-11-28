@@ -14,12 +14,18 @@
 
 namespace godot {
 class PeravizLoader;
+class PeravizMvrDocument;
 class PeravizPresentationState : public RefCounted {
     GDCLASS(PeravizPresentationState, RefCounted)
 protected:
     static void _bind_methods();
 public:
     ~PeravizPresentationState();
+    void pause_for_mode_edit();
+    void restore_mode_physical(const PackedInt32Array &excluded);
+    void resume_mode_layout(const Ref<PeravizVisualRuntime> &runtime);
+    bool apply_document_mode(const Ref<PeravizVisualRuntime> &runtime, int64_t generation,
+                             PeravizLoader *loader, const Ref<PeravizMvrDocument> &document);
     int64_t install(const PackedInt32Array &ids, const PackedFloat32Array &scales, const PackedInt32Array &routes);
     bool install_groups(const PackedInt32Array &representatives);
     bool install_render_rows(const PackedInt32Array &membership, const PackedInt32Array &classes);
@@ -79,6 +85,8 @@ private:
 
     NativeLensBatches lenses_;
     PackedInt32Array script_rows_;
+    std::unordered_map<int32_t, peraviz::presentation::OutputState> mode_outputs_;
+    bool synchronous_mode_replay_ = false;
     void retire_async(bool replay_domains=true);
     Dictionary poll_async(const Ref<PeravizVisualRuntime> &runtime,int64_t generation,int32_t schema_generation,bool trace);
     std::shared_ptr<peraviz::presentation::AsyncPresentationPipeline> async_;

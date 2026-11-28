@@ -27,6 +27,7 @@ void PeravizMvrDocument::_bind_methods() {
     ClassDB::bind_method(D_METHOD("prepare_history", "redo"), &PeravizMvrDocument::prepare_history);
     ClassDB::bind_method(D_METHOD("prepare_patch", "uuid", "break_id", "universe", "address", "operation"),
                          &PeravizMvrDocument::prepare_patch);
+    ClassDB::bind_method(D_METHOD("pending_mode"), &PeravizMvrDocument::pending_mode);
     ClassDB::bind_method(D_METHOD("pending_patch"), &PeravizMvrDocument::pending_patch);
     ClassDB::bind_method(D_METHOD("pending_values"), &PeravizMvrDocument::pending_values);
     ClassDB::bind_method(D_METHOD("commit"), &PeravizMvrDocument::commit);
@@ -79,6 +80,8 @@ bool PeravizMvrDocument::prepare_patch(const String &uuid, int break_id, int uni
     return document_.prepare_patch(uuid.utf8().get_data(), break_id, universe, address,
                                    operation.utf8().get_data());
 }
+// Report whether history staged a mode command for the loader transaction.
+bool PeravizMvrDocument::pending_mode() const { return document_.pending_mode(); }
 // Select the patch transaction boundary without interpreting commands in GDScript.
 bool PeravizMvrDocument::pending_patch() const { return document_.pending_patch(); }
 // Stage an existing history operation without losing its previous XML absence.
@@ -107,7 +110,7 @@ Array PeravizMvrDocument::pending_values() const {
     return result;
 }
 // Commit a staged command after its runtime configuration has been accepted.
-bool PeravizMvrDocument::commit() { return document_.commit(); }
+bool PeravizMvrDocument::commit() { return !document_.pending_mode() && document_.commit(); }
 // Cancel an unapplied command with no history or document changes.
 void PeravizMvrDocument::cancel() { document_.cancel(); }
 // Return the single cached canonical serialization, without copying its binary contents into Godot.

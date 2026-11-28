@@ -1,6 +1,8 @@
 #pragma once
 
 #include <godot_cpp/classes/object.hpp>
+#include <godot_cpp/classes/ref.hpp>
+#include "document/mvr_document_godot.h"
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -9,12 +11,16 @@
 
 #include "scene_model.h"
 #include "scene_setup_preparation.h"
+#include "gdtf_runtime/fixture_mode_preparation.h"
 #include <future>
 #include <optional>
+
+namespace peraviz::runtime { class PeravizVisualRuntimeCore; }
 
 namespace godot {
 
 class PeravizVisualRuntime;
+class PeravizMvrDocument;
 
 class PeravizLoader : public Object {
     GDCLASS(PeravizLoader, Object)
@@ -38,6 +44,11 @@ public:
     void sync_document_inversions(const Array &values);
     Dictionary document_mode_catalog(const String &uuid);
     Dictionary preview_document_mode(const String &uuid, const String &mode, int universe_offset);
+    Dictionary stage_document_mode(const Ref<PeravizMvrDocument> &document, const String &uuid,
+                                   const String &name, int universe_offset);
+    void cancel_document_mode();
+    bool commit_document_mode(const Ref<PeravizMvrDocument> &document,
+                              const Ref<PeravizVisualRuntime> &runtime);
     Dictionary document_patch_info(const String &uuid);
     Dictionary stage_document_patch(const String &uuid, const Array &entries, int universe_offset);
     bool commit_document_patch(const Ref<PeravizVisualRuntime> &runtime);
@@ -52,6 +63,21 @@ public:
     bool set_runtime_table_cell_for_test(const String &table_id, const String &row_uuid, int column_index, const Variant &value);
 
 private:
+    Dictionary serialize_compiled_scene(const peraviz::runtime::CompiledRuntimeScene &scene, int universe_offset,
+        const peraviz::presentation::ControlGroupAnalysis &controls,
+        const std::vector<peraviz::presentation::RenderEmitterGroup> &groups, bool pack_runtime = true) const;
+    struct StagedMode {
+        Ref<PeravizMvrDocument> document;
+        peraviz::gdtf_runtime::FixtureModePreparation candidate;
+        Dictionary payload;
+        std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> runtime_plan;
+        int32_t fixture_id;
+        uint64_t document_revision;
+        int universe_offset;
+        std::string policy;
+    };
+    std::optional<StagedMode> staged_mode_;
+    static Array serialize_node_records(const std::vector<peraviz::SceneNode> &nodes);
     Array serialize_scene_nodes(bool baseline_debug, bool coords_debug);
     peraviz::GdtfModelDetail model_detail_ = peraviz::GdtfModelDetail::Default;
     std::string auto_span_policy_="auto_safe";

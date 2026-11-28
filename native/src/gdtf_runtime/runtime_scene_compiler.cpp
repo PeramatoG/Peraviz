@@ -841,9 +841,11 @@ void finalize_fixture_activations(runtime::CompiledRuntimeScene &scene,
 } // namespace
 
 // Compiles scene fixture patches and parser-owned GDTF ChannelFunctions into visual runtime programs.
-runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset, const RuntimeRoutingOptions &routing, FixtureTypeCache *cache) {
+runtime::CompiledRuntimeScene compile_runtime_scene(const std::vector<SceneModel::FixturePatch> &patches,
+        const std::vector<SceneNode> &nodes, int universe_offset, const RuntimeRoutingOptions &routing,
+        FixtureTypeCache *cache) {
     runtime::CompiledRuntimeScene out;
-    out.mvr_fixture_patches = static_cast<int32_t>(scene.fixture_patches.size());
+    out.mvr_fixture_patches = static_cast<int32_t>(patches.size());
     int32_t next_program_id = 1;
     std::unordered_set<int32_t> generated_ids;
     FixtureTypeCache local_cache;
@@ -855,19 +857,19 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         }
         return !type.channel_programs.empty();
     };
-    const auto plan=plan_auto_span(scene,universe_offset,routing,fixture_type_cache,eligible);
+    const auto plan=plan_auto_span(patches,universe_offset,routing,fixture_type_cache,eligible);
     out.diagnostics=plan.diagnostics;
     out.routing_replay_sources=plan.replay_sources;
     std::unordered_set<int32_t> unavailable;
     std::unordered_set<std::string> counted_types;
     std::unordered_map<std::string, std::vector<const SceneNode *>> beams_by_fixture;
-    for (const auto &node : scene.nodes) if (node.is_beam) {
+    for (const auto &node : nodes) if (node.is_beam) {
         const auto separator = node.gdtf_geometry_key.find('/');
         if (separator != std::string::npos) beams_by_fixture[node.gdtf_geometry_key.substr(0, separator)].push_back(&node);
     }
     using PhysicalResources = PhysicalResourceTemplates;
     std::unordered_map<std::string, PhysicalResources> physical_resources;
-    for (const SceneModel::FixturePatch &patch : scene.fixture_patches) {
+    for (const SceneModel::FixturePatch &patch : patches) {
         if (!patch.dmx_import_error.empty()) {
             out.diagnostics.push_back({"PVZ-MVR-DMX-PATCH-UNSUPPORTED","error",patch.dmx_import_error,patch.fixture_uuid});
             continue;
@@ -969,6 +971,12 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         check_generated_id(generated_ids, out, target.color_target_id, std::to_string(target.fixture_id));
     }
     return out;
+}
+
+// Route normal import through the same immutable inputs used by mode editing.
+runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int universe_offset,
+        const RuntimeRoutingOptions &routing, FixtureTypeCache *cache) {
+    return compile_runtime_scene(scene.fixture_patches, scene.nodes, universe_offset, routing, cache);
 }
 
 } // namespace peraviz::gdtf_runtime

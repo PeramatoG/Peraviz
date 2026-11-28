@@ -225,7 +225,8 @@ void PeravizVisualRuntimeCore::bind_physical_inputs() {
 void PeravizVisualRuntimeCore::prepare_changed_inputs(UniverseState &universe) {
     universe.changed_offsets.clear();
     for (auto &input:universe.input_interests) {
-        const uint8_t value=input.address>=0 && size_t(input.address)<input.frame->size()?(*input.frame)[input.address]:0;
+        const int value = input.frame->empty() ? -1 :
+            (input.address >= 0 && size_t(input.address) < input.frame->size() ? (*input.frame)[input.address] : 0);
         if (!universe.has_last_relevant_values || value!=input.previous) universe.changed_offsets.push_back(input.key);
         input.previous=value;
     }

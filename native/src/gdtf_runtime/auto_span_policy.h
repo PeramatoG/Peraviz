@@ -23,7 +23,7 @@ struct AutoSpanPlan {
     std::vector<runtime::CompiledRuntimeDiagnostic> diagnostics;
 };
 using AutoSpanEligibility = bool (*)(const CompiledGdtfFixtureType &);
-AutoSpanPlan plan_auto_span(const SceneModel &scene,int universe_offset,const RuntimeRoutingOptions &options,
+AutoSpanPlan plan_auto_span(const std::vector<SceneModel::FixturePatch> &patches,int universe_offset,const RuntimeRoutingOptions &options,
                            FixtureTypeCache &cache,AutoSpanEligibility eligible);
 // Removes whole unavailable controls/dependency groups after intensity authority has been classified.
 void retain_strict_controls(runtime::CompiledRuntimeScene &scene,const std::unordered_set<int32_t> &unavailable);

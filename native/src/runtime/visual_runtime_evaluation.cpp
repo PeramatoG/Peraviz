@@ -3,7 +3,7 @@
 
 namespace peraviz::runtime {
 // Assembles source bytes and reports each invalid-input category once per installed program.
-uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings) {
+std::optional<uint32_t> PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings) {
     if (warnings) *warnings=0;
     if (program.program.sources.empty() || program.program.sources.size() > 4) {
         if (diagnostics != nullptr && !program.diagnosed_byte_count) {
@@ -11,12 +11,13 @@ uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &fr
             program.diagnosed_byte_count = true;
         }
         if (warnings) *warnings|=1;
-        return 0U;
+        return std::nullopt;
     }
     uint32_t raw_value = 0;
     for (size_t i=0;i<program.program.sources.size();++i) {
         const auto &source=program.program.sources[i];
         const auto &held=program.byte_frames.empty()?frame:*program.byte_frames[i];
+        if (held.empty()) return std::nullopt;
         const bool valid = source.address >= 0 && source.address < static_cast<int32_t>(held.size());
         if (!valid && !held.empty() && diagnostics != nullptr && !program.diagnosed_missing_byte) {
             diagnostics->push_back({"PVZ-RUNTIME-INVALID-BYTE", "warning", "Compiled DMX byte address is outside the submitted frame.", std::to_string(program.program.program_id)});
@@ -31,7 +32,9 @@ uint32_t PeravizVisualRuntimeCore::read_raw_value(const std::vector<uint8_t> &fr
 
 // Evaluates one source program into raw, local normalized, and physical representations.
 PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_source_program(const std::vector<uint8_t> &frame, const InstalledSourceProgram &program, std::vector<CompiledRuntimeDiagnostic> *diagnostics, uint8_t *warnings) {
-    const uint32_t raw_value = read_raw_value(frame, program, diagnostics, warnings);
+    const auto value = read_raw_value(frame, program, diagnostics, warnings);
+    if (!value) return {};
+    const uint32_t raw_value = *value;
     const double dmx_span = program.mapping->span;
     const double full_range_normalized = static_cast<double>(raw_value) * program.mapping->inverse_maximum;
     const double local = dmx_span > 0.0 ? std::clamp((static_cast<double>(raw_value) - static_cast<double>(program.program.dmx_from)) / dmx_span, 0.0, 1.0) : full_range_normalized;
@@ -67,7 +70,7 @@ PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_pr
         EvaluationResult selected;
         for (uint32_t source:property.sources) {
             const auto value=mechanical?mechanical_value(universe,source,property.inverted):evaluate_cached_source(universe,source);
-            if(mechanical && (!value.valid || !mechanical_active(universe,source,value.raw_value)))continue;
+            if (!value.valid || (mechanical && !mechanical_active(universe, source, value.raw_value))) continue;
             const auto &definition=universe.source_bindings[source]->program;
             if (!selected.valid && value.raw_value>=definition.dmx_from && value.raw_value<=definition.dmx_to) selected=value;
         }
@@ -89,18 +92,19 @@ PeravizVisualRuntimeCore::EvaluationResult PeravizVisualRuntimeCore::evaluate_pr
     return result;
 }
 // Refreshes numeric values only; authoritative gobo activation/temporal mathematics stay unchanged.
-void PeravizVisualRuntimeCore::fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context) {
+bool PeravizVisualRuntimeCore::fill_gobo_context(UniverseState &universe, GoboEvaluationContext &context) {
     for (size_t i=0;i<context.sources.size();++i) {
         const auto value=evaluate_cached_source(universe,context.sources[i]);
+        if (!value.valid) return false;
         context.values[i]={context.dependency_program_ids[i],value.raw_value};
     }
+    return true;
 }
 // Executes the existing cycle-safe ModeMaster evaluator once for each affected source context.
 bool PeravizVisualRuntimeCore::evaluate_cached_activation(UniverseState &universe, GoboEvaluationContext &context,size_t dependency) {
     const uint32_t source=context.sources[dependency];
     if (!universe.plan.activation_cached(source)) {
-        fill_gobo_context(universe,context);
-        const bool active=evaluate_gobo_source_activation(context.dependency_program_ids[dependency],*context.programs,context.values);
+        const bool active=fill_gobo_context(universe,context) && evaluate_gobo_source_activation(context.dependency_program_ids[dependency],*context.programs,context.values);
         universe.plan.store_activation(source,active);
         if (performance_trace_enabled_) ++stats_.activation_programs_evaluated;
     } else if (performance_trace_enabled_) ++stats_.activation_cache_hits;

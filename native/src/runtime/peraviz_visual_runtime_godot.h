@@ -24,6 +24,9 @@ public:
     ~PeravizVisualRuntime();
     void clear();
     void install_compiled_scene(const Dictionary &packed_scene);
+    bool replace_mode_plan(std::shared_ptr<peraviz::runtime::PeravizVisualRuntimeCore> next,
+                           const peraviz::runtime::CompiledRuntimeScene &scene, int32_t fixture_id,
+                           const Dictionary &payload);
     bool replace_routes(const peraviz::runtime::CompiledRuntimeScene &scene);
     // A deterministic clock may be injected only while the runtime has exclusive main-thread ownership.
     bool set_runtime_now_seconds_for_testing(double seconds) { if (!async_session_.expired()) return false; core_->set_runtime_now_seconds_for_testing(seconds); return true; }

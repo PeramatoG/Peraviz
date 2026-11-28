@@ -81,6 +81,8 @@ class MvrDocument {
     void mark_saved();
     // Read cached save-point state without scanning XML or fixtures from the UI.
     bool dirty() const { return dirty_; }
+    // Invalidate a staged renderer candidate when a different document edit is published.
+    uint64_t revision() const { return revision_; }
     // Read bounded command availability.
     bool can_undo() const { return cursor_ > 0; }
     // Read bounded redo availability.
@@ -93,6 +95,8 @@ class MvrDocument {
     // Check whether a supported canonical source is installed.
     bool ready() const { return !original_xml_.empty(); }
     // Borrow the protected imported source identity.
+    const std::filesystem::path &import_snapshot() const { return snapshot_; }
+    // Borrow the original source identity.
     const std::filesystem::path &original_path() const { return source_; }
 
   private:

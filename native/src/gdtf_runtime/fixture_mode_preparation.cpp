@@ -74,12 +74,11 @@ FixtureModePreparation prepare_fixture_mode(
     const auto generated = [&](const auto &node) { return node.gdtf_fixture_uuid == uuid; };
     out.reuse_geometry = current && current->semantic_supported && current->geometry == target->geometry &&
                          std::any_of(scene.nodes.begin(), scene.nodes.end(), generated);
-    SceneModel candidate;
-    candidate.fixture_patches = scene.fixture_patches;
+    auto patches = scene.fixture_patches;
+    std::vector<SceneNode> replacement_nodes;
     const auto index = std::distance(scene.fixture_patches.begin(), fixture);
     out.patch.dmx_mode = name;
-    candidate.fixture_patches[index] = out.patch;
-    candidate.nodes = scene.nodes;
+    patches[index] = out.patch;
     if (!out.reuse_geometry) {
         int extracted = 0;
         const GdtfBuildRequest request{fixture->gdtf_path, name, uuid, root->name, detail};
@@ -88,12 +87,14 @@ FixtureModePreparation prepare_fixture_mode(
             out.error = "Target geometry could not be built (" + out.geometry.error + ").";
             return out;
         }
-        candidate.nodes.erase(std::remove_if(candidate.nodes.begin(), candidate.nodes.end(), generated),
-                              candidate.nodes.end());
-        candidate.nodes.insert(candidate.nodes.end(), out.geometry.nodes.begin(), out.geometry.nodes.end());
+        replacement_nodes.reserve(scene.nodes.size() + out.geometry.nodes.size());
+        std::copy_if(scene.nodes.begin(), scene.nodes.end(), std::back_inserter(replacement_nodes),
+                     [&](const auto &node) { return !generated(node); });
+        replacement_nodes.insert(replacement_nodes.end(), out.geometry.nodes.begin(), out.geometry.nodes.end());
     }
 
-    out.compiled = compile_runtime_scene(candidate, universe_offset, routing, &cache);
+    const auto &nodes = out.reuse_geometry ? scene.nodes : replacement_nodes;
+    out.compiled = compile_runtime_scene(patches, nodes, universe_offset, routing, &cache);
     for (const auto &diagnostic : out.compiled.diagnostics) {
         if (diagnostic.code == "PVZ-RUNTIME-ID-COLLISION") {
             out.error = diagnostic.message;
@@ -164,7 +165,7 @@ FixtureModePreparation prepare_fixture_mode(
 
     const bool indexed = SceneSetupOptions::read().indexed_classification;
     out.controls = presentation::analyze_control_groups(out.compiled, indexed);
-    out.groups = presentation::compile_render_emitter_groups(out.compiled, candidate, out.controls.groups, indexed);
+    out.groups = presentation::compile_render_emitter_groups(out.compiled, nodes, out.controls.groups, indexed);
     return out;
 }
 
