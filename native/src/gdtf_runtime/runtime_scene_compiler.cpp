@@ -198,8 +198,8 @@ void append_beam_profiles(runtime::CompiledRuntimeScene &out, const std::vector<
 }
 
 // Builds a cache key for parser-owned fixture type compilation.
-std::string fixture_type_cache_key(const SceneModel::FixturePatch &patch) {
-    return patch.gdtf_path + "\n" + dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
+std::string fixture_type_cache_key(const SceneModel::FixturePatch &patch, const CompiledGdtfFixtureType &type) {
+    return patch.gdtf_path + "\n" + type.dmx_mode_name;
 }
 
 // Adds parser setup counters from a unique fixture type into the runtime setup report.
@@ -879,13 +879,13 @@ runtime::CompiledRuntimeScene compile_runtime_scene(const SceneModel &scene, int
         const int base_universe=patch.mvr_universe>0 ? patch.mvr_universe : patch.addresses.front().universe;
         const int32_t fixture_id = stable_id(patch.fixture_uuid, "fixture");
         check_generated_id(generated_ids, out, fixture_id, patch.fixture_uuid);
-        const std::string cache_key = fixture_type_cache_key(patch);
         const auto &fixture_type=cached_fixture_type(patch,fixture_type_cache);
+        const std::string cache_key = fixture_type_cache_key(patch, fixture_type);
         if (counted_types.insert(cache_key).second) add_fixture_type_counters(out,fixture_type);
         for (const RuntimeDiagnostic &diagnostic : fixture_type.diagnostics) {
             out.diagnostics.push_back({diagnostic.code, diagnostic.severity, diagnostic.message, patch.fixture_uuid + " mode=" + patch.dmx_mode + " " + diagnostic.subject});
         }
-        if (!fixture_type.dmx_patch_supported) continue;
+        if (!fixture_type.dmx_patch_supported || fixture_type.selected_modes_found != 1) continue;
         const auto &decision=plan.fixtures.at(patch.fixture_uuid);
         const bool auto_span=decision.span;
         auto address_issue=decision.error;

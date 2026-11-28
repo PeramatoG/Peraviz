@@ -1,11 +1,14 @@
 #include "archive/zip_archive.h"
 #include "gdtf_runtime/runtime_scene_compiler.h"
+#include "gdtf_runtime/fixture_mode_preparation.h"
+#include "runtime_storage.h"
 #include "mvr_scene_loader.h"
 #include "runtime/peraviz_visual_runtime.h"
 #include "runtime/realtime_dmx_coordinator.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -27,7 +30,17 @@ SceneModel fixture_scene(const std::filesystem::path &root,const std::string &ex
     const auto mode=[](const std::string &name,const std::string &channels) { return "<DMXMode Name=\""+name+"\" Geometry=\"Root\"><DMXChannels>"+channels+"</DMXChannels></DMXMode>"; };
     std::string rgbw=channel("1","ColorAdd_R",0)+channel("2","ColorAdd_G",0)+channel("3","ColorAdd_B",0)+channel("4","ColorAdd_W",0)+channel("2","Dimmer",1);
     auto second_break=channel("1","Dimmer",1); second_break.insert(std::string("<DMXChannel").size()," DMXBreak=\"2\"");
-    const std::string xml="<GDTF DataVersion=\"1.2\"><FixtureType Name=\"Synthetic\"><Geometries><Geometry Name=\"Root\">"+beams+"</Geometry></Geometries><DMXModes>"+mode("Thirty",controls)+mode("Other",channel("1","Pan",0)+channel("2","Dimmer",1)+channel("3","Dimmer",2)+channel("4","Dimmer",3))+mode("Wide",channel("1,2","Dimmer",0)+channel("3,4,5,6","Dimmer",1)+channel("7","Dimmer",2))+mode("RGBW",rgbw)+mode("Multi",channel("1,2","Dimmer",0)+second_break)+mode("Unknown",channel("1","Fog1",0))+mode("Shutter",channel("1","Shutter1",0))+mode("Gobo",channel("1","Gobo1",0))+mode("Wheel",channel("1","Color1",0))+"</DMXModes></FixtureType></GDTF>";
+    const std::string alternate =
+        "<DMXMode Name=\"Extended &amp; Wide\" Description=\"Separated emitters\" Geometry=\"Alternate\">"
+        "<DMXChannels>" + channel("1,4", "Dimmer", 99) + channel("6", "Prism1", 99) +
+        "<DMXChannel Offset=\"None\" Geometry=\"Cell99\"><LogicalChannel Attribute=\"Pan\"/></DMXChannel>"
+        "</DMXChannels></DMXMode>";
+    const std::string cell_geometry = "<Geometry Name=\"ArrayRoot\"><GeometryReference Name=\"CellRef\" Geometry=\"Module\">"
+        "<Break DMXBreak=\"1\" DMXOffset=\"7\"/></GeometryReference></Geometry>"
+        "<Geometry Name=\"Module\"><Beam Name=\"Cell77\" BeamType=\"Glow\"/></Geometry>";
+    const std::string reference_mode = "<DMXMode Name=\"Reference\" Geometry=\"ArrayRoot\"><DMXChannels>" +
+        channel("1,4", "Dimmer", 77) + "</DMXChannels></DMXMode>";
+    const std::string xml="<GDTF DataVersion=\"1.2\"><FixtureType Name=\"Synthetic\"><Geometries><Geometry Name=\"Root\">"+beams+"</Geometry><Geometry Name=\"Alternate\"><Beam Name=\"Cell99\" BeamType=\"Glow\"/></Geometry>"+cell_geometry+"</Geometries><DMXModes>"+mode("Thirty",controls)+mode("Other",channel("1","Pan",0)+channel("2","Dimmer",1)+channel("3","Dimmer",2)+channel("4","Dimmer",3))+mode("Wide",channel("1,2","Dimmer",0)+channel("3,4,5,6","Dimmer",1)+channel("7","Dimmer",2))+mode("RGBW",rgbw)+mode("Multi",channel("1,2","Dimmer",0)+second_break)+mode("Unknown",channel("1","Fog1",0))+mode("Shutter",channel("1","Shutter1",0))+mode("Gobo",channel("1","Gobo1",0))+mode("Wheel",channel("1","Color1",0))+alternate+mode("Duplicate",controls)+mode("Duplicate",controls)+reference_mode+"</DMXModes></FixtureType></GDTF>";
     { archive::ZipArchive zip; check(zip.open_create_or_modify(root/"policy.gdtf"),"Create GDTF"); check(zip.write_file("description.xml",xml)&&zip.close(),"Write GDTF"); }
     const auto fixture=[](const std::string &id,const std::string &mode,const std::string &patch) {return "<Fixture uuid=\""+id+"\"><GDTFSpec>policy.gdtf</GDTFSpec><GDTFMode>"+mode+"</GDTFMode><Addresses><Address>"+patch+"</Address></Addresses></Fixture>";};
     std::string instances=fixture("A","Thirty","1.500");
@@ -142,4 +155,73 @@ bool test_automatic_auto_span() {
         check(cache.size()==1 && identity==&cache.begin()->second,"Policy-only rebuild reparsed immutable GDTF data");
         std::filesystem::remove_all(root); return true;
     } catch (const std::exception &error) { std::cerr<<"Automatic Auto Span: "<<error.what()<<'\n'; return false; }
+}
+
+// Exercises mode preparation without committing scene data or touching the renderer.
+bool test_fixture_mode_preparation() {
+    runtime_storage::TemporaryWorkspace workspace("fixture-mode-preparation");
+    try {
+        auto scene = fixture_scene(workspace.path(), "other");
+        const auto &source = scene.fixture_patches.front();
+        const auto catalog = read_gdtf_mode_catalog(source.gdtf_path);
+        check(catalog.diagnostic.empty() && catalog.modes.size() == 13 &&
+                  catalog.modes.front().name == "Thirty" && catalog.modes.front().break_footprints.at(1) == 30,
+              "Catalog preserves authored order and uses actual channel offsets");
+        check(catalog.modes[4].name == "Multi" && catalog.modes[4].break_footprints.at(1) == 2 &&
+                  catalog.modes[4].break_footprints.at(2) == 1,
+              "Catalog preserves required break identity and high-resolution offsets");
+        check(catalog.modes[9].name == "Extended & Wide" && catalog.modes[9].break_footprints.at(1) == 6 &&
+                  !catalog.modes[10].semantic_supported && !catalog.modes[11].semantic_supported,
+              "Catalog decodes only authored XML entities and rejects duplicate names");
+        check(catalog.modes.back().name == "Reference" && catalog.modes.back().break_footprints.at(1) == 10,
+              "GeometryReference offset participates in the ordered-byte footprint");
+        check(!compile_gdtf_fixture_type(source.gdtf_path, "thirty").selected_modes_found &&
+                  !compile_gdtf_fixture_type(source.gdtf_path, "Duplicate").selected_modes_found,
+              "Mode compilation requires an exact unique name");
+        FixtureTypeCache cache;
+        const auto prepare = [&](const std::string &name) {
+            return prepare_fixture_mode(scene, "A", name, catalog, GdtfModelDetail::Default, -1, {}, cache);
+        };
+        check(prepare("Thirty").unchanged, "Same mode is a no-op");
+        check(prepare("Multi").error.find("assignments: 1") != std::string::npos,
+              "Missing authored break rejects before geometry preparation");
+        const auto same_root_start = std::chrono::steady_clock::now();
+        auto same_root = prepare("Other");
+        const auto same_root_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - same_root_start).count();
+        check(same_root.error.empty() && same_root.reuse_geometry && same_root.geometry.nodes.empty() &&
+                  controls(same_root.compiled, "A") == 4,
+              "Different control topology reuses compatible root geometry");
+        const auto next_start = std::chrono::steady_clock::now();
+        auto next = prepare("Extended & Wide");
+        const auto next_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - next_start).count();
+        check(next.error.empty() && !next.reuse_geometry && next.geometry.nodes.size() == 2 &&
+                  controls(next.compiled, "A") == 1 && controls(next.compiled, "B") == 4 &&
+                  next.patch.addresses[0].address == source.addresses[0].address &&
+                  source.dmx_mode == "Thirty",
+              "Alternate mode produces only replacement fixture geometry and preserves authored patch");
+        check(std::any_of(next.warnings.begin(), next.warnings.end(),
+                          [](const auto &warning) { return warning.find("Prism1") != std::string::npos; }),
+              "A valid unsupported attribute does not reject the supported runtime slice");
+        auto core = PeravizVisualRuntimeCore{};
+        core.install_compiled_scene(next.compiled);
+        std::array<uint8_t, 512> held{};
+        held[499] = 128;
+        core.submit_universe_frame(0, held.data(), static_cast<int>(held.size()));
+        const auto frame = core.consume_latest_visual_frame();
+        const auto installed = next.compiled.fixtures.front().fixture_id;
+        bool dimmer = false;
+        for (size_t d = 0; d < frame.descriptors.size(); d += 5)
+            if (frame.descriptors[d] == 2 && frame.integers[frame.descriptors[d + 2]] == installed)
+                dimmer = std::fabs(frame.floats[frame.descriptors[d + 3]] - (32768.0 / 65535.0)) < 1e-5;
+        check(dimmer, "Candidate interprets the held coarse and fine bytes using its new layout");
+        std::cout << "Mode preparation across " << scene.fixture_patches.size() << " fixtures: same root "
+                  << same_root_ms << " ms, " << same_root.geometry.nodes.size() << " generated nodes; alternate root "
+                  << next_ms << " ms, " << next.geometry.nodes.size() << " generated nodes.\n";
+        return true;
+    } catch (const std::exception &error) {
+        std::cerr << error.what() << '\n';
+        return false;
+    }
 }

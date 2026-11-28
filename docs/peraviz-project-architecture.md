@@ -91,3 +91,19 @@ The SceneModel and provider remain projections, not parallel patch authorities.
 Auto Span stays a runtime policy in project DMX settings, never an MVR mutation.
 See [MVR document editing](mvr-document-editing.md) for source preservation,
 read-only mixed selections, supported insert/remove and next GDTF Mode boundaries.
+
+### Native fixture mode preparation
+
+The loader's scene-scoped catalog uses the resolved, leased GDTF archive
+identity. Native preparation resolves ordered bytes, checks MVR assignments,
+and compiles a prospective runtime scene. It reuses compatible root geometry
+or builds a replacement GDTF subtree for the target fixture. The candidate
+lease owns its extracted resources and releases them when the preview ends.
+The live renderer still needs a transaction that validates candidate targets,
+reclaims native presentation workers, preserves unaffected playback, and
+retires old targets after publication. The patch-only routing boundary remains
+dedicated to address edits.
+
+A future Transform editor can use the canonical UUID and document history to
+stage its Matrix command. Its presentation transaction should resolve the
+existing fixture root by UUID and apply the transform there.

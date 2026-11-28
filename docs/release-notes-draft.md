@@ -8,6 +8,8 @@
 
 - Centered notifications in the bottom status bar and shortened DMX patch warnings.
 
+- Added native GDTF mode catalogs and candidate preparation for canonical MVR fixtures. The parser uses exact authored mode names and derives per-break footprints from the same byte routing used for compilation. The Inspector's mode display remains read-only.
+
 - Added canonical MVR Patch editing for installed fixture plans: compact Universe/Address rows for existing assignments, Enter-only confirmation and discarded unconfirmed drafts, overlap warnings, mixed-selection read-only state and shared inversion/Patch Undo/Redo. Native cached-mode validation and exclusive same-topology rerouting preserve held DMX, renderer resources and temporal state. PVZ and MVR export retain one canonical archive writer. Unpatched/incomplete fixtures and proposals requiring renderer-domain changes are preserved but rejected for live patch mutation with a diagnostic; Auto Span remains a separate runtime policy.
 
 - Fixed button text clipping when hovered, pressed or disabled by keeping shared button content margins consistent across all states, including Art-Net and Inspector controls. Pan/Tilt inversion now uses one OFF/ON toggle per property, with an explicit Mixed → ON action for mixed selections.

@@ -98,3 +98,9 @@ PVZ imports that embedded edited document. DMX Auto Span settings retain their
 existing JSON policy ownership; inferred runtime continuations are not authored
 Address entries. Existing optional project metadata and visual-only overrides
 remain separate and preserved.
+
+The native document's staged GDTF mode operation writes the standard
+`GDTFMode` value into the canonical MVR archive. Its serialization uses the
+same archive path available to PVZ Save and standalone Export MVR. The
+GDTFSpec, GDTF resource bytes, and authored Addresses remain source data.
+The application does not publish live mode edits yet.

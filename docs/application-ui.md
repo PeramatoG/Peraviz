@@ -263,3 +263,7 @@ projections. Warnings distinguish intentional overlaps and inferred continuation
 from invalid/unsupported patches. The native transaction preserves installed
 control topology; unbound/incomplete fixtures and topology-changing proposals
 are unavailable/rejected with a reason. See [the editing contract](mvr-document-editing.md#canonical-patch-editing-editor-pr2).
+
+The Inspector continues to display the authored DMX mode as read-only.
+Native catalog and candidate diagnostics are available to the Godot setup
+layer. Applying a pending choice requires an installed renderer transaction.

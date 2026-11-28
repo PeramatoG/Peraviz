@@ -135,6 +135,9 @@ namespace godot {
 // Registers class methods so they are callable from Godot scripts.
 void PeravizLoader::_bind_methods() {
     ClassDB::bind_method(D_METHOD("sync_document_inversions","values"), &PeravizLoader::sync_document_inversions);
+    ClassDB::bind_method(D_METHOD("document_mode_catalog", "uuid"), &PeravizLoader::document_mode_catalog);
+    ClassDB::bind_method(D_METHOD("preview_document_mode", "uuid", "mode", "universe_offset"),
+                         &PeravizLoader::preview_document_mode);
     ClassDB::bind_method(D_METHOD("document_patch_info", "uuid"), &PeravizLoader::document_patch_info);
     ClassDB::bind_method(D_METHOD("stage_document_patch", "uuid", "entries", "universe_offset"), &PeravizLoader::stage_document_patch);
     ClassDB::bind_method(D_METHOD("cancel_document_patch"), &PeravizLoader::cancel_document_patch);
@@ -198,6 +201,8 @@ bool PeravizLoader::begin_load_mvr(const String &path, int universe_offset) {
 #ifdef PERAVIZ_ENABLE_DMX
     peraviz::dmx::clear_fixture_control_offsets_cache();
 #endif
+    staged_patch_.reset();
+    mode_catalogs_.clear();
     prepared_.reset();
     load_metrics_.clear();
     load_progress_ = std::make_shared<std::atomic<peraviz::SceneSetupPhase>>(peraviz::SceneSetupPhase::ArchiveGeometry);
@@ -246,6 +251,8 @@ Array PeravizLoader::load_mvr(const String &path, bool peraviz_debug_baseline,
     peraviz::dmx::clear_fixture_control_offsets_cache();
 #endif
     if (preparation_.valid()) return {};
+    staged_patch_.reset();
+    mode_catalogs_.clear();
     prepared_.reset();
     load_metrics_.clear();
     const auto load_start = std::chrono::steady_clock::now();

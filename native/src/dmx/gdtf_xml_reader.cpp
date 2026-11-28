@@ -32,15 +32,31 @@ std::string read_gdtf_description_xml(const std::string &gdtf_path) {
         return {};
     }
 
-    for (const std::string &entry_name : archive.list_files()) {
-        const std::string file_name = lower_ascii(peraviz::archive::ZipArchive::normalize_path(entry_name));
-        if (file_name != "description.xml" && file_name.find("/description.xml") == std::string::npos) {
-            continue;
-        }
-        return archive.read_text_file(entry_name);
-    }
+    const auto files = archive.list_files();
+    auto exact = std::find(files.begin(), files.end(), "description.xml");
+    if (exact != files.end()) return archive.read_text_file(*exact);
 
-    return {};
+    // Match the geometry builder's root precedence and unique nested compatibility fallback.
+    std::string folded_root, nested;
+    bool duplicate_root = false, duplicate_nested = false;
+    for (const auto &entry : archive.ambiguous_files()) {
+        const auto folded = lower_ascii(entry);
+        duplicate_root |= folded == "description.xml";
+        duplicate_nested |= folded.size() > 16 && folded.compare(folded.size() - 16, 16, "/description.xml") == 0;
+    }
+    for (const auto &entry : files) {
+        const auto folded = lower_ascii(entry);
+        if (folded == "description.xml") {
+            duplicate_root |= !folded_root.empty();
+            folded_root = entry;
+        } else if (folded.size() > 16 && folded.compare(folded.size() - 16, 16, "/description.xml") == 0) {
+            duplicate_nested |= !nested.empty();
+            nested = entry;
+        }
+    }
+    if (duplicate_root) return {};
+    if (!folded_root.empty()) return archive.read_text_file(folded_root);
+    return duplicate_nested || nested.empty() ? std::string{} : archive.read_text_file(nested);
 }
 
 // Collects all descendant XML elements with a case-insensitive name match.

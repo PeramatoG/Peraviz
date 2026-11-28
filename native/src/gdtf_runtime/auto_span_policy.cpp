@@ -18,10 +18,14 @@ const char *auto_span_policy_id(AutoSpanPolicy policy) {
 }
 // Reuses immutable selected-mode parser data across occupancy, compilation and policy-only reinstalls.
 const CompiledGdtfFixtureType &cached_fixture_type(const SceneModel::FixturePatch &patch,FixtureTypeCache &cache) {
-    const auto key=patch.gdtf_path+"\n"+dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
-    auto found=cache.find(key);
-    if (found==cache.end()) found=cache.emplace(key,compile_gdtf_fixture_type(patch.gdtf_path,patch.dmx_mode)).first;
-    return found->second;
+    const auto key = patch.gdtf_path + '\n' + patch.dmx_mode;
+    auto found = cache.find(key);
+    if (found != cache.end()) return found->second;
+    const auto alias = patch.gdtf_path + '\0' + dmx::lower_ascii(dmx::trim_ascii(patch.dmx_mode));
+    found = cache.find(alias);
+    if (found != cache.end()) return found->second;
+    auto type = compile_gdtf_fixture_type(patch.gdtf_path, patch.dmx_mode);
+    return cache.emplace(type.legacy_mode_alias ? alias : key, std::move(type)).first->second;
 }
 namespace {
 struct Slot {

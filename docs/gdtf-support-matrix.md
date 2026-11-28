@@ -192,3 +192,14 @@ source caches and ModeMaster input bytes remain unchanged; qualified Pan/Tilt
 targets retain fixture ownership. Malformed/duplicate flags diagnose and exclude
 the fixture from live compilation instead of guessing. See
 [mvr-document-editing.md](mvr-document-editing.md) for editing/persistence scope.
+
+### Native mode catalog
+
+Mode choices are read in authored order from the resolved GDTF description.
+Each entry exposes its exact name, description, root geometry and per-break
+footprint when every physical source can be resolved. Footprints reflect the
+highest routed byte offset, including GeometryReference offsets, and omit
+virtual channels. Duplicate names and unresolved geometry or routing receive
+diagnostics. Native candidate preparation can retain supported controls when
+other attributes are unavailable and reports that partial coverage. A live
+mode-switching renderer transaction remains pending.

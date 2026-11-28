@@ -296,12 +296,18 @@ Windows and graphical Forward+ validation remain pending; no owner's-show timing
 
 ## Exact next-phase handoff
 
-1. **GDTF Mode:** extend typed commands to the per-instance canonical GDTFSpec /
-   GDTFMode reference and retain the source document as owner. Reuse the patch
-   stage/validate/commit boundary, but add explicit native renderer-domain
-   addition/retirement and per-target resource reuse before permitting topology
-   changes. Validate all required numbered breaks against the proposed mode;
-   preserve existing patch/inversion/history, held input and Auto Span policy.
+The native mode preparation path enumerates exact authored GDTF names and
+prepares a candidate against existing patch addresses and Auto Span policy.
+The staged document operation retains the original GDTFMode source span, XML
+text spelling and element presence for Undo. When the element is absent, its
+insertion point is directly after a unique canonical GDTFSpec. The mode
+operation shares the patch and inversion history and canonical archive writer.
+
+1. **GDTF Mode:** connect the staged mode command to an exclusive native
+   renderer transaction. Install and retire renderer domains and reuse
+   compatible fixture resources before publishing the document command. Resolve
+   required breaks against the authored patch and preserve inversion, history,
+   held input and the Auto Span policy.
    Never replace GDTF definitions or silently create missing patch assignments.
 2. **Transform:** add a Matrix command with verified MVR units/bases and raw
    before/after source text. Recompose the affected native subtree and publish

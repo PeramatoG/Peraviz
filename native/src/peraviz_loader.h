@@ -36,6 +36,8 @@ public:
     Dictionary get_load_metrics() const;
     Array get_fixtures_patch() const;
     void sync_document_inversions(const Array &values);
+    Dictionary document_mode_catalog(const String &uuid);
+    Dictionary preview_document_mode(const String &uuid, const String &mode, int universe_offset);
     Dictionary document_patch_info(const String &uuid);
     Dictionary stage_document_patch(const String &uuid, const Array &entries, int universe_offset);
     bool commit_document_patch(const Ref<PeravizVisualRuntime> &runtime);
@@ -59,6 +61,8 @@ private:
     struct StagedPatch { std::string uuid; peraviz::SceneModel::FixturePatch patch; peraviz::runtime::CompiledRuntimeScene compiled; int offset; peraviz::gdtf_runtime::AutoSpanPolicy policy; };
     std::optional<StagedPatch> staged_patch_;
     peraviz::SceneModel last_scene_model_;
+    std::map<std::string, peraviz::gdtf_runtime::GdtfModeCatalog> mode_catalogs_;
+    const peraviz::gdtf_runtime::GdtfModeCatalog &mode_catalog(const std::string &path);
     mutable Dictionary load_metrics_;
 };
 

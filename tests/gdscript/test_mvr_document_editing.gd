@@ -34,6 +34,17 @@ func run() -> void:
 	test.check(editor.fixture(ID_A).get("editable",false),"Canonical fixture identity is editable")
 	test.check(not editor.fixture(ID_A).pan and not editor.fixture(ID_A).pan_present,"Missing inversion reads false without inventing presence")
 	test.check(editor.export_mvr(base+"-noop.mvr") and FileAccess.get_sha256(base+"-noop.mvr") == original_hash,"UI export preserves unmodified source bytes")
+	var canonical: Dictionary = editor.fixture(ID_A)
+	var catalog: Dictionary = app._loader.document_mode_catalog(ID_A)
+	var modes: Array = catalog.get("modes", [])
+	test.check(canonical.dmx_mode_present and canonical.gdtf_spec == "projecteur-é.gdtf", "Read canonical GDTF children through the document bridge")
+	test.check(modes.size() == 1, "Catalog is scoped to the fixture's resolved GDTF archive")
+	if modes.size() == 1:
+		var mode: Dictionary = modes[0]
+		test.check(mode.name == canonical.dmx_mode and mode.footprint_known and mode.breaks.size() == 1, "Catalog exposes the exact current mode and physical break")
+		var same_mode: Dictionary = app._loader.preview_document_mode(ID_A, mode.name, -1)
+		var missing: Dictionary = app._loader.preview_document_mode(ID_A, "Missing test mode", -1)
+		test.check(same_mode.ok and same_mode.unchanged and not missing.ok and not editor.state().dirty, "Preview keeps no-op and rejected candidates out of history")
 	app.app_shell.selection.select(PackedStringArray([ID_A]))
 	var pan: Node3D = axis(ID_A,true)
 	var tilt: Node3D = axis(ID_A,false)
